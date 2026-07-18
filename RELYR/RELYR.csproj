@@ -11,7 +11,7 @@
     <AssemblyName>RELYR</AssemblyName>
     <Product>RELYR</Product>
     <Description>キーボードとマウスの入力を自由に割り当てるWindowsアプリ</Description>
-    <Version>0.1.68</Version>
+    <Version>0.1.69</Version>
     <Authors>RELYR</Authors>
     <Copyright>Copyright (c) 2026 RELYR contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -33,7 +33,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(ProductionPublish)' == 'true'">
-    <Compile Remove="SelfTest.cs;EngineIntegrationTest.cs;UiIntegrationTest.cs;StartupIntegrationTest.cs;VirtualDesktopIntegrationTest.cs" />
+    <Compile Remove="SelfTest.cs;EngineIntegrationTest.cs;UiIntegrationTest.cs;StartupIntegrationTest.cs;UpdateIntegrationTest.cs;VirtualDesktopIntegrationTest.cs" />
   </ItemGroup>
 
 </Project>

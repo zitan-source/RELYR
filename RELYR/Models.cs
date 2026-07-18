@@ -48,7 +48,7 @@ public sealed class Profile
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 13;
+    public int Version { get; set; } = 14;
     public string ActiveProfile { get; set; } = "標準";
     public bool EngineEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }
@@ -57,6 +57,7 @@ public sealed class AppConfig
     public string ArchiveDestinationFolder { get; set; } = "";
     public bool ShowDesktopNumberInTray { get; set; }
     public bool CloseWindowUnderCursor { get; set; }
+    public bool CheckForUpdates { get; set; } = true;
     public bool RecordKeyboardInputInMacros { get; set; } = true;
     public bool RecordMappedActionsInMacros { get; set; } = true;
     public bool RecordMouseMovementInMacros { get; set; }

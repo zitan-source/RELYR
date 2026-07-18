@@ -18,6 +18,8 @@ public static class StartupIntegrationTest
             string encoded=StartupService.EncodeArguments(arguments);
             Check(StartupService.DecodeElevatedArguments(encoded).SequenceEqual(arguments),"scheduled-task argument forwarding preserves every argument exactly");
             Check(!encoded.Any(char.IsWhiteSpace),"scheduled-task argument payload contains no command-line whitespace");
+            Check(StartupService.MultipleInstancePolicy(true)==2&&StartupService.MultipleInstancePolicy(false)==0,"logon startup ignores duplicate launches while command launcher remains available for macro actions");
+            Check(App.IsMainUiLaunch([])&&App.IsMainUiLaunch(["--tray"])&&!App.IsMainUiLaunch(["--macro-id","abc"]),"single-instance guard applies only to the resident main application");
         }
         catch(Exception ex){output.WriteLine("FAIL exception: "+ex);failures.Add("exception");}
         output.WriteLine(failures.Count==0?"STARTUP INTEGRATION TEST PASSED":"STARTUP INTEGRATION TEST FAILED");return failures.Count==0?0:1;

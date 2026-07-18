@@ -13,16 +13,11 @@ public partial class App : System.Windows.Application
     internal static string EngineTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-engine-test-last.log");
 #endif
     const string MutexName=@"Local\RELYR.SingleInstance.v2";
-    const string RecoveryMutexName=@"Local\RELYR.SingleInstanceRecovery.v1";
     const string SignalName=@"Local\RELYR.ShowExisting.v1";
-    const string ShowAckName=@"Local\RELYR.ShowExistingAck.v1";
     Mutex? instanceMutex;
-    Mutex? recoveryMutex;
     EventWaitHandle? showSignal;
-    EventWaitHandle? showAckSignal;
     EventWaitHandle? shutdownSignal;
     bool ownsMutex;
-    bool ownsRecoveryMutex;
     readonly CancellationTokenSource signalStop=new();
     public App()
     {
@@ -49,6 +44,12 @@ public partial class App : System.Windows.Application
         }
         else if(!StartupService.IsProcessElevated())
         {
+            if(IsMainUiLaunch(args)&&MainInstanceExists())
+            {
+                NotifyExistingInstance();
+                if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+                Shutdown(0);return;
+            }
             if(!StartupService.TryRunElevated(args,out string error))System.Windows.MessageBox.Show(error,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
             Shutdown(string.IsNullOrEmpty(error)?0:1);return;
         }
@@ -84,24 +85,20 @@ public partial class App : System.Windows.Application
             return;
         }
         if(e.Args.Contains("--startup-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(StartupIntegrationTest.Run(Console.Out));return;}
+        if(e.Args.Contains("--update-test",StringComparer.OrdinalIgnoreCase)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunUpdateTestAndExit());return;}
         if(e.Args.Contains("--desktop-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(VirtualDesktopIntegrationTest.Run(Console.Out));return;}
 #endif
+        instanceMutex=new Mutex(true,MutexName,out ownsMutex);
+        if(!ownsMutex)
+        {
+            NotifyExistingInstance();
+            if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+            Shutdown(0);return;
+        }
+        showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
         var loadedStartupConfig=new ConfigService().Load();
         try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
         try{StartupService.EnsureMatchesConfig(loadedStartupConfig.StartWithWindows);}catch{}
-        instanceMutex=new Mutex(true,MutexName,out ownsMutex);
-        showAckSignal=new EventWaitHandle(false,EventResetMode.AutoReset,ShowAckName);
-        if(!ownsMutex)
-        {
-            if(NotifyExistingInstance(showAckSignal)){Shutdown(0);return;}
-            recoveryMutex=new Mutex(true,RecoveryMutexName,out ownsRecoveryMutex);
-            if(!ownsRecoveryMutex)
-            {
-                NotifyExistingInstance(showAckSignal);
-                Shutdown(0);return;
-            }
-        }
-        showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
         shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));
         var window=new MainWindow(args.Contains("--skip-setup",StringComparer.OrdinalIgnoreCase));
         MainWindow=window;
@@ -111,17 +108,28 @@ public partial class App : System.Windows.Application
         _=Task.Run(()=>ListenForShow(window));
         _=Task.Run(()=>ListenForShutdown(window));
     }
-    static bool NotifyExistingInstance(EventWaitHandle acknowledgement)
+    internal static bool IsMainUiLaunch(IReadOnlyList<string> args)=>args.All(x=>x.Equals("--tray",StringComparison.OrdinalIgnoreCase)||x.Equals("--skip-setup",StringComparison.OrdinalIgnoreCase));
+    static bool ShouldExplainDuplicate(IReadOnlyList<string> args)=>!args.Contains("--tray",StringComparer.OrdinalIgnoreCase);
+    static bool MainInstanceExists()
     {
-        long deadline=Environment.TickCount64+2000;
-        while(Environment.TickCount64<deadline)
+        try
         {
-            acknowledgement.Reset();
-            try{using var signal=EventWaitHandle.OpenExisting(SignalName);signal.Set();if(acknowledgement.WaitOne(300))return true;}catch(WaitHandleCannotBeOpenedException){}
-            Thread.Sleep(50);
+            if(!Mutex.TryOpenExisting(MutexName,out var existing))return false;
+            existing.Dispose();return true;
+        }
+        catch(UnauthorizedAccessException){return true;}
+    }
+    static bool NotifyExistingInstance()
+    {
+        for(int attempt=0;attempt<8;attempt++)
+        {
+            try{using var signal=EventWaitHandle.OpenExisting(SignalName);signal.Set();return true;}
+            catch(WaitHandleCannotBeOpenedException){Thread.Sleep(50);}
+            catch(UnauthorizedAccessException){return false;}
         }
         return false;
     }
+    static void ShowAlreadyRunningMessage()=>System.Windows.MessageBox.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
     void ShutdownWithExitCode(int exitCode){Environment.ExitCode=exitCode;Shutdown(exitCode);}
     void ListenForShow(MainWindow window)
     {
@@ -129,7 +137,6 @@ public partial class App : System.Windows.Application
         {
             while(WaitHandle.WaitAny([showSignal!,signalStop.Token.WaitHandle])==0)
             {
-                showAckSignal?.Set();
                 Dispatcher.BeginInvoke(window.ShowFromExternalLaunch);
             }
         }
@@ -148,6 +155,7 @@ public partial class App : System.Windows.Application
     }
     internal static bool UninstallRestartNeeded(AppConfig config,bool registryRemap,bool? pendingRestart=null)=>registryRemap||config.CapsLockLayerEnabled||(pendingRestart??LegacyKeyRemapService.IsRestartStillPending(config));
 #if !PRODUCTION_PUBLISH
+    async Task RunUpdateTestAndExit(){int result=await UpdateIntegrationTest.RunAsync(Console.Out);ShutdownWithExitCode(result);}
     async Task RunEngineTestAndExit(bool includeRealHook)
     {
         int result=1;
@@ -179,7 +187,7 @@ public partial class App : System.Windows.Application
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e){if(MainWindow is RELYR.MainWindow window)window.PrepareForSystemShutdown();base.OnSessionEnding(e);}
     void SystemPowerModeChanged(object sender,PowerModeChangedEventArgs e){if(e.Mode==PowerModes.Suspend)InputEngine.ReleaseAll();}
     void SystemSessionSwitch(object sender,SessionSwitchEventArgs e){if(e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.RemoteDisconnect)InputEngine.ReleaseAll();}
-    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();showSignal?.Dispose();showAckSignal?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}if(ownsRecoveryMutex){try{recoveryMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();recoveryMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
+    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();showSignal?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);
 }

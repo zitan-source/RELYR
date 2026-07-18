@@ -70,6 +70,7 @@
               <TextBlock Text="Windows" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,5"/>
               <CheckBox x:Name="StartupBox" Content="サインイン時に自動で起動する"/>
               <CheckBox x:Name="DesktopNumberTrayBox" Content="通知領域に現在の仮想デスクトップ番号を表示する"/>
+              <CheckBox x:Name="CheckForUpdatesBox" Content="メイン画面を開いたときにアップデートを確認する"/>
               <Separator Margin="0,8" Background="#344057"/>
               <TextBlock Text="ウィンドウを閉じる対象" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
               <RadioButton x:Name="ActiveWindowTargetBox" GroupName="CloseWindowTarget" Content="アクティブなウィンドウ" Foreground="#EEF2F8" Margin="0,7,0,3"/>

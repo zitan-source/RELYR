@@ -90,7 +90,7 @@ public sealed class ConfigService
     public AppConfig Import(string path)
     {
         var result=JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path),options)??throw new InvalidDataException("設定ファイルが空です。");
-        if(result.Version>13)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
+        if(result.Version>14)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
         if(result.Profiles is null||result.Profiles.Count==0)throw new InvalidDataException("有効なプロファイルがありません。");
         result=Normalize(result);result.CapsLockRemapPendingRestart=false;result.CapsLockRemapEffectiveBeforeRestart=false;result.CapsLockRemapChangedAtUtcTicks=0;
         var errors=ConfigValidator.Validate(result);
@@ -120,7 +120,7 @@ public sealed class ConfigService
         if(value.Profiles.Count==0)value.Profiles.Add(new Profile());
         foreach(var profile in value.Profiles){profile.Name=string.IsNullOrWhiteSpace(profile.Name)?"名称未設定":profile.Name;profile.Mappings??=[];profile.AutoSwitchApplications??=[];foreach(var map in profile.Mappings){if(map.Input.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock";else if(map.Input.StartsWith("F13+",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock"+map.Input[3..];if(map.Layer.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Layer="CapsLock";if(originalVersion<9&&map.LongPressKind==ActionKind.None)map.LongPressValue="";}}
         if(!value.Profiles.Any(x=>x.Name==value.ActiveProfile))value.ActiveProfile=value.Profiles[0].Name;
-        value.Version=13;
+        value.Version=14;
         return value;
     }
 

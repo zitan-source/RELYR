@@ -15,7 +15,7 @@ public static class StartupService
     const string LegacyTaskName="InputCustomizer";
     const string RunKey=@"Software\Microsoft\Windows\CurrentVersion\Run";
     const int TaskActionExecute=0,TaskTriggerLogon=9,TaskCreateOrUpdate=6;
-    const int TaskLogonInteractiveToken=3,TaskRunLevelHighest=1,TaskInstancesParallel=0;
+    const int TaskLogonInteractiveToken=3,TaskRunLevelHighest=1,TaskInstancesParallel=0,TaskInstancesIgnoreNew=2;
 
     public static void SetEnabled(bool enabled)
     {
@@ -117,7 +117,10 @@ public static class StartupService
         definition.Settings.DisallowStartIfOnBatteries=false;
         definition.Settings.StopIfGoingOnBatteries=false;
         definition.Settings.ExecutionTimeLimit="PT0S";
-        definition.Settings.MultipleInstances=TaskInstancesParallel;
+        // ログオン起動は既存タスクが動作中なら新しいプロセスを作らない。
+        // 引数付きのランチャーはマクロなどの短命な処理にも使うため並列を許し、
+        // メイン画面の重複は名前付きMutexで必ず終了させる。
+        definition.Settings.MultipleInstances=MultipleInstancePolicy(logonTrigger);
         if(logonTrigger)
         {
             dynamic trigger=definition.Triggers.Create(TaskTriggerLogon);
@@ -130,6 +133,8 @@ public static class StartupService
         action.WorkingDirectory=Path.GetDirectoryName(executablePath)??AppContext.BaseDirectory;
         root.RegisterTaskDefinition(taskName,definition,TaskCreateOrUpdate,user,null,TaskLogonInteractiveToken,null);
     }
+
+    internal static int MultipleInstancePolicy(bool logonTrigger)=>logonTrigger?TaskInstancesIgnoreNew:TaskInstancesParallel;
 
     static dynamic ConnectService()
     {

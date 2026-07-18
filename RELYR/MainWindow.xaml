@@ -138,10 +138,13 @@
     </Border>
 
     <Border DockPanel.Dock="Bottom" Background="#101720" Padding="12">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock x:Name="EngineStatus" Text="● エンジン稼働中" Foreground="#72E0C1"/>
         <TextBlock x:Name="ProfileStatus" Grid.Column="1"/><TextBlock x:Name="AdminStatus" Grid.Column="2"/>
         <TextBlock x:Name="LastInput" Grid.Column="3" Text="入力: —"/>
+        <Button x:Name="UpdateAvailableButton" Grid.Column="4" Visibility="Collapsed" Click="UpdateAvailable_Click"
+                Content="↑ アップデートがあります" Background="Transparent" Foreground="#72E0C1"
+                BorderThickness="0" Padding="10,0" Margin="8,-4,-4,-4" Cursor="Hand" ToolTip="クリックして安全にダウンロードし、更新します"/>
       </Grid>
     </Border>
 
