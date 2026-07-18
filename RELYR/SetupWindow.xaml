@@ -1,0 +1,165 @@
+<Window x:Class="RELYR.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RELYR チュートリアル" Width="1060" Height="760" MinWidth="860" MinHeight="620"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
+        Background="{DynamicResource TutorialBackground}" Foreground="{DynamicResource PrimaryText}">
+  <Window.Resources>
+    <SolidColorBrush x:Key="TutorialBackground" Color="#0F141C"/>
+    <SolidColorBrush x:Key="TutorialSurface" Color="#141B25"/>
+    <SolidColorBrush x:Key="TutorialCard" Color="#1A2330"/>
+    <SolidColorBrush x:Key="TutorialBorder" Color="#334154"/>
+    <SolidColorBrush x:Key="PrimaryText" Color="#F2F6FC"/>
+    <SolidColorBrush x:Key="SecondaryText" Color="#AAB7C9"/>
+    <SolidColorBrush x:Key="TutorialAccent" Color="#55A6FF"/>
+    <SolidColorBrush x:Key="TutorialAccentSoft" Color="#172C44"/>
+    <SolidColorBrush x:Key="TutorialGreen" Color="#6CD48A"/>
+    <SolidColorBrush x:Key="TutorialOrange" Color="#F5B24B"/>
+    <SolidColorBrush x:Key="TutorialRed" Color="#FF7580"/>
+    <SolidColorBrush x:Key="TutorialKey" Color="#253142"/>
+
+    <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource TutorialCard}"/><Setter Property="BorderBrush" Value="{DynamicResource TutorialBorder}"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="20"/>
+    </Style>
+    <Style x:Key="KeyCap" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource TutorialKey}"/><Setter Property="BorderBrush" Value="{DynamicResource TutorialBorder}"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="7"/><Setter Property="Padding" Value="14,11"/>
+    </Style>
+    <Style x:Key="TutorialButton" TargetType="Button">
+      <Setter Property="MinWidth" Value="116"/><Setter Property="Height" Value="42"/><Setter Property="Margin" Value="5,0"/>
+      <Setter Property="Padding" Value="18,8"/><Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource TutorialCard}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource TutorialBorder}"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource TutorialAccent}"/><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource TutorialAccentSoft}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.75"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource TutorialButton}">
+      <Setter Property="MinWidth" Value="170"/><Setter Property="Foreground" Value="White"/><Setter Property="Background" Value="#1677E8"/><Setter Property="BorderBrush" Value="#4DA0FF"/>
+    </Style>
+    <Style x:Key="PageTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="34"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="TextAlignment" Value="Center"/></Style>
+    <Style x:Key="PageSubtitle" TargetType="TextBlock"><Setter Property="FontSize" Value="17"/><Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="TextAlignment" Value="Center"/><Setter Property="Margin" Value="0,8,0,24"/></Style>
+  </Window.Resources>
+
+  <Grid Background="{DynamicResource TutorialBackground}">
+    <Viewbox Stretch="Uniform">
+      <Grid Width="1000" Height="675">
+        <Grid.RowDefinitions><RowDefinition Height="62"/><RowDefinition Height="*"/><RowDefinition Height="72"/></Grid.RowDefinitions>
+
+        <Border Background="{DynamicResource TutorialSurface}" BorderBrush="{DynamicResource TutorialBorder}" BorderThickness="0,0,0,1">
+          <Grid Margin="22,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Image x:Name="TutorialAppIcon" Width="36" Height="36" Source="Assets/RELYR.ico" Stretch="Uniform"/>
+              <TextBlock Text="RELYR" FontSize="21" FontWeight="Bold" Margin="11,0,0,0" VerticalAlignment="Center"/>
+              <TextBlock Text="はじめに" Foreground="{DynamicResource SecondaryText}" FontSize="13" Margin="12,4,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse x:Name="Dot1" Width="12" Height="12" Margin="7,0"/>
+              <Ellipse x:Name="Dot2" Width="12" Height="12" Margin="7,0"/>
+              <Ellipse x:Name="Dot3" Width="12" Height="12" Margin="7,0"/>
+            </StackPanel>
+            <TextBlock Grid.Column="2" Text="3分で基本がわかります" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" FontSize="13"/>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="30,20,30,14">
+          <!-- 1: レイヤーの考え方 -->
+          <Grid x:Name="PageOne">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="キーボードとマウスを、自分専用に"/><TextBlock Style="{StaticResource PageSubtitle}" Text="Spaceやマウスボタンを押している間だけ、別の操作をすばやく実行できます"/></StackPanel>
+            <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0"><StackPanel VerticalAlignment="Center">
+                <TextBlock Text="割り当て例 1" Foreground="{DynamicResource TutorialAccent}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,18"><Border Style="{StaticResource KeyCap}"><TextBlock Text="Space" FontSize="20" FontWeight="SemiBold"/></Border><TextBlock Text="＋" FontSize="27" Margin="14,0" VerticalAlignment="Center"/><Border Style="{StaticResource KeyCap}"><TextBlock Text="C" FontSize="20" FontWeight="SemiBold"/></Border></StackPanel>
+                <TextBlock Text="↓" FontSize="28" Foreground="{DynamicResource TutorialAccent}" HorizontalAlignment="Center"/><TextBlock Text="コピー" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+              </StackPanel></Border>
+              <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0"><StackPanel VerticalAlignment="Center">
+                <TextBlock Text="割り当て例 2" Foreground="{DynamicResource TutorialGreen}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,18"><Border Style="{StaticResource KeyCap}"><TextBlock Text="Space" FontSize="20" FontWeight="SemiBold"/></Border><TextBlock Text="＋" FontSize="27" Margin="14,0" VerticalAlignment="Center"/><Border Style="{StaticResource KeyCap}"><TextBlock Text="右クリック" FontSize="16" FontWeight="SemiBold"/></Border></StackPanel>
+                <TextBlock Text="↓" FontSize="28" Foreground="{DynamicResource TutorialGreen}" HorizontalAlignment="Center"/><TextBlock Text="貼り付け" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+              </StackPanel></Border>
+              <Border Grid.Column="2" Style="{StaticResource Card}" Margin="8,0,0,0"><StackPanel VerticalAlignment="Center">
+                <TextBlock Text="割り当て例 3" Foreground="{DynamicResource TutorialOrange}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,18"><Border Style="{StaticResource KeyCap}"><TextBlock Text="戻る" FontSize="18" FontWeight="SemiBold"/></Border><TextBlock Text="＋" FontSize="27" Margin="14,0" VerticalAlignment="Center"/><Border Style="{StaticResource KeyCap}"><TextBlock Text="ホイール" FontSize="16" FontWeight="SemiBold"/></Border></StackPanel>
+                <TextBlock Text="↓" FontSize="28" Foreground="{DynamicResource TutorialOrange}" HorizontalAlignment="Center"/><TextBlock Text="左右キー" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+              </StackPanel></Border>
+            </Grid>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="18,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0"><TextBlock Text="レイヤーとは" Foreground="{DynamicResource TutorialAccent}" FontSize="17" FontWeight="Bold"/><TextBlock Text="Space・右クリック・戻る・進むを押している間だけ、追加の操作が使えます。単押しは元の操作として使えます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,20,0"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Spaceを長押しで連打していた方へ" Foreground="{DynamicResource TutorialOrange}" FontSize="17" FontWeight="Bold"/><TextBlock Text="1回目の長押しはSpaceレイヤーとして動くため、Spaceは連打されません。連打するときはSpaceを1回押し、2回目を長押しします。この動作は［アプリ設定］→［レイヤー］で変更できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel>
+            </Grid></Border>
+          </Grid>
+
+          <!-- 2: 設定方法 -->
+          <Grid x:Name="PageTwo" Visibility="Collapsed">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="操作を割り当ててみましょう"/><TextBlock Style="{StaticResource PageSubtitle}" Text="左から右へ、3つの手順で設定できます"/></StackPanel>
+            <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="42"/><ColumnDefinition/><ColumnDefinition Width="42"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Style="{StaticResource Card}"><StackPanel>
+                <StackPanel Orientation="Horizontal"><Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource TutorialAccent}"><TextBlock Text="1" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="レイヤーを選ぶ" FontSize="19" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/></StackPanel>
+                <TextBlock Text="左側のレイヤー選択から、設定する場面を選びます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,10,0,16"/>
+                <Border Background="{DynamicResource TutorialAccentSoft}" BorderBrush="{DynamicResource TutorialAccent}" BorderThickness="1" CornerRadius="7" Padding="12"><StackPanel><TextBlock Text="通常レイヤー" Margin="0,4"/><TextBlock Text="Space レイヤー　✓" Foreground="{DynamicResource TutorialAccent}" FontWeight="Bold" Margin="0,8"/><TextBlock Text="CapsLock レイヤー" Margin="0,4"/><TextBlock Text="戻る レイヤー" Margin="0,4"/></StackPanel></Border>
+              </StackPanel></Border>
+              <TextBlock Grid.Column="1" Text="›" FontSize="42" Foreground="{DynamicResource TutorialAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel>
+                <StackPanel Orientation="Horizontal"><Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource TutorialAccent}"><TextBlock Text="2" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="キーを選ぶ" FontSize="19" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/></StackPanel>
+                <TextBlock Text="中央のキーボードまたはマウスをクリックします。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,10,0,18"/>
+                <UniformGrid Rows="3" Columns="5" Margin="4"><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Background="{DynamicResource TutorialGreen}" BorderBrush="{DynamicResource TutorialGreen}" BorderThickness="1" CornerRadius="6" Margin="2"><TextBlock Text="A" Foreground="#102016" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/><Border Style="{StaticResource KeyCap}" Margin="2"/></UniformGrid>
+              </StackPanel></Border>
+              <TextBlock Grid.Column="3" Text="›" FontSize="42" Foreground="{DynamicResource TutorialAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <Border Grid.Column="4" Style="{StaticResource Card}"><StackPanel>
+                <StackPanel Orientation="Horizontal"><Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource TutorialAccent}"><TextBlock Text="3" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="アクションを選ぶ" FontSize="19" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/></StackPanel>
+                <TextBlock Text="右側で実行したい内容を選びます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,10,0,14"/>
+                <StackPanel><Border Style="{StaticResource KeyCap}" Margin="0,3"><TextBlock Text="⌨  ショートカット"/></Border><Border Style="{StaticResource KeyCap}" Margin="0,3"><TextBlock Text="▣  アプリ・ファイル・URL"/></Border><Border Style="{StaticResource KeyCap}" Margin="0,3"><TextBlock Text="T  文字列入力"/></Border><Border Style="{StaticResource KeyCap}" Margin="0,3"><TextBlock Text="▶  マクロ"/></Border></StackPanel>
+              </StackPanel></Border>
+            </Grid>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="18,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="● 緑色のキーには、すでに操作が割り当てられています。クリックすると確認・変更できます。" Foreground="{DynamicResource TutorialGreen}" TextWrapping="Wrap" Margin="0,0,20,0"/>
+              <TextBlock Grid.Column="1" Text="⚡ 自動保存がオンならすぐ反映。オフなら上部の［保存して反映］を押します。" Foreground="{DynamicResource TutorialAccent}" TextWrapping="Wrap"/>
+            </Grid></Border>
+          </Grid>
+
+          <!-- 3: 安全と復元 -->
+          <Grid x:Name="PageThree" Visibility="Collapsed">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="いつでも停止・やり直しできます"/><TextBlock Style="{StaticResource PageSubtitle}" Text="安心して試せるよう、停止と初期化の機能を用意しています"/></StackPanel>
+            <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0"><StackPanel>
+                <TextBlock Text="一時停止" Foreground="{DynamicResource TutorialAccent}" FontSize="20" FontWeight="Bold"/>
+                <Border Background="{DynamicResource TutorialAccentSoft}" BorderBrush="{DynamicResource TutorialAccent}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,20,0,18"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><Ellipse Width="13" Height="13" Fill="{DynamicResource TutorialGreen}"/><TextBlock Text="エンジン稼働中" FontSize="17" FontWeight="Bold" Margin="9,0,0,0"/></StackPanel></Border>
+                <TextBlock Text="左下の［エンジン稼働中］を押すと、すべての割り当てを一時停止できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap"/>
+              </StackPanel></Border>
+              <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0"><StackPanel>
+                <TextBlock Text="緊急停止" Foreground="{DynamicResource TutorialRed}" FontSize="20" FontWeight="Bold"/>
+                <UniformGrid Rows="1" Columns="4" Margin="0,20,0,18"><Border Style="{StaticResource KeyCap}" Margin="2"><TextBlock Text="Ctrl" HorizontalAlignment="Center"/></Border><Border Style="{StaticResource KeyCap}" Margin="2"><TextBlock Text="Alt" HorizontalAlignment="Center"/></Border><Border Style="{StaticResource KeyCap}" Margin="2"><TextBlock Text="Shift" HorizontalAlignment="Center"/></Border><Border Style="{StaticResource KeyCap}" Margin="2"><TextBlock Text="F12" HorizontalAlignment="Center"/></Border></UniformGrid>
+                <TextBlock Text="入力がおかしい場合は、4キーを同時に押すとすぐ停止できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap"/>
+              </StackPanel></Border>
+              <Border Grid.Column="2" Style="{StaticResource Card}" Margin="8,0,0,0"><StackPanel>
+                <TextBlock Text="初期状態へ戻す" Foreground="{DynamicResource TutorialGreen}" FontSize="20" FontWeight="Bold"/>
+                <Border Style="{StaticResource KeyCap}" Margin="0,20,0,18"><StackPanel><TextBlock Text="⚙ アプリ設定" FontWeight="Bold"/><Separator Margin="0,9"/><TextBlock Text="データ管理"/><TextBlock Text="すべての設定を初期化  ›" Foreground="{DynamicResource TutorialGreen}" FontWeight="Bold" Margin="0,8,0,0"/></StackPanel></Border>
+                <TextBlock Text="設定から、すべての割り当てを初期状態へ戻せます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap"/>
+              </StackPanel></Border>
+            </Grid>
+            <Grid Grid.Row="2" Margin="0,16,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,8,0" Padding="18,14"><StackPanel><TextBlock Text="CapsLockレイヤーは任意機能です" Foreground="{DynamicResource TutorialOrange}" FontSize="17" FontWeight="Bold"/><TextBlock Text="有効化するとCapsLock本来の機能は使えなくなり、Windowsの再起動が必要です。必要な場合だけ設定してください。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel></Border>
+              <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0" Padding="18,14"><StackPanel><TextBlock Text="閉じた後も通知領域で動作します" Foreground="{DynamicResource TutorialAccent}" FontSize="17" FontWeight="Bold"/><TextBlock Text="×で閉じてもバックグラウンドで動作を続けます。通知領域のRELYRアイコンから再表示・終了できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel></Border>
+            </Grid>
+          </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{DynamicResource TutorialSurface}" BorderBrush="{DynamicResource TutorialBorder}" BorderThickness="0,1,0,0">
+          <Grid Margin="22,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <CheckBox x:Name="DoNotShowAgainBox" Content="次回から表示しない" IsChecked="True" Foreground="{DynamicResource PrimaryText}" FontSize="14"/>
+              <Button x:Name="SkipButton" Content="スキップ" Click="Skip_Click" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TutorialAccent}" HorizontalAlignment="Left" Padding="0" Margin="0,6,0,0" Cursor="Hand"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="BackButton" Content="戻る" Style="{StaticResource TutorialButton}" Click="Back_Click" Visibility="Collapsed"/>
+              <Button x:Name="NextButton" Content="次へ" Style="{StaticResource PrimaryButton}" Click="Next_Click" IsDefault="True"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Viewbox>
+  </Grid>
+</Window>
