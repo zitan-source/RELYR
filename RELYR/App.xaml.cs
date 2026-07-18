@@ -97,6 +97,7 @@ public partial class App : System.Windows.Application
         }
         showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
         var loadedStartupConfig=new ConfigService().Load();
+        ThemeService.Apply(loadedStartupConfig.ThemeMode);
         try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
         try{StartupService.EnsureMatchesConfig(loadedStartupConfig.StartWithWindows);}catch{}
         shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));

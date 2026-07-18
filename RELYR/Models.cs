@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 namespace RELYR;
 
 public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile }
+public enum AppThemeMode { System, Dark, Light }
 
 public sealed class MacroStep
 {
@@ -48,7 +49,7 @@ public sealed class Profile
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 14;
+    public int Version { get; set; } = 15;
     public string ActiveProfile { get; set; } = "標準";
     public bool EngineEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }
@@ -58,6 +59,9 @@ public sealed class AppConfig
     public bool ShowDesktopNumberInTray { get; set; }
     public bool CloseWindowUnderCursor { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
+    public long LastUpdateCheckUtcTicks { get; set; }
     public bool RecordKeyboardInputInMacros { get; set; } = true;
     public bool RecordMappedActionsInMacros { get; set; } = true;
     public bool RecordMouseMovementInMacros { get; set; }

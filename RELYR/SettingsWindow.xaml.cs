@@ -11,6 +11,12 @@ public partial class SettingsWindow:Window
     internal const string ImportFileFilter="RELYR 設定ファイル (*.relyr)|*.relyr|以前のRELYR設定 (*.json)|*.json";
     readonly AppConfig config;
     readonly bool initialStartWithWindows;
+    readonly AppThemeMode originalThemeMode;
+    readonly CancellationTokenSource updateCancellation=new();
+    UpdateInfo? availableUpdate;
+    UpdateCheckResult? lastUpdateCheck;
+    bool updateCheckInProgress;
+    bool themeSelectionLoading=true,themeAccepted,ownerUpdateSubscribed;
     public AppConfig? ImportedConfig { get; private set; }
     public bool ImportedCapsLockNeedsRestart { get; private set; }
     public bool ImportedCapsLockEnabled { get; private set; }
@@ -22,6 +28,7 @@ public partial class SettingsWindow:Window
     public string ArchiveDestinationFolder=>ArchiveDestinationFolderBox.Text.Trim();
     public bool ShowDesktopNumberInTray=>DesktopNumberTrayBox.IsChecked==true;
     public bool CheckForUpdates=>CheckForUpdatesBox.IsChecked==true;
+    public AppThemeMode SelectedThemeMode=>LightThemeBox.IsChecked==true?AppThemeMode.Light:DarkThemeBox.IsChecked==true?AppThemeMode.Dark:AppThemeMode.System;
     public bool CloseWindowUnderCursor=>CursorWindowTargetBox.IsChecked==true;
     public bool AutoSave=>AutoSaveBox.IsChecked==true;
     public bool SpaceHoldRepeat=>SpaceRepeatBox.IsChecked==true;
@@ -31,11 +38,159 @@ public partial class SettingsWindow:Window
     public bool ResetNeedsRestart { get; private set; }
     internal bool TitleBarUsesDarkMode{get;private set;}
 
-    public SettingsWindow(AppConfig config)
+    public SettingsWindow(AppConfig config):this(config,(UpdateCheckResult?)null){}
+
+    internal SettingsWindow(AppConfig config,UpdateInfo knownUpdate):this(config,new UpdateCheckResult(knownUpdate.Version,knownUpdate.VersionText,knownUpdate,DateTimeOffset.Now)){}
+
+    internal SettingsWindow(AppConfig config,UpdateCheckResult? knownUpdate)
     {
-        this.config=config;InitializeComponent();MainWindow.FollowWindowsTitleBarTheme(this,value=>TitleBarUsesDarkMode=value);MaxHeight=Math.Max(MinHeight,SystemParameters.WorkArea.Height-40);Height=Math.Min(Height,MaxHeight);initialStartWithWindows=StartupService.IsEnabled();StartupBox.IsChecked=initialStartWithWindows;DesktopNumberTrayBox.IsChecked=config.ShowDesktopNumberInTray;CheckForUpdatesBox.IsChecked=config.CheckForUpdates;ActiveWindowTargetBox.IsChecked=!config.CloseWindowUnderCursor;CursorWindowTargetBox.IsChecked=config.CloseWindowUnderCursor;AutoSaveBox.IsChecked=config.AutoSave;SpaceRepeatBox.IsChecked=config.SpaceHoldRepeatEnabled;SpaceRepeatDelayBox.Text=config.SpaceHoldRepeatDelayMs.ToString();ArchiveWatchFolderBox.Text=string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):config.ArchiveWatchFolder;ArchiveDestinationFolderBox.Text=config.ArchiveDestinationFolder;ExtractBox.IsChecked=config.AutoExtractDesktopArchives;DeleteBox.IsChecked=config.DeleteArchiveAfterExtract;ExtractBox.Checked+=(_,_)=>DeleteBox.IsEnabled=true;ExtractBox.Unchecked+=(_,_)=>DeleteBox.IsEnabled=false;DeleteBox.IsEnabled=ExtractBox.IsChecked==true;RefreshCapsRemapStatus();
+        this.config=config;
+        originalThemeMode=config.ThemeMode;
+        InitializeComponent();
+        MainWindow.FollowWindowsTitleBarTheme(this,value=>TitleBarUsesDarkMode=value);
+        MaxHeight=Math.Max(MinHeight,SystemParameters.WorkArea.Height-40);
+        Height=Math.Min(Height,MaxHeight);
+        initialStartWithWindows=StartupService.IsEnabled();
+        StartupBox.IsChecked=initialStartWithWindows;
+        DesktopNumberTrayBox.IsChecked=config.ShowDesktopNumberInTray;
+        CheckForUpdatesBox.IsChecked=config.CheckForUpdates;
+        SystemThemeBox.IsChecked=config.ThemeMode==AppThemeMode.System;
+        LightThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Light;
+        DarkThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Dark;
+        themeSelectionLoading=false;
+        ActiveWindowTargetBox.IsChecked=!config.CloseWindowUnderCursor;
+        CursorWindowTargetBox.IsChecked=config.CloseWindowUnderCursor;
+        AutoSaveBox.IsChecked=config.AutoSave;
+        SpaceRepeatBox.IsChecked=config.SpaceHoldRepeatEnabled;
+        SpaceRepeatDelayBox.Text=config.SpaceHoldRepeatDelayMs.ToString();
+        ArchiveWatchFolderBox.Text=string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):config.ArchiveWatchFolder;
+        ArchiveDestinationFolderBox.Text=config.ArchiveDestinationFolder;
+        ExtractBox.IsChecked=config.AutoExtractDesktopArchives;
+        DeleteBox.IsChecked=config.DeleteArchiveAfterExtract;
+        ExtractBox.Checked+=(_,_)=>DeleteBox.IsEnabled=true;
+        ExtractBox.Unchecked+=(_,_)=>DeleteBox.IsEnabled=false;
+        DeleteBox.IsEnabled=ExtractBox.IsChecked==true;
+        Loaded+=SettingsWindow_Loaded;
+        Closed+=SettingsWindow_Closed;
+        CurrentVersionText.Text="v"+MainWindow.DisplayVersion;
+        ApplyUpdateResult(knownUpdate,false);
+        RefreshCapsRemapStatus();
     }
-    void Category_SelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs e){if(GeneralPanel==null)return;string selected=(CategoryList.SelectedItem as System.Windows.Controls.ListBoxItem)?.Tag?.ToString()??"General";GeneralPanel.Visibility=selected=="General"?Visibility.Visible:Visibility.Collapsed;LayersPanel.Visibility=selected=="Layers"?Visibility.Visible:Visibility.Collapsed;ArchivePanel.Visibility=selected=="Archive"?Visibility.Visible:Visibility.Collapsed;DataPanel.Visibility=selected=="Data"?Visibility.Visible:Visibility.Collapsed;}
+    void SettingsWindow_Loaded(object sender,RoutedEventArgs e)
+    {
+        if(Owner is not MainWindow main||ownerUpdateSubscribed)return;
+        main.UpdateCheckCompleted+=MainUpdateCheckCompleted;
+        ownerUpdateSubscribed=true;
+    }
+    void SettingsWindow_Closed(object? sender,EventArgs e)
+    {
+        updateCancellation.Cancel();
+        if(ownerUpdateSubscribed&&Owner is MainWindow main)main.UpdateCheckCompleted-=MainUpdateCheckCompleted;
+        if(!themeAccepted)ThemeService.Apply(originalThemeMode);
+    }
+    void MainUpdateCheckCompleted(UpdateCheckResult result)=>ApplyUpdateResult(result,true);
+    void Category_SelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if(GeneralPanel==null)return;
+        string selected=(CategoryList.SelectedItem as System.Windows.Controls.ListBoxItem)?.Tag?.ToString()??"General";
+        GeneralPanel.Visibility=selected=="General"?Visibility.Visible:Visibility.Collapsed;
+        AppearancePanel.Visibility=selected=="Appearance"?Visibility.Visible:Visibility.Collapsed;
+        UpdatePanel.Visibility=selected=="Update"?Visibility.Visible:Visibility.Collapsed;
+        LayersPanel.Visibility=selected=="Layers"?Visibility.Visible:Visibility.Collapsed;
+        ArchivePanel.Visibility=selected=="Archive"?Visibility.Visible:Visibility.Collapsed;
+        DataPanel.Visibility=selected=="Data"?Visibility.Visible:Visibility.Collapsed;
+    }
+
+    void ThemeMode_Changed(object sender,RoutedEventArgs e)
+    {
+        if(themeSelectionLoading)return;
+        ThemeService.Apply(SelectedThemeMode);
+        RefreshCapsRemapStatus();
+    }
+
+    async void CheckForUpdates_Click(object sender,RoutedEventArgs e)
+    {
+        if(updateCheckInProgress)return;
+        updateCheckInProgress=true;
+        CheckForUpdatesButton.IsEnabled=false;
+        InstallUpdateButton.IsEnabled=false;
+        UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"SecondaryText");
+        UpdateStatusText.Text="アップデートを確認しています…";
+        try
+        {
+            var result=Owner is MainWindow main
+                ?await main.CheckForUpdatesNowAsync()
+                :await UpdateService.CheckLatestAsync(MainWindow.RunningVersion,updateCancellation.Token);
+            ApplyUpdateResult(result,true);
+        }
+        catch(OperationCanceledException){}
+        catch(Exception ex)
+        {
+            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"WarningBrush");
+            UpdateStatusText.Text=UpdateService.FriendlyError(ex);
+        }
+        finally
+        {
+            updateCheckInProgress=false;
+            CheckForUpdatesButton.IsEnabled=true;
+            InstallUpdateButton.IsEnabled=availableUpdate!=null;
+        }
+    }
+
+    async void InstallUpdate_Click(object sender,RoutedEventArgs e)
+    {
+        if(updateCheckInProgress||availableUpdate is not { } update||Owner is not MainWindow main)return;
+        if(System.Windows.MessageBox.Show(this,$"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？","RELYRをアップデート",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        CheckForUpdatesButton.IsEnabled=false;
+        InstallUpdateButton.IsEnabled=false;
+        ShowDownloadProgress();
+        var progress=new Progress<UpdateDownloadProgress>(UpdateDownloadProgressDisplay);
+        bool started=await main.InstallUpdateAsync(this,update,status=>UpdateStatusText.Text=status,progress);
+        if(started||!IsLoaded)return;
+        CheckForUpdatesButton.IsEnabled=true;
+        InstallUpdateButton.IsEnabled=true;
+        HideDownloadProgress();
+        ApplyUpdateResult(lastUpdateCheck,false);
+    }
+
+    void ApplyUpdateResult(UpdateCheckResult? result,bool checkedNow)
+    {
+        lastUpdateCheck=result;
+        availableUpdate=result?.AvailableUpdate;
+        LatestVersionText.Text=result==null?"—":"v"+result.LatestVersionText;
+        DateTimeOffset? checkedAt=result?.CheckedAt;
+        if(checkedAt==null&&config.LastUpdateCheckUtcTicks>0)
+            try{checkedAt=new DateTimeOffset(config.LastUpdateCheckUtcTicks,TimeSpan.Zero).ToLocalTime();}catch(ArgumentOutOfRangeException){}
+        LastCheckedText.Text=checkedAt is null?"未確認":checkedAt.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
+        InstallUpdateButton.Visibility=availableUpdate==null?Visibility.Collapsed:Visibility.Visible;
+        InstallUpdateButton.IsEnabled=availableUpdate!=null&&!updateCheckInProgress;
+        if(availableUpdate is { } update)
+        {
+            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"AccentBrush");
+            UpdateStatusText.Text=$"新しいバージョン v{update.VersionText} を利用できます。";
+        }
+        else
+        {
+            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"SecondaryText");
+            UpdateStatusText.Text=checkedNow?$"最新バージョンです（v{MainWindow.DisplayVersion}）。":$"現在のバージョンは v{MainWindow.DisplayVersion} です。［アップデートを確認］から手動で確認できます。";
+        }
+    }
+    void ShowDownloadProgress()
+    {
+        UpdateProgressBar.Value=0;UpdateProgressBar.IsIndeterminate=true;UpdateProgressBar.Visibility=Visibility.Visible;
+        UpdateProgressText.Text="ダウンロードを準備しています…";UpdateProgressText.Visibility=Visibility.Visible;
+    }
+    void HideDownloadProgress(){UpdateProgressBar.Visibility=Visibility.Collapsed;UpdateProgressText.Visibility=Visibility.Collapsed;}
+    void UpdateDownloadProgressDisplay(UpdateDownloadProgress value)
+    {
+        UpdateProgressBar.IsIndeterminate=value.Percentage==null;
+        if(value.Percentage is { } percentage)UpdateProgressBar.Value=Math.Clamp(percentage,0,100);
+        string received=FormatBytes(value.BytesReceived);
+        UpdateProgressText.Text=value.TotalBytes is { } total
+            ?$"{value.Percentage ?? 0:0}%（{received} / {FormatBytes(total)}）"
+            :$"{received} をダウンロード済み";
+    }
+    static string FormatBytes(long bytes)=>bytes>=1024*1024?$"{bytes/1024d/1024d:0.0} MB":bytes>=1024?$"{bytes/1024d:0.0} KB":$"{bytes} B";
     void Save_Click(object sender,RoutedEventArgs e)
     {
         if(AutoExtract)
@@ -43,9 +198,9 @@ public partial class SettingsWindow:Window
             if(!Directory.Exists(ArchiveWatchFolder)){System.Windows.MessageBox.Show(this,"監視するフォルダーが見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
             if(!string.IsNullOrWhiteSpace(ArchiveDestinationFolder)&&!Directory.Exists(ArchiveDestinationFolder)){System.Windows.MessageBox.Show(this,"解凍後の保存先が見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
         }
-        DialogResult=true;
+        themeAccepted=true;DialogResult=true;
     }
-    void Cancel_Click(object sender,RoutedEventArgs e){DialogResult=false;}
+    void Cancel_Click(object sender,RoutedEventArgs e){ThemeService.Apply(originalThemeMode);DialogResult=false;}
     void ShowTutorial_Click(object sender,RoutedEventArgs e)=>new SetupWindow(true){Owner=this}.ShowDialog();
     void Export_Click(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.SaveFileDialog{Filter=ExportFileFilter,FileName=ExportFileName,DefaultExt=".relyr",AddExtension=true};if(dialog.ShowDialog()==true)new ConfigService().Export(config,dialog.FileName);}
     void Import_Click(object sender,RoutedEventArgs e)
@@ -75,7 +230,7 @@ public partial class SettingsWindow:Window
     {
         bool enabled=LegacyKeyRemapService.HasCapsLockToF13();bool pending=LegacyKeyRemapService.IsRestartStillPending(config);
         CapsRemapStatus.Text=pending?(enabled?"設定済み（再起動待ち）— 再起動するまでCapsLockレイヤーは機能しません。":"復元済み（再起動待ち）— 再起動するまではF13レイヤーの状態が続きます。"):(enabled?"設定済み — CapsLockをF13レイヤーキーとして使用します。":"未設定 — CapsLockレイヤーは動作せず、通常のCapsLockとしてWindowsへ渡します。");
-        CapsRemapStatus.Foreground=new System.Windows.Media.SolidColorBrush(pending?System.Windows.Media.Color.FromRgb(246,198,106):enabled?System.Windows.Media.Color.FromRgb(114,224,193):System.Windows.Media.Color.FromRgb(246,198,106));EnableCapsRemapButton.IsEnabled=!enabled;DisableCapsRemapButton.IsEnabled=enabled;
+        CapsRemapStatus.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,enabled&&!pending?"AccentBrush":"WarningBrush");EnableCapsRemapButton.IsEnabled=!enabled;DisableCapsRemapButton.IsEnabled=enabled;
     }
     void EnableCapsRemap_Click(object sender,RoutedEventArgs e)
     {
