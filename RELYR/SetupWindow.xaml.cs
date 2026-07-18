@@ -25,7 +25,7 @@ public partial class SetupWindow:Window
             DoNotShowAgainBox.Visibility=Visibility.Collapsed;
             SkipButton.Visibility=Visibility.Collapsed;
         }
-        ApplyTheme(MainWindow.IsWindowsAppDarkMode());
+        ApplyTheme(ThemeService.UsesDark);
         MainWindow.FollowWindowsTitleBarTheme(this,ApplyTheme);
         ShowPage(0);
     }

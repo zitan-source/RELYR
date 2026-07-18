@@ -3,6 +3,31 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:RELYR">
     <Application.Resources>
-         
+        <SolidColorBrush x:Key="AppBackground" Color="#11141B"/>
+        <SolidColorBrush x:Key="HeaderBackground" Color="#101720"/>
+        <SolidColorBrush x:Key="FooterBackground" Color="#0B1118"/>
+        <SolidColorBrush x:Key="PaneBackground" Color="#111923"/>
+        <SolidColorBrush x:Key="SurfaceBackground" Color="#171D27"/>
+        <SolidColorBrush x:Key="CardBackground" Color="#1D2330"/>
+        <SolidColorBrush x:Key="ControlBackground" Color="#293142"/>
+        <SolidColorBrush x:Key="ControlHoverBackground" Color="#354158"/>
+        <SolidColorBrush x:Key="ControlPressedBackground" Color="#176B5D"/>
+        <SolidColorBrush x:Key="InputBackground" Color="#171D27"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#465168"/>
+        <SolidColorBrush x:Key="SubtleBorderBrush" Color="#33465A"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#E8ECF4"/>
+        <SolidColorBrush x:Key="SecondaryText" Color="#AAB4C8"/>
+        <SolidColorBrush x:Key="MutedText" Color="#8F9CB2"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#72E0C1"/>
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#1F8F7B"/>
+        <SolidColorBrush x:Key="AccentButtonText" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#244B4A"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#F6C66A"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#E16A78"/>
+        <SolidColorBrush x:Key="DangerBackground" Color="#7D2430"/>
+        <SolidColorBrush x:Key="DangerHoverBackground" Color="#9B3040"/>
+        <SolidColorBrush x:Key="KeyBackground" Color="#1B2733"/>
+        <SolidColorBrush x:Key="ReservedKeyBackground" Color="#343B44"/>
+        <SolidColorBrush x:Key="LayerActiveBackground" Color="#146B5C"/>
     </Application.Resources>
 </Application>

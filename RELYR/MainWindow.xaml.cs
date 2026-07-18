@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using WpfMessageBox = System.Windows.MessageBox;
 using WpfColor = System.Windows.Media.Color;
+using WpfColors = System.Windows.Media.Colors;
 using WpfBrushes = System.Windows.Media.Brushes;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using MenuItem = System.Windows.Controls.MenuItem;
@@ -50,6 +51,8 @@ public partial class MainWindow : Window
     TextBox? destinationInputTarget;
     int destinationFocusRequest;
     UpdateInfo? availableUpdate;
+    UpdateCheckResult? lastUpdateCheck;
+    internal event Action<UpdateCheckResult>? UpdateCheckCompleted;
     readonly System.Windows.Forms.NotifyIcon tray = new();
     Profile CurrentProfile => config.Profiles.First(x => x.Name == config.ActiveProfile);
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x=>x.Name==appliedConfig.ActiveProfile)??appliedConfig.Profiles[0];
@@ -79,6 +82,8 @@ public partial class MainWindow : Window
         VersionText.Text="v"+DisplayVersion;
         Title="RELYR v"+DisplayVersion;
         config = store.Load();
+        ThemeService.Apply(config.ThemeMode);
+        ThemeService.ThemeChanged+=AppThemeChanged;
         bool configuredCapsLockRemap=LegacyKeyRemapService.HasCapsLockToF13();bool capsRestartPending=LegacyKeyRemapService.IsRestartStillPending(config);
         if(config.CapsLockRemapPendingRestart&&!capsRestartPending){config.CapsLockRemapPendingRestart=false;config.CapsLockRemapEffectiveBeforeRestart=false;config.CapsLockRemapChangedAtUtcTicks=0;config.CapsLockLayerEnabled=configuredCapsLockRemap;store.Save(config);}
         else if(!capsRestartPending)config.CapsLockLayerEnabled=configuredCapsLockRemap;
@@ -97,7 +102,7 @@ public partial class MainWindow : Window
         LongKindBox.SelectedValuePath=nameof(ActionOption.Kind);
         BuildKeyboard();engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;RefreshProfiles();UpdateLayerButtons();
         engine.InputReceived = HandleInput;
-        InputEngine.DesktopActionFailed=message=>Dispatcher.BeginInvoke(()=>{LastInput.Text="仮想デスクトップ操作エラー: "+message;LastInput.Foreground=WpfBrushes.OrangeRed;});
+        InputEngine.DesktopActionFailed=message=>Dispatcher.BeginInvoke(()=>{LastInput.Text="仮想デスクトップ操作エラー: "+message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});
         engine.HasMapping = HasMapping;
         engine.IsNativeMouseDrag=input=>FindMapping(input) is {Kind:ActionKind.Mouse} map&&MappingExecutor.IsModifierDrag(map.Value);
         engine.SuppressLayerTap = key=>key.Equals("CapsLock",StringComparison.OrdinalIgnoreCase);
@@ -113,8 +118,8 @@ public partial class MainWindow : Window
         archiveWatcher.Status+=text=>Dispatcher.BeginInvoke(()=>LastInput.Text=text);
         archiveWatcher.Apply(config);
         SetupTray();trayNumberTimer.Tick+=(_,_)=>UpdateTrayNumber();trayNumberTimer.Start();profileSwitchTimer.Tick+=(_,_)=>AutoSwitchProfile();profileSwitchTimer.Start();autoSaveTimer.Tick+=(_,_)=>{autoSaveTimer.Stop();SaveAndApply("自動保存しました");};UpdateStatus();
-        if(capsRestartPending){LastInput.Text="CapsLock設定は再起動待ちです — Windowsを再起動するまで変更は有効になりません";LastInput.Foreground=WpfBrushes.Orange;}
-        else if(configuredCapsLockRemap){LastInput.Text="CapsLock→F13設定を検出しました。CapsLockレイヤーとして互換動作します";LastInput.Foreground=WpfBrushes.LightGreen;}
+        if(capsRestartPending){LastInput.Text="CapsLock設定は再起動待ちです — Windowsを再起動するまで変更は有効になりません";LastInput.Foreground=ThemeService.Brush("WarningBrush");}
+        else if(configuredCapsLockRemap){LastInput.Text="CapsLock→F13設定を検出しました。CapsLockレイヤーとして互換動作します";LastInput.Foreground=ThemeService.Brush("AccentBrush");}
         if(skipSetup&&NeedsFirstRunSetup){config.FirstRunCompleted=true;store.Save(config);}
     }
 
@@ -136,15 +141,22 @@ public partial class MainWindow : Window
     void WindowsThemeChanged(object sender,UserPreferenceChangedEventArgs e)
     {
         if(e.Category is UserPreferenceCategory.Color or UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle)
-            Dispatcher.BeginInvoke((Action)ApplyWindowsTitleBarTheme);
+            Dispatcher.BeginInvoke((Action)(()=>{ThemeService.RefreshSystemTheme();ApplyWindowsTitleBarTheme();}));
+    }
+
+    void AppThemeChanged()
+    {
+        if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke((Action)AppThemeChanged);return;}
+        ApplyWindowsTitleBarTheme();
+        if(KeyboardPanel!=null){BuildKeyboard();ColorButtons();UpdateLayerButtons();}
+        if(engine!=null)UpdateStatus();
     }
 
     internal static bool IsWindowsAppDarkMode()
     {
         try
         {
-            object? value=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize","AppsUseLightTheme",1);
-            return Convert.ToInt32(value,System.Globalization.CultureInfo.InvariantCulture)==0;
+            return ThemeService.SystemUsesDarkMode();
         }
         catch{return false;}
     }
@@ -157,21 +169,23 @@ public partial class MainWindow : Window
     {
         IntPtr handle=new System.Windows.Interop.WindowInteropHelper(window).Handle;
         if(handle==IntPtr.Zero)return false;
-        bool dark=IsWindowsAppDarkMode();int enabled=dark?1:0;
+        bool dark=ThemeService.UsesDark;int enabled=dark?1:0;
         int result=DwmSetWindowAttribute(handle,20,ref enabled,sizeof(int));
         if(result!=0)DwmSetWindowAttribute(handle,19,ref enabled,sizeof(int));
         return dark;
     }
-    internal static void FollowWindowsTitleBarTheme(Window window,Action<bool> applied)
+    internal static void FollowWindowsTitleBarTheme(Window window,Action<bool>? applied=null)
     {
-        void Apply(){if(!window.Dispatcher.HasShutdownStarted)applied(ApplyWindowsTitleBarTheme(window));}
+        void Apply(){if(!window.Dispatcher.HasShutdownStarted){bool dark=ApplyWindowsTitleBarTheme(window);applied?.Invoke(dark);}}
+        Action themeHandler=Apply;
         UserPreferenceChangedEventHandler handler=(_,e)=>
         {
             if(e.Category is UserPreferenceCategory.Color or UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle)window.Dispatcher.BeginInvoke((Action)Apply);
         };
         window.SourceInitialized+=(_,_)=>Apply();
         SystemEvents.UserPreferenceChanged+=handler;
-        window.Closed+=(_,_)=>SystemEvents.UserPreferenceChanged-=handler;
+        ThemeService.ThemeChanged+=themeHandler;
+        window.Closed+=(_,_)=>{SystemEvents.UserPreferenceChanged-=handler;ThemeService.ThemeChanged-=themeHandler;};
     }
 
     void BuildKeyboard()
@@ -248,11 +262,11 @@ public partial class MainWindow : Window
         var frame=new Border
         {
             Width=width,Height=height,Tag=title,CornerRadius=new CornerRadius(7),BorderThickness=new Thickness(1),
-            BorderBrush=new SolidColorBrush(WpfColor.FromArgb(0x75,0x33,0x46,0x5A)),
-            Background=new SolidColorBrush(WpfColor.FromArgb(0x24,0x12,0x1B,0x25)),IsHitTestVisible=false
+            BorderBrush=ThemeService.Brush("SubtleBorderBrush"),
+            Background=ThemeService.Brush("CardBackground"),IsHitTestVisible=false
         };
         Canvas.SetLeft(frame,x);Canvas.SetTop(frame,y);SecondaryKeyboardPanel.Children.Add(frame);
-        var heading=new TextBlock{Text=title,Foreground=new SolidColorBrush(WpfColor.FromRgb(0x8F,0xA0,0xB2)),FontSize=11,FontWeight=FontWeights.SemiBold,IsHitTestVisible=false};
+        var heading=new TextBlock{Text=title,Foreground=ThemeService.Brush("MutedText"),FontSize=11,FontWeight=FontWeights.SemiBold,IsHitTestVisible=false};
         Canvas.SetLeft(heading,x+10);Canvas.SetTop(heading,y+3);SecondaryKeyboardPanel.Children.Add(heading);
     }
     bool TrySecondaryPosition(string key,out double x,out double y)
@@ -278,7 +292,7 @@ public partial class MainWindow : Window
         };
         return !double.IsNaN(x);
     }
-    void AddJisEnter(){var shape=Geometry.Parse("M 0,0 L 160,0 L 160,108 L 22,108 L 22,56 L 0,56 Z");var b=MakeInputButton("Enter");b.Content="Enter";b.Width=160;b.Height=108;b.MinWidth=0;b.Margin=new Thickness(0);b.Clip=shape;Canvas.SetLeft(b,782);Canvas.SetTop(b,100);KeyboardPanel.Children.Add(b);var outline=new System.Windows.Shapes.Path{Data=shape,Stroke=new SolidColorBrush(WpfColor.FromRgb(70,81,104)),StrokeThickness=1,Fill=WpfBrushes.Transparent,IsHitTestVisible=false};Canvas.SetLeft(outline,782);Canvas.SetTop(outline,100);KeyboardPanel.Children.Add(outline);}
+    void AddJisEnter(){var shape=Geometry.Parse("M 0,0 L 160,0 L 160,108 L 22,108 L 22,56 L 0,56 Z");var b=MakeInputButton("Enter");b.Content="Enter";b.Width=160;b.Height=108;b.MinWidth=0;b.Margin=new Thickness(0);b.Clip=shape;Canvas.SetLeft(b,782);Canvas.SetTop(b,100);KeyboardPanel.Children.Add(b);var outline=new System.Windows.Shapes.Path{Data=shape,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=1,Fill=WpfBrushes.Transparent,IsHitTestVisible=false};Canvas.SetLeft(outline,782);Canvas.SetTop(outline,100);KeyboardPanel.Children.Add(outline);}
     readonly record struct KeySpec(string Key,string Label,double Width);
     System.Windows.Controls.Button MakeInputButton(string key) { var b = new System.Windows.Controls.Button { Content = key=="CapsLock"?"CapsLock\n(F13設定時)":key, Tag = key, Style = (Style)FindResource("KeyButton") };if(key=="Space")b.Width=210;else if(key=="CapsLock"){b.MinWidth=94;b.FontSize=10;}else if(key is "LeftShift" or "RightShift" or "Enter" or "Back")b.MinWidth=82;else if(key is "Tab" or "LeftCtrl" or "RightCtrl")b.MinWidth=70;b.Click += (_, _) => SelectVisualInput(key); return b; }
     void SelectVisualInput(string key)
@@ -316,7 +330,7 @@ public partial class MainWindow : Window
         copy.Click+=(_,_)=>{copiedMapping=existing==null?null:CloneMapping(existing);ShowInlineNotice(input+" の割り当てをコピーしました");};
         var paste=new MenuItem{Header="コピーした割り当てを貼り付け",IsEnabled=copiedMapping!=null};
         paste.Click+=(_,_)=>{if(copiedMapping==null)return;CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));var map=CloneMapping(copiedMapping);map.Input=input;map.Layer=currentLayer;CurrentProfile.Mappings.Add(map);SelectInput(input);MarkDirty();ColorButtons();};
-        var delete=new MenuItem{Header="この割り当てを削除",IsEnabled=existing!=null,Foreground=WpfBrushes.OrangeRed};
+        var delete=new MenuItem{Header="この割り当てを削除",IsEnabled=existing!=null,Foreground=ThemeService.Brush("DangerBrush")};
         delete.Click+=(_,_)=>{if(existing==null)return;CurrentProfile.Mappings.Remove(existing);if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected=null;MarkDirty();SelectInput(input);ShowInlineNotice(input+" の割り当てを削除しました");};
         menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(new Separator());menu.Items.Add(delete);
         return menu;
@@ -331,7 +345,7 @@ public partial class MainWindow : Window
     }
     void CompleteDestinationInput(FrameworkElement? fallback=null)
     {
-        ClearExecutionFocus(fallback);CloseAssignmentPane();LastInput.Text="入力完了 — 次の設定対象を画面から選択できます";LastInput.Foreground=WpfBrushes.LightGreen;
+        ClearExecutionFocus(fallback);CloseAssignmentPane();LastInput.Text="入力完了 — 次の設定対象を画面から選択できます";LastInput.Foreground=ThemeService.Brush("AccentBrush");
     }
     static bool IsDescendantOf(DependencyObject source,DependencyObject ancestor)
     {
@@ -412,7 +426,7 @@ public partial class MainWindow : Window
     }
     void SetMacroRecording(bool recording,bool captureMouseMoves,bool useMappedActions)
     {
-        if(recording){if(macroIsRecording)return;macroIsRecording=true;macroEmergencyStop=false;engineBeforeMacroRecording=engine.Enabled;MacroPlayer.StopAll();engine.Enabled=useMappedActions&&engineStarted;engine.CaptureMouseMoves=captureMouseMoves;EngineStatus.Text=useMappedActions?"● マクロ記録中（割り当て後のアクション）":captureMouseMoves?"● マクロ記録中（マウス軌跡あり）":"● マクロ記録中（物理キー）";EngineStatus.Foreground=WpfBrushes.Orange;}
+        if(recording){if(macroIsRecording)return;macroIsRecording=true;macroEmergencyStop=false;engineBeforeMacroRecording=engine.Enabled;MacroPlayer.StopAll();engine.Enabled=useMappedActions&&engineStarted;engine.CaptureMouseMoves=captureMouseMoves;EngineStatus.Text=useMappedActions?"● マクロ記録中（割り当て後のアクション）":captureMouseMoves?"● マクロ記録中（マウス軌跡あり）":"● マクロ記録中（物理キー）";EngineStatus.Foreground=ThemeService.Brush("WarningBrush");}
         else{if(!macroIsRecording)return;macroIsRecording=false;engine.CaptureMouseMoves=false;engine.Enabled=engineBeforeMacroRecording&&config.EngineEnabled&&!macroEmergencyStop;UpdateStatus();}
     }
     void BrowseApplication_Click(object sender,RoutedEventArgs e)
@@ -458,16 +472,16 @@ public partial class MainWindow : Window
         var snapshot=CloneMapping(map);
         if((pressStart||pressEnd||dragStart||dragEnd)&&MappingExecutor.IsModifierDrag(snapshot.Value)){bool queued=QueueDragAction(snapshot,input);if(queued)RecordMappedAction(snapshot,input);return queued;}
         if(pressStart||pressEnd)return false;
-        if(!actionQueue.TryAdd((snapshot,input)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=WpfBrushes.OrangeRed;});else RecordMappedAction(snapshot,input);return true;
+        if(!actionQueue.TryAdd((snapshot,input)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");});else RecordMappedAction(snapshot,input);return true;
     }
     void RecordMappedAction(Mapping map,string input){if(macroIsRecording&&config.RecordMappedActionsInMacros)Dispatcher.BeginInvoke(()=>macroWindow?.CaptureMappedAction(map,input));}
     void ProcessActions()
     {
-        foreach(var item in actionQueue.GetConsumingEnumerable())try{bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?WpfBrushes.OrangeRed:WpfBrushes.LightGreen;});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="実行エラー: "+ex.Message;LastInput.Foreground=WpfBrushes.OrangeRed;});}
+        foreach(var item in actionQueue.GetConsumingEnumerable())try{bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?ThemeService.Brush("DangerBrush"):ThemeService.Brush("AccentBrush");});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="実行エラー: "+ex.Message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});}
     }
     void ProcessDragActions()
     {
-        foreach(var item in dragActionQueue.GetConsumingEnumerable())try{if(item.Map==null){InputEngine.EndModifierDrag();continue;}bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?WpfBrushes.OrangeRed:WpfBrushes.LightGreen;});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="ドラッグ実行エラー: "+ex.Message;LastInput.Foreground=WpfBrushes.OrangeRed;});}
+        foreach(var item in dragActionQueue.GetConsumingEnumerable())try{if(item.Map==null){InputEngine.EndModifierDrag();continue;}bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?ThemeService.Brush("DangerBrush"):ThemeService.Brush("AccentBrush");});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="ドラッグ実行エラー: "+ex.Message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});}
     }
     bool QueueDragAction(Mapping? map,string input){try{return !dragActionQueue.IsAddingCompleted&&dragActionQueue.TryAdd((map,input));}catch(InvalidOperationException){return false;}}
     Mapping? FindMapping(string input)
@@ -494,7 +508,8 @@ public partial class MainWindow : Window
         {
             bool reserved=(string)b.Tag=="Space"&&currentLayer is "通常" or "Space";string input=currentLayer=="通常"?(string)b.Tag:currentLayer+"+"+(string)b.Tag;
             var assigned=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,x=>x.Enabled);
-            b.Background=reserved?new SolidColorBrush(WpfColor.FromRgb(52,59,68)):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):new SolidColorBrush(WpfColor.FromRgb(27,39,51));
+            b.Background=reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+            b.Foreground=assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;b.ToolTip=reserved?"Spaceレイヤー専用キーのため変更できません":assigned==null?null:$"{AssignmentTypeLabel(assigned)}：{(string.IsNullOrWhiteSpace(assigned.Value)?assigned.LongPressValue:assigned.Value)}";
         }
     }
@@ -509,17 +524,18 @@ public partial class MainWindow : Window
             _=>WpfColor.FromRgb(23,141,121)
         };
     }
+    static WpfColor AssignmentTextColorFor(Mapping mapping)=>(mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind)==ActionKind.Text?WpfColors.Black:WpfColors.White;
     static string AssignmentTypeLabel(Mapping mapping)=>(mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind) switch{ActionKind.Text=>"文字列",ActionKind.Macro=>"マクロ",ActionKind.Launch=>"アプリ・パス",_=>"ショートカット"};
     IEnumerable<System.Windows.Controls.Button> VisualInputButtons()=>InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).Concat(InputButtons(MousePanel));
     static IEnumerable<System.Windows.Controls.Button> InputButtons(System.Windows.Controls.Panel panel){foreach(UIElement child in panel.Children){if(child is System.Windows.Controls.Button b&&b.Tag is string)yield return b;if(child is System.Windows.Controls.Panel nested)foreach(var b2 in InputButtons(nested))yield return b2;}}
     static string LayerDisplayName(string layer)=>layer switch{"通常"=>"通常レイヤー","Taskbar"=>"タスクバー上で有効",_=>layer+" レイヤー"};
-    void MarkDirty(){if(config.AutoSave){LastInput.Text="変更を自動保存しています…";LastInput.Foreground=WpfBrushes.LightGreen;autoSaveTimer.Stop();autoSaveTimer.Start();}else{LastInput.Text="未保存の変更があります — 保存すると反映されます";LastInput.Foreground=WpfBrushes.Orange;}}
+    void MarkDirty(){if(config.AutoSave){LastInput.Text="変更を自動保存しています…";LastInput.Foreground=ThemeService.Brush("AccentBrush");autoSaveTimer.Stop();autoSaveTimer.Start();}else{LastInput.Text="未保存の変更があります — 保存すると反映されます";LastInput.Foreground=ThemeService.Brush("WarningBrush");}}
     void ShowInlineNotice(string message)
     {
-        LastInput.Text="ⓘ "+message;LastInput.Foreground=new SolidColorBrush(WpfColor.FromRgb(246,198,106));
+        LastInput.Text="ⓘ "+message;LastInput.Foreground=ThemeService.Brush("WarningBrush");
     }
-    void UpdateLayerButtons(){if(NormalLayerButton==null)return;foreach(var b in new[]{NormalLayerButton,SpaceLayerButton,CapsLockLayerButton,TaskbarLayerButton,RightMouseLayerButton,BackMouseLayerButton,ForwardMouseLayerButton}){bool active=Equals(b.Tag,currentLayer);b.Background=new SolidColorBrush(active?WpfColor.FromRgb(20,107,92):WpfColor.FromRgb(27,39,51));b.BorderBrush=new SolidColorBrush(active?WpfColor.FromRgb(114,224,193):WpfColor.FromRgb(51,70,90));}CurrentLayerText.Text=LayerDisplayName(currentLayer);}
-    void UpdateStatus() { EngineStatus.Text = engine.Enabled ? "● エンジン稼働中" : "■ 停止中"; EngineStatus.Foreground = engine.Enabled ? WpfBrushes.LightGreen : WpfBrushes.OrangeRed; ProfileStatus.Text = config.ActiveProfile==appliedConfig.ActiveProfile?"プロファイル: "+config.ActiveProfile:"編集中: "+config.ActiveProfile+"（保存後に切替）"; }
+    void UpdateLayerButtons(){if(NormalLayerButton==null)return;foreach(var b in new[]{NormalLayerButton,SpaceLayerButton,CapsLockLayerButton,TaskbarLayerButton,RightMouseLayerButton,BackMouseLayerButton,ForwardMouseLayerButton}){bool active=Equals(b.Tag,currentLayer);b.Background=ThemeService.Brush(active?"LayerActiveBackground":"KeyBackground");b.BorderBrush=ThemeService.Brush(active?"AccentBrush":"SubtleBorderBrush");b.Foreground=ThemeService.Brush("PrimaryText");}CurrentLayerText.Text=LayerDisplayName(currentLayer);}
+    void UpdateStatus() { EngineStatus.Text = engine.Enabled ? "● エンジン稼働中" : "■ 停止中"; EngineStatus.Foreground = ThemeService.Brush(engine.Enabled?"AccentBrush":"DangerBrush"); ProfileStatus.Text = config.ActiveProfile==appliedConfig.ActiveProfile?"プロファイル: "+config.ActiveProfile:"編集中: "+config.ActiveProfile+"（保存後に切替）"; }
     void SetupTray() { tray.Text = "RELYR v"+DisplayVersion; defaultTrayIcon=CreateDefaultTrayIcon();tray.Icon=defaultTrayIcon; tray.Visible = true; RebuildTrayMenu();UpdateTrayNumber(); tray.DoubleClick += (_, _) => Dispatcher.Invoke(() => {Show();WindowState=WindowState.Normal;Activate();}); }
     void UpdateTrayNumber()
     {
@@ -621,7 +637,7 @@ public partial class MainWindow : Window
     void DeleteProfile_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは削除できません");return;}if(WpfMessageBox.Show($"「{CurrentProfile.Name}」を削除しますか？","確認",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;config.Profiles.Remove(CurrentProfile);config.ActiveProfile=config.Profiles[0].Name;RefreshProfiles();MarkDirty();UpdateStatus();RebuildTrayMenu();}
     static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,Enabled=x.Enabled,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description};
     void Save_Click(object s, RoutedEventArgs e)=>SaveAndApply("設定を保存し、エンジンへ反映しました");
-    void SaveAndApply(string message){var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=WpfBrushes.LightGreen;}
+    void SaveAndApply(string message){var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");}
     void Detect_Click(object s, RoutedEventArgs e) { detectMode = true; LastInput.Text = "入力を待っています…"; }
     void LayerButton_Click(object sender,RoutedEventArgs e)
     {
@@ -638,18 +654,19 @@ public partial class MainWindow : Window
     }
     internal void SetCapsLockRemapForTest(bool enabled){capsLockRemapped=enabled;engine.TreatF13AsCapsLock=enabled;}
     void EngineChanged(object s, RoutedEventArgs e) { if (loading || config == null) return;if(!engineStarted){loading=true;EngineToggle.IsChecked=false;loading=false;return;}engine.Enabled = EngineToggle.IsChecked == true; if(!engine.Enabled)ClearPendingActions();config.EngineEnabled = engine.Enabled;appliedConfig.EngineEnabled=engine.Enabled;var persisted=store.Load();persisted.EngineEnabled=engine.Enabled;store.Save(persisted);UpdateStatus(); }
-    void AutoSaveChanged(object s,RoutedEventArgs e){if(loading||config==null)return;config.AutoSave=AutoSaveToggle.IsChecked==true;UpdateAutoSaveToggleText();if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{appliedConfig.AutoSave=false;var persisted=store.Load();persisted.AutoSave=false;store.Save(persisted);LastInput.Text="自動保存をオフにしました";LastInput.Foreground=WpfBrushes.LightGreen;}}
+    void AutoSaveChanged(object s,RoutedEventArgs e){if(loading||config==null)return;config.AutoSave=AutoSaveToggle.IsChecked==true;UpdateAutoSaveToggleText();if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{appliedConfig.AutoSave=false;var persisted=store.Load();persisted.AutoSave=false;store.Save(persisted);LastInput.Text="自動保存をオフにしました";LastInput.Foreground=ThemeService.Brush("AccentBrush");}}
     void UpdateAutoSaveToggleText()=>AutoSaveToggle.Content=AutoSaveToggle.IsChecked==true?"自動保存 オン":"自動保存 オフ";
     void ClearPendingActions(){while(actionQueue.TryTake(out _)){}while(dragActionQueue.TryTake(out _)){}InputEngine.EndModifierDrag();MacroPlayer.StopAll();}
     void OpenSettings_Click(object sender,RoutedEventArgs e)
     {
-        var window=new SettingsWindow(config){Owner=this};if(window.ShowDialog()!=true)return;
-        if(window.CapsRemapChanged){LastInput.Text="CapsLock設定を変更しました — Windows再起動後に反映されます";LastInput.Foreground=WpfBrushes.Orange;}
+        var window=new SettingsWindow(config,lastUpdateCheck){Owner=this};if(window.ShowDialog()!=true)return;
+        if(window.CapsRemapChanged){LastInput.Text="CapsLock設定を変更しました — Windows再起動後に反映されます";LastInput.Foreground=ThemeService.Brush("WarningBrush");}
         if(window.ResetConfig is { } reset){ApplyCompleteConfig(reset,"すべての設定を初期状態へ戻しました");if(window.ResetNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,false);return;}
         if(window.ImportedConfig is { } imported){ApplyCompleteConfig(imported,"設定をインポートして反映しました");if(window.ImportedCapsLockNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,window.ImportedCapsLockEnabled);return;}
         config.SpaceHoldRepeatEnabled=window.SpaceHoldRepeat;config.SpaceHoldRepeatDelayMs=window.SpaceHoldRepeatDelay;appliedConfig.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;appliedConfig.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;var repeatSettings=store.Load();repeatSettings.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;repeatSettings.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;store.Save(repeatSettings);
         bool previousUpdateSetting=config.CheckForUpdates;
-        try{if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);config.StartWithWindows=window.StartWithWindows;config.AutoExtractDesktopArchives=window.AutoExtract;config.ArchiveWatchFolder=window.ArchiveWatchFolder;config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;config.CloseWindowUnderCursor=window.CloseWindowUnderCursor;config.CheckForUpdates=window.CheckForUpdates;config.AutoSave=window.AutoSave;appliedConfig.StartWithWindows=config.StartWithWindows;appliedConfig.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;appliedConfig.ArchiveWatchFolder=config.ArchiveWatchFolder;appliedConfig.ArchiveDestinationFolder=config.ArchiveDestinationFolder;appliedConfig.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;appliedConfig.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;appliedConfig.CloseWindowUnderCursor=config.CloseWindowUnderCursor;appliedConfig.CheckForUpdates=config.CheckForUpdates;appliedConfig.AutoSave=config.AutoSave;var persisted=store.Load();persisted.StartWithWindows=config.StartWithWindows;persisted.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;persisted.ArchiveWatchFolder=config.ArchiveWatchFolder;persisted.ArchiveDestinationFolder=config.ArchiveDestinationFolder;persisted.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;persisted.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;persisted.CloseWindowUnderCursor=config.CloseWindowUnderCursor;persisted.CheckForUpdates=config.CheckForUpdates;persisted.AutoSave=config.AutoSave;store.Save(persisted);archiveWatcher.Apply(config);UpdateTrayNumber();ApplyUpdateCheckPreference(previousUpdateSetting);if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";LastInput.Foreground=WpfBrushes.LightGreen;}}
+        config.ThemeMode=window.SelectedThemeMode;appliedConfig.ThemeMode=config.ThemeMode;ThemeService.Apply(config.ThemeMode);
+        try{if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);config.StartWithWindows=window.StartWithWindows;config.AutoExtractDesktopArchives=window.AutoExtract;config.ArchiveWatchFolder=window.ArchiveWatchFolder;config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;config.CloseWindowUnderCursor=window.CloseWindowUnderCursor;config.CheckForUpdates=window.CheckForUpdates;config.AutoSave=window.AutoSave;appliedConfig.StartWithWindows=config.StartWithWindows;appliedConfig.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;appliedConfig.ArchiveWatchFolder=config.ArchiveWatchFolder;appliedConfig.ArchiveDestinationFolder=config.ArchiveDestinationFolder;appliedConfig.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;appliedConfig.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;appliedConfig.CloseWindowUnderCursor=config.CloseWindowUnderCursor;appliedConfig.CheckForUpdates=config.CheckForUpdates;appliedConfig.AutoSave=config.AutoSave;var persisted=store.Load();persisted.StartWithWindows=config.StartWithWindows;persisted.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;persisted.ArchiveWatchFolder=config.ArchiveWatchFolder;persisted.ArchiveDestinationFolder=config.ArchiveDestinationFolder;persisted.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;persisted.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;persisted.CloseWindowUnderCursor=config.CloseWindowUnderCursor;persisted.CheckForUpdates=config.CheckForUpdates;persisted.ThemeMode=config.ThemeMode;persisted.AutoSave=config.AutoSave;store.Save(persisted);archiveWatcher.Apply(config);UpdateTrayNumber();ApplyUpdateCheckPreference(previousUpdateSetting);if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";LastInput.Foreground=ThemeService.Brush("AccentBrush");}}
         catch(Exception ex){WpfMessageBox.Show("設定を保存できません: "+ex.Message);}
         finally{loading=true;AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();loading=false;}
     }
@@ -660,7 +677,7 @@ public partial class MainWindow : Window
         engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.Enabled=engineStarted&&config.EngineEnabled;
         loading=true;KeyboardLayoutBox.SelectedIndex=config.KeyboardLayout=="US"?1:0;AutoSaveToggle.IsChecked=config.AutoSave;EngineToggle.IsChecked=engine.Enabled;loading=false;
         selected=null;selectedBaseInput="";currentLayer="通常";InputName.Clear();AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;SelectInputHint.Visibility=Visibility.Visible;
-        BuildKeyboard();RefreshProfiles();UpdateLayerButtons();ColorButtons();UpdateAutoSaveToggleText();archiveWatcher.Apply(config);UpdateTrayNumber();UpdateStatus();RebuildTrayMenu();ApplyUpdateCheckPreference(false);LastInput.Text=message;LastInput.Foreground=WpfBrushes.LightGreen;
+        ThemeService.Apply(config.ThemeMode);BuildKeyboard();RefreshProfiles();UpdateLayerButtons();ColorButtons();UpdateAutoSaveToggleText();archiveWatcher.Apply(config);UpdateTrayNumber();UpdateStatus();RebuildTrayMenu();ApplyUpdateCheckPreference(false);LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");
     }
     public void ShowFirstRunSetup(){if(!NeedsFirstRunSetup)return;var setup=new SetupWindow{Owner=this};if(setup.ShowDialog()==true){config.ActiveProfile="標準";config.FirstRunCompleted=setup.DoNotShowAgain;store.Save(config);RefreshProfiles();RebuildTrayMenu();}}
     public void ShowFromExternalLaunch(){Show();if(WindowState==WindowState.Minimized)WindowState=WindowState.Normal;Activate();Topmost=true;Topmost=false;Focus();EnsureUpdateCheckStarted();}
@@ -682,42 +699,95 @@ public partial class MainWindow : Window
     {
         try
         {
-            var update=await UpdateService.CheckAsync(RunningVersion,updateCancellation.Token);
-            if(update!=null&&config.CheckForUpdates)ShowUpdateAvailable(update);
+            await CheckForUpdatesNowAsync();
         }
         catch(OperationCanceledException){}
-        catch(HttpRequestException){}
-        catch(JsonException){}
-        catch(InvalidDataException){}
         catch(Exception){}
     }
-    void ShowUpdateAvailable(UpdateInfo update)
+    internal async Task<UpdateCheckResult> CheckForUpdatesNowAsync()
     {
-        availableUpdate=update;UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";UpdateAvailableButton.IsEnabled=true;UpdateAvailableButton.Visibility=Visibility.Visible;
+        var result=await UpdateService.CheckLatestAsync(RunningVersion,updateCancellation.Token);
+        ApplyUpdateCheckResult(result);
+        return result;
     }
+    void ApplyUpdateCheckResult(UpdateCheckResult result)
+    {
+        lastUpdateCheck=result;
+        availableUpdate=result.AvailableUpdate;
+        if(availableUpdate==null)UpdateAvailableButton.Visibility=Visibility.Collapsed;
+        else ShowUpdateAvailable(availableUpdate);
+        config.LastUpdateCheckUtcTicks=result.CheckedAt.UtcTicks;
+        appliedConfig.LastUpdateCheckUtcTicks=config.LastUpdateCheckUtcTicks;
+        try
+        {
+            var persisted=store.Load();
+            persisted.LastUpdateCheckUtcTicks=config.LastUpdateCheckUtcTicks;
+            store.Save(persisted);
+        }
+        catch(IOException){}
+        catch(UnauthorizedAccessException){}
+        UpdateCheckCompleted?.Invoke(result);
+    }
+    internal void SetAvailableUpdate(UpdateInfo? update)
+    {
+        availableUpdate=update;
+        if(update==null)
+        {
+            UpdateAvailableButton.Visibility=Visibility.Collapsed;
+            return;
+        }
+        UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";
+        UpdateAvailableButton.IsEnabled=true;
+        UpdateAvailableButton.Visibility=Visibility.Visible;
+    }
+    void ShowUpdateAvailable(UpdateInfo update)=>SetAvailableUpdate(update);
     internal void ShowUpdateAvailableForTest(UpdateInfo update)=>ShowUpdateAvailable(update);
     async void UpdateAvailable_Click(object sender,RoutedEventArgs e)
     {
         if(updateInProgress||availableUpdate is not { } update)return;
         if(WpfMessageBox.Show(this,$"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？","RELYRをアップデート",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        await InstallUpdateAsync(this,update);
+    }
+    internal async Task<bool> InstallUpdateAsync(Window owner,UpdateInfo update,Action<string>? reportProgress=null,IProgress<UpdateDownloadProgress>? downloadProgress=null)
+    {
+        if(updateInProgress)return false;
         updateInProgress=true;UpdateAvailableButton.IsEnabled=false;UpdateAvailableButton.Content="アップデートをダウンロードしています…";
+        reportProgress?.Invoke("アップデートをダウンロードしています…");
         try
         {
-            string installer=await UpdateService.DownloadAndVerifyAsync(update,updateCancellation.Token);
+            var footerProgress=new Progress<UpdateDownloadProgress>(value=>
+            {
+                if(value.Percentage is { } percentage)UpdateAvailableButton.Content=$"アップデートをダウンロードしています… {percentage:0}%";
+                downloadProgress?.Report(value);
+            });
+            string installer=await UpdateService.DownloadAndVerifyAsync(update,updateCancellation.Token,footerProgress);
             UpdateAvailableButton.Content="インストーラーを起動しています…";
+            reportProgress?.Invoke("検証が完了しました。インストーラーを起動しています…");
             var process=Process.Start(new ProcessStartInfo(installer,"/SP- /CLOSEAPPLICATIONS"){UseShellExecute=true});
             if(process==null)throw new InvalidOperationException("更新用インストーラーを起動できませんでした。");
             RequestApplicationExit();
+            return true;
         }
-        catch(OperationCanceledException){}
+        catch(OperationCanceledException)
+        {
+            RestoreUpdateButton(update);
+            return false;
+        }
         catch(Exception ex)
         {
-            updateInProgress=false;UpdateAvailableButton.IsEnabled=true;UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";
-            WpfMessageBox.Show(this,"アップデートを開始できませんでした。\n\n"+ex.Message,"アップデートできません",MessageBoxButton.OK,MessageBoxImage.Error);
+            RestoreUpdateButton(update);
+            WpfMessageBox.Show(owner,UpdateService.FriendlyError(ex),"アップデートできません",MessageBoxButton.OK,MessageBoxImage.Error);
+            return false;
         }
     }
+    void RestoreUpdateButton(UpdateInfo update)
+    {
+        updateInProgress=false;
+        UpdateAvailableButton.IsEnabled=true;
+        UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";
+    }
     void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; CurrentProfile.Mappings.Remove(selected); var input = selected.Input; selected = null; SelectInput(input);MarkDirty();ColorButtons(); }
-    void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;updateCancellation.Cancel();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();tray.Visible=false;tray.Dispose();numberedTrayIcon?.Dispose();defaultTrayIcon?.Dispose();archiveWatcher.Dispose();updateCancellation.Dispose(); }
+    void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;updateCancellation.Cancel();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();tray.Visible=false;tray.Dispose();numberedTrayIcon?.Dispose();defaultTrayIcon?.Dispose();archiveWatcher.Dispose();updateCancellation.Dispose(); }
     public void PrepareForSystemShutdown()
     {
         allowClose=true;
@@ -730,15 +800,15 @@ public partial class MainWindow : Window
     public void RequestApplicationExit(){allowClose=true;Close();}
     string? PromptText(string title,string label,string initial)
     {
-        var dialog=new Window{Title=title,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=430,Height=190,ResizeMode=ResizeMode.NoResize,Background=new SolidColorBrush(WpfColor.FromRgb(23,29,39)),Foreground=WpfBrushes.White,ShowInTaskbar=false};var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(new TextBlock{Text=label,Margin=new Thickness(0,0,0,7)});var box=new TextBox{Text=initial,Padding=new Thickness(8)};panel.Children.Add(box);var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Margin=new Thickness(0,14,0,0)};var cancel=new System.Windows.Controls.Button{Content="キャンセル",Padding=new Thickness(15,7,15,7),Margin=new Thickness(3)};var ok=new System.Windows.Controls.Button{Content="決定",Padding=new Thickness(18,7,18,7),Margin=new Thickness(3),Background=new SolidColorBrush(WpfColor.FromRgb(31,143,123)),Foreground=WpfBrushes.White,IsDefault=true};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>dialog.DialogResult=true;buttons.Children.Add(cancel);buttons.Children.Add(ok);panel.Children.Add(buttons);dialog.Content=panel;dialog.Loaded+=(_,_)=>{box.Focus();box.SelectAll();};return dialog.ShowDialog()==true?box.Text.Trim():null;
+        var dialog=new Window{Title=title,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=430,Height=190,ResizeMode=ResizeMode.NoResize,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(new TextBlock{Text=label,Margin=new Thickness(0,0,0,7)});var box=new TextBox{Text=initial,Padding=new Thickness(8),Background=ThemeService.Brush("InputBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};panel.Children.Add(box);var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Margin=new Thickness(0,14,0,0)};var cancel=new System.Windows.Controls.Button{Content="キャンセル",Padding=new Thickness(15,7,15,7),Margin=new Thickness(3)};var ok=new System.Windows.Controls.Button{Content="決定",Padding=new Thickness(18,7,18,7),Margin=new Thickness(3),Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText"),IsDefault=true};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>dialog.DialogResult=true;buttons.Children.Add(cancel);buttons.Children.Add(ok);panel.Children.Add(buttons);dialog.Content=panel;FollowWindowsTitleBarTheme(dialog);dialog.Loaded+=(_,_)=>{box.Focus();box.SelectAll();};return dialog.ShowDialog()==true?box.Text.Trim():null;
     }
     Profile? SelectProfile(string title,bool allowNoCopy)
     {
-        var dialog=new Window{Title=title,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=420,Height=360,Background=new SolidColorBrush(WpfColor.FromRgb(23,29,39)),Foreground=WpfBrushes.White,ShowInTaskbar=false};var grid=new Grid{Margin=new Thickness(18)};grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var list=new ListBox{ItemsSource=config.Profiles,DisplayMemberPath="Name",Background=new SolidColorBrush(WpfColor.FromRgb(29,35,48)),Foreground=WpfBrushes.White};grid.Children.Add(list);var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right};var cancel=new System.Windows.Controls.Button{Content=allowNoCopy?"コピーせず作成":"キャンセル",Margin=new Thickness(3),Padding=new Thickness(14,7,14,7)};var ok=new System.Windows.Controls.Button{Content="選択",Margin=new Thickness(3),Padding=new Thickness(18,7,18,7),Background=new SolidColorBrush(WpfColor.FromRgb(31,143,123)),Foreground=WpfBrushes.White};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};buttons.Children.Add(cancel);buttons.Children.Add(ok);Grid.SetRow(buttons,1);grid.Children.Add(buttons);dialog.Content=grid;return dialog.ShowDialog()==true?list.SelectedItem as Profile:null;
+        var dialog=new Window{Title=title,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=420,Height=360,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};var grid=new Grid{Margin=new Thickness(18)};grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var list=new ListBox{ItemsSource=config.Profiles,DisplayMemberPath="Name",Background=ThemeService.Brush("CardBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};grid.Children.Add(list);var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right};var cancel=new System.Windows.Controls.Button{Content=allowNoCopy?"コピーせず作成":"キャンセル",Margin=new Thickness(3),Padding=new Thickness(14,7,14,7)};var ok=new System.Windows.Controls.Button{Content="選択",Margin=new Thickness(3),Padding=new Thickness(18,7,18,7),Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText")};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};buttons.Children.Add(cancel);buttons.Children.Add(ok);Grid.SetRow(buttons,1);grid.Children.Add(buttons);dialog.Content=grid;FollowWindowsTitleBarTheme(dialog);return dialog.ShowDialog()==true?list.SelectedItem as Profile:null;
     }
     string? SelectRunningApplication()
     {
-        var apps=System.Diagnostics.Process.GetProcesses().Where(p=>p.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(p.MainWindowTitle)).Select(p=>new{Label=$"{p.MainWindowTitle}  —  {p.ProcessName}.exe",Value=p.ProcessName+".exe"}).GroupBy(x=>x.Value,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.Label).ToList();var dialog=new Window{Title="自動切替する起動中のアプリを選択",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=620,Height=480,Background=new SolidColorBrush(WpfColor.FromRgb(23,29,39)),Foreground=WpfBrushes.White,ShowInTaskbar=false};var grid=new Grid{Margin=new Thickness(18)};grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var list=new ListBox{ItemsSource=apps,DisplayMemberPath="Label",Background=new SolidColorBrush(WpfColor.FromRgb(29,35,48)),Foreground=WpfBrushes.White};grid.Children.Add(list);var ok=new System.Windows.Controls.Button{Content="このアプリを使用",Padding=new Thickness(18,8,18,8),Margin=new Thickness(3),HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Background=new SolidColorBrush(WpfColor.FromRgb(31,143,123)),Foreground=WpfBrushes.White};ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};Grid.SetRow(ok,1);grid.Children.Add(ok);dialog.Content=grid;return dialog.ShowDialog()==true?(string?)list.SelectedItem?.GetType().GetProperty("Value")?.GetValue(list.SelectedItem):null;
+        var apps=System.Diagnostics.Process.GetProcesses().Where(p=>p.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(p.MainWindowTitle)).Select(p=>new{Label=$"{p.MainWindowTitle}  —  {p.ProcessName}.exe",Value=p.ProcessName+".exe"}).GroupBy(x=>x.Value,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.Label).ToList();var dialog=new Window{Title="自動切替する起動中のアプリを選択",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=620,Height=480,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};var grid=new Grid{Margin=new Thickness(18)};grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var list=new ListBox{ItemsSource=apps,DisplayMemberPath="Label",Background=ThemeService.Brush("CardBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};grid.Children.Add(list);var ok=new System.Windows.Controls.Button{Content="このアプリを使用",Padding=new Thickness(18,8,18,8),Margin=new Thickness(3),HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText")};ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};Grid.SetRow(ok,1);grid.Children.Add(ok);dialog.Content=grid;FollowWindowsTitleBarTheme(dialog);return dialog.ShowDialog()==true?(string?)list.SelectedItem?.GetType().GetProperty("Value")?.GetValue(list.SelectedItem):null;
     }
     [DllImport("user32.dll")]static extern bool DestroyIcon(IntPtr handle);
     [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr handle,int attribute,ref int value,int valueSize);
