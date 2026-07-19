@@ -43,6 +43,21 @@ internal static class ShortcutService
         finally{if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);if(Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);}
         return shortcutPath;
     }
+    internal static string? ResolveShortcutTarget(string shortcutPath)
+    {
+        if(!File.Exists(shortcutPath)||!shortcutPath.EndsWith(".lnk",StringComparison.OrdinalIgnoreCase))return null;
+        Type? shellType=Type.GetTypeFromProgID("WScript.Shell");if(shellType==null)return null;
+        object? shell=null,shortcut=null;
+        try
+        {
+            shell=Activator.CreateInstance(shellType);if(shell==null)return null;
+            shortcut=shellType.InvokeMember("CreateShortcut",System.Reflection.BindingFlags.InvokeMethod,null,shell,[shortcutPath]);if(shortcut==null)return null;
+            string? target=shortcut.GetType().InvokeMember("TargetPath",System.Reflection.BindingFlags.GetProperty,null,shortcut,null) as string;
+            return !string.IsNullOrWhiteSpace(target)&&File.Exists(target)?target:null;
+        }
+        catch{return null;}
+        finally{if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);if(shell!=null&&Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);}
+    }
     internal static string? MigrateRenamedMacroShortcut(string oldName,MacroDefinition macro,string? destinationDirectory=null,string? executablePath=null)
     {
         if(string.IsNullOrWhiteSpace(oldName)||oldName.Equals(macro.Name,StringComparison.Ordinal))return null;
