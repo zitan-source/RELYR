@@ -65,6 +65,7 @@ public partial class MainWindow : Window
     internal bool HasDestinationInputTargetForTest=>destinationInputTarget!=null;
     internal bool IsEditingSelectedInputForTest=>editingSelectedInput;
     internal Profile CurrentProfileForTest=>CurrentProfile;
+    internal Mapping? AppliedMappingForTest(string input)=>FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,input,MappingInterceptsInput);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest=>VisualInputButtons().ToList();
     internal bool TitleBarUsesDarkMode { get; private set; }
     internal static string DisplayVersion
@@ -103,8 +104,8 @@ public partial class MainWindow : Window
         AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();
         KeyboardLayoutBox.SelectedIndex=config.KeyboardLayout=="US"?1:0;
         loading=false;
-        var shortActionOptions=new[]{new ActionOption(ActionKind.Shortcut,"ショートカット"),new ActionOption(ActionKind.Text,"文字列"),new ActionOption(ActionKind.Launch,"アプリ・パス"),new ActionOption(ActionKind.Macro,"マクロ")};
-        var longActionOptions=new[]{new ActionOption(ActionKind.None,"短押しと同じ（キーは連打）"),new ActionOption(ActionKind.Disabled,"無効化"),new ActionOption(ActionKind.Key,"別のキー"),new ActionOption(ActionKind.Shortcut,"ショートカット"),new ActionOption(ActionKind.Text,"文字列"),new ActionOption(ActionKind.Launch,"アプリ・パス"),new ActionOption(ActionKind.Mouse,"マウス操作"),new ActionOption(ActionKind.Macro,"マクロ")};
+        var shortActionOptions=ActionOptions();
+        var longActionOptions=ActionOptions();
         KindBox.ItemsSource=shortActionOptions;LongKindBox.ItemsSource=longActionOptions;
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
         LongKindBox.SelectedValuePath=nameof(ActionOption.Kind);
@@ -316,10 +317,9 @@ public partial class MainWindow : Window
         string token=key;var parts=target.Text.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).ToList();
         parts.Add(token);target.Text=string.Join("+",parts);target.CaretIndex=target.Text.Length;
         var kindBox=target==LongValueBox?LongKindBox:KindBox;
-        if(ReferenceEquals(kindBox,KindBox))kindBox.SelectedValue=ActionKind.Shortcut;
-        else if(parts.Count>1)kindBox.SelectedValue=ActionKind.Shortcut;
+        if(parts.Count>1)kindBox.SelectedValue=ActionKind.Shortcut;
         else if(key.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase))kindBox.SelectedValue=ActionKind.Mouse;
-        else if(kindBox.SelectedValue is not ActionKind.Key and not ActionKind.Shortcut)kindBox.SelectedValue=ActionKind.Key;
+        else kindBox.SelectedValue=ActionKind.Key;
         e.Handled=true;FocusExecutionValue(target);
     }
     void InputButton_RightClick(object sender,MouseButtonEventArgs e)
@@ -343,17 +343,23 @@ public partial class MainWindow : Window
         menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(new Separator());menu.Items.Add(delete);
         return menu;
     }
-    void LongPressOnly_Click(object sender,RoutedEventArgs e){ValueBox.Clear();LongPressExpander.IsExpanded=true;FocusExecutionValue(LongValueBox,true);MarkDirty();LastInput.Text="長押しのみ：短押しは元のキーを入力します";}
+    void LongPressOnly_Click(object sender,RoutedEventArgs e){ValueBox.Clear();if(selected!=null)selected.Kind=ActionKind.None;loading=true;KindBox.SelectedValue=ActionKind.None;loading=false;LongPressExpander.IsExpanded=true;FocusExecutionValue(LongValueBox,true);MarkDirty();LastInput.Text="長押しのみ：短押しは元のキーを入力します";}
     void DestinationInputDone_Click(object sender,RoutedEventArgs e)=>CompleteDestinationInput(sender as FrameworkElement);
     void MainWindow_PreviewMouseDown(object sender,MouseButtonEventArgs e)
     {
-        if(e.ChangedButton!=MouseButton.Left||destinationInputTarget==null||e.OriginalSource is not DependencyObject source)return;
+        if(e.ChangedButton!=MouseButton.Left||e.OriginalSource is not DependencyObject source)return;
         if(IsDescendantOf(source,KeyboardPanel)||IsDescendantOf(source,SecondaryKeyboardPanel)||IsDescendantOf(source,MousePanel)||IsInteractiveClick(source))return;
-        CompleteDestinationInput();
+        if(destinationInputTarget!=null||editingSelectedInput)CompleteDestinationInput();
+        else if(selected!=null)ClearSelectedInput();
     }
     void CompleteDestinationInput(FrameworkElement? fallback=null)
     {
-        editingSelectedInput=false;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane();LastInput.Text="入力完了 — 次の設定対象を画面から選択できます";LastInput.Foreground=ThemeService.Brush("AccentBrush");
+        autoSaveTimer.Stop();if(selected!=null){NormalizeLongOnlyMapping(selected);SaveAndApply("入力完了 — 設定を保存して反映しました");}
+        editingSelectedInput=false;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane();
+    }
+    void ClearSelectedInput(FrameworkElement? fallback=null)
+    {
+        selected=null;selectedBaseInput="";editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="キーを選択してください";AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane(false);
     }
     static bool IsDescendantOf(DependencyObject source,DependencyObject ancestor)
     {
@@ -424,7 +430,7 @@ public partial class MainWindow : Window
     void OpenProfileManager_Click(object sender,RoutedEventArgs e)
     {
         var window=new ProfileManagerWindow(config.Profiles,config.ActiveProfile){Owner=this};if(window.ShowDialog()!=true)return;
-        config.Profiles=window.ResultProfiles.ToList();config.ActiveProfile=window.ResultActiveProfile;selected=null;selectedBaseInput="";editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="入力を選択してください";AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;SelectInputHint.Visibility=Visibility.Visible;RefreshProfiles();UpdateLayerButtons();ColorButtons();MarkDirty();RebuildTrayMenu();
+        config.Profiles=window.ResultProfiles.ToList();config.ActiveProfile=window.ResultActiveProfile;ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();RebuildTrayMenu();
     }
     void ChooseMacro_Click(object sender,RoutedEventArgs e)=>ShowMacroWindow(true,sender is System.Windows.Controls.Button{Tag:string tag}&&tag=="Long");
     void ChooseProfileAction_Click(object sender,RoutedEventArgs e)
@@ -459,13 +465,13 @@ public partial class MainWindow : Window
         string layer="通常";selectedBaseInput=input;
         int plus=input.IndexOf('+');if(plus>0){layer=input[..plus];selectedBaseInput=input[(plus+1)..];}
         var visibleAssignment=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
-        detectMode = false;editingSelectedInput=focusExecution; selected = CurrentProfile.Mappings.FirstOrDefault(x => x.Input == input) ?? new Mapping { Input = input };
-        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind; ValueBox.Text = selected.Value; LongKindBox.SelectedValue=selected.LongPressKind; LongValueBox.Text=selected.LongPressValue; LongPressBox.Text = selected.LongPressMs.ToString(); EnabledBox.IsChecked = selected.Enabled; LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;SelectInputHint.Visibility=Visibility.Collapsed;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
+        detectMode = false;editingSelectedInput=focusExecution; selected = CurrentProfile.Mappings.FirstOrDefault(x => x.Input == input) ?? new Mapping { Input = input,Kind=ActionKind.Key };
+        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind; ValueBox.Text = selected.Value; LongKindBox.SelectedValue=selected.LongPressKind; LongValueBox.Text=selected.LongPressValue; LongPressBox.Text = selected.LongPressMs.ToString(); EnabledBox.IsChecked = selected.Enabled; LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
     internal static bool ShouldFocusExecutionForSelectedInput(Mapping? visibleAssignment)=>visibleAssignment==null;
     internal static string DisplayInputName(string input)
     {
-        if(string.IsNullOrWhiteSpace(input))return "入力を選択してください";
+        if(string.IsNullOrWhiteSpace(input))return "キーを選択してください";
         return string.Join(" + ",input.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).Select(DisplayInputPart));
     }
     static string DisplayInputPart(string value)=>value switch
@@ -476,7 +482,8 @@ public partial class MainWindow : Window
     void EditorChanged(object sender, EventArgs e)
     {
         if (loading || selected == null) return;
-        var longKind=LongKindBox.SelectedValue is ActionKind lk?lk:ActionKind.None;if(ReferenceEquals(sender,LongKindBox)&&longKind==ActionKind.None&&!string.IsNullOrEmpty(LongValueBox.Text)){loading=true;LongValueBox.Clear();loading=false;}if(KindBox.SelectedValue is ActionKind k)selected.Kind=k;selected.Value = ValueBox.Text; selected.LongPressKind=longKind; selected.LongPressValue = LongValueBox.Text;selected.Layer=currentLayer; selected.Enabled = EnabledBox.IsChecked == true; if (int.TryParse(LongPressBox.Text, out var ms)) selected.LongPressMs = ms;
+        if(ReferenceEquals(sender,ValueBox)&&KindBox.SelectedValue is not ActionKind&&!string.IsNullOrWhiteSpace(ValueBox.Text)){loading=true;KindBox.SelectedValue=ActionKind.Key;loading=false;}
+        var longKind=LongKindBox.SelectedValue is ActionKind lk?lk:selected.LongPressKind;if(ReferenceEquals(sender,LongKindBox)&&longKind==ActionKind.None&&!string.IsNullOrEmpty(LongValueBox.Text)){loading=true;LongValueBox.Clear();loading=false;}if(KindBox.SelectedValue is ActionKind k)selected.Kind=k;selected.Value = ValueBox.Text; selected.LongPressKind=longKind; selected.LongPressValue = LongValueBox.Text;selected.Layer=currentLayer; selected.Enabled = EnabledBox.IsChecked == true; if (int.TryParse(LongPressBox.Text, out var ms)) selected.LongPressMs = ms;
         if(MappingHasConfiguredAction(selected))
         {
             if(!CurrentProfile.Mappings.Contains(selected))CurrentProfile.Mappings.Add(selected);
@@ -523,6 +530,7 @@ public partial class MainWindow : Window
     internal static bool HasConfiguredShortAction(Mapping? map)=>map!=null&&map.Kind!=ActionKind.None&&(map.Kind==ActionKind.Disabled||!string.IsNullOrWhiteSpace(map.Value));
     internal static bool MappingInterceptsInput(Mapping? map)=>map is {Enabled:true}&&MappingHasConfiguredAction(map);
     internal static bool HasConfiguredLongPress(Mapping? map)=>map!=null&&map.LongPressKind!=ActionKind.None&&(map.LongPressKind==ActionKind.Disabled||!string.IsNullOrWhiteSpace(map.LongPressValue));
+    internal static void NormalizeLongOnlyMapping(Mapping map){if(!HasConfiguredShortAction(map)&&HasConfiguredLongPress(map))map.Kind=ActionKind.None;}
     internal static Mapping? FindProfileMapping(IReadOnlyList<Profile> profiles,string activeName,string? exactInput,Func<Mapping,bool>? predicate=null)
     {
         if(profiles.Count==0)return null;var active=profiles.FirstOrDefault(x=>x.Name==activeName)??profiles[0];
@@ -551,17 +559,20 @@ public partial class MainWindow : Window
     }
     internal static WpfColor AssignmentColorFor(Mapping mapping)
     {
-        var kind=mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind;
+        var kind=AssignmentDisplayKind(mapping);
         return kind switch
         {
+            ActionKind.Key=>WpfColor.FromRgb(217,130,43),
+            ActionKind.Disabled=>WpfColor.FromRgb(98,107,120),
             ActionKind.Text=>WpfColor.FromRgb(205,160,45),
             ActionKind.Macro=>WpfColor.FromRgb(194,67,77),
             ActionKind.Launch=>WpfColor.FromRgb(139,91,190),
             _=>WpfColor.FromRgb(23,141,121)
         };
     }
-    static WpfColor AssignmentTextColorFor(Mapping mapping)=>(mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind)==ActionKind.Text?WpfColors.Black:WpfColors.White;
-    static string AssignmentTypeLabel(Mapping mapping)=>(mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind) switch{ActionKind.Text=>"文字列",ActionKind.Macro=>"マクロ",ActionKind.Launch=>"アプリ・パス",_=>"ショートカット"};
+    static ActionKind AssignmentDisplayKind(Mapping mapping)=>!HasConfiguredShortAction(mapping)&&HasConfiguredLongPress(mapping)?mapping.LongPressKind:mapping.Kind==ActionKind.None?mapping.LongPressKind:mapping.Kind;
+    static WpfColor AssignmentTextColorFor(Mapping mapping)=>AssignmentDisplayKind(mapping) is ActionKind.Text or ActionKind.Key?WpfColors.Black:WpfColors.White;
+    static string AssignmentTypeLabel(Mapping mapping)=>AssignmentDisplayKind(mapping) switch{ActionKind.Key=>"別のキー",ActionKind.Disabled=>"無効化",ActionKind.Text=>"文字列",ActionKind.Macro=>"マクロ",ActionKind.Launch=>"アプリ・パス",_=>"ショートカット"};
     internal static string? AssignmentToolTipText(Mapping? mapping)
     {
         if(!MappingInterceptsInput(mapping))return null;var lines=new List<string>();
@@ -598,7 +609,7 @@ public partial class MainWindow : Window
     {
         LastInput.Text="ⓘ "+message;LastInput.Foreground=ThemeService.Brush("WarningBrush");
     }
-    void UpdateLayerButtons(){if(NormalLayerButton==null)return;foreach(var b in new[]{NormalLayerButton,SpaceLayerButton,CapsLockLayerButton,TaskbarLayerButton,RightMouseLayerButton,BackMouseLayerButton,ForwardMouseLayerButton}){bool active=Equals(b.Tag,currentLayer);b.Background=ThemeService.Brush(active?"LayerActiveBackground":"KeyBackground");b.BorderBrush=ThemeService.Brush(active?"AccentBrush":"SubtleBorderBrush");b.Foreground=ThemeService.Brush("PrimaryText");}if(InputDisplayText!=null)InputDisplayText.Text=selected==null?"入力を選択してください":DisplayInputName(selected.Input);}
+    void UpdateLayerButtons(){if(NormalLayerButton==null)return;foreach(var b in new[]{NormalLayerButton,SpaceLayerButton,CapsLockLayerButton,TaskbarLayerButton,RightMouseLayerButton,BackMouseLayerButton,ForwardMouseLayerButton}){bool active=Equals(b.Tag,currentLayer);b.Background=ThemeService.Brush(active?"LayerActiveBackground":"KeyBackground");b.BorderBrush=ThemeService.Brush(active?"AccentBrush":"SubtleBorderBrush");b.Foreground=ThemeService.Brush("PrimaryText");}if(InputDisplayText!=null)InputDisplayText.Text=selected==null?"キーを選択してください":DisplayInputName(selected.Input);}
     void UpdateStatus() { EngineStatus.Text = engine.Enabled ? "● エンジン稼働中" : "■ エンジン停止中"; EngineStatus.Foreground = ThemeService.Brush(engine.Enabled?"AccentBrush":"DangerBrush"); }
     void SetupTray() { tray.Text = "RELYR v"+DisplayVersion; defaultTrayIcon=CreateDefaultTrayIcon();tray.Icon=defaultTrayIcon; tray.Visible = true; RebuildTrayMenu();UpdateTrayNumber(); tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromExternalLaunch); }
     void UpdateTrayNumber()
@@ -680,7 +691,7 @@ public partial class MainWindow : Window
         if(!config.Profiles.Any(x=>x.Name==name))return;
         config.ActiveProfile=name;
         if(appliedConfig.Profiles.Any(x=>x.Name==name)){appliedConfig.ActiveProfile=name;if(persist){var persisted=store.Load();if(persisted.Profiles.Any(x=>x.Name==name)){persisted.ActiveProfile=name;store.Save(persisted);}}}
-        selected=null;editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="入力を選択してください";AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;SelectInputHint.Visibility=Visibility.Visible;CloseAssignmentPane(false);if(refresh)RefreshProfiles();ColorButtons();UpdateStatus();RebuildTrayMenu();
+        ClearSelectedInput();if(refresh)RefreshProfiles();UpdateStatus();RebuildTrayMenu();
     }
     void AutoSwitchProfile()
     {
@@ -734,9 +745,7 @@ public partial class MainWindow : Window
         if(sender is not System.Windows.Controls.Button{Tag:string layer} button)return;
         ClearExecutionFocus(button);
         if(layer=="CapsLock"&&!ConfirmCapsLockLayer())return;
-        currentLayer=layer;UpdateLayerButtons();ColorButtons();
-        if(!string.IsNullOrEmpty(selectedBaseInput))SelectInput(layer=="通常"?selectedBaseInput:layer+"+"+selectedBaseInput,false);
-        ClearExecutionFocus(button);
+        currentLayer=layer;ClearSelectedInput(button);UpdateLayerButtons();
     }
     bool ConfirmCapsLockLayer()
     {
@@ -756,7 +765,7 @@ public partial class MainWindow : Window
         config.SpaceHoldRepeatEnabled=window.SpaceHoldRepeat;config.SpaceHoldRepeatDelayMs=window.SpaceHoldRepeatDelay;appliedConfig.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;appliedConfig.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;var repeatSettings=store.Load();repeatSettings.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;repeatSettings.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;store.Save(repeatSettings);
         bool previousUpdateSetting=config.CheckForUpdates;
         config.ThemeMode=window.SelectedThemeMode;appliedConfig.ThemeMode=config.ThemeMode;ThemeService.Apply(config.ThemeMode);
-        try{if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);config.StartWithWindows=window.StartWithWindows;config.AutoExtractDesktopArchives=window.AutoExtract;config.ArchiveWatchFolder=window.ArchiveWatchFolder;config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;config.CloseWindowUnderCursor=window.CloseWindowUnderCursor;config.CheckForUpdates=window.CheckForUpdates;config.AutoSave=window.AutoSave;appliedConfig.StartWithWindows=config.StartWithWindows;appliedConfig.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;appliedConfig.ArchiveWatchFolder=config.ArchiveWatchFolder;appliedConfig.ArchiveDestinationFolder=config.ArchiveDestinationFolder;appliedConfig.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;appliedConfig.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;appliedConfig.CloseWindowUnderCursor=config.CloseWindowUnderCursor;appliedConfig.CheckForUpdates=config.CheckForUpdates;appliedConfig.AutoSave=config.AutoSave;var persisted=store.Load();persisted.StartWithWindows=config.StartWithWindows;persisted.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;persisted.ArchiveWatchFolder=config.ArchiveWatchFolder;persisted.ArchiveDestinationFolder=config.ArchiveDestinationFolder;persisted.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;persisted.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;persisted.CloseWindowUnderCursor=config.CloseWindowUnderCursor;persisted.CheckForUpdates=config.CheckForUpdates;persisted.ThemeMode=config.ThemeMode;persisted.AutoSave=config.AutoSave;store.Save(persisted);archiveWatcher.Apply(config);UpdateTrayNumber();ApplyUpdateCheckPreference(previousUpdateSetting);if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";LastInput.Foreground=ThemeService.Brush("AccentBrush");}}
+        try{if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);config.StartWithWindows=window.StartWithWindows;config.AutoExtractDesktopArchives=window.AutoExtract;config.ArchiveWatchFolder=window.ArchiveWatchFolder;config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;config.CheckForUpdates=window.CheckForUpdates;config.AutoSave=window.AutoSave;appliedConfig.StartWithWindows=config.StartWithWindows;appliedConfig.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;appliedConfig.ArchiveWatchFolder=config.ArchiveWatchFolder;appliedConfig.ArchiveDestinationFolder=config.ArchiveDestinationFolder;appliedConfig.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;appliedConfig.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;appliedConfig.CheckForUpdates=config.CheckForUpdates;appliedConfig.AutoSave=config.AutoSave;var persisted=store.Load();persisted.StartWithWindows=config.StartWithWindows;persisted.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;persisted.ArchiveWatchFolder=config.ArchiveWatchFolder;persisted.ArchiveDestinationFolder=config.ArchiveDestinationFolder;persisted.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;persisted.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;persisted.CheckForUpdates=config.CheckForUpdates;persisted.ThemeMode=config.ThemeMode;persisted.AutoSave=config.AutoSave;store.Save(persisted);archiveWatcher.Apply(config);UpdateTrayNumber();ApplyUpdateCheckPreference(previousUpdateSetting);if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";LastInput.Foreground=ThemeService.Brush("AccentBrush");}}
         catch(Exception ex){WpfMessageBox.Show("設定を保存できません: "+ex.Message);}
         finally{loading=true;AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();loading=false;}
     }
@@ -766,7 +775,7 @@ public partial class MainWindow : Window
         bool pending=LegacyKeyRemapService.IsRestartStillPending(config);capsLockRemapped=pending?config.CapsLockRemapEffectiveBeforeRestart:LegacyKeyRemapService.HasCapsLockToF13();engine.TreatF13AsCapsLock=capsLockRemapped;
         engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.Enabled=engineStarted&&config.EngineEnabled;
         loading=true;KeyboardLayoutBox.SelectedIndex=config.KeyboardLayout=="US"?1:0;AutoSaveToggle.IsChecked=config.AutoSave;EngineToggle.IsChecked=engine.Enabled;loading=false;
-        selected=null;selectedBaseInput="";editingSelectedInput=false;currentLayer="通常";InputName.Clear();InputDisplayText.Text="入力を選択してください";AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;SelectInputHint.Visibility=Visibility.Visible;
+        currentLayer="通常";ClearSelectedInput();
         ThemeService.Apply(config.ThemeMode);BuildKeyboard();RefreshProfiles();UpdateLayerButtons();ColorButtons();UpdateAutoSaveToggleText();archiveWatcher.Apply(config);UpdateTrayNumber();UpdateStatus();RebuildTrayMenu();ApplyUpdateCheckPreference(false);LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");
     }
     public void ShowFirstRunSetup(){if(!NeedsFirstRunSetup)return;var setup=new SetupWindow{Owner=this};if(setup.ShowDialog()==true){config.ActiveProfile="標準";config.FirstRunCompleted=setup.DoNotShowAgain;store.Save(config);RefreshProfiles();RebuildTrayMenu();}}
@@ -915,5 +924,6 @@ public partial class MainWindow : Window
     }
     [DllImport("user32.dll")]static extern bool DestroyIcon(IntPtr handle);
     [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr handle,int attribute,ref int value,int valueSize);
-    sealed record ActionOption(ActionKind Kind,string Label);
+    static ActionOption[] ActionOptions()=>[new(ActionKind.Key,"⌨","別のキー"),new(ActionKind.Disabled,"⊘","無効化"),new(ActionKind.Shortcut,"↗","ショートカット"),new(ActionKind.Text,"T","文字列"),new(ActionKind.Launch,"▱","アプリ・パス"),new(ActionKind.Macro,"⌘","マクロ")];
+    sealed record ActionOption(ActionKind Kind,string Icon,string Label);
 }

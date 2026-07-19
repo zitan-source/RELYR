@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows.Forms;
 
 namespace RELYR;
@@ -13,18 +12,6 @@ internal static class WindowMonitorService
         var window=GetActionableForegroundWindow();
         ShowWindow(window,6);
     }
-
-    internal static void CloseUnderCursor()
-    {
-        if(!GetCursorPos(out var point))throw new InvalidOperationException("マウスカーソルの位置を取得できませんでした。");
-        var window=GetAncestor(WindowFromPoint(point),2);
-        if(window==IntPtr.Zero||!IsWindowVisible(window))throw new InvalidOperationException("カーソル位置に閉じられるウィンドウがありません。");
-        var className=new StringBuilder(256);GetClassName(window,className,className.Capacity);
-        if(IsProtectedShellSurface(className.ToString()))throw new InvalidOperationException("デスクトップやタスクバーは閉じる対象にできません。");
-        if(!PostMessage(window,0x0010,IntPtr.Zero,IntPtr.Zero))throw new InvalidOperationException("カーソル位置のウィンドウを閉じられませんでした。");
-    }
-
-    internal static bool IsProtectedShellSurface(string className)=>className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
 
     static IntPtr GetActionableForegroundWindow()
     {
@@ -59,13 +46,19 @@ internal static class WindowMonitorService
 
     internal static void ToggleMaximizeUnderCursor()
     {
-        if(!GetCursorPos(out var point))throw new InvalidOperationException("マウスカーソルの位置を取得できませんでした。");
-        var window=GetAncestor(WindowFromPoint(point),2);
+        var window=RootWindowUnderCursor();
         if(window==IntPtr.Zero||!IsWindowVisible(window))throw new InvalidOperationException("カーソル位置に操作できるウィンドウがありません。");
         ShowWindow(window,IsZoomed(window)?9:3);
         VirtualDesktopService.ActivateWindow(window);
     }
 
+    static IntPtr RootWindowUnderCursor()
+    {
+        if(!GetCursorPos(out var point))throw new InvalidOperationException("マウスカーソルの位置を取得できませんでした。");
+        return GetAncestor(WindowFromPoint(point),2);
+    }
+
+    internal static IntPtr WindowUnderCursorForTest()=>RootWindowUnderCursor();
     internal static bool IsMaximizedForTest(IntPtr window)=>IsZoomed(window);
 
     internal static int SelectTargetIndex(IReadOnlyList<System.Drawing.Rectangle> areas,int current,Direction direction)
@@ -94,6 +87,4 @@ internal static class WindowMonitorService
     [DllImport("user32.dll")]static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hWnd,uint flags);
     [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr hWnd);
-    [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr hWnd,StringBuilder className,int maxCount);
-    [DllImport("user32.dll",SetLastError=true)]static extern bool PostMessage(IntPtr hWnd,uint message,IntPtr wParam,IntPtr lParam);
 }

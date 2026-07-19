@@ -26,6 +26,7 @@ public sealed class InputEngine : IDisposable
     internal static Action<string>? UnicodeTextOutputForTest=null;
     internal static Action<int>? ImeActionOutputForTest=null;
     internal static Action<Action>? DesktopActionOutputForTest=null;
+    internal static Func<bool>? LockWorkStationOutputForTest=null;
     internal Func<int,IntPtr,IntPtr,IntPtr>? NextHookForTest { get; set; }
     static long lastWheelOutput;
     public static Action<string>? DesktopActionFailed;
@@ -289,7 +290,11 @@ public sealed class InputEngine : IDisposable
                 state.NativeMouseDrag=IsNativeMouseDrag?.Invoke(input)==true;
                 if(state.NativeMouseDrag){state.ReleaseSignal=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);state.Immediate=InputReceived?.Invoke(input+":PressStart")==true;if(state.Immediate){MonitorNativeMouseRelease(input,state);return (IntPtr)1;}state.NativeMouseDrag=false;}
                 if(fireOnDown&&HasLongPress?.Invoke(input)!=true){state.FireOnDown=true;InputReceived?.Invoke(input);return (IntPtr)1;}
-                if(HasLongPress?.Invoke(input)==true){int ms=Math.Clamp(LongPressDuration?.Invoke(input)??500,50,10000);state.Timer=new System.Threading.Timer(_=>{if(state.IsDown&&!state.Dragged){state.LongFired=true;InputReceived?.Invoke(input+":Long");Detected?.Invoke(input+" Long");}},null,ms,System.Threading.Timeout.Infinite);}
+                if(HasLongPress?.Invoke(input)==true)
+                {
+                    int ms=Math.Clamp(LongPressDuration?.Invoke(input)??500,50,10000);state.DownTick=Environment.TickCount64;state.LongPressMs=ms;
+                    state.Timer=new System.Threading.Timer(_=>{if(state.IsDown&&!state.Dragged&&Interlocked.CompareExchange(ref state.LongFired,1,0)==0){InputReceived?.Invoke(input+":Long");Detected?.Invoke(input+" Long");}},null,ms,System.Threading.Timeout.Infinite);
+                }
                 return (IntPtr)1;
             }
         }
@@ -298,7 +303,16 @@ public sealed class InputEngine : IDisposable
         {
             current.IsDown=false; current.Timer?.Dispose();
             if(current.NativeMouseDrag){current.ReleaseSignal?.TrySetResult();return (IntPtr)1;}
-            if(current.Handled){if(current.Cancelled)return (IntPtr)1;if(current.Immediate){if(Interlocked.Exchange(ref current.Ended,1)==0)InputReceived?.Invoke(input+":PressEnd");}else if(current.FireOnDown)return (IntPtr)1;else if(current.Dragged)InputReceived?.Invoke(input+":DragEnd");else if(!current.LongFired&&mapped)InputReceived?.Invoke(input);return (IntPtr)1;}
+            if(current.Handled)
+            {
+                if(current.Cancelled)return (IntPtr)1;
+                if(current.Immediate){if(Interlocked.Exchange(ref current.Ended,1)==0)InputReceived?.Invoke(input+":PressEnd");}
+                else if(current.FireOnDown)return (IntPtr)1;
+                else if(current.Dragged)InputReceived?.Invoke(input+":DragEnd");
+                else if(current.LongPressMs>0&&Environment.TickCount64-current.DownTick>=current.LongPressMs&&Interlocked.CompareExchange(ref current.LongFired,1,0)==0){InputReceived?.Invoke(input+":Long");Detected?.Invoke(input+" Long");}
+                else if(Volatile.Read(ref current.LongFired)==0&&mapped)InputReceived?.Invoke(input);
+                return (IntPtr)1;
+            }
             return Next(n,w,l);
         }
         if(up)return Next(n,w,l);
@@ -391,10 +405,15 @@ public sealed class InputEngine : IDisposable
     };
     IntPtr Next(int n,IntPtr w,IntPtr l)=>NextHookForTest?.Invoke(n,w,l)??CallNextHookEx(IntPtr.Zero,n,w,l);
 
-    public static void SendShortcut(string value,bool useUsLayout=false,bool closeWindowUnderCursor=false)
+    public static void SendShortcut(string value,bool useUsLayout=false)
     {
-        if(ShouldCloseWindowUnderCursor(value,closeWindowUnderCursor)){QueueDesktopAction(WindowMonitorService.CloseUnderCursor);return;}
         value=ResolveShortcutAlias(value);
+        if(IsLockWorkStationShortcut(value))
+        {
+            bool locked=LockWorkStationOutputForTest?.Invoke()??LockWorkStation();
+            if(!locked)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"Windowsをロックできませんでした。");
+            return;
+        }
         if(TryGetImeAction(value,out int imeMode)){QueueImeAction(imeMode);return;}
         // 仮想デスクトップの左右移動は疑似キーを送らない。Ctrl+Win+矢印を
         // 外部ツールが横取りしてウィンドウ移動へ変える環境でも、表示中の
@@ -420,7 +439,6 @@ public sealed class InputEngine : IDisposable
             var pressed=new List<ushort>();try{foreach(var c in codes){if(SendKey(c,false))pressed.Add(c);}if(mouse!=null)SendMouse(mouse);}finally{foreach(var c in pressed.AsEnumerable().Reverse())SendKeyUpWithRetry(c);}
         }
     }
-    internal static bool ShouldCloseWindowUnderCursor(string value,bool enabled)=>enabled&&(value.Equals("Alt+F4",StringComparison.OrdinalIgnoreCase)||value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase));
     static string ResolveShortcutAlias(string value)
     {
         if(value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase))return "Alt+F4";
@@ -434,6 +452,11 @@ public sealed class InputEngine : IDisposable
     }
     internal static string ResolveShortcutAliasForTest(string value)=>ResolveShortcutAlias(value);
     internal static void ResetMinimizeAllToggleForTest(){lock(OutputLock)restoreMinimizedWindowsNext=false;}
+    static bool IsLockWorkStationShortcut(string value)
+    {
+        var names=SplitShortcut(value);
+        return names.Length==2&&names.Any(x=>x.Equals("L",StringComparison.OrdinalIgnoreCase))&&names.Any(x=>x.Equals("Win",StringComparison.OrdinalIgnoreCase)||x.Equals("LWin",StringComparison.OrdinalIgnoreCase)||x.Equals("RWin",StringComparison.OrdinalIgnoreCase));
+    }
     static string[] SplitShortcut(string value)
     {
         if(value=="+")return ["+"];
@@ -757,6 +780,7 @@ public sealed class InputEngine : IDisposable
     internal bool HasActiveLayerStateForTest(){lock(stateLock)return deferredLayer!=null||presses.Keys.Any(x=>x.StartsWith("Space+",StringComparison.OrdinalIgnoreCase)||x.StartsWith("CapsLock+",StringComparison.OrdinalIgnoreCase)||x.StartsWith("MouseRight+",StringComparison.OrdinalIgnoreCase));}
     internal bool HookTestStateCleanForTest=>hookTestStateClean;
     internal bool IsDisposedForTest=>disposed;
+    internal void CancelLongPressTimerForTest(string input){lock(stateLock)if(presses.TryGetValue(input,out var state)){state.Timer?.Dispose();state.Timer=null;}}
     public void ResetStateForTest(){ResetCapturedState(false);held.Clear();lastSpaceTapTick=0;}
     public void Dispose()
     {
@@ -771,7 +795,7 @@ public sealed class InputEngine : IDisposable
         hookThread=null;hookReady.Dispose();hookTestCompleted.Dispose();
     }
 
-    sealed class PressState{public bool IsDown,Handled,LongFired,Dragged,Immediate,NativeMouseDrag,FireOnDown,Cancelled;public int X,Y,Ended;public System.Threading.Timer? Timer;public TaskCompletionSource? ReleaseSignal;}
+    sealed class PressState{public bool IsDown,Handled,Dragged,Immediate,NativeMouseDrag,FireOnDown,Cancelled;public int X,Y,Ended,LongFired,LongPressMs;public long DownTick;public System.Threading.Timer? Timer;public TaskCompletionSource? ReleaseSignal;}
     delegate IntPtr HookProc(int nCode,IntPtr wParam,IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)]struct KBDLLHOOKSTRUCT{public uint vkCode,scanCode,flags,time;public UIntPtr dwExtraInfo;}
     [StructLayout(LayoutKind.Sequential)]struct MSLLHOOKSTRUCT{public POINT pt;public int mouseData,flags,time;public UIntPtr dwExtraInfo;}
@@ -794,6 +818,7 @@ public sealed class InputEngine : IDisposable
     [DllImport("user32.dll")]static extern short GetAsyncKeyState(int virtualKey);
     [DllImport("user32.dll")]static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll",SetLastError=true)]static extern bool LockWorkStation();
     [DllImport("user32.dll",SetLastError=true)]static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out UIntPtr result);
     [DllImport("imm32.dll")]static extern IntPtr ImmGetDefaultIMEWnd(IntPtr window);
     [DllImport("imm32.dll")]static extern IntPtr ImmGetContext(IntPtr window);

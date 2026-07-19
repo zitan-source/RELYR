@@ -31,5 +31,11 @@
         <SolidColorBrush x:Key="LayerActiveBackground" Color="#146B5C"/>
         <SolidColorBrush x:Key="EditingKeyBackground" Color="#246BC5"/>
         <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#75B7FF"/>
+        <SolidColorBrush x:Key="ActionKeyIconBrush" Color="#F09A3E"/>
+        <SolidColorBrush x:Key="ActionDisabledIconBrush" Color="#AAB4C2"/>
+        <SolidColorBrush x:Key="ActionShortcutIconBrush" Color="#52D5BE"/>
+        <SolidColorBrush x:Key="ActionTextIconBrush" Color="#E4B936"/>
+        <SolidColorBrush x:Key="ActionLaunchIconBrush" Color="#AA78DA"/>
+        <SolidColorBrush x:Key="ActionMacroIconBrush" Color="#E15A65"/>
     </Application.Resources>
 </Application>

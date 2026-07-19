@@ -11,9 +11,9 @@ public static class EngineIntegrationTest
         using var engine=new InputEngine
         {
             ExitOnEmergency=false,
-            HasMapping=input=>input=="A"||(spaceMappings&&(input=="Space"||input=="Space+J"||input=="Space+K"||input=="Space+U"||input=="Space+MouseLeft"||input=="Space+*"))||input=="K"||(plainMouseMappings&&(input=="MouseLeft"||input=="MouseRight"))||input=="CapsLock+J"||input=="CapsLock+U"||input=="CapsLock+*"||(transientKeyMapped&&input=="B")||(transientMiddleMapped&&input=="MouseMiddle")||(rightWheelLayer&&(input=="MouseRight+*"||input=="MouseRight+WheelUp"||input=="MouseRight+WheelDown"))||(allWheelLayers&&(input is "MouseRight+*" or "MouseRight+WheelUp" or "MouseRight+WheelDown" or "MouseBack+*" or "MouseBack+WheelUp" or "MouseBack+WheelDown" or "MouseForward+*" or "MouseForward+WheelUp" or "MouseForward+WheelDown"))||(multiLayerMappings&&(input is "MouseLeft+*" or "MouseLeft+J" or "MouseMiddle+*" or "MouseMiddle+J" or "MouseBack+*" or "MouseBack+J" or "MouseForward+*" or "MouseForward+J" or "MouseForward+Up" or "MouseForward+MouseLeft")),
+            HasMapping=input=>input=="A"||(spaceMappings&&(input=="Space"||input=="Space+J"||input=="Space+K"||input=="Space+U"||input=="Space+MouseLeft"||input=="Space+*"))||input=="K"||input=="Esc"||(plainMouseMappings&&(input=="MouseLeft"||input=="MouseRight"))||input=="CapsLock+J"||input=="CapsLock+U"||input=="CapsLock+*"||(transientKeyMapped&&input=="B")||(transientMiddleMapped&&input=="MouseMiddle")||(rightWheelLayer&&(input=="MouseRight+*"||input=="MouseRight+WheelUp"||input=="MouseRight+WheelDown"))||(allWheelLayers&&(input is "MouseRight+*" or "MouseRight+WheelUp" or "MouseRight+WheelDown" or "MouseBack+*" or "MouseBack+WheelUp" or "MouseBack+WheelDown" or "MouseForward+*" or "MouseForward+WheelUp" or "MouseForward+WheelDown"))||(multiLayerMappings&&(input is "MouseLeft+*" or "MouseLeft+J" or "MouseMiddle+*" or "MouseMiddle+J" or "MouseBack+*" or "MouseBack+J" or "MouseForward+*" or "MouseForward+J" or "MouseForward+Up" or "MouseForward+MouseLeft")),
             SuppressLayerTap=key=>key=="CapsLock",
-            HasLongPress=input=>input=="K"||input=="MouseRight",
+            HasLongPress=input=>input=="K"||input=="Esc"||input=="MouseRight",
             LongPressDuration=_=>100,
             InputReceived=input=>{lock(events)events.Add(input);return !input.EndsWith(":PressStart",StringComparison.OrdinalIgnoreCase);}
         };
@@ -52,6 +52,8 @@ public static class EngineIntegrationTest
             events.Clear();bool capsBefore=System.Windows.Forms.Control.IsKeyLocked(System.Windows.Forms.Keys.CapsLock);engine.ResetStateForTest();InputEngine.InjectKeyForTest("CapsLock",false);InputEngine.InjectKeyForTest("CapsLock",true);await Task.Delay(150);bool capsAfter=System.Windows.Forms.Control.IsKeyLocked(System.Windows.Forms.Keys.CapsLock);Check(capsAfter==capsBefore&&!events.Any(x=>x.StartsWith("CapsLock")),"native CapsLock remains outside the layer state machine");
             InputEngine.InjectKeyForTest("K",false);await Task.Delay(180);InputEngine.InjectKeyForTest("K",true);await Task.Delay(30);
             Check(events.Contains("K:Long")&&!events.Contains("K"),"long press discrimination");
+            events.Clear();engine.ResetStateForTest();InputEngine.InjectKeyForTest("Esc",false);await Task.Delay(180);InputEngine.InjectKeyForTest("Esc",true);await Task.Delay(30);Check(events.Contains("Esc:Long")&&!events.Contains("Esc"),"Esc supports a long-only shortcut without firing its normal tap");
+            events.Clear();engine.ResetStateForTest();InputEngine.InjectKeyForTest("Esc",false);engine.CancelLongPressTimerForTest("Esc");await Task.Delay(180);InputEngine.InjectKeyForTest("Esc",true);await Task.Delay(30);Check(events.Contains("Esc:Long")&&!events.Contains("Esc"),"Esc release-time fallback executes the long action even when the timer callback is unavailable");
             events.Clear();engine.DragPixels=int.MaxValue;InputEngine.InjectMouseForTest("Left",false);await Task.Delay(30);InputEngine.InjectMouseForTest("Left",true);await Task.Delay(100);
             Check(events.Contains("MouseLeft"),"mouse hook click");
             engine.DragPixels=1;events.Clear();InputEngine.InjectMouseForTest("Left",false);await Task.Delay(20);InputEngine.InjectMouseMoveForTest(20,10);await Task.Delay(100);InputEngine.InjectMouseForTest("Left",true);await Task.Delay(50);
@@ -74,6 +76,7 @@ public static class EngineIntegrationTest
             InputEngine.KeyOutputForTest=(key,up)=>{symbolOutput.Add((key,up));return true;};
             InputEngine.NeutralizePhysicalSourceKey("Space+G");
             Check(symbolOutput.SequenceEqual(new[]{((ushort)0x47,true)}),"long-press source neutralization releases G before a synthetic Windows chord");
+            symbolOutput.Clear();bool lockRequested=false;InputEngine.LockWorkStationOutputForTest=()=>lockRequested=true;InputEngine.SendShortcut("LWin+L");InputEngine.LockWorkStationOutputForTest=null;Check(lockRequested&&symbolOutput.Count==0&&!InputEngine.HasInjectedInputForTest(),"LWin+L invokes the Windows lock operation directly without leaving generated keys down");
             symbolOutput.Clear();
             InputEngine.SendShortcut("?");
             Check(symbolOutput.SequenceEqual(new[]{((ushort)0x10,false),((ushort)0xBF,false),((ushort)0xBF,true),((ushort)0x10,true)})&&!InputEngine.HasInjectedInputForTest(),"JIS question mark sends Shift plus slash and releases both");

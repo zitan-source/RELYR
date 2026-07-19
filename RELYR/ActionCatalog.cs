@@ -68,7 +68,7 @@ public static class ActionCatalog
         new("ウィンドウ・基本操作","最大化／元のサイズに戻す","マウスカーソル位置のウィンドウを、最大化または元のサイズへ切り替えます",ActionKind.Shortcut,"ToggleMaximizeUnderCursor"),
         new("ウィンドウ・基本操作","最小化","アクティブウィンドウだけを確実に最小化します",ActionKind.Shortcut,"MinimizeActiveWindow"),
         new("ウィンドウ・基本操作","下方向へ操作（復元／最小化）","最大化中なら復元し、通常サイズなら最小化します",ActionKind.Shortcut,"Win+Down"),
-        new("ウィンドウ・基本操作","ウィンドウを閉じる","設定に応じて、アクティブまたはマウスカーソル下のウィンドウを閉じます",ActionKind.Shortcut,"Alt+F4"),
+        new("ウィンドウ・基本操作","ウィンドウを閉じる","アクティブなウィンドウを閉じます",ActionKind.Shortcut,"Alt+F4"),
         new("ウィンドウ・基本操作","次のウィンドウへ切り替え","開いている次のウィンドウへ切り替えます",ActionKind.Shortcut,"Alt+Tab"),
         new("ウィンドウ・基本操作","前のウィンドウへ切り替え","開いている前のウィンドウへ切り替えます",ActionKind.Shortcut,"Alt+Shift+Tab"),
 

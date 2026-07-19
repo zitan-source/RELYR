@@ -57,7 +57,6 @@ public sealed class AppConfig
     public string ArchiveWatchFolder { get; set; } = "";
     public string ArchiveDestinationFolder { get; set; } = "";
     public bool ShowDesktopNumberInTray { get; set; }
-    public bool CloseWindowUnderCursor { get; set; }
     public bool CheckForUpdates { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;

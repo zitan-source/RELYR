@@ -95,26 +95,40 @@
     <Style TargetType="Expander"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
     <Style TargetType="ListBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
     <Style x:Key="ActionChoice" TargetType="ListBoxItem">
-      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource KeyBackground}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Padding" Value="8,8"/><Setter Property="Margin" Value="3"/><Setter Property="MinHeight" Value="38"/>
+      <Setter Property="Padding" Value="7,3"/><Setter Property="Margin" Value="3"/><Setter Property="Height" Value="36"/><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
-        <Border x:Name="ChoiceBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+        <Border x:Name="ChoiceBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
           <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
         </Border>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ChoiceBorder" Property="Opacity" Value="0.9"/><Setter TargetName="ChoiceBorder" Property="BorderBrush" Value="{DynamicResource PrimaryText}"/></Trigger>
-          <Trigger Property="IsSelected" Value="True"><Setter TargetName="ChoiceBorder" Property="BorderBrush" Value="{DynamicResource PrimaryText}"/><Setter TargetName="ChoiceBorder" Property="BorderThickness" Value="2"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ChoiceBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="ChoiceBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="ChoiceBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ChoiceBorder" Property="Opacity" Value="0.45"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="ActionChoiceIcon" TargetType="TextBlock">
+      <Setter Property="Width" Value="20"/><Setter Property="FontSize" Value="15"/><Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+      <Setter Property="TextAlignment" Value="Center"/><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
       <Style.Triggers>
-        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Shortcut}"><Setter Property="Background" Value="#178D79"/><Setter Property="BorderBrush" Value="#57D7BD"/><Setter Property="Foreground" Value="White"/></DataTrigger>
-        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Text}"><Setter Property="Background" Value="#CDA02D"/><Setter Property="BorderBrush" Value="#F2CC65"/><Setter Property="Foreground" Value="Black"/></DataTrigger>
-        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Launch}"><Setter Property="Background" Value="#8B5BBE"/><Setter Property="BorderBrush" Value="#BC91E7"/><Setter Property="Foreground" Value="White"/></DataTrigger>
-        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Macro}"><Setter Property="Background" Value="#C2434D"/><Setter Property="BorderBrush" Value="#EB7B84"/><Setter Property="Foreground" Value="White"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Key}"><Setter Property="Foreground" Value="{DynamicResource ActionKeyIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Disabled}"><Setter Property="Foreground" Value="{DynamicResource ActionDisabledIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Shortcut}"><Setter Property="Foreground" Value="{DynamicResource ActionShortcutIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Text}"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Launch}"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Macro}"><Setter Property="Foreground" Value="{DynamicResource ActionMacroIconBrush}"/></DataTrigger>
       </Style.Triggers>
     </Style>
+    <DataTemplate x:Key="ActionChoiceTemplate">
+      <Grid Width="112">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding Icon}" Style="{StaticResource ActionChoiceIcon}"/>
+        <TextBlock Grid.Column="2" Text="{Binding Label}" Foreground="{DynamicResource PrimaryText}" TextWrapping="NoWrap" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+      </Grid>
+    </DataTemplate>
     <Style x:Key="ActionChoiceList" TargetType="ListBox">
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -123,7 +137,7 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="ActionHelperButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="36"/><Setter Property="Margin" Value="3"/>
+      <Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="36"/><Setter Property="Margin" Value="3"/>
       <Setter Property="Padding" Value="5,7"/><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
@@ -259,17 +273,14 @@
           <StackPanel>
             <Button x:Name="DetectInputButton" Content="押した入力を検出" Click="Detect_Click" Margin="0,0,0,10"/>
             <Border Background="{DynamicResource CardBackground}" Padding="10" Margin="0,0,0,8" CornerRadius="4">
-              <StackPanel><TextBlock Text="入力元" Foreground="{DynamicResource SecondaryText}"/><TextBlock x:Name="InputDisplayText" Text="入力を選択してください" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"/></StackPanel>
+              <StackPanel><TextBlock Text="入力元" Foreground="{DynamicResource SecondaryText}"/><TextBlock x:Name="InputDisplayText" Text="キーを選択してください" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"/></StackPanel>
             </Border>
             <TextBox x:Name="InputName" IsReadOnly="True" Visibility="Collapsed"/>
-            <TextBlock x:Name="SelectInputHint" Text="← 最初に中央のキーボード、または左のマウスから設定するボタンを選んでください。" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Margin="0,2,0,10"/>
             <StackPanel x:Name="AssignmentEditor" IsEnabled="False" Opacity="0.55">
             <Border Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,5,0,10">
               <StackPanel>
-                <TextBlock Text="短押し" FontSize="15" FontWeight="Bold"/>
-                <TextBlock Text="空欄の場合、標準レイヤーでは元のキーをそのまま入力します。" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,4"/>
-                <TextBlock Text="短押しの動作"/>
-                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" Margin="0,4,0,10"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+                <TextBlock Text="短押し" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,3"/>
+                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
                 <TextBlock Text="実行内容"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" ToolTip="文字列入力では、ここに入力した文字をそのまま入力します"/>
                 <UniformGrid Columns="4" Margin="-3,0,-3,5">
                   <Button Style="{StaticResource ActionHelperButton}" Content="アクション" Tag="Short" Click="ChooseCatalogAction_Click" ToolTip="定番アクションから選ぶ"/>
@@ -281,12 +292,10 @@
                 <Button Content="短押しは通常入力にする（長押しのみ設定）" Click="LongPressOnly_Click" Margin="0,4,0,2"/>
               </StackPanel>
             </Border>
-            <Expander x:Name="LongPressExpander" Header="＋ 長押し動作を追加（任意）" Expanded="LongPressExpander_Expanded" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+            <Expander x:Name="LongPressExpander" Header="＋ 長押しを追加（任意）" Expanded="LongPressExpander_Expanded" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
               <StackPanel>
-                <TextBlock Text="長押しした時だけ実行" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
-                <TextBlock Text="短押しとは別の動作を選べます。例：短押しはキー、長押しはアプリ起動。" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,4"/>
-                <TextBlock Text="長押しの動作"/>
-                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" Margin="0,4,0,10"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+                <TextBlock Text="長押し" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,3"/>
+                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
                 <TextBlock Text="実行内容"/><TextBox x:Name="LongValueBox" TextChanged="EditorChanged" ToolTip="文字列入力では、ここに入力した文字をそのまま入力します"/>
                 <UniformGrid Columns="4" Margin="-3,0,-3,5">
                   <Button Style="{StaticResource ActionHelperButton}" Content="アクション" Tag="Long" Click="ChooseCatalogAction_Click" ToolTip="定番アクションから選ぶ"/>

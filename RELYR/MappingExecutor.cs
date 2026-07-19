@@ -18,8 +18,7 @@ public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Ac
     public void NeutralizeSourceKey(string input)=>InputEngine.NeutralizePhysicalSourceKey(input);
     public void SendShortcut(string value)
     {
-        var config=getConfig?.Invoke();
-        InputEngine.SendShortcut(value,useUsLayout?.Invoke()==true,config?.CloseWindowUnderCursor==true);
+        InputEngine.SendShortcut(value,useUsLayout?.Invoke()==true);
     }
     public void SendText(string value)=>InputEngine.SendText(value,useUsLayout?.Invoke()==true);
     public void SendMouse(string value)=>InputEngine.SendMouse(value);

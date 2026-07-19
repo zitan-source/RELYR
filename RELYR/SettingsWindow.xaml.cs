@@ -29,7 +29,6 @@ public partial class SettingsWindow:Window
     public bool ShowDesktopNumberInTray=>DesktopNumberTrayBox.IsChecked==true;
     public bool CheckForUpdates=>CheckForUpdatesBox.IsChecked==true;
     public AppThemeMode SelectedThemeMode=>LightThemeBox.IsChecked==true?AppThemeMode.Light:DarkThemeBox.IsChecked==true?AppThemeMode.Dark:AppThemeMode.System;
-    public bool CloseWindowUnderCursor=>CursorWindowTargetBox.IsChecked==true;
     public bool AutoSave=>AutoSaveBox.IsChecked==true;
     public bool SpaceHoldRepeat=>SpaceRepeatBox.IsChecked==true;
     public int SpaceHoldRepeatDelay=>int.TryParse(SpaceRepeatDelayBox.Text,out var value)?Math.Clamp(value,100,2000):400;
@@ -58,8 +57,6 @@ public partial class SettingsWindow:Window
         LightThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Light;
         DarkThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Dark;
         themeSelectionLoading=false;
-        ActiveWindowTargetBox.IsChecked=!config.CloseWindowUnderCursor;
-        CursorWindowTargetBox.IsChecked=config.CloseWindowUnderCursor;
         AutoSaveBox.IsChecked=config.AutoSave;
         SpaceRepeatBox.IsChecked=config.SpaceHoldRepeatEnabled;
         SpaceRepeatDelayBox.Text=config.SpaceHoldRepeatDelayMs.ToString();

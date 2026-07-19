@@ -80,11 +80,6 @@
               <CheckBox x:Name="StartupBox" Content="サインイン時に自動で起動する"/>
               <CheckBox x:Name="DesktopNumberTrayBox" Content="通知領域に現在の仮想デスクトップ番号を表示する"/>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
-              <TextBlock Text="ウィンドウを閉じる対象" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
-              <RadioButton x:Name="ActiveWindowTargetBox" GroupName="CloseWindowTarget" Content="アクティブなウィンドウ" Margin="0,7,0,3"/>
-              <RadioButton x:Name="CursorWindowTargetBox" GroupName="CloseWindowTarget" Content="マウスカーソル下のウィンドウ" Margin="0,5,0,3"/>
-              <TextBlock Text="「ウィンドウを閉じる」（Alt + F4）の対象を選びます。" Foreground="{DynamicResource SecondaryText}" Margin="25,3,0,2"/>
-              <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
               <TextBlock Text="保存" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
               <CheckBox x:Name="AutoSaveBox" Content="変更をすぐに保存して反映する"/>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>

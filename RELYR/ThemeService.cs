@@ -64,7 +64,9 @@ internal static class ThemeService
         ["AccentBrush"]="#72E0C1",["AccentStrongBrush"]="#1F8F7B",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#244B4A",
         ["WarningBrush"]="#F6C66A",["DangerBrush"]="#E16A78",["DangerBackground"]="#7D2430",
         ["DangerHoverBackground"]="#9B3040",["KeyBackground"]="#1B2733",["ReservedKeyBackground"]="#343B44",
-        ["LayerActiveBackground"]="#146B5C",["EditingKeyBackground"]="#246BC5",["EditingKeyBorderBrush"]="#75B7FF"
+        ["LayerActiveBackground"]="#146B5C",["EditingKeyBackground"]="#246BC5",["EditingKeyBorderBrush"]="#75B7FF",
+        ["ActionKeyIconBrush"]="#F09A3E",["ActionDisabledIconBrush"]="#AAB4C2",["ActionShortcutIconBrush"]="#52D5BE",
+        ["ActionTextIconBrush"]="#E4B936",["ActionLaunchIconBrush"]="#AA78DA",["ActionMacroIconBrush"]="#E15A65"
     };
 
     static readonly IReadOnlyDictionary<string,string> LightPalette=new Dictionary<string,string>
@@ -77,6 +79,8 @@ internal static class ThemeService
         ["AccentBrush"]="#087B69",["AccentStrongBrush"]="#0B806D",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#DDF2ED",
         ["WarningBrush"]="#9A5B00",["DangerBrush"]="#B42332",["DangerBackground"]="#FCE8EA",
         ["DangerHoverBackground"]="#F6D3D8",["KeyBackground"]="#FFFFFF",["ReservedKeyBackground"]="#E5E9EE",
-        ["LayerActiveBackground"]="#D4EEE8",["EditingKeyBackground"]="#1674C8",["EditingKeyBorderBrush"]="#075AA6"
+        ["LayerActiveBackground"]="#D4EEE8",["EditingKeyBackground"]="#1674C8",["EditingKeyBorderBrush"]="#075AA6",
+        ["ActionKeyIconBrush"]="#B85B00",["ActionDisabledIconBrush"]="#596575",["ActionShortcutIconBrush"]="#087B69",
+        ["ActionTextIconBrush"]="#8A6500",["ActionLaunchIconBrush"]="#7040A3",["ActionMacroIconBrush"]="#B42332"
     };
 }
