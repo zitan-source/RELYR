@@ -12,6 +12,7 @@ public static class ConfigValidator
         foreach(var macro in config.Macros)
         {
             if(string.IsNullOrWhiteSpace(macro.Name))errors.Add("名前が空のマクロがあります。");
+            if(macro.Steps.Count>10000)errors.Add($"{macro.Name}: 手順が10000件を超えています。");
             foreach(var step in macro.Steps)
             {
                 if(step.DelayMs<0||step.DelayMs>600000)errors.Add($"{macro.Name}: 待機時間が範囲外です。");
@@ -23,6 +24,12 @@ public static class ConfigValidator
                 }
                 else if(step.Event!="Wait"&&!InputEngine.IsValidRecordedEvent(step.Event))errors.Add($"{macro.Name}: 認識できない手順「{step.Event}」があります。");
             }
+        }
+        var macroByName=config.Macros.Where(x=>!string.IsNullOrWhiteSpace(x.Name)).GroupBy(x=>x.Name,StringComparer.OrdinalIgnoreCase).ToDictionary(x=>x.Key,x=>x.First(),StringComparer.OrdinalIgnoreCase);
+        foreach(var macro in config.Macros)
+        {
+            var cycle=FindMacroCycle(macro,macroByName,[],[]);
+            if(cycle!=null)errors.Add("マクロが循環しています: "+string.Join(" → ",cycle));
         }
         foreach (var profile in config.Profiles)
         {
@@ -39,5 +46,14 @@ public static class ConfigValidator
             }
         }
         return errors;
+    }
+
+    static IReadOnlyList<string>? FindMacroCycle(MacroDefinition macro,IReadOnlyDictionary<string,MacroDefinition> macros,HashSet<string> visiting,List<string> path)
+    {
+        string identity=string.IsNullOrWhiteSpace(macro.Id)?macro.Name:macro.Id;if(!visiting.Add(identity)){int start=path.FindIndex(x=>x.Equals(macro.Name,StringComparison.OrdinalIgnoreCase));return start>=0?[..path.Skip(start),macro.Name]:[..path,macro.Name];}
+        path.Add(macro.Name);
+        foreach(string targetName in macro.Steps.Where(x=>x.RecordedActionKind==ActionKind.Macro).Select(x=>x.RecordedActionValue))
+            if(macros.TryGetValue(targetName,out var target)&&FindMacroCycle(target,macros,visiting,path) is { } cycle)return cycle;
+        path.RemoveAt(path.Count-1);visiting.Remove(identity);return null;
     }
 }

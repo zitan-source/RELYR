@@ -29,5 +29,7 @@
         <SolidColorBrush x:Key="KeyBackground" Color="#1B2733"/>
         <SolidColorBrush x:Key="ReservedKeyBackground" Color="#343B44"/>
         <SolidColorBrush x:Key="LayerActiveBackground" Color="#146B5C"/>
+        <SolidColorBrush x:Key="EditingKeyBackground" Color="#246BC5"/>
+        <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#75B7FF"/>
     </Application.Resources>
 </Application>

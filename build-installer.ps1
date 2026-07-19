@@ -17,6 +17,12 @@ if($uninstallRun -notmatch '(?i)--prepare-uninstall'){
 if($installerText -notmatch '(?i)--uninstall-needs-restart' -or $installerText -notmatch '(?i)function\s+UninstallNeedRestart\s*\(' -or $installerText -notmatch '(?im)^UninstalledAndNeedsRestart=.*CapsLock'){
   throw "Uninstaller must explain the CapsLock restart and offer the standard restart choice"
 }
+if($installerText -notmatch '(?im)^AlwaysRestart=no\s*$' -or $installerText -notmatch '(?im)^RestartIfNeededByRun=no\s*$'){
+  throw "Normal installs and upgrades must not request a Windows restart"
+}
+if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
+  throw "An installer entry unexpectedly forces a Windows restart"
+}
 if($installerText -notmatch '(?im)^PrivilegesRequired=admin\s*$'){
   throw "Installer must require administrator privileges"
 }

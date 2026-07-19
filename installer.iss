@@ -24,6 +24,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 CloseApplications=force
 RestartApplications=no
+; Normal installs and upgrades never require a Windows restart.  The only
+; restart prompt RELYR owns is the conditional CapsLock restoration prompt
+; returned by UninstallNeedRestart below.
+AlwaysRestart=no
+RestartIfNeededByRun=no
 UsePreviousTasks=no
 CloseApplicationsFilter=RELYR.exe,InputCustomizer.exe
 UninstallDisplayIcon={app}\{#AppExe}

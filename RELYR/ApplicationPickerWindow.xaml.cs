@@ -12,6 +12,7 @@ public partial class ApplicationPickerWindow:Window
 {
     List<InstalledApplicationInfo> applications=[];
     public string? SelectedPath{get;private set;}
+    internal InstalledApplicationInfo? SelectedApplication{get;private set;}
     internal bool TitleBarUsesDarkMode{get;private set;}
 
     public ApplicationPickerWindow()
@@ -25,6 +26,10 @@ public partial class ApplicationPickerWindow:Window
     {
         Loaded-=ApplicationPickerWindow_Loaded;
         SetApplications(supplied);
+    }
+    internal ApplicationPickerWindow(bool forAutoSwitch):this()
+    {
+        if(!forAutoSwitch)return;Title="自動切替するインストール済みアプリを選択";PickerHeading.Text="自動切替するアプリを選択";PickerDescription.Text="インストール済みアプリから、プロファイルを自動切替する対象を選びます。";SelectButton.Content="自動切替の対象に追加";
     }
 
     async void ApplicationPickerWindow_Loaded(object sender,RoutedEventArgs e)
@@ -52,12 +57,12 @@ public partial class ApplicationPickerWindow:Window
     void ApplicationSelectionChanged(object sender,SelectionChangedEventArgs e)=>SelectButton.IsEnabled=ApplicationList.SelectedItem is InstalledApplicationInfo;
     void ApplicationDoubleClick(object sender,MouseButtonEventArgs e){if(ApplicationList.SelectedItem is InstalledApplicationInfo)UseSelection();}
     void Select_Click(object sender,RoutedEventArgs e)=>UseSelection();
-    void UseSelection(){if(ApplicationList.SelectedItem is not InstalledApplicationInfo selected)return;SelectedPath=selected.LaunchPath;DialogResult=true;}
+    void UseSelection(){if(ApplicationList.SelectedItem is not InstalledApplicationInfo selected)return;SelectedApplication=selected;SelectedPath=selected.LaunchPath;DialogResult=true;}
     void Cancel_Click(object sender,RoutedEventArgs e){DialogResult=false;}
     void BrowseFile_Click(object sender,RoutedEventArgs e)
     {
         var dialog=new Microsoft.Win32.OpenFileDialog{Title="起動するアプリを選択",Filter="アプリケーション (*.exe)|*.exe|ショートカット (*.lnk;*.appref-ms)|*.lnk;*.appref-ms|すべてのファイル|*.*",CheckFileExists=true};
-        if(dialog.ShowDialog(this)==true){SelectedPath=dialog.FileName;DialogResult=true;}
+        if(dialog.ShowDialog(this)==true){SelectedPath=dialog.FileName;SelectedApplication=new(Path.GetFileNameWithoutExtension(dialog.FileName),dialog.FileName,"参照");DialogResult=true;}
     }
 
     internal static IReadOnlyList<InstalledApplicationInfo> DiscoverApplications()

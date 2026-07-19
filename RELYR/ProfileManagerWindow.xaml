@@ -1,0 +1,52 @@
+<Window x:Class="RELYR.ProfileManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="プロファイル管理" Width="980" Height="650" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" ShowInTaskbar="False">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    <Style TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="14,8"/><Setter Property="Margin" Value="3"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Border" Property="Opacity" Value="0.76"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Border" Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="{DynamicResource DangerBackground}"/><Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/></Style>
+    <Style x:Key="AutoSwitchToggle" TargetType="ToggleButton"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="14,9"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Border" Property="Background" Value="{DynamicResource AccentStrongBrush}"/><Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentButtonText}"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Border" Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+    <Style TargetType="ListBox"><Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/></Style>
+    <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+  </Window.Resources>
+  <Grid Margin="20">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,16"><TextBlock Text="プロファイル管理" FontSize="25" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/><TextBlock Text="アプリごとの割り当てと自動切替を、ここでまとめて管理します。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/></StackPanel>
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition x:Name="ProfileListColumn" Width="165"/><ColumnDefinition Width="14"/><ColumnDefinition x:Name="ApplicationManagementColumn"/></Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="10">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="プロファイル一覧" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+          <ListBox x:Name="ProfileList" Grid.Row="1" SelectionChanged="ProfileSelectionChanged" PreviewMouseRightButtonDown="ProfileList_PreviewMouseRightButtonDown">
+            <ListBox.ItemTemplate><DataTemplate><Grid Margin="6,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="自動" FontSize="11" Foreground="{DynamicResource AccentBrush}" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/></Grid></DataTemplate></ListBox.ItemTemplate>
+            <ListBox.ContextMenu><ContextMenu><MenuItem Header="割り当てをコピー" Click="CopyAssignments_Click"/><MenuItem Header="割り当てを貼り付け" Click="PasteAssignments_Click"/><Separator/><MenuItem Header="名前を変更" Click="RenameProfileManager_Click"/><MenuItem Header="削除" Foreground="{DynamicResource DangerBrush}" Click="DeleteProfileManager_Click"/></ContextMenu></ListBox.ContextMenu>
+          </ListBox>
+          <UniformGrid Grid.Row="2" Columns="3" Margin="0,9,0,0"><Button Content="追加" Padding="4,8" FontSize="12" Click="AddProfileManager_Click"/><Button Content="編集" Padding="4,8" FontSize="12" Click="RenameProfileManager_Click"/><Button Content="削除" Padding="4,8" FontSize="12" Style="{StaticResource DangerButton}" Click="DeleteProfileManager_Click"/></UniformGrid>
+          <StackPanel Grid.Row="3" Margin="0,3,0,0"><Button Content="割り当てをコピー" Padding="6,7" Click="CopyAssignments_Click"/><Button Content="割り当てを貼り付け" Padding="6,7" Click="PasteAssignments_Click"/></StackPanel>
+        </Grid>
+      </Border>
+      <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="16">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock x:Name="SelectedProfileTitle" FontSize="21" FontWeight="Bold"/>
+          <TextBlock Grid.Row="1" Text="自動切替" FontSize="17" FontWeight="SemiBold" Margin="0,18,0,4"/>
+          <ToggleButton x:Name="AutoSwitchBox" Grid.Row="2" Style="{StaticResource AutoSwitchToggle}" Content="自動切替 オフ" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="マウスカーソルが対象アプリ上にあるとき、このプロファイルへ切り替えます"/>
+          <Grid Grid.Row="3" Margin="0,14,0,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="現在起動中のアプリ" FontWeight="SemiBold"/></Grid>
+          <Grid Grid.Row="4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <ListBox x:Name="AssignedApplicationList" MouseDoubleClick="RemoveAutoSwitchApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><TextBlock Text="{Binding}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+            <ListBox x:Name="RunningApplicationList" Grid.Column="2" MouseDoubleClick="AddRunningApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="1" Text="{Binding Value}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+          </Grid>
+          <Grid Grid.Row="5" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal"><Button Content="選択を外す" Click="RemoveAutoSwitchApplication_Click"/></StackPanel>
+            <WrapPanel Grid.Column="2" HorizontalAlignment="Right"><Button Content="一覧を更新" Click="RefreshRunningApplications_Click"/><Button Content="選択を追加" Click="AddRunningApplication_Click"/><Button Content="インストール済みのアプリから選ぶ…" Click="AddInstalledApplication_Click"/></WrapPanel>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+    <Grid Grid.Row="2" Margin="0,16,0,0"><TextBlock x:Name="StatusText" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="キャンセル" Click="Cancel_Click"/><Button Content="変更を反映" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" Click="Apply_Click"/></StackPanel></Grid>
+  </Grid>
+</Window>

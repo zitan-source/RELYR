@@ -154,7 +154,10 @@ public partial class App : System.Windows.Application
         string hash=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..20];
         return @"Local\RELYR.ShutdownExisting.v2."+hash;
     }
-    internal static bool UninstallRestartNeeded(AppConfig config,bool registryRemap,bool? pendingRestart=null)=>registryRemap||config.CapsLockLayerEnabled||(pendingRestart??LegacyKeyRemapService.IsRestartStillPending(config));
+    // A saved UI preference alone does not change Windows and must never cause
+    // a reboot prompt.  A restart is needed only when the registry remap is
+    // currently present, or a CapsLock registry change is awaiting a reboot.
+    internal static bool UninstallRestartNeeded(AppConfig config,bool registryRemap,bool? pendingRestart=null)=>registryRemap||(pendingRestart??LegacyKeyRemapService.IsRestartStillPending(config));
 #if !PRODUCTION_PUBLISH
     async Task RunUpdateTestAndExit(){int result=await UpdateIntegrationTest.RunAsync(Console.Out);ShutdownWithExitCode(result);}
     async Task RunEngineTestAndExit(bool includeRealHook)
@@ -180,7 +183,7 @@ public partial class App : System.Windows.Application
         try
         {
             var macro=new ConfigService().Load().Macros.FirstOrDefault(x=>(byId?x.Id:x.Name).Equals(macroReference,StringComparison.OrdinalIgnoreCase))??throw new InvalidOperationException(byId?"ショートカットに対応するマクロが見つかりません。":$"マクロ「{macroReference}」が見つかりません。");
-            var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));await MacroPlayer.PlayAsync(macro,macroConfig);
+            var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));var result=await MacroPlayer.PlayAsync(macro,macroConfig);if(!result.Succeeded&&!result.Cancelled)throw new InvalidOperationException(result.Message);
         }
         catch(Exception ex){exitCode=1;System.Windows.MessageBox.Show(ex.Message,"マクロを実行できません",MessageBoxButton.OK,MessageBoxImage.Error);}
         finally{InputEngine.ReleaseAll();Shutdown(exitCode);}
