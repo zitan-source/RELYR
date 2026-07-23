@@ -81,6 +81,24 @@ Inno Setup 6がある開発環境では、全テスト後にインストーラ�
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build-installer.ps1
 ```
 
+テストを個別に実行する場合は、リポジトリ直下で次の順に実行します。
+
+```powershell
+dotnet build .\RELYR\RELYR.csproj -c Release -warnaserror
+$dll = ".\RELYR\bin\Release\net10.0-windows\win-x64\RELYR.dll"
+dotnet $dll --self-test
+dotnet $dll --engine-test-no-real
+dotnet $dll --ui-test
+dotnet $dll --startup-test
+```
+
+`--ui-test` は、サインイン済みのWindowsデスクトップ上で実行してください。
+実際の低レベル入力フックまで検証する場合は `--engine-test-no-real` を
+`--engine-test` に置き換えます。`build-production.ps1` と
+`build-installer.ps1` は既定でこの実入力テストを含むため、通常はスクリプトを
+1回実行するだけでビルド、全テスト、成果物生成まで完了します。実入力テストを
+意図的に省く場合だけ `-SkipRealHookTest` を指定します。
+
 本番成果物は `artifacts\production` のみに生成します。ZIP、ポータブル版、自己完結ランタイム同梱版は作成しません。
 
 ## ライセンス

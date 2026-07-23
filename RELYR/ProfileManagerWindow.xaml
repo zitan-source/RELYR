@@ -16,7 +16,7 @@
   </Window.Resources>
   <Grid Margin="20">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Margin="0,0,0,16"><TextBlock Text="プロファイル管理" FontSize="25" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/><TextBlock Text="アプリごとの割り当てと自動切替を、ここでまとめて管理します。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/></StackPanel>
+    <StackPanel Margin="0,0,0,16"><TextBlock Text="プロファイル管理" FontSize="25" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/><TextBlock Text="アプリごとの割り当てと自動切替を、ここでまとめて管理します。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/><CheckBox x:Name="CursorProfileSwitchBox" Content="マウスカーソル下のアプリに応じてプロファイルを自動切替する" Margin="0,9,0,0" ToolTip="RELYR自身の画面上ではプロファイルを切り替えません"/></StackPanel>
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions><ColumnDefinition x:Name="ProfileListColumn" Width="165"/><ColumnDefinition Width="14"/><ColumnDefinition x:Name="ApplicationManagementColumn"/></Grid.ColumnDefinitions>
       <Border Grid.Column="0" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="10">

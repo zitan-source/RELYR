@@ -7,49 +7,108 @@ internal static class WindowMonitorService
 {
     internal enum Direction { Left, Right, Up, Down }
 
-    internal static void MinimizeForeground()
+    internal static IntPtr ResolveTarget(WindowActionTarget target)
     {
-        var window=GetActionableForegroundWindow();
-        ShowWindow(window,6);
-    }
-
-    static IntPtr GetActionableForegroundWindow()
-    {
-        var window=VirtualDesktopService.GetForegroundRootWindow();
-        if(window==IntPtr.Zero||!IsWindowVisible(window))throw new InvalidOperationException("操作するアクティブウィンドウがありません。");
+        var window=target==WindowActionTarget.WindowUnderCursor
+            ?RootWindowUnderCursor()
+            :VirtualDesktopService.GetForegroundRootWindow();
+        if(window==IntPtr.Zero||!IsWindow(window)||!IsWindowVisible(window))
+            throw new InvalidOperationException(target==WindowActionTarget.WindowUnderCursor
+                ?"マウスカーソルの位置に操作できるウィンドウがありません。"
+                :"操作できるアクティブウィンドウがありません。");
         return window;
     }
 
-    internal static void MoveForeground(Direction direction)
+    internal static void Minimize(WindowActionTarget target)=>Minimize(ResolveTarget(target));
+    internal static void Minimize(IntPtr window)=>ShowWindow(ValidateTarget(window),6);
+
+    internal static void ToggleMaximize(WindowActionTarget target)=>ToggleMaximize(ResolveTarget(target));
+
+    internal static void ToggleMaximize(IntPtr window)
     {
-        var window=VirtualDesktopService.GetForegroundRootWindow();
-        if(window==IntPtr.Zero||!GetWindowRect(window,out var rect))throw new InvalidOperationException("移動するアクティブウィンドウがありません。");
+        ValidateTarget(window);
+        ShowWindow(window,IsZoomed(window)?9:3);
+        VirtualDesktopService.ActivateWindow(window);
+    }
+
+    internal static void ToggleMaximizeUnderCursor()=>ToggleMaximize(WindowActionTarget.WindowUnderCursor);
+
+    internal static void Maximize(WindowActionTarget target)=>Maximize(ResolveTarget(target));
+
+    internal static void Maximize(IntPtr window)
+    {
+        ValidateTarget(window);
+        ShowWindow(window,3);
+        VirtualDesktopService.ActivateWindow(window);
+    }
+
+    internal static void RestoreOrMinimize(WindowActionTarget target)=>RestoreOrMinimize(ResolveTarget(target));
+
+    internal static void RestoreOrMinimize(IntPtr window)
+    {
+        ValidateTarget(window);
+        ShowWindow(window,IsZoomed(window)?9:6);
+        VirtualDesktopService.ActivateWindow(window);
+    }
+
+    internal static void Close(WindowActionTarget target)=>Close(ResolveTarget(target));
+
+    internal static void Close(IntPtr window)
+    {
+        ValidateTarget(window);
+        // Posting SC_CLOSE matches Alt+F4 without changing focus and avoids a blocking
+        // cross-process SendMessage call (which previously caused input-sync errors).
+        if(!PostMessage(window,0x0112,(IntPtr)0xF060,IntPtr.Zero))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"ウィンドウを閉じる命令を送れませんでした。");
+    }
+
+    internal static void Snap(WindowActionTarget target,Direction direction)=>Snap(ResolveTarget(target),direction);
+
+    internal static void Snap(IntPtr window,Direction direction)
+    {
+        if(direction is not (Direction.Left or Direction.Right))throw new ArgumentOutOfRangeException(nameof(direction));
+        ValidateTarget(window);
+        if(IsZoomed(window)||IsIconic(window))ShowWindow(window,9);
+        var area=Screen.FromHandle(window).WorkingArea;
+        int left=direction==Direction.Left?area.Left:area.Left+area.Width/2;
+        int width=direction==Direction.Left?area.Width/2:area.Width-area.Width/2;
+        if(!SetWindowPos(window,IntPtr.Zero,left,area.Top,width,area.Height,0x0004|0x0040))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"ウィンドウを配置できませんでした。");
+        VirtualDesktopService.ActivateWindow(window);
+    }
+
+    internal static void Move(WindowActionTarget target,Direction direction)=>Move(ResolveTarget(target),direction);
+
+    internal static void Move(IntPtr window,Direction direction)
+    {
+        ValidateTarget(window);
+        if(!GetWindowRect(window,out var rect))throw new InvalidOperationException("移動するウィンドウの位置を取得できませんでした。");
         var screens=Screen.AllScreens;
         if(screens.Length<2)throw new InvalidOperationException("移動先のモニターがありません。");
         int current=Array.FindIndex(screens,x=>x.DeviceName==Screen.FromHandle(window).DeviceName);
         if(current<0)current=0;
-        int target=SelectTargetIndex(screens.Select(x=>x.WorkingArea).ToArray(),current,direction);
-        if(target<0)throw new InvalidOperationException($"{DirectionName(direction)}側にモニターがありません。");
+        int destinationIndex=SelectTargetIndex(screens.Select(x=>x.WorkingArea).ToArray(),current,direction);
+        if(destinationIndex<0)throw new InvalidOperationException($"{DirectionName(direction)}側にモニターがありません。");
 
         bool maximized=IsZoomed(window);bool minimized=IsIconic(window);
         if(maximized||minimized)ShowWindow(window,9);
-        var source=screens[current].WorkingArea;var destination=screens[target].WorkingArea;
+        var source=screens[current].WorkingArea;var destination=screens[destinationIndex].WorkingArea;
         int width=Math.Min(rect.Right-rect.Left,destination.Width);int height=Math.Min(rect.Bottom-rect.Top,destination.Height);
         double rx=(rect.Left-source.Left)/(double)Math.Max(1,source.Width-width);
         double ry=(rect.Top-source.Top)/(double)Math.Max(1,source.Height-height);
         int x=destination.Left+(int)Math.Round(Math.Clamp(rx,0,1)*Math.Max(0,destination.Width-width));
         int y=destination.Top+(int)Math.Round(Math.Clamp(ry,0,1)*Math.Max(0,destination.Height-height));
-        if(!SetWindowPos(window,IntPtr.Zero,x,y,width,height,0x0004|0x0040))throw new InvalidOperationException("ウィンドウを移動できませんでした。");
+        if(!SetWindowPos(window,IntPtr.Zero,x,y,width,height,0x0004|0x0040))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"ウィンドウを移動できませんでした。");
         if(maximized)ShowWindow(window,3);
         VirtualDesktopService.ActivateWindow(window);
     }
 
-    internal static void ToggleMaximizeUnderCursor()
+    static IntPtr ValidateTarget(IntPtr window)
     {
-        var window=RootWindowUnderCursor();
-        if(window==IntPtr.Zero||!IsWindowVisible(window))throw new InvalidOperationException("カーソル位置に操作できるウィンドウがありません。");
-        ShowWindow(window,IsZoomed(window)?9:3);
-        VirtualDesktopService.ActivateWindow(window);
+        if(window==IntPtr.Zero||!IsWindow(window)||!IsWindowVisible(window))
+            throw new InvalidOperationException("操作対象のウィンドウがなくなりました。");
+        return window;
     }
 
     static IntPtr RootWindowUnderCursor()
@@ -75,16 +134,18 @@ internal static class WindowMonitorService
     }
 
     static (double X,double Y) Center(System.Drawing.Rectangle r)=>(r.Left+r.Width/2d,r.Top+r.Height/2d);
-    static string DirectionName(Direction d)=>d switch{Direction.Left=>"左",Direction.Right=>"右",Direction.Up=>"上",_=>"下"};
+    static string DirectionName(Direction direction)=>direction switch{Direction.Left=>"左",Direction.Right=>"右",Direction.Up=>"上",_=>"下"};
     [StructLayout(LayoutKind.Sequential)]struct RECT{public int Left,Top,Right,Bottom;}
     [StructLayout(LayoutKind.Sequential)]struct POINT{public int X,Y;}
-    [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr hWnd,out RECT rect);
-    [DllImport("user32.dll")]static extern bool SetWindowPos(IntPtr hWnd,IntPtr insertAfter,int x,int y,int width,int height,uint flags);
+    [DllImport("user32.dll",SetLastError=true)]static extern bool GetWindowRect(IntPtr hWnd,out RECT rect);
+    [DllImport("user32.dll",SetLastError=true)]static extern bool SetWindowPos(IntPtr hWnd,IntPtr insertAfter,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll")]static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")]static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")]static extern bool ShowWindow(IntPtr hWnd,int command);
-    [DllImport("user32.dll")]static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll",SetLastError=true)]static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")]static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hWnd,uint flags);
     [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")]static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll",SetLastError=true)]static extern bool PostMessage(IntPtr hWnd,uint message,IntPtr wParam,IntPtr lParam);
 }

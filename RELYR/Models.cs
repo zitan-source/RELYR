@@ -4,6 +4,7 @@ namespace RELYR;
 
 public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile }
 public enum AppThemeMode { System, Dark, Light }
+public enum WindowActionTarget { ActiveWindow, WindowUnderCursor }
 
 public sealed class MacroStep
 {
@@ -51,6 +52,7 @@ public sealed class AppConfig
 {
     public int Version { get; set; } = 15;
     public string ActiveProfile { get; set; } = "標準";
+    public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool EngineEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public bool AutoExtractDesktopArchives { get; set; }
@@ -58,6 +60,9 @@ public sealed class AppConfig
     public string ArchiveDestinationFolder { get; set; } = "";
     public bool ShowDesktopNumberInTray { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    public string DismissedUpdateVersion { get; set; } = "";
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public WindowActionTarget WindowActionTarget { get; set; } = WindowActionTarget.ActiveWindow;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
     public long LastUpdateCheckUtcTicks { get; set; }

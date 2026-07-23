@@ -1,0 +1,73 @@
+<Window x:Class="RELYR.MacroInputPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="キーパッドから入力" Width="1180" Height="760" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource PrimaryText}">
+  <Window.Resources>
+    <Style TargetType="Button">
+      <Setter Property="Padding" Value="5,3"/>
+      <Setter Property="Background" Value="{DynamicResource KeyBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Border" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="5" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlPressedBackground}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Grid Margin="2,0,2,12">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="キーパッドから入力" FontSize="25" FontWeight="Bold"/>
+        <TextBlock x:Name="KeyboardHeading" Text="キーボード" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
+      </StackPanel>
+      <TextBlock Grid.Column="1" Text="選んだ入力はマクロへすぐ追加されます。続けて複数選択できます。"
+                 Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+    </Grid>
+
+    <Border Grid.Row="1" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="12" ClipToBounds="True">
+      <Viewbox x:Name="InputViewbox" Stretch="Uniform" StretchDirection="Both"
+               HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Canvas x:Name="InputCanvas" Width="1200" Height="700"/>
+      </Viewbox>
+    </Border>
+
+    <Grid Grid.Row="2" Margin="2,12,2,0">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="StatusText" Text="キーまたはマウスのボタンを選んでください。"
+                 Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+      <Button Grid.Column="1" Content="完了" Click="Close_Click" Width="108" Height="40"
+              Background="{DynamicResource AccentStrongBrush}" Foreground="White"
+              BorderBrush="{DynamicResource AccentBrush}"/>
+    </Grid>
+  </Grid>
+</Window>

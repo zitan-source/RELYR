@@ -34,6 +34,8 @@ public partial class MainWindow : Window
     readonly Task dragActionWorker;
     readonly System.Windows.Threading.DispatcherTimer trayNumberTimer=new(){Interval=TimeSpan.FromMilliseconds(500)};
     readonly System.Windows.Threading.DispatcherTimer profileSwitchTimer=new(){Interval=TimeSpan.FromMilliseconds(500)};
+    bool profileDropDownOpen;
+    DateTime suppressAutomaticProfileSwitchUntil=DateTime.MinValue;
     readonly System.Windows.Threading.DispatcherTimer autoSaveTimer=new(){Interval=TimeSpan.FromMilliseconds(450)};
     readonly CancellationTokenSource updateCancellation=new();
     internal static readonly TimeSpan AutomaticUpdateCheckInterval=TimeSpan.FromDays(1);
@@ -112,8 +114,10 @@ public partial class MainWindow : Window
         BuildKeyboard();engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;RefreshProfiles();UpdateLayerButtons();
         engine.InputReceived = HandleInput;
         InputEngine.DesktopActionFailed=message=>Dispatcher.BeginInvoke(()=>{LastInput.Text="仮想デスクトップ操作エラー: "+message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});
+        engine.QualifyInput = QualifyInput;
         engine.HasMapping = HasMapping;
         engine.IsNativeMouseDrag=input=>FindMapping(input) is {Kind:ActionKind.Mouse} map&&MappingExecutor.IsModifierDrag(map.Value);
+        engine.HasLegacyMouseDrag=input=>FindMapping(input) is { } map&&(!string.IsNullOrWhiteSpace(map.DragValue)||!string.IsNullOrWhiteSpace(map.DragEndValue));
         engine.SuppressLayerTap = key=>key.Equals("CapsLock",StringComparison.OrdinalIgnoreCase);
         engine.HasLongPress = input => HasConfiguredLongPress(FindMapping(input));
         engine.LongPressDuration = input => FindMapping(input)?.LongPressMs ?? 500;
@@ -429,8 +433,11 @@ public partial class MainWindow : Window
     void OpenMacros_Click(object sender,RoutedEventArgs e)=>ShowMacroWindow(false,false);
     void OpenProfileManager_Click(object sender,RoutedEventArgs e)
     {
-        var window=new ProfileManagerWindow(config.Profiles,config.ActiveProfile){Owner=this};if(window.ShowDialog()!=true)return;
-        config.Profiles=window.ResultProfiles.ToList();config.ActiveProfile=window.ResultActiveProfile;ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();RebuildTrayMenu();
+        var window=new ProfileManagerWindow(config.Profiles,config.ActiveProfile,config.AutoSwitchProfilesByCursor){Owner=this};if(window.ShowDialog()!=true)return;
+        config.Profiles=window.ResultProfiles.ToList();
+        config.ActiveProfile=window.ResultActiveProfile;
+        config.AutoSwitchProfilesByCursor=window.ResultAutoSwitchProfilesByCursor;
+        ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();RebuildTrayMenu();
     }
     void ChooseMacro_Click(object sender,RoutedEventArgs e)=>ShowMacroWindow(true,sender is System.Windows.Controls.Button{Tag:string tag}&&tag=="Long");
     void ChooseProfileAction_Click(object sender,RoutedEventArgs e)
@@ -465,8 +472,15 @@ public partial class MainWindow : Window
         string layer="通常";selectedBaseInput=input;
         int plus=input.IndexOf('+');if(plus>0){layer=input[..plus];selectedBaseInput=input[(plus+1)..];}
         var visibleAssignment=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
-        detectMode = false;editingSelectedInput=focusExecution; selected = CurrentProfile.Mappings.FirstOrDefault(x => x.Input == input) ?? new Mapping { Input = input,Kind=ActionKind.Key };
+        detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(CurrentProfile.Mappings,visibleAssignment,input);
         currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind; ValueBox.Text = selected.Value; LongKindBox.SelectedValue=selected.LongPressKind; LongValueBox.Text=selected.LongPressValue; LongPressBox.Text = selected.LongPressMs.ToString(); EnabledBox.IsChecked = selected.Enabled; LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
+    }
+    internal static Mapping SelectEditorMapping(IReadOnlyList<Mapping> currentMappings,Mapping? visibleAssignment,string input)
+    {
+        var direct=currentMappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        if(direct!=null)return direct;
+        if(visibleAssignment!=null){var inherited=CloneMapping(visibleAssignment);inherited.Input=input;return inherited;}
+        return new Mapping{Input=input,Kind=ActionKind.Key};
     }
     internal static bool ShouldFocusExecutionForSelectedInput(Mapping? visibleAssignment)=>visibleAssignment==null;
     internal static string DisplayInputName(string input)
@@ -520,9 +534,16 @@ public partial class MainWindow : Window
         foreach(var item in dragActionQueue.GetConsumingEnumerable())try{if(item.Map==null){InputEngine.EndModifierDrag();continue;}bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?ThemeService.Brush("DangerBrush"):ThemeService.Brush("AccentBrush");});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="ドラッグ実行エラー: "+ex.Message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});}
     }
     bool QueueDragAction(Mapping? map,string input){try{return !dragActionQueue.IsAddingCompleted&&dragActionQueue.TryAdd((map,input));}catch(InvalidOperationException){return false;}}
+    string QualifyInput(string input)
+    {
+        if(input.StartsWith("Taskbar+",StringComparison.OrdinalIgnoreCase)||!ConditionMatcher.IsCursorOverTaskbar())return input;
+        string taskbarInput="Taskbar+"+input;
+        return FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,taskbarInput,x=>MappingInterceptsInput(x)&&AppMatches(x.Application))!=null?taskbarInput:input;
+    }
     Mapping? FindMapping(string input)
     {
-        if(ConditionMatcher.IsCursorOverTaskbar()){var taskbar=FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,"Taskbar+"+input,x=>MappingInterceptsInput(x)&&AppMatches(x.Application));if(taskbar!=null)return taskbar;}
+        if(input.StartsWith("Taskbar+",StringComparison.OrdinalIgnoreCase))return FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,input,x=>MappingInterceptsInput(x)&&AppMatches(x.Application));
+        string qualified=QualifyInput(input);if(!qualified.Equals(input,StringComparison.OrdinalIgnoreCase))return FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,qualified,x=>MappingInterceptsInput(x)&&AppMatches(x.Application));
         return FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,input,x=>MappingInterceptsInput(x)&&AppMatches(x.Application));
     }
     bool HasMapping(string input){if(input.EndsWith("+*",StringComparison.Ordinal)){string prefix=input[..^1];return FindProfileMapping(appliedConfig.Profiles,AppliedProfile.Name,null,x=>MappingInterceptsInput(x)&&x.Input.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)&&AppMatches(x.Application))!=null;}return MappingInterceptsInput(FindMapping(input));}
@@ -655,7 +676,18 @@ public partial class MainWindow : Window
         tray.ContextMenuStrip=menu;old?.Dispose();
     }
 
-    void ProfileChanged(object sender, SelectionChangedEventArgs e) { if (loading || ProfileBox.SelectedItem is not string name) return;SwitchProfile(name,false); }
+    void ProfileChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if(loading||ProfileBox.SelectedItem is not string name)return;
+        suppressAutomaticProfileSwitchUntil=DateTime.UtcNow.AddSeconds(2);
+        SwitchProfile(name,false);
+    }
+    void ProfileDropDownOpened(object sender,EventArgs e)=>profileDropDownOpen=true;
+    void ProfileDropDownClosed(object sender,EventArgs e)
+    {
+        profileDropDownOpen=false;
+        suppressAutomaticProfileSwitchUntil=DateTime.UtcNow.AddSeconds(2);
+    }
     void KeyboardLayoutChanged(object sender,SelectionChangedEventArgs e){if(loading||config==null)return;config.KeyboardLayout=KeyboardLayoutBox.SelectedIndex==1?"US":"JIS";appliedConfig.KeyboardLayout=config.KeyboardLayout;engine.UseUsLayout=config.KeyboardLayout=="US";BuildKeyboard();ColorButtons();var persisted=store.Load();persisted.KeyboardLayout=config.KeyboardLayout;store.Save(persisted);ShowInlineNotice(config.KeyboardLayout+"配列へ切り替えました");}
     void MainContent_SizeChanged(object sender,SizeChangedEventArgs e)
     {
@@ -695,12 +727,32 @@ public partial class MainWindow : Window
     }
     void AutoSwitchProfile()
     {
+        if(profileDropDownOpen||DateTime.UtcNow<suppressAutomaticProfileSwitchUntil)return;
+        if(!appliedConfig.AutoSwitchProfilesByCursor)
+        {
+            if(ApplyAutomaticProfile(config,appliedConfig,config.ActiveProfile))RebuildTrayMenu();
+            return;
+        }
         if(!appliedConfig.Profiles.Skip(1).Any(x=>x.AutoSwitchEnabled))return;
-        string process=ConditionMatcher.ProcessUnderCursor();
+        // The taskbar is an input location, not an application profile target.
+        // Keep the profile of the application that the pointer just left so its
+        // Taskbar+... mappings remain available.
+        bool cursorOverTaskbar=ConditionMatcher.IsCursorOverTaskbar();
+        string process=cursorOverTaskbar?"":ConditionMatcher.ProcessUnderCursor();
         if(IsOwnProcess(process))return;
-        var target=SelectAutomaticProfile(appliedConfig.Profiles,process);if(target.Name!=appliedConfig.ActiveProfile)SwitchProfile(target.Name,true,false);
+        string targetName=SelectAutomaticProfileNameForLocation(appliedConfig.Profiles,appliedConfig.ActiveProfile,process,cursorOverTaskbar);
+        if(ApplyAutomaticProfile(config,appliedConfig,targetName))RebuildTrayMenu();
+    }
+    internal static bool ApplyAutomaticProfile(AppConfig editingConfig,AppConfig runtimeConfig,string targetName)
+    {
+        if(runtimeConfig.ActiveProfile==targetName||!runtimeConfig.Profiles.Any(x=>x.Name==targetName))return false;
+        // Automatic switching is a runtime concern. Never move the profile that the
+        // user is currently editing, even when the cursor or virtual desktop changes.
+        runtimeConfig.ActiveProfile=targetName;
+        return true;
     }
     internal static Profile SelectAutomaticProfile(IReadOnlyList<Profile> profiles,string process)=>profiles.Skip(1).FirstOrDefault(x=>x.AutoSwitchEnabled&&x.AutoSwitchApplications.Any(app=>ConditionMatcher.Matches(app,process)))??profiles[0];
+    internal static string SelectAutomaticProfileNameForLocation(IReadOnlyList<Profile> profiles,string currentProfile,string process,bool cursorOverTaskbar)=>cursorOverTaskbar&&profiles.Any(x=>x.Name==currentProfile)?currentProfile:SelectAutomaticProfile(profiles,process).Name;
     internal static bool IsOwnProcess(string process,string? executablePath=null)=>!string.IsNullOrWhiteSpace(process)&&ConditionMatcher.Matches(System.IO.Path.GetFileNameWithoutExtension(executablePath??Environment.ProcessPath??"RELYR"),process);
     void NewProfile_Click(object s, RoutedEventArgs e) { var name=PromptText("新しいプロファイル","プロファイル名",$"プロファイル {config.Profiles.Count+1}");if(string.IsNullOrWhiteSpace(name)||config.Profiles.Any(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase))){if(!string.IsNullOrWhiteSpace(name))ShowInlineNotice("同じ名前のプロファイルがあります");return;}var source=SelectProfile("割り当てのコピー元（コピーしない場合はキャンセル）",true);config.Profiles.Add(new Profile{Name=name,Mappings=source?.Mappings.Select(CloneMapping).ToList()??[]});config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus(); }
     void DuplicateProfile_Click(object s,RoutedEventArgs e){var source=CurrentProfile;var name=source.Name+" のコピー";int i=2;while(config.Profiles.Any(x=>x.Name==name))name=source.Name+$" のコピー {i++}";var copy=new Profile{Name=name,Mappings=source.Mappings.Select(CloneMapping).ToList()};config.Profiles.Add(copy);config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus();}
@@ -762,12 +814,62 @@ public partial class MainWindow : Window
         if(window.CapsRemapChanged){LastInput.Text="CapsLock設定を変更しました — Windows再起動後に反映されます";LastInput.Foreground=ThemeService.Brush("WarningBrush");}
         if(window.ResetConfig is { } reset){ApplyCompleteConfig(reset,"すべての設定を初期状態へ戻しました");if(window.ResetNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,false);return;}
         if(window.ImportedConfig is { } imported){ApplyCompleteConfig(imported,"設定をインポートして反映しました");if(window.ImportedCapsLockNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,window.ImportedCapsLockEnabled);return;}
-        config.SpaceHoldRepeatEnabled=window.SpaceHoldRepeat;config.SpaceHoldRepeatDelayMs=window.SpaceHoldRepeatDelay;appliedConfig.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;appliedConfig.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;var repeatSettings=store.Load();repeatSettings.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;repeatSettings.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;store.Save(repeatSettings);
         bool previousUpdateSetting=config.CheckForUpdates;
-        config.ThemeMode=window.SelectedThemeMode;appliedConfig.ThemeMode=config.ThemeMode;ThemeService.Apply(config.ThemeMode);
-        try{if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);config.StartWithWindows=window.StartWithWindows;config.AutoExtractDesktopArchives=window.AutoExtract;config.ArchiveWatchFolder=window.ArchiveWatchFolder;config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;config.CheckForUpdates=window.CheckForUpdates;config.AutoSave=window.AutoSave;appliedConfig.StartWithWindows=config.StartWithWindows;appliedConfig.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;appliedConfig.ArchiveWatchFolder=config.ArchiveWatchFolder;appliedConfig.ArchiveDestinationFolder=config.ArchiveDestinationFolder;appliedConfig.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;appliedConfig.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;appliedConfig.CheckForUpdates=config.CheckForUpdates;appliedConfig.AutoSave=config.AutoSave;var persisted=store.Load();persisted.StartWithWindows=config.StartWithWindows;persisted.AutoExtractDesktopArchives=config.AutoExtractDesktopArchives;persisted.ArchiveWatchFolder=config.ArchiveWatchFolder;persisted.ArchiveDestinationFolder=config.ArchiveDestinationFolder;persisted.DeleteArchiveAfterExtract=config.DeleteArchiveAfterExtract;persisted.ShowDesktopNumberInTray=config.ShowDesktopNumberInTray;persisted.CheckForUpdates=config.CheckForUpdates;persisted.ThemeMode=config.ThemeMode;persisted.AutoSave=config.AutoSave;store.Save(persisted);archiveWatcher.Apply(config);UpdateTrayNumber();ApplyUpdateCheckPreference(previousUpdateSetting);if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");else{LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";LastInput.Foreground=ThemeService.Brush("AccentBrush");}}
+        try
+        {
+            ApplySettingsWindowValues(window);
+            CopyApplicationOptions(config,appliedConfig);
+            var persisted=store.Load();
+            CopyApplicationOptions(config,persisted);
+            store.Save(persisted);
+
+            ThemeService.Apply(config.ThemeMode);
+            archiveWatcher.Apply(config);
+            UpdateTrayNumber();
+            ApplyUpdateCheckPreference(previousUpdateSetting);
+            if(config.AutoSave)SaveAndApply("自動保存をオンにし、現在の変更を保存・反映しました");
+            else
+            {
+                LastInput.Text="アプリ設定を保存しました — 自動保存はオフです";
+                LastInput.Foreground=ThemeService.Brush("AccentBrush");
+            }
+        }
         catch(Exception ex){WpfMessageBox.Show("設定を保存できません: "+ex.Message);}
         finally{loading=true;AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();loading=false;}
+    }
+    void ApplySettingsWindowValues(SettingsWindow window)
+    {
+        if(window.StartWithWindowsChanged)StartupService.SetEnabled(window.StartWithWindows);
+        config.StartWithWindows=window.StartWithWindows;
+        config.AutoExtractDesktopArchives=window.AutoExtract;
+        config.ArchiveWatchFolder=window.ArchiveWatchFolder;
+        config.ArchiveDestinationFolder=window.ArchiveDestinationFolder;
+        config.DeleteArchiveAfterExtract=window.DeleteAfterExtract;
+        config.ShowDesktopNumberInTray=window.ShowDesktopNumberInTray;
+        config.CheckForUpdates=window.CheckForUpdates;
+        config.WindowActionTarget=window.SelectedWindowActionTarget;
+        config.ThemeMode=window.SelectedThemeMode;
+        config.AutoSave=window.AutoSave;
+        config.SpaceHoldRepeatEnabled=window.SpaceHoldRepeat;
+        config.SpaceHoldRepeatDelayMs=window.SpaceHoldRepeatDelay;
+        engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;
+        engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;
+    }
+    static void CopyApplicationOptions(AppConfig source,AppConfig destination)
+    {
+        destination.StartWithWindows=source.StartWithWindows;
+        destination.AutoExtractDesktopArchives=source.AutoExtractDesktopArchives;
+        destination.ArchiveWatchFolder=source.ArchiveWatchFolder;
+        destination.ArchiveDestinationFolder=source.ArchiveDestinationFolder;
+        destination.DeleteArchiveAfterExtract=source.DeleteArchiveAfterExtract;
+        destination.ShowDesktopNumberInTray=source.ShowDesktopNumberInTray;
+        destination.CheckForUpdates=source.CheckForUpdates;
+        destination.DismissedUpdateVersion=source.DismissedUpdateVersion;
+        destination.WindowActionTarget=source.WindowActionTarget;
+        destination.ThemeMode=source.ThemeMode;
+        destination.AutoSave=source.AutoSave;
+        destination.SpaceHoldRepeatEnabled=source.SpaceHoldRepeatEnabled;
+        destination.SpaceHoldRepeatDelayMs=source.SpaceHoldRepeatDelayMs;
     }
     void ApplyCompleteConfig(AppConfig value,string message)
     {
@@ -780,11 +882,12 @@ public partial class MainWindow : Window
     }
     public void ShowFirstRunSetup(){if(!NeedsFirstRunSetup)return;var setup=new SetupWindow{Owner=this};if(setup.ShowDialog()==true){config.ActiveProfile="標準";config.FirstRunCompleted=setup.DoNotShowAgain;store.Save(config);RefreshProfiles();RebuildTrayMenu();}}
     public void ShowFromExternalLaunch(){Show();if(WindowState==WindowState.Minimized)WindowState=WindowState.Normal;Activate();Topmost=true;Topmost=false;Focus();EnsureUpdateCheckStarted();}
+    // アップデートの定期確認、通知表示、検証済みインストーラーの起動をまとめて管理する。
     void ApplyUpdateCheckPreference(bool previousSetting)
     {
         if(!config.CheckForUpdates)
         {
-            availableUpdate=null;UpdateAvailableButton.Visibility=Visibility.Collapsed;return;
+            availableUpdate=null;UpdateBanner.Visibility=Visibility.Collapsed;return;
         }
         EnsureUpdateCheckStarted(!previousSetting);
     }
@@ -826,7 +929,7 @@ public partial class MainWindow : Window
     {
         lastUpdateCheck=result;
         availableUpdate=result.AvailableUpdate;
-        if(availableUpdate==null)UpdateAvailableButton.Visibility=Visibility.Collapsed;
+        if(availableUpdate==null)UpdateBanner.Visibility=Visibility.Collapsed;
         else ShowUpdateAvailable(availableUpdate);
         config.LastUpdateCheckUtcTicks=result.CheckedAt.UtcTicks;
         appliedConfig.LastUpdateCheckUtcTicks=config.LastUpdateCheckUtcTicks;
@@ -845,15 +948,37 @@ public partial class MainWindow : Window
         availableUpdate=update;
         if(update==null)
         {
-            UpdateAvailableButton.Visibility=Visibility.Collapsed;
+            UpdateBanner.Visibility=Visibility.Collapsed;
             return;
         }
-        UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";
+        UpdateBannerText.Text=$"新しいバージョンが利用可能です（v{update.VersionText}）";
+        UpdateAvailableButton.Content="今すぐ更新";
         UpdateAvailableButton.IsEnabled=true;
-        UpdateAvailableButton.Visibility=Visibility.Visible;
+        UpdateDismissButton.IsEnabled=true;
+        UpdateBanner.Visibility=string.Equals(config.DismissedUpdateVersion,update.VersionText,StringComparison.OrdinalIgnoreCase)
+            ?Visibility.Collapsed
+            :Visibility.Visible;
     }
     void ShowUpdateAvailable(UpdateInfo update)=>SetAvailableUpdate(update);
     internal void ShowUpdateAvailableForTest(UpdateInfo update)=>ShowUpdateAvailable(update);
+    internal void DismissAvailableUpdateForTest()=>DismissCurrentUpdate();
+    void UpdateDismiss_Click(object sender,RoutedEventArgs e)=>DismissCurrentUpdate();
+    void DismissCurrentUpdate()
+    {
+        // 未保存のキー割り当てには触れず、閉じたリリース番号だけを直ちに永続化する。
+        if(updateInProgress||availableUpdate is not { } update)return;
+        config.DismissedUpdateVersion=update.VersionText;
+        appliedConfig.DismissedUpdateVersion=update.VersionText;
+        UpdateBanner.Visibility=Visibility.Collapsed;
+        try
+        {
+            var persisted=store.Load();
+            persisted.DismissedUpdateVersion=update.VersionText;
+            store.Save(persisted);
+        }
+        catch(IOException){}
+        catch(UnauthorizedAccessException){}
+    }
     async void UpdateAvailable_Click(object sender,RoutedEventArgs e)
     {
         if(updateInProgress||availableUpdate is not { } update)return;
@@ -863,17 +988,17 @@ public partial class MainWindow : Window
     internal async Task<bool> InstallUpdateAsync(Window owner,UpdateInfo update,Action<string>? reportProgress=null,IProgress<UpdateDownloadProgress>? downloadProgress=null)
     {
         if(updateInProgress)return false;
-        updateInProgress=true;UpdateAvailableButton.IsEnabled=false;UpdateAvailableButton.Content="アップデートをダウンロードしています…";
+        updateInProgress=true;UpdateAvailableButton.IsEnabled=false;UpdateDismissButton.IsEnabled=false;UpdateAvailableButton.Content="ダウンロード中…";
         reportProgress?.Invoke("アップデートをダウンロードしています…");
         try
         {
             var footerProgress=new Progress<UpdateDownloadProgress>(value=>
             {
-                if(value.Percentage is { } percentage)UpdateAvailableButton.Content=$"アップデートをダウンロードしています… {percentage:0}%";
+                if(value.Percentage is { } percentage)UpdateAvailableButton.Content=$"ダウンロード中… {percentage:0}%";
                 downloadProgress?.Report(value);
             });
             string installer=await UpdateService.DownloadAndVerifyAsync(update,updateCancellation.Token,footerProgress);
-            UpdateAvailableButton.Content="インストーラーを起動しています…";
+            UpdateAvailableButton.Content="起動中…";
             reportProgress?.Invoke("検証が完了しました。インストーラーを起動しています…");
             var process=Process.Start(new ProcessStartInfo(installer,"/SP- /CLOSEAPPLICATIONS"){UseShellExecute=true});
             if(process==null)throw new InvalidOperationException("更新用インストーラーを起動できませんでした。");
@@ -896,7 +1021,8 @@ public partial class MainWindow : Window
     {
         updateInProgress=false;
         UpdateAvailableButton.IsEnabled=true;
-        UpdateAvailableButton.Content=$"↑ アップデートがあります（v{update.VersionText}）";
+        UpdateDismissButton.IsEnabled=true;
+        UpdateAvailableButton.Content="今すぐ更新";
     }
     void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; CurrentProfile.Mappings.Remove(selected); var input = selected.Input; selected = null; SelectInput(input,false);ClearExecutionFocus(s as FrameworkElement);MarkDirty();ColorButtons();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush"); }
     void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;MacroPlayer.PlaybackFinished-=MacroPlaybackFinished;updateCancellation.Cancel();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();tray.Visible=false;tray.Dispose();numberedTrayIcon?.Dispose();defaultTrayIcon?.Dispose();archiveWatcher.Dispose();updateCancellation.Dispose(); }

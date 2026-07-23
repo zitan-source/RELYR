@@ -8,9 +8,19 @@ using WpfKeyEventArgs=System.Windows.Input.KeyEventArgs;
 
 namespace RELYR;
 
+public enum MacroStepVisualKind
+{
+    Keyboard,
+    Mouse,
+    Wait,
+    Action,
+    Macro,
+    Text
+}
+
 public partial class MacroWindow:Window
 {
-    public sealed record StepView(MacroStep Step,int Number,string Title,string Detail,string DelayLabel);
+    public sealed record StepView(MacroStep Step,int Number,string Title,string Detail,string DelayLabel,MacroStepVisualKind VisualKind);
 
     readonly AppConfig config;
     readonly Action<bool,bool,bool> setRecording;
@@ -19,15 +29,17 @@ public partial class MacroWindow:Window
     readonly HashSet<MacroStep> recordedMovesInsideWindow=[];
     readonly HashSet<string> suppressedMappedInputs=new(StringComparer.OrdinalIgnoreCase);
     readonly Stack<List<MacroStep>> undoSteps=[];
+    readonly List<MacroStep> copiedSteps=[];
     List<MacroDefinition> savedMacros=[];
     Dictionary<Mapping,(ActionKind Kind,string Value,ActionKind LongKind,string LongValue)> savedMappingActions=[];
     MacroDefinition? current;
     (int X,int Y)? lastRecordedMousePosition;
     Stopwatch? sinceLast,manualSinceLast;
     MacroStep? dragStep;
+    Action<int,int>? coordinateCaptureCallback;
     int dragInsertionIndex=-1;
     System.Windows.Point dragStart;
-    bool recording,manualCaptureActive,loading,refreshingList,loadingOption,editingName,accepted,dirty,closingConfirmed,testRunning,ignoreInitialMouseRelease;
+    bool recording,manualCaptureActive,coordinateCaptureActive,loading,refreshingList,loadingOption,editingName,accepted,dirty,closingConfirmed,testRunning,ignoreInitialMouseRelease;
     int recordingStartIndex;
     string nameBeforeEdit="";
     readonly MacroStopShortcut stopShortcut=new();
@@ -121,7 +133,7 @@ public partial class MacroWindow:Window
     }
     void MacroChanged(object sender,SelectionChangedEventArgs e)
     {
-        if(refreshingList)return;StopRecording();StopManualCapture();CommitNameEdit(false);current=MacroList.SelectedItem as MacroDefinition;undoSteps.Clear();loading=true;NameBox.Text=current?.Name??"";loading=false;RefreshSteps();SetEditorState();FooterStatus.Text="";
+        if(refreshingList)return;StopCoordinateCapture();StopRecording();StopManualCapture();CommitNameEdit(false);current=MacroList.SelectedItem as MacroDefinition;undoSteps.Clear();loading=true;NameBox.Text=current?.Name??"";loading=false;RefreshSteps();SetEditorState();FooterStatus.Text="";
     }
     void NameChanged(object sender,TextChangedEventArgs e){if(!loading&&editingName)FooterStatus.Text="［名前を確定］を押すか Enter キーで確定してください。";}
     void ConfirmName_Click(object sender,RoutedEventArgs e)=>CommitNameEdit(true);
@@ -136,7 +148,7 @@ public partial class MacroWindow:Window
 
     void ManualCapture_Click(object sender,RoutedEventArgs e)
     {
-        if(manualCaptureActive){StopManualCapture();return;}if(current==null)return;StopRecording();manualCaptureActive=true;manualHeld.Clear();manualSinceLast=Stopwatch.StartNew();setRecording(true,false,false);ManualCaptureButton.Content="■ 手動追加を完了";ManualStatus.Text="入力中です。キーを押してください。終わったら［手動追加を完了］を押します。";ManualCaptureButton.Focus();
+        if(manualCaptureActive){StopManualCapture();return;}if(current==null)return;StopCoordinateCapture();StopRecording();manualCaptureActive=true;manualHeld.Clear();manualSinceLast=Stopwatch.StartNew();setRecording(true,false,false);ManualCaptureButton.Content="■ 手動追加を完了";ManualStatus.Text="入力中です。キーを押してください。終わったら［手動追加を完了］を押します。";ManualCaptureButton.Focus();
     }
     void ManualCapture_LostKeyboardFocus(object sender,KeyboardFocusChangedEventArgs e){if(manualCaptureActive&&e.NewFocus is not null&&e.NewFocus!=ManualCaptureButton)StopManualCapture();}
     void StopManualCapture()
@@ -152,10 +164,22 @@ public partial class MacroWindow:Window
         int delay=(int)Math.Clamp(manualSinceLast?.ElapsedMilliseconds??0,0,600000);manualSinceLast?.Restart();var step=new MacroStep{Event=value,DelayMs=delay};InsertStep(step,false);MarkChanged();
     }
     internal void AddManualKeyForTest(Key key){PushUndo();var old=manualSinceLast;manualSinceLast=null;AddManualEvent(key,true);AddManualEvent(key,false);manualSinceLast=old;}
+    void KeypadInput_Click(object sender,RoutedEventArgs e)
+    {
+        if(current==null)return;StopCoordinateCapture();StopRecording();StopManualCapture();
+        var picker=new MacroInputPickerWindow(config.KeyboardLayout){Owner=this};picker.InputChosen+=AddInputFromKeypad;picker.ShowDialog();
+    }
+    void AddInputFromKeypad(string input)
+    {
+        if(current==null)return;var steps=new[]{new MacroStep{Event=input+" Down"},new MacroStep{Event=input+" Up"}};
+        if(steps.Any(step=>!InputEngine.IsValidRecordedEvent(step.Event)))return;
+        PushUndo();int index=Math.Clamp(InsertionIndex(),0,current.Steps.Count);current.Steps.InsertRange(index,steps);MarkChanged($"「{MainWindow.DisplayInputName(input)}」を追加しました。");RefreshSteps(steps);SetEditorState();
+    }
+    internal void AddInputFromKeypadForTest(string input)=>AddInputFromKeypad(input);
 
     void Record_Click(object sender,RoutedEventArgs e)
     {
-        if(recording){StopRecording();return;}if(current==null)return;StopManualCapture();PushUndo();recordingStartIndex=current.Steps.Count;stopShortcut.Reset();recording=true;ignoreInitialMouseRelease=true;sinceLast=Stopwatch.StartNew();lastRecordedMousePosition=null;recordedMovesInsideWindow.Clear();suppressedMappedInputs.Clear();
+        if(recording){StopRecording();return;}if(current==null)return;StopCoordinateCapture();StopManualCapture();PushUndo();recordingStartIndex=current.Steps.Count;stopShortcut.Reset();recording=true;ignoreInitialMouseRelease=true;sinceLast=Stopwatch.StartNew();lastRecordedMousePosition=null;recordedMovesInsideWindow.Clear();suppressedMappedInputs.Clear();
         RecordKeyboardBox.IsEnabled=false;RecordMappedActionsBox.IsEnabled=false;RecordPhysicalInputBox.IsEnabled=false;RecordMouseMovesBox.IsEnabled=false;RelativeMouseMovementBox.IsEnabled=false;FixedMousePositionBox.IsEnabled=false;
         setRecording(true,RecordMouseMovesBox.IsChecked==true,config.RecordMappedActionsInMacros);RecordButton.Content="■ 記録停止";RecordButton.Background=ThemeService.Brush("AccentStrongBrush");RecordStatus.Text=$"記録中（{(config.RecordMappedActionsInMacros?"割り当て後のアクション":"物理キー")}）— Ctrl + Shift + F12 で終了";RecordStatus.Foreground=ThemeService.Brush("AccentBrush");
     }
@@ -204,6 +228,62 @@ public partial class MacroWindow:Window
         if(current==null)return;if(pushUndo)PushUndo();int index=Math.Clamp(InsertionIndex(),0,current.Steps.Count);current.Steps.Insert(index,step);RefreshSteps([step]);SetEditorState();
     }
     void AddWait_Click(object sender,RoutedEventArgs e){if(current==null)return;if(!int.TryParse(WaitBox.Text,out int ms)||ms<1||ms>600000){MessageBox.Show("待機時間は1～600000ミリ秒で入力してください。","待機時間",MessageBoxButton.OK,MessageBoxImage.Warning);return;}InsertStep(new MacroStep{Event="Wait",DelayMs=ms});MarkChanged("待機時間を追加しました。");}
+    void CoordinateCapture_Click(object sender,RoutedEventArgs e)
+    {
+        if(coordinateCaptureActive){StopCoordinateCapture("座標の記録をキャンセルしました。");return;}
+        if(current==null)return;
+        StopRecording();StopManualCapture();
+        coordinateCaptureCallback=CoordinateCaptured;
+        if(!InputEngine.BeginCoordinateCapture(coordinateCaptureCallback))
+        {
+            coordinateCaptureCallback=null;
+            FooterStatus.Text="別の座標記録が完了するまでお待ちください。";
+            return;
+        }
+        coordinateCaptureActive=true;
+        CoordinateCaptureButton.Content="クリックして座標を記録…（Escでキャンセル）";
+        CoordinateCaptureButton.Background=ThemeService.Brush("AccentSoftBrush");
+        FooterStatus.Text="画面上の記録したい位置を左クリックしてください。このクリック自体は実行されません。";
+        CoordinateCaptureButton.Focus();
+    }
+    void CoordinateCaptured(int x,int y)
+    {
+        Dispatcher.BeginInvoke(()=>
+        {
+            if(!coordinateCaptureActive||current==null)return;
+            PushUndo();
+            var steps=new[]
+            {
+                new MacroStep{Event=$"MouseMove:{x},{y}"},
+                new MacroStep{Event="MouseLeft Down"},
+                new MacroStep{Event="MouseLeft Up"}
+            };
+            current.Steps.AddRange(steps);
+            StopCoordinateCapture();
+            MarkChanged($"座標（{x}, {y}）への移動とクリックを末尾へ追加しました。");
+            RefreshSteps(steps);
+            SetEditorState();
+        });
+    }
+    void StopCoordinateCapture(string? status=null)
+    {
+        if(coordinateCaptureCallback!=null)InputEngine.CancelCoordinateCapture(coordinateCaptureCallback);
+        coordinateCaptureCallback=null;
+        coordinateCaptureActive=false;
+        CoordinateCaptureButton.Content="座標を記録";
+        CoordinateCaptureButton.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+        if(status!=null)FooterStatus.Text=status;
+    }
+    void Window_PreviewKeyDown(object sender,WpfKeyEventArgs e)
+    {
+        if(coordinateCaptureActive&&EventKey(e)==Key.Escape){StopCoordinateCapture("座標の記録をキャンセルしました。");e.Handled=true;return;}
+        if(!StepList.IsKeyboardFocusWithin)return;
+        var key=EventKey(e);bool control=(Keyboard.Modifiers&ModifierKeys.Control)!=0;
+        if(control&&key==Key.C){CopySteps_Click(sender,e);e.Handled=true;}
+        else if(control&&key==Key.V){PasteSteps_Click(sender,e);e.Handled=true;}
+        else if(key==Key.Delete){DeleteStep_Click(sender,e);e.Handled=true;}
+    }
+    internal bool CoordinateCaptureActiveForTest=>coordinateCaptureActive;
     void AddCatalogAction_Click(object sender,RoutedEventArgs e)
     {
         if(current==null)return;var picker=new ActionPickerWindow{Owner=this};if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;InsertStep(new MacroStep{Event=$"割り当て: {action.Value}",RecordedActionKind=action.Kind,RecordedActionValue=action.Value});MarkChanged($"「{action.Name}」を追加しました。");
@@ -219,6 +299,24 @@ public partial class MacroWindow:Window
     void PushUndo(){if(current==null)return;undoSteps.Push(CloneSteps(current.Steps));if(undoSteps.Count>30){var keep=undoSteps.Take(30).Reverse().ToArray();undoSteps.Clear();foreach(var item in keep)undoSteps.Push(item);}UndoButton.IsEnabled=true;}
     void Undo_Click(object sender,RoutedEventArgs e){if(current==null||undoSteps.Count==0)return;current.Steps=CloneSteps(undoSteps.Pop());MarkChanged("直前の手順編集を元に戻しました。");RefreshSteps();SetEditorState();}
     List<MacroStep> SelectedSteps()=>StepList.SelectedItems.Cast<StepView>().Select(x=>x.Step).Where(x=>current?.Steps.Contains(x)==true).ToList();
+    void StepContextMenu_Opened(object sender,RoutedEventArgs e)
+    {
+        bool selected=SelectedSteps().Count>0;
+        CopyStepsMenuItem.IsEnabled=selected;
+        PasteStepsMenuItem.IsEnabled=current!=null&&copiedSteps.Count>0;
+        DeleteStepsMenuItem.IsEnabled=selected;
+    }
+    void CopySteps_Click(object sender,RoutedEventArgs e)
+    {
+        if(current==null)return;var selected=SelectedSteps().ToHashSet();if(selected.Count==0)return;
+        copiedSteps.Clear();copiedSteps.AddRange(current.Steps.Where(selected.Contains).Select(CloneStep));
+        FooterStatus.Text=$"{copiedSteps.Count}件の手順をコピーしました。";
+    }
+    void PasteSteps_Click(object sender,RoutedEventArgs e)
+    {
+        if(current==null||copiedSteps.Count==0)return;var selected=SelectedSteps();int index=selected.Count==0?current.Steps.Count:selected.Max(step=>current.Steps.IndexOf(step))+1;var pasted=copiedSteps.Select(CloneStep).ToList();
+        PushUndo();current.Steps.InsertRange(index,pasted);MarkChanged($"{pasted.Count}件の手順を貼り付けました。");RefreshSteps(pasted);SetEditorState();
+    }
     void DeleteStep_Click(object sender,RoutedEventArgs e)
     {
         if(current==null)return;var selected=SelectedSteps();if(selected.Count==0)return;PushUndo();int next=selected.Min(x=>current.Steps.IndexOf(x));foreach(var step in selected)current.Steps.Remove(step);MarkChanged();RefreshSteps();if(current.Steps.Count>0)SelectSteps([current.Steps[Math.Min(next,current.Steps.Count-1)]]);SetEditorState();
@@ -236,6 +334,12 @@ public partial class MacroWindow:Window
         MarkChanged();RefreshSteps(selected);SetEditorState();
     }
     void StepList_PreviewMouseLeftButtonDown(object sender,MouseButtonEventArgs e){dragStart=e.GetPosition(StepList);dragStep=StepFromElement(e.OriginalSource as DependencyObject);dragInsertionIndex=-1;}
+    void StepList_PreviewMouseRightButtonDown(object sender,MouseButtonEventArgs e)
+    {
+        var item=StepContainerFromElement(e.OriginalSource as DependencyObject);if(item==null)return;
+        if(!item.IsSelected){StepList.SelectedItems.Clear();item.IsSelected=true;}
+        item.Focus();
+    }
     void StepList_PreviewMouseMove(object sender,System.Windows.Input.MouseEventArgs e)
     {
         if(e.LeftButton!=MouseButtonState.Pressed||dragStep==null)return;var p=e.GetPosition(StepList);if(Math.Abs(p.X-dragStart.X)<SystemParameters.MinimumHorizontalDragDistance&&Math.Abs(p.Y-dragStart.Y)<SystemParameters.MinimumVerticalDragDistance)return;
@@ -290,7 +394,7 @@ public partial class MacroWindow:Window
     }
     void RefreshSteps(IEnumerable<MacroStep>? selected=null)
     {
-        var selectedSteps=selected?.ToList()??[];var views=current?.Steps.Select((step,index)=>new StepView(step,index+1,HumanTitle(step),HumanDetail(step),step.DelayMs>0?$"{step.DelayMs} ms":"")).ToList()??[];StepList.ItemsSource=views;StepSummary.Text=current==null?"":$"{current.Steps.Count} 手順・待機合計 {current.Steps.Sum(x=>x.DelayMs)} ms";if(selectedSteps.Count>0)SelectSteps(selectedSteps);
+        var selectedSteps=selected?.ToList()??[];var views=current?.Steps.Select((step,index)=>new StepView(step,index+1,HumanTitle(step),HumanDetail(step),step.DelayMs>0?$"{step.DelayMs} ms":"",VisualKindFor(step))).ToList()??[];StepList.ItemsSource=views;StepSummary.Text=current==null?"":$"{current.Steps.Count} 手順・待機合計 {current.Steps.Sum(x=>x.DelayMs)} ms";if(selectedSteps.Count>0)SelectSteps(selectedSteps);
     }
     void SelectSteps(IEnumerable<MacroStep> steps){var set=steps.ToHashSet();StepList.SelectedItems.Clear();foreach(var view in StepList.Items.Cast<StepView>().Where(x=>set.Contains(x.Step)))StepList.SelectedItems.Add(view);if(StepList.SelectedItem!=null)StepList.ScrollIntoView(StepList.SelectedItem);}
     static string HumanTitle(MacroStep step)
@@ -301,6 +405,19 @@ public partial class MacroWindow:Window
         if(step.Event.EndsWith(" Down",StringComparison.OrdinalIgnoreCase))return MainWindow.DisplayInputName(step.Event[..^5])+" を押す";if(step.Event.EndsWith(" Up",StringComparison.OrdinalIgnoreCase))return MainWindow.DisplayInputName(step.Event[..^3])+" を離す";return step.Event;
     }
     static string HumanDetail(MacroStep step){if(step.Event=="Wait")return "この時間だけ次の操作を待ちます";if(step.RecordedActionKind is { } kind)return ActionKindLabel(kind);return step.Event;}
+    internal static MacroStepVisualKind VisualKindFor(MacroStep step)
+    {
+        if(step.Event.Equals("Wait",StringComparison.OrdinalIgnoreCase))return MacroStepVisualKind.Wait;
+        if(step.RecordedActionKind==ActionKind.Macro)return MacroStepVisualKind.Macro;
+        if(step.RecordedActionKind==ActionKind.Text)return MacroStepVisualKind.Text;
+        if(step.RecordedActionKind==ActionKind.Mouse)return MacroStepVisualKind.Mouse;
+        if(step.RecordedActionKind!=null)return MacroStepVisualKind.Action;
+        if(step.Event.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)
+           ||step.Event.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)
+           ||step.Event.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase))
+            return MacroStepVisualKind.Mouse;
+        return MacroStepVisualKind.Keyboard;
+    }
     static string ActionKindLabel(ActionKind kind)=>kind switch{ActionKind.Key or ActionKind.Shortcut=>"キー・ショートカット",ActionKind.Text=>"文字列入力",ActionKind.Launch=>"アプリ・ファイル・URL",ActionKind.Mouse=>"マウス操作",ActionKind.Macro=>"マクロ",ActionKind.Profile=>"プロファイル",_=>"アクション"};
     static string Shorten(string value,int length)=>value.Length<=length?value:value[..length]+"…";
 
@@ -342,7 +459,7 @@ public partial class MacroWindow:Window
     }
     void Window_Closing(object? sender,CancelEventArgs e)
     {
-        StopRecording();StopManualCapture();MacroPlayer.StopAll();CommitNameEdit(false);
+        StopCoordinateCapture();StopRecording();StopManualCapture();MacroPlayer.StopAll();CommitNameEdit(false);
         if(accepted)return;
         if(dirty&&!closingConfirmed&&!SuppressUnsavedPromptForTest)
         {

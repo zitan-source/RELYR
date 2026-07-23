@@ -1,4 +1,4 @@
-param([string]$Configuration="Release",[switch]$SkipRealHookTest)
+﻿param([string]$Configuration="Release",[switch]$SkipRealHookTest)
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 
@@ -19,6 +19,16 @@ if($installerText -notmatch '(?i)--uninstall-needs-restart' -or $installerText -
 }
 if($installerText -notmatch '(?im)^AlwaysRestart=no\s*$' -or $installerText -notmatch '(?im)^RestartIfNeededByRun=no\s*$'){
   throw "Normal installs and upgrades must not request a Windows restart"
+}
+$usesPreviousTasks=$installerText -match '(?im)^UsePreviousTasks=yes\s*$'
+$hasUpgradeFlow=$installerText -match '(?is)function\s+IsUpgradeInstall.*function\s+ShouldSkipPage.*wpSelectTasks'
+$explainsPreservedSettings=$installerText -match '(?is)RELYRをアップデートします.*自動起動設定はそのまま引き継がれます'
+if(-not ($usesPreviousTasks -and $hasUpgradeFlow -and $explainsPreservedSettings)){
+  throw "Upgrade installs must use the dedicated update flow and preserve existing choices"
+}
+$startupRuns=[regex]::Matches($installerText,'(?im)^Filename:.*--configure-startup (?:on|off).*$')
+if($startupRuns.Count -ne 2 -or @($startupRuns|Where-Object{$_.Value -notmatch '(?i)Check:\s*not IsUpgradeInstall'}).Count -ne 0){
+  throw "Upgrade installs must not overwrite the existing Windows startup setting"
 }
 if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
   throw "An installer entry unexpectedly forces a Windows restart"
@@ -88,6 +98,12 @@ $checksumLine="$checksum  $([System.IO.Path]::GetFileName($installer))`n"
 if((Get-Content -LiteralPath $checksumFile -Raw -Encoding UTF8).Trim() -ne $checksumLine.Trim()){
   throw "Installer checksum file could not be verified"
 }
+
+# Keep only the current distributable pair. Older installers are reproducible
+# from Git tags and should not make a development checkout grow indefinitely.
+Get-ChildItem -LiteralPath (Split-Path $installer) -File -Filter 'RELYR-Setup-*' |
+  Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
+  Remove-Item -Force
 
 # The installer contains these payloads already. Keep only the distributable
 # installer and checksum, and remove compiler output that can be regenerated.

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using SharpCompress.Archives;
 using SharpCompress.Common;
 using SharpCompress.Readers;
@@ -125,7 +126,7 @@ public sealed class ArchiveWatcher : IDisposable
                 return destination;
             }
             using var input = File.OpenRead(path);
-            using var reader = ReaderFactory.OpenReader(input);
+            using var reader = ReaderFactory.OpenReader(input,CreateReaderOptions());
             int entryCount = 0;
             long expanded = 0;
             while (reader.MoveToNextEntry())
@@ -162,7 +163,7 @@ public sealed class ArchiveWatcher : IDisposable
 
     static void ExtractSevenZip(string path, string temporary, string root, Func<bool>? cancelled)
     {
-        using var archive = ArchiveFactory.OpenArchive(path);
+        using var archive = ArchiveFactory.OpenArchive(path,CreateReaderOptions());
         var entries = archive.Entries.Where(entry => !entry.IsDirectory).ToArray();
         if (entries.Length > MaximumEntries)
             throw new InvalidDataException($"ファイル数が上限 {MaximumEntries:N0} を超えています。");
@@ -202,6 +203,18 @@ public sealed class ArchiveWatcher : IDisposable
         while (Directory.Exists(destination) || File.Exists(destination))
             destination = Path.Combine(parent, $"{baseName} ({suffix++})");
         return destination;
+    }
+
+    static ReaderOptions CreateReaderOptions()
+    {
+        // ZIP files created by older Japanese Windows tools often omit the UTF-8 flag
+        // and store entry names as CP932. SharpCompress still honors UTF-8 metadata;
+        // this encoding is only the fallback for archives that do not declare one.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return new ReaderOptions
+        {
+            ArchiveEncoding=new ArchiveEncoding { Default=Encoding.GetEncoding(932) }
+        };
     }
 
     internal static string ResolveWatchFolder(AppConfig config)=>string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):Path.GetFullPath(config.ArchiveWatchFolder);

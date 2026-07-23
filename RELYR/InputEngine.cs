@@ -9,6 +9,9 @@ public sealed class InputEngine : IDisposable
     static readonly BlockingCollection<Action> DesktopActions=new();
     static InputEngine? directTestTarget;
     static readonly object OutputLock=new();
+    static readonly object CoordinateCaptureLock=new();
+    static Action<int,int>? pendingCoordinateCapture;
+    static bool suppressCoordinateCaptureLeftUp;
     static readonly HashSet<ushort> InjectedKeysDown=[];
     static readonly HashSet<int> InjectedMouseButtonsDown=[];
     static readonly Dictionary<ushort,long> InjectedKeyDownAt=[];
@@ -71,8 +74,10 @@ public sealed class InputEngine : IDisposable
     }
     public bool CaptureMouseMoves { get; set; }
     public int DragPixels { get; set; }=6;
+    public Func<string,string>? QualifyInput { get; set; }
     public Func<string,bool>? HasMapping { get; set; }
     public Func<string,bool>? IsNativeMouseDrag { get; set; }
+    public Func<string,bool>? HasLegacyMouseDrag { get; set; }
     public Func<string,bool>? SuppressLayerTap { get; set; }
     public bool UseUsLayout { get; set; }
     public bool TreatF13AsCapsLock { get; set; }
@@ -174,7 +179,12 @@ public sealed class InputEngine : IDisposable
         if(down&&EmergencyHeld(vk)){ StopAndRelease(); Detected?.Invoke("緊急停止"); return (IntPtr)1; }
         Detected?.Invoke($"{key} {(down?"Down":"Up")}");
         if(!Enabled) return Next(n,w,l);
-        if(nativeRightLayerDrag)return Next(n,w,l);
+        if(nativeRightLayerDrag)
+        {
+            string rightLayerInput="MouseRight+"+key;
+            if(down&&HasMapping?.Invoke(rightLayerInput)==true)EndNativeRightDragForMappedChord();
+            else return Next(n,w,l);
+        }
 
         bool reliableCapsLayer=key=="CapsLock"&&TreatF13AsCapsLock&&vk==0x7C;
         if(deferredLayer is null&&down&&((key!="CapsLock"&&HasLayerMappings(key))||reliableCapsLayer||(key=="Space"&&SpaceHoldRepeatEnabled)))
@@ -207,7 +217,7 @@ public sealed class InputEngine : IDisposable
         }
         bool layerChord=deferredLayer!=null&&!layerRepeatActive;
         string? pendingInput=PendingLayerInput(key);
-        string input=pendingInput??(layerChord?deferredLayer+"+"+key:key);
+        string input=pendingInput??(layerChord?deferredLayer+"+"+key:QualifyInput?.Invoke(key)??key);
         if(deferredLayer!=null&&!layerRepeatActive&&down&&HasMapping?.Invoke(input)==true){layerUsed=true;if(deferredLayer=="Space")lastSpaceTapTick=0;CancelLayerRepeat();}
         bool keyboardLayer=deferredLayer is "Space" or "CapsLock";
         if(layerChord&&down&&!keyboardLayer)CancelOtherLayerPresses(input);
@@ -228,6 +238,7 @@ public sealed class InputEngine : IDisposable
         if(n<0) return Next(n,w,l);
         var d=Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l); int msg=w.ToInt32();
         if(d.dwExtraInfo==(UIntPtr)Marker) return Next(n,w,l);
+        if(TryHandleCoordinateCapture(msg,d.pt.x,d.pt.y))return (IntPtr)1;
         if(Environment.TickCount64<mousePassthroughUntil)return Next(n,w,l);
         if(msg==0x200)
         {
@@ -237,7 +248,12 @@ public sealed class InputEngine : IDisposable
                 nativeRightLayerDrag=SendMouseFlag(8);
                 if(nativeRightLayerDrag){CancelLayerSafety();Detected?.Invoke("MouseRight Native Drag");}
             }
-            foreach(var pair in presses.Where(x=>x.Key.Contains("Mouse",StringComparison.OrdinalIgnoreCase)&&x.Value.IsDown).ToArray()) if(Distance(pair.Value.X,pair.Value.Y,d.pt.x,d.pt.y)>=DragPixels&&!pair.Value.Dragged){pair.Value.Dragged=true;if(!pair.Value.Immediate)InputReceived?.Invoke(pair.Key+":DragStart");Detected?.Invoke(pair.Key+" Drag");}
+            // Pointer movement must not turn an ordinary layer+click assignment into a
+            // legacy drag event. Only old mappings that explicitly contain drag actions
+            // use the distance based DragStart/DragEnd path. Modifier-click actions use
+            // their dedicated PressStart/PressEnd lifecycle instead.
+            foreach(var pair in presses.Where(x=>x.Key.Contains("Mouse",StringComparison.OrdinalIgnoreCase)&&x.Value.IsDown&&!x.Value.NativeMouseDrag&&HasLegacyMouseDrag?.Invoke(x.Key)==true).ToArray())
+                if(Distance(pair.Value.X,pair.Value.Y,d.pt.x,d.pt.y)>=DragPixels&&!pair.Value.Dragged){pair.Value.Dragged=true;if(!pair.Value.Immediate)InputReceived?.Invoke(pair.Key+":DragStart");Detected?.Invoke(pair.Key+" Drag");}
             return Next(n,w,l);
         }
         string? name=msg switch{0x201 or 0x202=>"MouseLeft",0x204 or 0x205=>"MouseRight",0x207 or 0x208=>"MouseMiddle",0x20B or 0x20C=>((d.mouseData>>16)&0xffff)==1?"MouseBack":"MouseForward",0x20A=>d.mouseData>0?"WheelUp":"WheelDown",0x20E=>d.mouseData>0?"TiltRight":"TiltLeft",_=>null};
@@ -250,7 +266,12 @@ public sealed class InputEngine : IDisposable
             if(layerSafetyExpired)ResetCapturedState(false);
         }
         if(!Enabled){Detected?.Invoke(name+(rawDown?" Down":rawUp?" Up":""));return Next(n,w,l);}
-        if(nativeRightLayerDrag&&!currentLayerRelease){Detected?.Invoke(name+(rawDown?" Down":rawUp?" Up":""));return Next(n,w,l);}
+        if(nativeRightLayerDrag&&!currentLayerRelease)
+        {
+            string rightLayerInput="MouseRight+"+name;
+            if(rawDown&&HasMapping?.Invoke(rightLayerInput)==true)EndNativeRightDragForMappedChord();
+            else{Detected?.Invoke(name+(rawDown?" Down":rawUp?" Up":""));return Next(n,w,l);}
+        }
         if(deferredLayer is null&&buttonDown&&HasLayerMappings(name)){deferredLayer=name;mouseLayerStartX=d.pt.x;mouseLayerStartY=d.pt.y;nativeRightLayerDrag=false;ArmLayerSafety();layerUsed=false;Detected?.Invoke(name+" Layer Down");return (IntPtr)1;}
         if(deferredLayer!=null&&name.Equals(deferredLayer,StringComparison.OrdinalIgnoreCase)&&buttonUp)
         {
@@ -264,8 +285,9 @@ public sealed class InputEngine : IDisposable
             else _=Task.Run(()=>SendMouseClickAtomic(releasedLayer));
             return (IntPtr)1;
         }
-        if(buttonUp)name=PendingLayerInput(name)??(deferredLayer!=null&&!layerRepeatActive?deferredLayer+"+"+name:name);
+        if(buttonUp)name=PendingLayerInput(name)??(deferredLayer!=null&&!layerRepeatActive?deferredLayer+"+"+name:QualifyInput?.Invoke(name)??name);
         else if(deferredLayer!=null&&!layerRepeatActive)name=deferredLayer+"+"+name;
+        else name=QualifyInput?.Invoke(name)??name;
         bool down=buttonDown||msg is 0x20A or 0x20E, up=buttonUp;
         if(deferredLayer!=null&&!layerRepeatActive&&down)CancelOtherLayerPresses(name);
         if(deferredLayer!=null&&!layerRepeatActive&&down&&HasMapping?.Invoke(name)==true){layerUsed=true;if(deferredLayer=="Space")lastSpaceTapTick=0;CancelLayerRepeat();}
@@ -277,6 +299,51 @@ public sealed class InputEngine : IDisposable
             return handled?(IntPtr)1:Next(n,w,l);
         }
         return ProcessPress(name,down,up,n,w,l,d.pt.x,d.pt.y);
+    }
+
+    internal static bool BeginCoordinateCapture(Action<int,int> callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        lock(CoordinateCaptureLock)
+        {
+            if(pendingCoordinateCapture!=null||suppressCoordinateCaptureLeftUp)return false;
+            pendingCoordinateCapture=callback;
+            return true;
+        }
+    }
+
+    internal static void CancelCoordinateCapture(Action<int,int>? callback=null)
+    {
+        lock(CoordinateCaptureLock)
+            if(callback==null||ReferenceEquals(pendingCoordinateCapture,callback))
+                pendingCoordinateCapture=null;
+    }
+
+    static bool TryHandleCoordinateCapture(int message,int x,int y)
+    {
+        Action<int,int>? callback=null;
+        lock(CoordinateCaptureLock)
+        {
+            if(message==0x201&&pendingCoordinateCapture!=null)
+            {
+                callback=pendingCoordinateCapture;
+                pendingCoordinateCapture=null;
+                suppressCoordinateCaptureLeftUp=true;
+            }
+            else if(message==0x202&&suppressCoordinateCaptureLeftUp)
+            {
+                suppressCoordinateCaptureLeftUp=false;
+                return true;
+            }
+            else return false;
+        }
+        try{callback(x,y);}catch{}
+        return true;
+    }
+
+    internal static bool CoordinateCapturePendingForTest
+    {
+        get{lock(CoordinateCaptureLock)return pendingCoordinateCapture!=null||suppressCoordinateCaptureLeftUp;}
     }
 
     IntPtr ProcessPress(string input,bool down,bool up,int n,IntPtr w,IntPtr l,int x=0,int y=0,bool fireOnDown=false,bool repeatWhileHeld=false)
@@ -333,6 +400,13 @@ public sealed class InputEngine : IDisposable
     {
         var callback=InputReceived;
         _=Task.Run(async()=>{try{if(state.ReleaseSignal!=null)await state.ReleaseSignal.Task.WaitAsync(TimeSpan.FromSeconds(10));await Task.Delay(5);}catch(TimeoutException){}finally{if(Interlocked.Exchange(ref state.Ended,1)==0)callback?.Invoke(input+":PressEnd");}});
+    }
+    void EndNativeRightDragForMappedChord()
+    {
+        if(!nativeRightLayerDrag)return;
+        SendMouseUpWithRetry(16);
+        nativeRightLayerDrag=false;
+        Detected?.Invoke("MouseRight Native Drag End");
     }
     void EndImmediateLayerPresses(string layer)
     {
@@ -405,8 +479,9 @@ public sealed class InputEngine : IDisposable
     };
     IntPtr Next(int n,IntPtr w,IntPtr l)=>NextHookForTest?.Invoke(n,w,l)??CallNextHookEx(IntPtr.Zero,n,w,l);
 
-    public static void SendShortcut(string value,bool useUsLayout=false)
+    public static void SendShortcut(string value,bool useUsLayout=false,WindowActionTarget windowTarget=WindowActionTarget.ActiveWindow)
     {
+        if(TryDispatchWindowAction(value,windowTarget))return;
         value=ResolveShortcutAlias(value);
         if(IsLockWorkStationShortcut(value))
         {
@@ -419,11 +494,6 @@ public sealed class InputEngine : IDisposable
         // 外部ツールが横取りしてウィンドウ移動へ変える環境でも、表示中の
         // デスクトップだけを確実に切り替える。
         if(TryGetDirectDesktopStep(value,out int desktopStep)){QueueDesktopAction(()=>VirtualDesktopAccessor.GoToNumber(VirtualDesktopAccessor.CurrentNumber+desktopStep));return;}
-        if(value.Equals("MoveWindowDesktopRight",StringComparison.OrdinalIgnoreCase)){QueueWindowMove(1);return;}
-        if(value.Equals("MoveWindowDesktopLeft",StringComparison.OrdinalIgnoreCase)){QueueWindowMove(-1);return;}
-        if(value.Equals("ToggleMaximizeUnderCursor",StringComparison.OrdinalIgnoreCase)){QueueDesktopAction(WindowMonitorService.ToggleMaximizeUnderCursor);return;}
-        if(value.Equals("MinimizeActiveWindow",StringComparison.OrdinalIgnoreCase)){QueueDesktopAction(WindowMonitorService.MinimizeForeground);return;}
-        if(value.StartsWith("MoveWindowMonitor",StringComparison.OrdinalIgnoreCase)&&Enum.TryParse<WindowMonitorService.Direction>(value[17..],true,out var monitorDirection)){QueueDesktopAction(()=>WindowMonitorService.MoveForeground(monitorDirection));return;}
         if(value.StartsWith("Desktop",StringComparison.OrdinalIgnoreCase)&&int.TryParse(value[7..],out int desktop)){QueueDesktopAction(()=>VirtualDesktopAccessor.GoToNumber(desktop-1));return;}
         var names=SplitShortcut(value);
         string? mouse=names.FirstOrDefault(x=>x.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)||x.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)||x.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase));
@@ -438,6 +508,60 @@ public sealed class InputEngine : IDisposable
             if(mouse?.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)==true||mouse?.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase)==true){long wait=4-(Environment.TickCount64-lastWheelOutput);if(wait>0)Thread.Sleep((int)wait);lastWheelOutput=Environment.TickCount64;}
             var pressed=new List<ushort>();try{foreach(var c in codes){if(SendKey(c,false))pressed.Add(c);}if(mouse!=null)SendMouse(mouse);}finally{foreach(var c in pressed.AsEnumerable().Reverse())SendKeyUpWithRetry(c);}
         }
+    }
+    static bool TryDispatchWindowAction(string value,WindowActionTarget target)
+    {
+        // 旧版の定番アクションは実際のショートカット文字列で保存されている。
+        // カーソル下を選んだ場合は、既存の割り当ても現在の対象設定に従わせる。
+        if(target==WindowActionTarget.WindowUnderCursor)
+        {
+            if(ShortcutMatches(value,"Alt","F4")){QueueWindowAction(target,WindowMonitorService.Close);return true;}
+            if(ShortcutMatches(value,"Win","Left")){QueueWindowAction(target,window=>WindowMonitorService.Snap(window,WindowMonitorService.Direction.Left));return true;}
+            if(ShortcutMatches(value,"Win","Right")){QueueWindowAction(target,window=>WindowMonitorService.Snap(window,WindowMonitorService.Direction.Right));return true;}
+            if(ShortcutMatches(value,"Win","Up")){QueueWindowAction(target,WindowMonitorService.Maximize);return true;}
+            if(ShortcutMatches(value,"Win","Down")){QueueWindowAction(target,WindowMonitorService.RestoreOrMinimize);return true;}
+        }
+
+        switch(value.ToUpperInvariant())
+        {
+            case "CLOSEACTIVEWINDOW":
+                QueueWindowAction(target,WindowMonitorService.Close);
+                return true;
+            case "MOVEWINDOWDESKTOPRIGHT":
+                QueueWindowMove(1,target);
+                return true;
+            case "MOVEWINDOWDESKTOPLEFT":
+                QueueWindowMove(-1,target);
+                return true;
+            case "TOGGLEMAXIMIZEUNDERCURSOR":
+            case "TOGGLEMAXIMIZEWINDOW":
+                QueueWindowAction(target,WindowMonitorService.ToggleMaximize);
+                return true;
+            case "MAXIMIZEWINDOW":
+                QueueWindowAction(target,WindowMonitorService.Maximize);
+                return true;
+            case "RESTOREORMINIMIZEWINDOW":
+                QueueWindowAction(target,WindowMonitorService.RestoreOrMinimize);
+                return true;
+            case "MINIMIZEACTIVEWINDOW":
+                QueueWindowAction(target,WindowMonitorService.Minimize);
+                return true;
+            case "SNAPWINDOWLEFT":
+                QueueWindowAction(target,window=>WindowMonitorService.Snap(window,WindowMonitorService.Direction.Left));
+                return true;
+            case "SNAPWINDOWRIGHT":
+                QueueWindowAction(target,window=>WindowMonitorService.Snap(window,WindowMonitorService.Direction.Right));
+                return true;
+        }
+
+        const string monitorActionPrefix="MoveWindowMonitor";
+        if(value.StartsWith(monitorActionPrefix,StringComparison.OrdinalIgnoreCase)
+           &&Enum.TryParse<WindowMonitorService.Direction>(value[monitorActionPrefix.Length..],true,out var direction))
+        {
+            QueueWindowAction(target,window=>WindowMonitorService.Move(window,direction));
+            return true;
+        }
+        return false;
     }
     static string ResolveShortcutAlias(string value)
     {
@@ -463,6 +587,21 @@ public sealed class InputEngine : IDisposable
         var names=value.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);
         return value.EndsWith("++",StringComparison.Ordinal)?names.Append("+").ToArray():names;
     }
+    static bool ShortcutMatches(string value,params string[] expected)
+    {
+        static string Normalize(string key)=>key.ToUpperInvariant() switch
+        {
+            "LEFTALT" or "RIGHTALT"=>"ALT",
+            "LEFTCTRL" or "RIGHTCTRL"=>"CTRL",
+            "LEFTSHIFT" or "RIGHTSHIFT"=>"SHIFT",
+            "LWIN" or "RWIN" or "LEFTWIN" or "RIGHTWIN"=>"WIN",
+            var other=>other
+        };
+        var actual=SplitShortcut(value).Select(Normalize).OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+        var wanted=expected.Select(Normalize).OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+        return actual.SequenceEqual(wanted,StringComparer.Ordinal);
+    }
+    internal static bool ShortcutMatchesForTest(string value,params string[] expected)=>ShortcutMatches(value,expected);
     static bool TryResolveShiftedSymbol(string value,bool useUsLayout,out ushort key)
     {
         key=0;if(value.Length!=1)return false;
@@ -481,7 +620,7 @@ public sealed class InputEngine : IDisposable
     internal static bool IsRecognizedShortcut(string value)
     {
         if(TryGetImeAction(value,out _))return true;
-        if(value.Equals("MoveWindowDesktopRight",StringComparison.OrdinalIgnoreCase)||value.Equals("MoveWindowDesktopLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeUnderCursor",StringComparison.OrdinalIgnoreCase)||value.Equals("MinimizeActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMinimizeAllWindows",StringComparison.OrdinalIgnoreCase))return true;
+        if(value.Equals("MoveWindowDesktopRight",StringComparison.OrdinalIgnoreCase)||value.Equals("MoveWindowDesktopLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeUnderCursor",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("RestoreOrMinimizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MinimizeActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowRight",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMinimizeAllWindows",StringComparison.OrdinalIgnoreCase))return true;
         if(value.StartsWith("MoveWindowMonitor",StringComparison.OrdinalIgnoreCase))return Enum.TryParse<WindowMonitorService.Direction>(value[17..],true,out _);
         if(value.StartsWith("Desktop",StringComparison.OrdinalIgnoreCase))return int.TryParse(value[7..],out int desktop)&&desktop is >=1 and <=8;
         var names=value.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);
@@ -522,10 +661,17 @@ public sealed class InputEngine : IDisposable
         try{bool enabled=mode==2?!ImmGetOpenStatus(context):mode==1;if(!ImmSetOpenStatus(context,enabled))throw new InvalidOperationException("IMEの状態を変更できませんでした。");}
         finally{ImmReleaseContext(window,context);}
     }
-    static void QueueWindowMove(int offset)
+    static void QueueWindowMove(int offset,WindowActionTarget target)
     {
-        IntPtr window=VirtualDesktopService.GetForegroundRootWindow();
+        IntPtr window=WindowMonitorService.ResolveTarget(target);
         QueueDesktopAction(()=>{VirtualDesktopAccessor.MoveWindowAndFollow(window,offset);_=Task.Run(async()=>{await Task.Delay(350);VirtualDesktopService.ActivateWindow(window);});});
+    }
+    static void QueueWindowAction(WindowActionTarget target,Action<IntPtr> action)
+    {
+        // フック処理中のカーソル位置を確定する。バックグラウンド処理を待つ間に
+        // カーソルや前面ウィンドウが変わっても、別のウィンドウへ誤送信しない。
+        IntPtr window=WindowMonitorService.ResolveTarget(target);
+        QueueDesktopAction(()=>action(window));
     }
     internal static void QueueDesktopAction(Action action)
     {
@@ -709,7 +855,7 @@ public sealed class InputEngine : IDisposable
         if(key!=0)SendKeyUpWithRetry(key);
         if((mouseDown&&InjectedMouseButtonsDown.Contains(1))||(key!=0&&InjectedKeysDown.Contains(key)))ReleaseAll();
     }
-    static ushort ParseKey(string s)=>s.ToUpperInvariant() switch{"半角/全角"=>0xF3,"無変換"=>0x1D,"変換"=>0x1C,"カタカナ"=>0x15,"PRINTSCREEN"=>0x2C,"CTRL"=>0x11,"SHIFT"=>0x10,"ALT"=>0x12,"WIN"=>0x5B,"CAPSLOCK"=>0x14,"NUMPADENTER"=>0x0D,"LEFT"=>0x25,"UP"=>0x26,"RIGHT"=>0x27,"DOWN"=>0x28,"ENTER"=>0x0D,"ESC"=>0x1B,"SPACE"=>0x20,"BACK" or "BACKSPACE"=>8,"DELETE"=>0x2E,_ when s.Length==1=>(ushort)(VkKeyScan(s[0])&0xff),_=>(ushort)KeyInterop.VirtualKeyFromKey(Enum.TryParse<Key>(s,true,out var k)?k:Key.None)};
+    static ushort ParseKey(string s)=>s.ToUpperInvariant() switch{"半角/全角"=>0xF3,"無変換"=>0x1D,"変換"=>0x1C,"カタカナ"=>0x15,"PRINTSCREEN"=>0x2C,"SCROLLLOCK"=>0x91,"CTRL"=>0x11,"SHIFT"=>0x10,"ALT"=>0x12,"WIN"=>0x5B,"CAPSLOCK"=>0x14,"NUMPADENTER"=>0x0D,"LEFT"=>0x25,"UP"=>0x26,"RIGHT"=>0x27,"DOWN"=>0x28,"ENTER"=>0x0D,"ESC"=>0x1B,"SPACE"=>0x20,"BACK" or "BACKSPACE"=>8,"DELETE"=>0x2E,_ when s.Length==1=>(ushort)(VkKeyScan(s[0])&0xff),_=>(ushort)KeyInterop.VirtualKeyFromKey(Enum.TryParse<Key>(s,true,out var k)?k:Key.None)};
     static bool SendKey(ushort vk,bool up)
     {
         lock(OutputLock)

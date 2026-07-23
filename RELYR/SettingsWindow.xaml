@@ -80,6 +80,11 @@
               <CheckBox x:Name="StartupBox" Content="サインイン時に自動で起動する"/>
               <CheckBox x:Name="DesktopNumberTrayBox" Content="通知領域に現在の仮想デスクトップ番号を表示する"/>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
+              <TextBlock Text="ウィンドウ操作の対象" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
+              <RadioButton x:Name="ActiveWindowTargetBox" GroupName="WindowActionTarget" Content="アクティブなウィンドウ" Foreground="{DynamicResource PrimaryText}" Margin="0,6"/>
+              <RadioButton x:Name="CursorWindowTargetBox" GroupName="WindowActionTarget" Content="マウスカーソル下のウィンドウ" Foreground="{DynamicResource PrimaryText}" Margin="0,6"/>
+              <TextBlock Text="閉じる・最大化・最小化・整列・モニター移動などの対象を選びます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="25,0,0,2"/>
+              <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
               <TextBlock Text="保存" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
               <CheckBox x:Name="AutoSaveBox" Content="変更をすぐに保存して反映する"/>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>

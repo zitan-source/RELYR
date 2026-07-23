@@ -170,7 +170,7 @@
         <WrapPanel x:Name="ToolbarPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <TextBlock Text="配列" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource SecondaryText}"/><ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="82" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
           <TextBlock Text="プロファイル" VerticalAlignment="Center" Margin="8,0,6,0" Foreground="{DynamicResource SecondaryText}"/>
-          <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="180" SelectionChanged="ProfileChanged"/>
+          <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="180" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
           <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="40" MinWidth="40" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイルを追加"/><Button Style="{StaticResource ToolbarButtonStyle}" Content="名前変更" Click="RenameProfile_Click"/>
           <Button Style="{StaticResource ToolbarButtonStyle}" Content="自動切替" Click="ConfigureProfileAutoSwitch_Click"/>
           <Button Style="{StaticResource ToolbarButtonStyle}" Content="保存して反映" Click="Save_Click" Margin="14,3,3,3" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
@@ -178,15 +178,30 @@
       </Grid>
     </Border>
 
+    <Border x:Name="UpdateBanner" DockPanel.Dock="Top" Visibility="Collapsed"
+            Background="{DynamicResource AccentStrongBrush}" Padding="14,8">
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="UpdateBannerText" VerticalAlignment="Center" FontWeight="SemiBold"
+                   Foreground="{DynamicResource AccentButtonText}" Text="新しいバージョンが利用可能です"/>
+        <Button x:Name="UpdateAvailableButton" Grid.Column="1" Click="UpdateAvailable_Click"
+                Content="今すぐ更新" Margin="12,0,4,0" Padding="14,5" Cursor="Hand"
+                Background="{DynamicResource CardBackground}" Foreground="{DynamicResource PrimaryText}"
+                BorderBrush="{DynamicResource AccentButtonText}"/>
+        <Button x:Name="UpdateDismissButton" Grid.Column="2" Click="UpdateDismiss_Click"
+                Content="×" ToolTip="このバージョンの通知を閉じる" Margin="4,0,0,0" Padding="9,4"
+                FontSize="17" FontWeight="SemiBold" Cursor="Hand"
+                Background="Transparent" Foreground="{DynamicResource AccentButtonText}"
+                BorderBrush="Transparent"/>
+      </Grid>
+    </Border>
+
     <Border DockPanel.Dock="Bottom" Background="{DynamicResource FooterBackground}" Padding="7,6">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
         <ToggleButton x:Name="EngineToggle" Grid.Column="0" Style="{StaticResource StatusToggleStyle}" IsChecked="True" Checked="EngineChanged" Unchecked="EngineChanged" ToolTip="クリックして入力変換を一時停止・再開します"><TextBlock x:Name="EngineStatus" Text="● エンジン稼働中" Foreground="{DynamicResource AccentBrush}"/></ToggleButton>
         <ToggleButton x:Name="AutoSaveToggle" Grid.Column="1" Style="{StaticResource StatusToggleStyle}" Checked="AutoSaveChanged" Unchecked="AutoSaveChanged" ToolTip="クリックして自動保存を切り替えます"><TextBlock x:Name="AutoSaveStatus" Text="自動保存 オフ"/></ToggleButton>
         <TextBlock x:Name="AdminStatus" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center"/>
         <TextBlock x:Name="LastInput" Grid.Column="3" Text="入力: —" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-        <Button x:Name="UpdateAvailableButton" Grid.Column="4" Visibility="Collapsed" Click="UpdateAvailable_Click"
-                Content="↑ アップデートがあります" Background="Transparent" Foreground="{DynamicResource AccentBrush}"
-                BorderThickness="0" Padding="10,0" Margin="8,-4,-4,-4" Cursor="Hand" ToolTip="クリックして安全にダウンロードし、更新します"/>
       </Grid>
     </Border>
 

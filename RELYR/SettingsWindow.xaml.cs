@@ -28,6 +28,7 @@ public partial class SettingsWindow:Window
     public string ArchiveDestinationFolder=>ArchiveDestinationFolderBox.Text.Trim();
     public bool ShowDesktopNumberInTray=>DesktopNumberTrayBox.IsChecked==true;
     public bool CheckForUpdates=>CheckForUpdatesBox.IsChecked==true;
+    public WindowActionTarget SelectedWindowActionTarget=>CursorWindowTargetBox.IsChecked==true?WindowActionTarget.WindowUnderCursor:WindowActionTarget.ActiveWindow;
     public AppThemeMode SelectedThemeMode=>LightThemeBox.IsChecked==true?AppThemeMode.Light:DarkThemeBox.IsChecked==true?AppThemeMode.Dark:AppThemeMode.System;
     public bool AutoSave=>AutoSaveBox.IsChecked==true;
     public bool SpaceHoldRepeat=>SpaceRepeatBox.IsChecked==true;
@@ -53,6 +54,8 @@ public partial class SettingsWindow:Window
         StartupBox.IsChecked=initialStartWithWindows;
         DesktopNumberTrayBox.IsChecked=config.ShowDesktopNumberInTray;
         CheckForUpdatesBox.IsChecked=config.CheckForUpdates;
+        ActiveWindowTargetBox.IsChecked=config.WindowActionTarget==WindowActionTarget.ActiveWindow;
+        CursorWindowTargetBox.IsChecked=config.WindowActionTarget==WindowActionTarget.WindowUnderCursor;
         SystemThemeBox.IsChecked=config.ThemeMode==AppThemeMode.System;
         LightThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Light;
         DarkThemeBox.IsChecked=config.ThemeMode==AppThemeMode.Dark;

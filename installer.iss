@@ -29,7 +29,7 @@ RestartApplications=no
 ; returned by UninstallNeedRestart below.
 AlwaysRestart=no
 RestartIfNeededByRun=no
-UsePreviousTasks=no
+UsePreviousTasks=yes
 CloseApplicationsFilter=RELYR.exe,InputCustomizer.exe
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
@@ -80,8 +80,8 @@ Name: "autostart"; Description: "Windowsへのサインイン時に自動起動�
 [Run]
 Filename: "{tmp}\{#DotNetRuntimeExe}"; Parameters: "/install /quiet /norestart"; StatusMsg: ".NET 10 Desktop Runtimeをインストールしています..."; Flags: runhidden waituntilterminated; Check: not IsDotNetDesktopRuntimeInstalled
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-elevated-launcher"; Flags: runhidden waituntilterminated
-Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart
-Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart
+Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
+Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Description: "RELYRを起動する"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
@@ -97,6 +97,45 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""InputCustomizer Eleva
 var
   CapsLockRestartRequired: Boolean;
   DeleteUserSettings: Boolean;
+  UpgradeInstall: Boolean;
+  PreviousVersion: String;
+
+function IsUpgradeInstall(): Boolean;
+begin
+  Result := UpgradeInstall;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  UpgradeInstall := RegQueryStringValue(HKLM64,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
+    'DisplayVersion', PreviousVersion);
+  if not UpgradeInstall then
+    UpgradeInstall := RegQueryStringValue(HKLM,
+      'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
+      'DisplayVersion', PreviousVersion);
+  Result := True;
+end;
+
+procedure InitializeWizard;
+begin
+  if UpgradeInstall then
+  begin
+    WizardForm.Caption := 'RELYR アップデート';
+    WizardForm.WelcomeLabel1.Caption := 'RELYRをアップデートします';
+    WizardForm.WelcomeLabel2.Caption :=
+      'インストール済みの RELYR v' + PreviousVersion + ' を v{#AppVersion} へ更新します。' + #13#10 + #13#10 +
+      'プロファイル、割り当て、マクロ、Windowsへのサインイン時の自動起動設定はそのまま引き継がれます。';
+    WizardForm.NextButton.Caption := 'アップデート(&U)';
+  end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := UpgradeInstall and
+    ((PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or
+     (PageID = wpSelectTasks) or (PageID = wpReady));
+end;
 
 function ShouldDeleteUserSettings(): Boolean;
 begin
