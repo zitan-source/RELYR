@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.IO;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Microsoft.Win32;
@@ -12,10 +13,13 @@ public partial class App : System.Windows.Application
 #if !PRODUCTION_PUBLISH
     internal static string EngineTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-engine-test-last.log");
 #endif
-    const string MutexName=@"Local\RELYR.SingleInstance.v2";
+    internal const string InstanceMutexName=@"Local\RELYR.SingleInstance.v2";
     const string SignalName=@"Local\RELYR.ShowExisting.v1";
+    const string AcknowledgementName=@"Local\RELYR.ShowExistingAck.v1";
+    const int ExistingInstanceResponseTimeoutMs=3000;
     Mutex? instanceMutex;
     EventWaitHandle? showSignal;
+    EventWaitHandle? showAcknowledgement;
     EventWaitHandle? shutdownSignal;
     bool ownsMutex;
     readonly CancellationTokenSource signalStop=new();
@@ -46,12 +50,25 @@ public partial class App : System.Windows.Application
         {
             if(IsMainUiLaunch(args)&&MainInstanceExists())
             {
-                NotifyExistingInstance();
-                if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+                if(NotifyExistingInstance())
+                {
+                    if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+                }
+                else if(!RequestStaleInstanceRecovery(args,out string recoveryError))
+                {
+                    System.Windows.MessageBox.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+                }
                 Shutdown(0);return;
             }
             if(!StartupService.TryRunElevated(args,out string error))System.Windows.MessageBox.Show(error,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
             Shutdown(string.IsNullOrEmpty(error)?0:1);return;
+        }
+#endif
+#if PRODUCTION_PUBLISH
+        if(args.Length>=2&&args[0].Equals("--recover-stale-instance",StringComparison.OrdinalIgnoreCase))
+        {
+            RunStaleInstanceRecovery(args[1]);
+            return;
         }
 #endif
         if(ShortcutService.TryReadMacroId(args,out string macroId)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroId,true));return;}
@@ -88,14 +105,14 @@ public partial class App : System.Windows.Application
         if(e.Args.Contains("--update-test",StringComparer.OrdinalIgnoreCase)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunUpdateTestAndExit());return;}
         if(e.Args.Contains("--desktop-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(VirtualDesktopIntegrationTest.Run(Console.Out));return;}
 #endif
-        instanceMutex=new Mutex(true,MutexName,out ownsMutex);
+        instanceMutex=new Mutex(true,InstanceMutexName,out ownsMutex);
         if(!ownsMutex)
         {
-            NotifyExistingInstance();
-            if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+            if(NotifyExistingInstance()&&ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
             Shutdown(0);return;
         }
         showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
+        showAcknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset,AcknowledgementName);
         var loadedStartupConfig=new ConfigService().Load();
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
         try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
@@ -115,21 +132,57 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            if(!Mutex.TryOpenExisting(MutexName,out var existing))return false;
+            if(!Mutex.TryOpenExisting(InstanceMutexName,out var existing))return false;
             existing.Dispose();return true;
         }
         catch(UnauthorizedAccessException){return true;}
     }
-    static bool NotifyExistingInstance()
+    internal static bool NotifyExistingInstance(int timeoutMilliseconds=ExistingInstanceResponseTimeoutMs)
     {
         for(int attempt=0;attempt<8;attempt++)
         {
-            try{using var signal=EventWaitHandle.OpenExisting(SignalName);signal.Set();return true;}
+            try
+            {
+                using var signal=EventWaitHandle.OpenExisting(SignalName);
+                using var acknowledgement=EventWaitHandle.OpenExisting(AcknowledgementName);
+                return WaitForExistingInstanceResponse(signal,acknowledgement,timeoutMilliseconds);
+            }
             catch(WaitHandleCannotBeOpenedException){Thread.Sleep(50);}
             catch(UnauthorizedAccessException){return false;}
         }
         return false;
     }
+    internal static bool WaitForExistingInstanceResponse(EventWaitHandle signal,EventWaitHandle acknowledgement,int timeoutMilliseconds)
+    {
+        acknowledgement.Reset();
+        signal.Set();
+        return acknowledgement.WaitOne(timeoutMilliseconds);
+    }
+    static bool RequestStaleInstanceRecovery(IReadOnlyList<string> originalArguments,out string error)
+    {
+        string encoded=StartupService.EncodeArguments(originalArguments);
+        return StartupService.TryRunElevated(["--recover-stale-instance",encoded],out error);
+    }
+#if PRODUCTION_PUBLISH
+    void RunStaleInstanceRecovery(string encodedArguments)
+    {
+        ShutdownMode=ShutdownMode.OnExplicitShutdown;
+        try
+        {
+            string[] originalArguments=StartupService.DecodeElevatedArguments(encodedArguments);
+            if(!StartupService.TryTerminateOtherInstalledInstances(TimeSpan.FromSeconds(6),out string terminationError))
+                throw new InvalidOperationException(terminationError);
+            if(!StartupService.TryRunElevated(originalArguments,out string launchError))
+                throw new InvalidOperationException(launchError);
+            Shutdown(0);
+        }
+        catch(Exception ex)
+        {
+            System.Windows.MessageBox.Show("応答しないRELYRを自動復旧できませんでした。\n\n"+ex.Message,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+#endif
     static void ShowAlreadyRunningMessage()=>System.Windows.MessageBox.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
     void ShutdownWithExitCode(int exitCode){Environment.ExitCode=exitCode;Shutdown(exitCode);}
     void ListenForShow(MainWindow window)
@@ -138,7 +191,11 @@ public partial class App : System.Windows.Application
         {
             while(WaitHandle.WaitAny([showSignal!,signalStop.Token.WaitHandle])==0)
             {
-                Dispatcher.BeginInvoke(window.ShowFromExternalLaunch);
+                Dispatcher.BeginInvoke(()=>
+                {
+                    try{window.ShowFromExternalLaunch();}
+                    finally{showAcknowledgement?.Set();}
+                });
             }
         }
         catch(ObjectDisposedException){}
@@ -191,7 +248,7 @@ public partial class App : System.Windows.Application
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e){if(MainWindow is RELYR.MainWindow window)window.PrepareForSystemShutdown();base.OnSessionEnding(e);}
     void SystemPowerModeChanged(object sender,PowerModeChangedEventArgs e){if(e.Mode==PowerModes.Suspend)InputEngine.ReleaseAll();}
     void SystemSessionSwitch(object sender,SessionSwitchEventArgs e){if(e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.RemoteDisconnect)InputEngine.ReleaseAll();}
-    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();showSignal?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
+    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);
 }

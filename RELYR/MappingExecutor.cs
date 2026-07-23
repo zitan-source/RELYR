@@ -22,7 +22,10 @@ public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Ac
     }
     public void SendText(string value)=>InputEngine.SendText(value,useUsLayout?.Invoke()==true);
     public void SendMouse(string value)=>InputEngine.SendMouse(value);
-    public void Launch(string value)=>Process.Start(new ProcessStartInfo(value){UseShellExecute=true});
+    public void Launch(string value)
+    {
+        using var process=Process.Start(new ProcessStartInfo(value){UseShellExecute=true});
+    }
     public void RunMacro(string name){var macro=findMacro(name)??throw new InvalidOperationException("マクロが見つかりません: "+name);MacroPlayer.Play(macro,getConfig?.Invoke(),switchProfile);}
     public void SwitchProfile(string name)=>(switchProfile??throw new InvalidOperationException("プロファイル切替を利用できません。"))(name);
 }

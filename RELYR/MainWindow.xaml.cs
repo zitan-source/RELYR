@@ -1000,7 +1000,7 @@ public partial class MainWindow : Window
             string installer=await UpdateService.DownloadAndVerifyAsync(update,updateCancellation.Token,footerProgress);
             UpdateAvailableButton.Content="起動中…";
             reportProgress?.Invoke("検証が完了しました。インストーラーを起動しています…");
-            var process=Process.Start(new ProcessStartInfo(installer,"/SP- /CLOSEAPPLICATIONS"){UseShellExecute=true});
+            using var process=Process.Start(new ProcessStartInfo(installer,"/SP- /CLOSEAPPLICATIONS"){UseShellExecute=true});
             if(process==null)throw new InvalidOperationException("更新用インストーラーを起動できませんでした。");
             RequestApplicationExit();
             return true;
@@ -1046,10 +1046,34 @@ public partial class MainWindow : Window
     }
     string? SelectRunningApplication()
     {
-        var apps=System.Diagnostics.Process.GetProcesses().Where(p=>p.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(p.MainWindowTitle)).Select(p=>new{Label=$"{p.MainWindowTitle}  —  {p.ProcessName}.exe",Value=p.ProcessName+".exe"}).GroupBy(x=>x.Value,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.Label).ToList();var dialog=new Window{Title="自動切替する起動中のアプリを選択",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=620,Height=480,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};var grid=new Grid{Margin=new Thickness(18)};grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});var list=new ListBox{ItemsSource=apps,DisplayMemberPath="Label",Background=ThemeService.Brush("CardBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};grid.Children.Add(list);var ok=new System.Windows.Controls.Button{Content="このアプリを使用",Padding=new Thickness(18,8,18,8),Margin=new Thickness(3),HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText")};ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};Grid.SetRow(ok,1);grid.Children.Add(ok);dialog.Content=grid;FollowWindowsTitleBarTheme(dialog);return dialog.ShowDialog()==true?(string?)list.SelectedItem?.GetType().GetProperty("Value")?.GetValue(list.SelectedItem):null;
+        var apps=new List<RunningApplicationOption>();
+        foreach(var process in Process.GetProcesses())
+        {
+            using(process)
+            {
+                try
+                {
+                    if(process.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(process.MainWindowTitle))
+                        apps.Add(new($"{process.MainWindowTitle}  —  {process.ProcessName}.exe",process.ProcessName+".exe"));
+                }
+                catch{}
+            }
+        }
+        var uniqueApps=apps.GroupBy(x=>x.Value,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.Label).ToList();
+        var dialog=new Window{Title="自動切替する起動中のアプリを選択",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=620,Height=480,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};
+        var grid=new Grid{Margin=new Thickness(18)};
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+        var list=new ListBox{ItemsSource=uniqueApps,DisplayMemberPath="Label",Background=ThemeService.Brush("CardBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};
+        grid.Children.Add(list);
+        var ok=new System.Windows.Controls.Button{Content="このアプリを使用",Padding=new Thickness(18,8,18,8),Margin=new Thickness(3),HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText")};
+        ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};
+        Grid.SetRow(ok,1);grid.Children.Add(ok);dialog.Content=grid;FollowWindowsTitleBarTheme(dialog);
+        return dialog.ShowDialog()==true?(list.SelectedItem as RunningApplicationOption)?.Value:null;
     }
     [DllImport("user32.dll")]static extern bool DestroyIcon(IntPtr handle);
     [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr handle,int attribute,ref int value,int valueSize);
     static ActionOption[] ActionOptions()=>[new(ActionKind.Key,"⌨","別のキー"),new(ActionKind.Disabled,"⊘","無効化"),new(ActionKind.Shortcut,"↗","ショートカット"),new(ActionKind.Text,"T","文字列"),new(ActionKind.Launch,"▱","アプリ・パス"),new(ActionKind.Macro,"⌘","マクロ")];
     sealed record ActionOption(ActionKind Kind,string Icon,string Label);
+    sealed record RunningApplicationOption(string Label,string Value);
 }

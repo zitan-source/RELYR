@@ -93,7 +93,13 @@ public partial class ProfileManagerWindow:Window
     void RefreshRunningApplications()
     {
         var apps=new List<AutoSwitchApplicationInfo>();
-        foreach(var process in Process.GetProcesses())try{if(process.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(process.MainWindowTitle))apps.Add(new($"{process.MainWindowTitle}  —  {process.ProcessName}.exe",process.ProcessName+".exe"));}catch{}
+        foreach(var process in Process.GetProcesses())
+        {
+            using(process)
+            {
+                try{if(process.MainWindowHandle!=IntPtr.Zero&&!string.IsNullOrWhiteSpace(process.MainWindowTitle))apps.Add(new($"{process.MainWindowTitle}  —  {process.ProcessName}.exe",process.ProcessName+".exe"));}catch{}
+            }
+        }
         RunningApplicationList.ItemsSource=apps.GroupBy(x=>x.Value,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.Label,StringComparer.CurrentCultureIgnoreCase).ToList();
     }
     void AddRunningApplication_Click(object sender,RoutedEventArgs e)

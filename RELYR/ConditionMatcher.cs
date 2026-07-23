@@ -26,11 +26,11 @@ public static class ConditionMatcher
     {
         if(string.IsNullOrWhiteSpace(condition))return true;
         var hwnd=GetForegroundWindow();if(hwnd==IntPtr.Zero)return false;GetWindowThreadProcessId(hwnd,out var pid);
-        try{return Matches(condition,Process.GetProcessById((int)pid).ProcessName);}catch{return false;}
+        try{using var process=Process.GetProcessById((int)pid);return Matches(condition,process.ProcessName);}catch{return false;}
     }
     public static string ProcessUnderCursor()
     {
-        if(!GetCursorPos(out var point))return "";var hwnd=GetAncestor(WindowFromPoint(point),2);if(hwnd==IntPtr.Zero)return "";GetWindowThreadProcessId(hwnd,out var pid);try{return Process.GetProcessById((int)pid).ProcessName;}catch{return "";}
+        if(!GetCursorPos(out var point))return "";var hwnd=GetAncestor(WindowFromPoint(point),2);if(hwnd==IntPtr.Zero)return "";GetWindowThreadProcessId(hwnd,out var pid);try{using var process=Process.GetProcessById((int)pid);return process.ProcessName;}catch{return "";}
     }
     public static bool Matches(string condition,string actualProcess)=>string.IsNullOrWhiteSpace(condition)||Path.GetFileNameWithoutExtension(condition).Equals(Path.GetFileNameWithoutExtension(actualProcess),StringComparison.OrdinalIgnoreCase);
     [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();

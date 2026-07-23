@@ -286,6 +286,6 @@ public partial class SettingsWindow:Window
         string pending=enabled?"［キャンセル］を押した場合もCapsLockレイヤーはオンのままですが、再起動するまでは機能しません。":"［キャンセル］を押した場合も復元設定は保存されますが、再起動するまではF13レイヤーの状態が続きます。";
         string message=$"CapsLockの設定を変更しました。再起動しないと有効になりません。\n\n［OK］を押すと今すぐWindowsを再起動します。\n{pending}\n\n今すぐ再起動しますか？";
         if(System.Windows.MessageBox.Show(owner,message,"Windowsの再起動が必要です",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
-        try{Process.Start(new ProcessStartInfo("shutdown.exe","/r /t 0"){UseShellExecute=true});}catch(Exception ex){System.Windows.MessageBox.Show(owner,"Windowsを再起動できませんでした。手動で再起動してください。\n\n"+ex.Message,"再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);}
+        try{using var process=Process.Start(new ProcessStartInfo("shutdown.exe","/r /t 0"){UseShellExecute=true});}catch(Exception ex){System.Windows.MessageBox.Show(owner,"Windowsを再起動できませんでした。手動で再起動してください。\n\n"+ex.Message,"再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);}
     }
 }

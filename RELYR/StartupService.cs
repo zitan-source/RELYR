@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.IO;
+using System.Diagnostics;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -78,6 +79,68 @@ public static class StartupService
             error="管理者モードの起動タスクを開始できませんでした。RELYRを再インストールしてください。\n\n"+ex.Message;
             return false;
         }
+    }
+
+    public static bool TryTerminateOtherInstalledInstances(TimeSpan timeout,out string error)
+    {
+        error="";
+        try
+        {
+            RequireElevated();
+            using var current=Process.GetCurrentProcess();
+            string executable=Path.GetFullPath(CurrentExecutablePath());
+            var targetIds=new List<int>();
+            foreach(var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(executable)))
+            {
+                using(process)
+                {
+                    if(process.Id==current.Id)continue;
+                    try
+                    {
+                        string? candidate=process.MainModule?.FileName;
+                        if(candidate!=null&&SameExecutablePath(executable,candidate))targetIds.Add(process.Id);
+                    }
+                    catch{}
+                }
+            }
+            foreach(int processId in targetIds)
+            {
+                try
+                {
+                    using var process=Process.GetProcessById(processId);
+                    // Stop only RELYR itself. Applications launched from a mapping may be
+                    // child processes and must remain open during recovery.
+                    process.Kill(false);
+                }
+                catch(ArgumentException){continue;}
+                catch(Exception ex){error=$"残留しているRELYR（PID {processId}）を終了できませんでした: {ex.Message}";return false;}
+            }
+            var limit=DateTime.UtcNow+timeout;
+            while(DateTime.UtcNow<limit)
+            {
+                if(!AppInstanceExists())return true;
+                Thread.Sleep(100);
+            }
+            error="残留しているRELYRが制限時間内に終了しませんでした。";
+            return false;
+        }
+        catch(Exception ex){error=ex.Message;return false;}
+    }
+
+    internal static bool SameExecutablePath(string first,string second)
+    {
+        try{return Path.GetFullPath(first).Equals(Path.GetFullPath(second),StringComparison.OrdinalIgnoreCase);}
+        catch{return false;}
+    }
+
+    static bool AppInstanceExists()
+    {
+        try
+        {
+            if(!Mutex.TryOpenExisting(App.InstanceMutexName,out var existing))return false;
+            existing.Dispose();return true;
+        }
+        catch(UnauthorizedAccessException){return true;}
     }
 
     public static string[] DecodeElevatedArguments(string encoded)

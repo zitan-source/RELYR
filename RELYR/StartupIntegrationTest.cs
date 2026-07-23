@@ -20,6 +20,22 @@ public static class StartupIntegrationTest
             Check(!encoded.Any(char.IsWhiteSpace),"scheduled-task argument payload contains no command-line whitespace");
             Check(StartupService.MultipleInstancePolicy(true)==2&&StartupService.MultipleInstancePolicy(false)==0,"logon startup ignores duplicate launches while command launcher remains available for macro actions");
             Check(App.IsMainUiLaunch([])&&App.IsMainUiLaunch(["--tray"])&&!App.IsMainUiLaunch(["--macro-id","abc"]),"single-instance guard applies only to the resident main application");
+            Check(StartupService.SameExecutablePath(executable,executable.ToUpperInvariant())&&!StartupService.SameExecutablePath(executable,@"C:\Temp\RELYR.exe"),"stale-instance recovery only terminates the same installed executable");
+            using(var show=new EventWaitHandle(false,EventResetMode.AutoReset))
+            using(var acknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset))
+            {
+                var responder=Task.Run(()=>{show.WaitOne();acknowledgement.Set();});
+                Check(App.WaitForExistingInstanceResponse(show,acknowledgement,1000),"single-instance notification requires a live UI acknowledgement");
+                responder.Wait();
+                Check(!App.WaitForExistingInstanceResponse(show,acknowledgement,5),"an unresponsive instance is not mistaken for a healthy instance");
+            }
+            using(var current=System.Diagnostics.Process.GetCurrentProcess())
+            {
+                int before=current.HandleCount;
+                for(int index=0;index<500;index++)ConditionMatcher.ProcessUnderCursor();
+                int growth=current.HandleCount-before;
+                Check(growth<20,$"cursor profile polling does not leak process handles (growth={growth})");
+            }
         }
         catch(Exception ex){output.WriteLine("FAIL exception: "+ex);failures.Add("exception");}
         output.WriteLine(failures.Count==0?"STARTUP INTEGRATION TEST PASSED":"STARTUP INTEGRATION TEST FAILED");return failures.Count==0?0:1;
