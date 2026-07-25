@@ -7,6 +7,15 @@ public sealed record CatalogAction(string Category,string Name,string Descriptio
 
 public static class ActionCatalog
 {
+    public static bool TryNormalizeMouseAction(string? value,out string normalized)
+    {
+        string input=(value??"").Trim();
+        if(input.Equals("Shift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftShift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Shift+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="ShiftDrag";return true;}
+        if(input.Equals("Ctrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftCtrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Ctrl+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="CtrlDrag";return true;}
+        var action=Items.FirstOrDefault(x=>x.Kind==ActionKind.Mouse&&x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
+        normalized=action?.Value??input;return action!=null;
+    }
+
     public static IReadOnlyList<CatalogAction> Items { get; }=
     [
         new("Windowsの基本機能","設定を開く","Windows設定を表示します",ActionKind.Shortcut,"Win+I"),

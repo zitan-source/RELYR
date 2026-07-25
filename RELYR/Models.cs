@@ -50,7 +50,7 @@ public sealed class Profile
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 15;
+    public int Version { get; set; } = 16;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool EngineEnabled { get; set; } = true;

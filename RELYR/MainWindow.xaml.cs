@@ -323,7 +323,7 @@ public partial class MainWindow : Window
         parts.Add(token);target.Text=string.Join("+",parts);target.CaretIndex=target.Text.Length;
         var kindBox=target==LongValueBox?LongKindBox:KindBox;
         if(parts.Count>1)kindBox.SelectedValue=ActionKind.Shortcut;
-        else if(key.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase))kindBox.SelectedValue=ActionKind.Mouse;
+        else if(key.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)||key.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase))kindBox.SelectedValue=ActionKind.Shortcut;
         else kindBox.SelectedValue=ActionKind.Key;
         e.Handled=true;FocusExecutionValue(target);
     }
@@ -427,10 +427,16 @@ public partial class MainWindow : Window
     {
         var picker=new ActionPickerWindow{Owner=this};
         if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;
-        if(sender is System.Windows.Controls.Button{Tag:string tag}&&tag=="Long"){LongKindBox.SelectedValue=action.Kind;LongValueBox.Text=action.Value;FocusExecutionValue(LongValueBox,true);}
-        else {KindBox.SelectedValue=action.Kind;ValueBox.Text=action.Value;FocusExecutionValue(ValueBox);}
+        ApplyCatalogAction(action,sender is System.Windows.Controls.Button{Tag:string tag}&&tag=="Long");
+    }
+    void ApplyCatalogAction(CatalogAction action,bool longPress)
+    {
+        var editorKind=EditorActionKind(action.Kind);
+        if(longPress){LongKindBox.SelectedValue=editorKind;LongValueBox.Text=action.Value;FocusExecutionValue(LongValueBox,true);}
+        else {KindBox.SelectedValue=editorKind;ValueBox.Text=action.Value;FocusExecutionValue(ValueBox);}
         MarkDirty();
     }
+    internal void ApplyCatalogActionForTest(CatalogAction action,bool longPress=false)=>ApplyCatalogAction(action,longPress);
     void OpenMacros_Click(object sender,RoutedEventArgs e)=>ShowMacroWindow(false,false);
     void OpenProfileManager_Click(object sender,RoutedEventArgs e)
     {
@@ -474,7 +480,7 @@ public partial class MainWindow : Window
         int plus=input.IndexOf('+');if(plus>0){layer=input[..plus];selectedBaseInput=input[(plus+1)..];}
         var visibleAssignment=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
         detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(CurrentProfile.Mappings,visibleAssignment,input);
-        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind; ValueBox.Text = selected.Value; LongKindBox.SelectedValue=selected.LongPressKind; LongValueBox.Text=selected.LongPressValue; LongPressBox.Text = selected.LongPressMs.ToString(); EnabledBox.IsChecked = selected.Enabled; LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
+        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = EditorActionKind(selected.Kind); ValueBox.Text = selected.Value; LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=selected.LongPressValue; LongPressBox.Text = selected.LongPressMs.ToString(); EnabledBox.IsChecked = selected.Enabled; LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
     internal static Mapping SelectEditorMapping(IReadOnlyList<Mapping> currentMappings,Mapping? visibleAssignment,string input)
     {
@@ -498,7 +504,10 @@ public partial class MainWindow : Window
     {
         if (loading || selected == null) return;
         if(ReferenceEquals(sender,ValueBox)&&KindBox.SelectedValue is not ActionKind&&!string.IsNullOrWhiteSpace(ValueBox.Text)){loading=true;KindBox.SelectedValue=ActionKind.Key;loading=false;}
-        var longKind=LongKindBox.SelectedValue is ActionKind lk?lk:selected.LongPressKind;if(ReferenceEquals(sender,LongKindBox)&&longKind==ActionKind.None&&!string.IsNullOrEmpty(LongValueBox.Text)){loading=true;LongValueBox.Clear();loading=false;}if(KindBox.SelectedValue is ActionKind k)selected.Kind=k;selected.Value = ValueBox.Text; selected.LongPressKind=longKind; selected.LongPressValue = LongValueBox.Text;selected.Layer=currentLayer; selected.Enabled = EnabledBox.IsChecked == true; if (int.TryParse(LongPressBox.Text, out var ms)) selected.LongPressMs = ms;
+        var longEditorKind=LongKindBox.SelectedValue is ActionKind lk?lk:EditorActionKind(selected.LongPressKind);if(ReferenceEquals(sender,LongKindBox)&&longEditorKind==ActionKind.None&&!string.IsNullOrEmpty(LongValueBox.Text)){loading=true;LongValueBox.Clear();loading=false;}
+        var shortAction=NormalizeEditorAction(KindBox.SelectedValue is ActionKind k?k:EditorActionKind(selected.Kind),ValueBox.Text);
+        var longAction=NormalizeEditorAction(longEditorKind,LongValueBox.Text);
+        selected.Kind=shortAction.Kind;selected.Value=shortAction.Value;selected.LongPressKind=longAction.Kind;selected.LongPressValue=longAction.Value;selected.Layer=currentLayer; selected.Enabled = EnabledBox.IsChecked == true; if (int.TryParse(LongPressBox.Text, out var ms)) selected.LongPressMs = ms;
         if(MappingHasConfiguredAction(selected))
         {
             if(!CurrentProfile.Mappings.Contains(selected))CurrentProfile.Mappings.Add(selected);
@@ -508,6 +517,13 @@ public partial class MainWindow : Window
         MarkDirty();ColorButtons();
         if(ReferenceEquals(sender,KindBox))FocusExecutionValue(ValueBox);
         else if(ReferenceEquals(sender,LongKindBox))FocusExecutionValue(LongValueBox,true);
+    }
+    static ActionKind EditorActionKind(ActionKind kind)=>kind==ActionKind.Mouse?ActionKind.Shortcut:kind;
+    internal static (ActionKind Kind,string Value) NormalizeEditorAction(ActionKind editorKind,string? value)
+    {
+        string original=value??"";
+        if(editorKind!=ActionKind.Shortcut)return (editorKind,original);
+        return ActionCatalog.TryNormalizeMouseAction(original,out string mouseAction)?(ActionKind.Mouse,mouseAction):(editorKind,original.Trim());
     }
     void UpdateBrowseButtons()
     {

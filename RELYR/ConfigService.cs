@@ -90,7 +90,7 @@ public sealed class ConfigService
     public AppConfig Import(string path)
     {
         var result=JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path),options)??throw new InvalidDataException("設定ファイルが空です。");
-        if(result.Version>15)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
+        if(result.Version>16)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
         if(result.Profiles is null||result.Profiles.Count==0)throw new InvalidDataException("有効なプロファイルがありません。");
         result=Normalize(result);result.CapsLockRemapPendingRestart=false;result.CapsLockRemapEffectiveBeforeRestart=false;result.CapsLockRemapChangedAtUtcTicks=0;
         var errors=ConfigValidator.Validate(result);
@@ -118,10 +118,10 @@ public sealed class ConfigService
         // v7以前ではWindows再起動を異常終了と誤認し、全レイヤー停止が保存されることがあったため一度だけ復旧する。
         if(originalVersion<8)value.EngineEnabled=true;
         if(value.Profiles.Count==0)value.Profiles.Add(new Profile());
-        foreach(var profile in value.Profiles){profile.Name=string.IsNullOrWhiteSpace(profile.Name)?"名称未設定":profile.Name;profile.Mappings??=[];profile.AutoSwitchApplications??=[];foreach(var map in profile.Mappings){if(map.Input.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock";else if(map.Input.StartsWith("F13+",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock"+map.Input[3..];if(map.Layer.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Layer="CapsLock";if(originalVersion<9&&map.LongPressKind==ActionKind.None)map.LongPressValue="";}}
+        foreach(var profile in value.Profiles){profile.Name=string.IsNullOrWhiteSpace(profile.Name)?"名称未設定":profile.Name;profile.Mappings??=[];profile.AutoSwitchApplications??=[];foreach(var map in profile.Mappings){if(map.Input.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock";else if(map.Input.StartsWith("F13+",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock"+map.Input[3..];if(map.Layer.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Layer="CapsLock";if(originalVersion<9&&map.LongPressKind==ActionKind.None)map.LongPressValue="";if(map.Kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse&&ActionCatalog.TryNormalizeMouseAction(map.Value,out string mouseValue)){map.Kind=ActionKind.Mouse;map.Value=mouseValue;}if(map.LongPressKind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse&&ActionCatalog.TryNormalizeMouseAction(map.LongPressValue,out string longMouseValue)){map.LongPressKind=ActionKind.Mouse;map.LongPressValue=longMouseValue;}}}
         if(!value.Profiles.Any(x=>x.Name==value.ActiveProfile))value.ActiveProfile=value.Profiles[0].Name;
         if(!Enum.IsDefined(value.ThemeMode))value.ThemeMode=AppThemeMode.System;
-        value.Version=15;
+        value.Version=16;
         return value;
     }
 
