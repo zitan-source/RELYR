@@ -112,7 +112,15 @@ foreach($payload in @('RELYR.exe','VirtualDesktopAccessor.dll','LICENSE.txt','TH
   if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}
 }
 foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\obj'))){
-  if(Test-Path -LiteralPath $generated){Remove-Item -LiteralPath $generated -Recurse -Force}
+  if(Test-Path -LiteralPath $generated){
+    try{
+      Remove-Item -LiteralPath $generated -Recurse -Force -ErrorAction Stop
+    }catch [System.UnauthorizedAccessException] {
+      Write-Warning "Generated files are still used by a running development build and were kept: $generated"
+    }catch [System.IO.IOException] {
+      Write-Warning "Generated files are still used by a running development build and were kept: $generated"
+    }
+  }
 }
 Write-Host "Installer: $installer"
 Write-Host "Checksum: $checksumFile"

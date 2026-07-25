@@ -66,7 +66,7 @@
       <TextBlock x:Name="StatusText" Text="キーまたはマウスのボタンを選んでください。"
                  Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
       <Button Grid.Column="1" Content="完了" Click="Close_Click" Width="108" Height="40"
-              Background="{DynamicResource AccentStrongBrush}" Foreground="White"
+              Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"
               BorderBrush="{DynamicResource AccentBrush}"/>
     </Grid>
   </Grid>

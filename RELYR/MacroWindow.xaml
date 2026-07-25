@@ -36,7 +36,23 @@
       <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="12"/>
     </Style>
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/>
+          </Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="MacroStepKindBar" TargetType="Border">
       <Setter Property="Width" Value="4"/>
@@ -150,7 +166,8 @@
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <StackPanel><TextBlock Text="マクロ名" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="NameBox" Margin="0,4,0,0" IsReadOnly="True" TextChanged="NameChanged" KeyDown="NameBox_KeyDown"/></StackPanel>
-              <Button x:Name="ConfirmNameButton" Grid.Column="1" Content="名前を確定" Click="ConfirmName_Click" Margin="8,21,0,0" Visibility="Collapsed" Background="{DynamicResource AccentStrongBrush}"/>
+              <Button x:Name="ConfirmNameButton" Grid.Column="1" Content="名前を確定" Click="ConfirmName_Click" Margin="8,21,0,0" Visibility="Collapsed"
+                      Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,12,0,7">
@@ -247,7 +264,8 @@
                 </StackPanel>
               </Expander>
               <TextBlock Text="※ ここで選ぶ記録方法は、すべてのマクロで共通です。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="10" Margin="2,0,2,8"/>
-              <Button x:Name="RecordButton" Content="● 記録を開始（末尾へ追記）" Click="Record_Click" Background="{DynamicResource DangerBackground}" BorderBrush="{DynamicResource DangerBrush}" Padding="12,10"/>
+              <Button x:Name="RecordButton" Content="● 記録を開始（末尾へ追記）" Click="Record_Click"
+                      Style="{StaticResource DangerButton}" Padding="12,10"/>
               <TextBlock x:Name="RecordStatus" Text="停止中" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,5"/>
             </StackPanel></ScrollViewer>
           </TabItem>
@@ -279,7 +297,9 @@
         <Button x:Name="StopTestButton" Content="■ 停止" Click="StopTest_Click" IsEnabled="False"/>
         <Button x:Name="ShortcutButton" Content="デスクトップに実行アイコンを作成" Click="CreateShortcut_Click" IsEnabled="False"/>
         <Button x:Name="SaveButton" Content="保存" Click="Save_Click" Background="{DynamicResource AccentSoftBrush}" IsEnabled="False"/>
-        <Button x:Name="UseButton" Content="このマクロを割り当て" Click="Use_Click" Background="{DynamicResource AccentStrongBrush}" Visibility="Collapsed" IsEnabled="False"/>
+        <Button x:Name="UseButton" Content="このマクロを割り当て" Click="Use_Click"
+                Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"
+                Visibility="Collapsed" IsEnabled="False"/>
         <Button Content="閉じる" Click="Close_Click"/>
       </WrapPanel>
     </Grid>

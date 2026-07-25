@@ -28,6 +28,7 @@ public partial class MacroInputPickerWindow:Window
     void BuildInputSurface()
     {
         InputCanvas.Children.Clear();inputButtons.Clear();
+        InputCanvas.Width=layout=="US"?900:942;
         if(layout=="US")BuildUsKeyboard();else BuildJisKeyboard();
         AddExtendedFunctionKeys();
         BuildLowerGroups();
@@ -80,7 +81,7 @@ public partial class MacroInputPickerWindow:Window
         double cursorWidth=navigationWidth;
         double cursorHeight=titleHeight+keyHeight*2+Gap+padding;
         double mouseX=cursorX+cursorWidth+groupGap;
-        double mouseWidth=1200-mouseX;
+        double mouseWidth=InputCanvas.Width-mouseX;
 
         AddFrame("ナビゲーション",0,top,navigationWidth,navigationHeight);
         AddFrame("テンキー",numpadX,top,numpadWidth,numpadHeight);
@@ -108,22 +109,28 @@ public partial class MacroInputPickerWindow:Window
 
     void BuildMouse(double x,double y,double width,double height)
     {
-        double bodyWidth=270,bodyHeight=248,bodyX=x+(width-bodyWidth)/2,bodyY=y+42;
-        var body=new Border{Width=bodyWidth,Height=bodyHeight,CornerRadius=new CornerRadius(120),BorderThickness=new Thickness(2),BorderBrush=ThemeService.Brush("BorderBrush"),Background=ThemeService.Brush("CardBackground"),IsHitTestVisible=false};
-        Canvas.SetLeft(body,bodyX);Canvas.SetTop(body,bodyY);InputCanvas.Children.Add(body);
-        var split=new Line{X1=bodyX,X2=bodyX+bodyWidth,Y1=bodyY+78,Y2=bodyY+78,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=2,IsHitTestVisible=false};
+        const double bodyWidth=168;
+        double bodyX=x+(width-bodyWidth)/2,bodyY=y+34;
+        var body=new Border{Width=156,Height=238,CornerRadius=new CornerRadius(74),BorderThickness=new Thickness(2),BorderBrush=ThemeService.Brush("BorderBrush"),Background=ThemeService.Brush("CardBackground"),IsHitTestVisible=false};
+        Canvas.SetLeft(body,bodyX+6);Canvas.SetTop(body,bodyY+8);InputCanvas.Children.Add(body);
+        var centerLine=new Line{X1=bodyX+84,X2=bodyX+84,Y1=bodyY+10,Y2=bodyY+82,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=2,IsHitTestVisible=false};
+        InputCanvas.Children.Add(centerLine);
+        var split=new Line{X1=bodyX+8,X2=bodyX+160,Y1=bodyY+82,Y2=bodyY+82,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=2,IsHitTestVisible=false};
         InputCanvas.Children.Add(split);
 
-        AddButton("MouseLeft","左クリック",bodyX+8,bodyY+8,102,62);
-        AddButton("MouseRight","右クリック",bodyX+160,bodyY+8,102,62);
-        AddButton("WheelUp","▲",bodyX+116,bodyY+8,38,27);
-        AddButton("MouseMiddle","●",bodyX+116,bodyY+38,38,27);
-        AddButton("WheelDown","▼",bodyX+116,bodyY+68,38,27);
-        AddButton("TiltLeft","◀",bodyX+75,bodyY+104,58,38);
-        AddButton("TiltRight","▶",bodyX+137,bodyY+104,58,38);
-        AddButton("MouseBack","戻る",bodyX+28,bodyY+160,78,42);
-        AddButton("MouseForward","進む",bodyX+28,bodyY+206,78,34);
-        AddButton("MouseX","追加",bodyX+178,bodyY+160,64,80);
+        AddButton("MouseLeft","左",bodyX+14,bodyY+16,56,54);
+        AddButton("MouseRight","右",bodyX+98,bodyY+16,56,54);
+        AddButton("WheelUp","▲",bodyX+72,bodyY+18,24,20);
+        AddButton("MouseMiddle","●",bodyX+72,bodyY+40,24,16);
+        AddButton("WheelDown","▼",bodyX+72,bodyY+58,24,20);
+
+        var tiltLabel=new TextBlock{Text="TILT",Width=168,TextAlignment=TextAlignment.Center,Foreground=ThemeService.Brush("MutedText"),FontSize=8,FontWeight=FontWeights.Bold,IsHitTestVisible=false};
+        Canvas.SetLeft(tiltLabel,bodyX);Canvas.SetTop(tiltLabel,bodyY+96);InputCanvas.Children.Add(tiltLabel);
+        AddButton("TiltLeft","◀",bodyX+44,bodyY+108,38,28);
+        AddButton("TiltRight","▶",bodyX+86,bodyY+108,38,28);
+        AddButton("MouseBack","戻る",bodyX+20,bodyY+151,48,31);
+        AddButton("MouseForward","進む",bodyX+20,bodyY+186,48,31);
+        AddButton("MouseX","X1",bodyX+112,bodyY+151,36,66);
     }
 
     void AddFrame(string title,double x,double y,double width,double height)

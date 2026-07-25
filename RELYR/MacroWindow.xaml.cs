@@ -181,7 +181,7 @@ public partial class MacroWindow:Window
     {
         if(recording){StopRecording();return;}if(current==null)return;StopCoordinateCapture();StopManualCapture();PushUndo();recordingStartIndex=current.Steps.Count;stopShortcut.Reset();recording=true;ignoreInitialMouseRelease=true;sinceLast=Stopwatch.StartNew();lastRecordedMousePosition=null;recordedMovesInsideWindow.Clear();suppressedMappedInputs.Clear();
         RecordKeyboardBox.IsEnabled=false;RecordMappedActionsBox.IsEnabled=false;RecordPhysicalInputBox.IsEnabled=false;RecordMouseMovesBox.IsEnabled=false;RelativeMouseMovementBox.IsEnabled=false;FixedMousePositionBox.IsEnabled=false;
-        setRecording(true,RecordMouseMovesBox.IsChecked==true,config.RecordMappedActionsInMacros);RecordButton.Content="■ 記録停止";RecordButton.Background=ThemeService.Brush("AccentStrongBrush");RecordStatus.Text=$"記録中（{(config.RecordMappedActionsInMacros?"割り当て後のアクション":"物理キー")}）— Ctrl + Shift + F12 で終了";RecordStatus.Foreground=ThemeService.Brush("AccentBrush");
+        setRecording(true,RecordMouseMovesBox.IsChecked==true,config.RecordMappedActionsInMacros);RecordButton.Content="■ 記録停止";RecordButton.Background=ThemeService.Brush("AccentStrongBrush");RecordButton.Foreground=ThemeService.Brush("AccentButtonText");RecordStatus.Text=$"記録中（{(config.RecordMappedActionsInMacros?"割り当て後のアクション":"物理キー")}）— Ctrl + Shift + F12 で終了";RecordStatus.Foreground=ThemeService.Brush("AccentBrush");
     }
     public void Capture(string text)
     {
@@ -211,7 +211,7 @@ public partial class MacroWindow:Window
     void StopRecording()
     {
         if(!recording)return;recording=false;ignoreInitialMouseRelease=false;stopShortcut.Reset();while(current!=null&&current.Steps.Count>recordingStartIndex&&current.Steps.LastOrDefault() is { } last&&(recordedMovesInsideWindow.Contains(last)||IsMoveInsideWindow(last.Event)||(last.Event=="MouseLeft Down"&&last.DelayMs<1000)))current.Steps.RemoveAt(current.Steps.Count-1);
-        sinceLast=null;lastRecordedMousePosition=null;recordedMovesInsideWindow.Clear();suppressedMappedInputs.Clear();setRecording(false,false,false);RecordKeyboardBox.IsEnabled=true;RecordMappedActionsBox.IsEnabled=true;RecordPhysicalInputBox.IsEnabled=true;RecordMouseMovesBox.IsEnabled=true;UpdateMouseMovementModeState();RecordButton.Content="● 記録を開始（末尾へ追記）";RecordButton.Background=ThemeService.Brush("DangerBackground");RecordStatus.Text="停止中";RecordStatus.Foreground=ThemeService.Brush("SecondaryText");RefreshSteps();SetEditorState();
+        sinceLast=null;lastRecordedMousePosition=null;recordedMovesInsideWindow.Clear();suppressedMappedInputs.Clear();setRecording(false,false,false);RecordKeyboardBox.IsEnabled=true;RecordMappedActionsBox.IsEnabled=true;RecordPhysicalInputBox.IsEnabled=true;RecordMouseMovesBox.IsEnabled=true;UpdateMouseMovementModeState();RecordButton.Content="● 記録を開始（末尾へ追記）";RecordButton.Background=ThemeService.Brush("DangerBackground");RecordButton.Foreground=ThemeService.Brush("DangerForeground");RecordStatus.Text="停止中";RecordStatus.Foreground=ThemeService.Brush("SecondaryText");RefreshSteps();SetEditorState();
     }
     void RecordKeyboardChanged(object sender,RoutedEventArgs e){if(loadingOption)return;config.RecordKeyboardInputInMacros=RecordKeyboardBox.IsChecked==true;MarkChanged();}
     void KeyRecordingModeChanged(object sender,RoutedEventArgs e){if(loadingOption)return;config.RecordMappedActionsInMacros=RecordMappedActionsBox.IsChecked==true;MarkChanged();}

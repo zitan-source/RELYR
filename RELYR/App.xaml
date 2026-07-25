@@ -26,6 +26,8 @@
         <SolidColorBrush x:Key="DangerBrush" Color="#E16A78"/>
         <SolidColorBrush x:Key="DangerBackground" Color="#7D2430"/>
         <SolidColorBrush x:Key="DangerHoverBackground" Color="#9B3040"/>
+        <SolidColorBrush x:Key="DangerForeground" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="DangerHoverForeground" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="KeyBackground" Color="#1B2733"/>
         <SolidColorBrush x:Key="ReservedKeyBackground" Color="#343B44"/>
         <SolidColorBrush x:Key="LayerActiveBackground" Color="#146B5C"/>

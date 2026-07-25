@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     Mapping? selected;
     string selectedBaseInput="";
     bool loading, detectMode, allowClose, engineStarted, editingSelectedInput;
+    int exitRequested;
     string? pendingDetectedLayer;
     bool updateInProgress;
     DateTimeOffset lastAutomaticUpdateCheckAttempt;
@@ -672,7 +673,7 @@ public partial class MainWindow : Window
         foreach(var profile in appliedConfig.Profiles.Where(p=>config.Profiles.Any(x=>x.Name==p.Name))){var item=new System.Windows.Forms.ToolStripMenuItem(profile.Name){Checked=profile.Name==appliedConfig.ActiveProfile};item.Click+=(_,_)=>Dispatcher.Invoke(()=>SwitchProfile(profile.Name,true));profiles.DropDownItems.Add(item);}menu.Items.Add(profiles);
         menu.Items.Add("押下キーをすべて解除",null,(_,_)=>InputEngine.ReleaseAll());
         menu.Items.Add("セーフモード",null,(_,_)=>Dispatcher.Invoke(()=>{EngineToggle.IsChecked=false;InputEngine.ReleaseAll();}));
-        menu.Items.Add("終了",null,(_,_)=>Dispatcher.Invoke(()=>{allowClose=true;Close();}));
+        menu.Items.Add("終了",null,(_,_)=>Dispatcher.Invoke(RequestApplicationExit));
         tray.ContextMenuStrip=menu;old?.Dispose();
     }
 
@@ -1035,7 +1036,21 @@ public partial class MainWindow : Window
         engine.Dispose();
         archiveWatcher.Dispose();
     }
-    public void RequestApplicationExit(){allowClose=true;Close();}
+    public void RequestApplicationExit()
+    {
+        if(Interlocked.Exchange(ref exitRequested,1)!=0)return;
+        allowClose=true;
+        using var exitFallback=new System.Threading.Timer(_=>Environment.Exit(0),null,TimeSpan.FromSeconds(5),Timeout.InfiniteTimeSpan);
+        try
+        {
+            Close();
+            System.Windows.Application.Current?.Shutdown(0);
+        }
+        catch
+        {
+            Environment.Exit(1);
+        }
+    }
     string? PromptText(string title,string label,string initial)
     {
         var dialog=new Window{Title=title,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=430,Height=190,ResizeMode=ResizeMode.NoResize,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(new TextBlock{Text=label,Margin=new Thickness(0,0,0,7)});var box=new TextBox{Text=initial,Padding=new Thickness(8),Background=ThemeService.Brush("InputBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush")};panel.Children.Add(box);var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Margin=new Thickness(0,14,0,0)};var cancel=new System.Windows.Controls.Button{Content="キャンセル",Padding=new Thickness(15,7,15,7),Margin=new Thickness(3)};var ok=new System.Windows.Controls.Button{Content="決定",Padding=new Thickness(18,7,18,7),Margin=new Thickness(3),Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText"),IsDefault=true};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>dialog.DialogResult=true;buttons.Children.Add(cancel);buttons.Children.Add(ok);panel.Children.Add(buttons);dialog.Content=panel;FollowWindowsTitleBarTheme(dialog);dialog.Loaded+=(_,_)=>{box.Focus();box.SelectAll();};return dialog.ShowDialog()==true?box.Text.Trim():null;
