@@ -52,6 +52,7 @@ NoRadio=後で再起動する(&N)
 
 [Files]
 Source: "artifacts\production\RELYR.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "artifacts\production\RELYR-Macro.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "artifacts\production\VirtualDesktopAccessor.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "artifacts\production\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "artifacts\production\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -83,6 +84,7 @@ Filename: "{app}\{#AppExe}"; Parameters: "--configure-elevated-launcher"; Flags:
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Description: "RELYRを起動する"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: IsRelyrInAppUpdate
 
 [UninstallRun]
 Filename: "{app}\{#AppExe}"; Parameters: "--prepare-uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RestoreRELYRSystemSettings"
@@ -103,6 +105,11 @@ var
 function IsUpgradeInstall(): Boolean;
 begin
   Result := UpgradeInstall;
+end;
+
+function IsRelyrInAppUpdate(): Boolean;
+begin
+  Result := CompareText(ExpandConstant('{param:RELYRUPDATE|0}'), '1') = 0;
 end;
 
 function InitializeSetup(): Boolean;

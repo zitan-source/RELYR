@@ -9,6 +9,7 @@ artifacts/
 .agents/
 .nuget-public-test/
 TestResults/
+**/.verification/
 *.user
 *.suo
 *.log

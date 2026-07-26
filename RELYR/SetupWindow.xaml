@@ -86,7 +86,7 @@
             </Grid>
             <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="18,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0"><TextBlock Text="レイヤーとは" Foreground="{DynamicResource TutorialAccent}" FontSize="17" FontWeight="Bold"/><TextBlock Text="Space・右クリック・戻る・進むを押している間だけ、追加の操作が使えます。単押しは元の操作として使えます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,20,0"/></StackPanel>
-              <StackPanel Grid.Column="1"><TextBlock Text="Spaceを長押しで連打していた方へ" Foreground="{DynamicResource TutorialOrange}" FontSize="17" FontWeight="Bold"/><TextBlock Text="1回目の長押しはSpaceレイヤーとして動くため、Spaceは連打されません。連打するときはSpaceを1回押し、2回目を長押しします。この動作は［アプリ設定］→［レイヤー］で変更できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="Spaceを長押しで連打していた方へ" Foreground="{DynamicResource TutorialOrange}" FontSize="17" FontWeight="Bold"/><TextBlock Text="1回目の長押しはSpaceレイヤーとして動くため、Spaceは連打されません。連打するときはSpaceを1回押し、2回目を長押しします。この動作は［設定］→［レイヤー］で変更できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel>
             </Grid></Border>
           </Grid>
 

@@ -116,6 +116,7 @@
       <Style.Triggers>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Key}"><Setter Property="Foreground" Value="{DynamicResource ActionKeyIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Disabled}"><Setter Property="Foreground" Value="{DynamicResource ActionDisabledIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Profile}"><Setter Property="Foreground" Value="{DynamicResource ActionProfileIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Shortcut}"><Setter Property="Foreground" Value="{DynamicResource ActionShortcutIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Text}"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Launch}"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
@@ -136,21 +137,6 @@
         <ItemsPresenter/>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style x:Key="ActionHelperButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="36"/><Setter Property="Margin" Value="3"/>
-      <Setter Property="Padding" Value="5,7"/><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="HelperBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HelperBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="HelperBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="HelperBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="HelperBorder" Property="Opacity" Value="0.45"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
     <Style x:Key="LowerGroupFrame" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource CardBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="7"/>
@@ -165,7 +151,9 @@
     <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBackground}" Padding="10">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition x:Name="HeaderBrandColumn" Width="150"/><ColumnDefinition/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="ProductNameText" Text="RELYR" FontWeight="Bold" FontSize="21" Margin="4,0,12,0" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+        <TextBlock x:Name="ProductNameText" Text="RELYR" FontWeight="Bold" FontSize="27"
+                   Margin="0" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"
+                   HorizontalAlignment="Stretch" TextAlignment="Center"/>
         <TextBlock x:Name="VersionText" Text="v—" Visibility="Collapsed" Width="0" Height="0" Margin="0"/>
         <WrapPanel x:Name="ToolbarPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <TextBlock Text="配列" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource SecondaryText}"/><ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="82" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
@@ -181,18 +169,24 @@
     <Border x:Name="UpdateBanner" DockPanel.Dock="Top" Visibility="Collapsed"
             Background="{DynamicResource AccentStrongBrush}" Padding="14,8">
       <Grid>
-        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="UpdateBannerText" VerticalAlignment="Center" FontWeight="SemiBold"
-                   Foreground="{DynamicResource AccentButtonText}" Text="新しいバージョンが利用可能です"/>
-        <Button x:Name="UpdateAvailableButton" Grid.Column="1" Click="UpdateAvailable_Click"
-                Content="今すぐ更新" Margin="12,0,4,0" Padding="14,5" Cursor="Hand"
-                Background="{DynamicResource CardBackground}" Foreground="{DynamicResource PrimaryText}"
-                BorderBrush="{DynamicResource AccentButtonText}"/>
-        <Button x:Name="UpdateDismissButton" Grid.Column="2" Click="UpdateDismiss_Click"
-                Content="×" ToolTip="このバージョンの通知を閉じる" Margin="4,0,0,0" Padding="9,4"
-                FontSize="17" FontWeight="SemiBold" Cursor="Hand"
-                Background="Transparent" Foreground="{DynamicResource AccentButtonText}"
-                BorderBrush="Transparent"/>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="UpdateBannerText" VerticalAlignment="Center" FontWeight="SemiBold"
+                     Foreground="{DynamicResource AccentButtonText}" Text="新しいバージョンが利用可能です"/>
+          <Button x:Name="UpdateAvailableButton" Grid.Column="1" Click="UpdateAvailable_Click"
+                  Content="今すぐ更新" Margin="12,0,4,0" Padding="14,5" Cursor="Hand"
+                  Background="{DynamicResource CardBackground}" Foreground="{DynamicResource PrimaryText}"
+                  BorderBrush="{DynamicResource AccentButtonText}"/>
+          <Button x:Name="UpdateDismissButton" Grid.Column="2" Click="UpdateDismiss_Click"
+                  Content="×" ToolTip="このバージョンの通知を閉じる" Margin="4,0,0,0" Padding="9,4"
+                  FontSize="17" FontWeight="SemiBold" Cursor="Hand"
+                  Background="Transparent" Foreground="{DynamicResource AccentButtonText}"
+                  BorderBrush="Transparent"/>
+        </Grid>
+        <ProgressBar x:Name="UpdateBannerProgress" Grid.Row="1" Height="4" Minimum="0" Maximum="100"
+                     Visibility="Collapsed" Margin="0,7,0,0"
+                     Foreground="{DynamicResource AccentButtonText}" Background="{DynamicResource AccentSoftBrush}"/>
       </Grid>
     </Border>
 
@@ -235,9 +229,15 @@
            </StackPanel>
           </ScrollViewer>
           <StackPanel x:Name="LeftBottomActions" Grid.Row="1" Margin="0,8,0,0">
-            <Button x:Name="MacroManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="●  マクロ" Click="OpenMacros_Click" ToolTip="操作を記録してキーへ割り当てます"/>
-            <Button x:Name="ProfileManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="☰  プロファイル管理" Click="OpenProfileManager_Click" ToolTip="プロファイルの追加、編集、自動切替を管理します"/>
-            <Button x:Name="AppSettingsButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="⚙  アプリ設定" Click="OpenSettings_Click" ToolTip="自動起動や自動解凍を設定します"/>
+            <Button x:Name="MacroManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenMacros_Click" ToolTip="操作を記録してキーへ割り当てます">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="●" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="マクロ" Margin="8,0,0,0"/></Grid>
+            </Button>
+            <Button x:Name="ProfileManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenProfileManager_Click" ToolTip="プロファイルの追加、編集、自動切替を管理します">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="☰" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="プロファイル管理" Margin="8,0,0,0"/></Grid>
+            </Button>
+            <Button x:Name="AppSettingsButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenSettings_Click" ToolTip="自動起動や自動解凍を設定します">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="⚙" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="設定" Margin="8,0,0,0"/></Grid>
+            </Button>
           </StackPanel>
         </Grid>
       </Border>
@@ -275,14 +275,14 @@
           <Grid x:Name="LowerInputGrid" Grid.Row="1" Width="{Binding ActualWidth,ElementName=KeyboardViewbox}" HorizontalAlignment="Left" Margin="0,10,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="MouseColumn" Width="300"/></Grid.ColumnDefinitions>
             <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="0,0,12,0" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Stretch"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312"/></Viewbox>
-            <Border Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Margin="0,0,0,2" Panel.ZIndex="0"/>
+            <Border x:Name="MouseFrame" Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Margin="0,0,0,2" Panel.ZIndex="0"/>
             <TextBlock Grid.Column="1" Text="マウス" Style="{StaticResource LowerGroupTitle}" Panel.ZIndex="2" HorizontalAlignment="Left" VerticalAlignment="Top"/>
             <Viewbox x:Name="MouseHost" Grid.Column="1" Margin="8,22,8,8" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Stretch" Panel.ZIndex="1"/>
           </Grid>
         </Grid>
       </Grid>
 
-      <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource PaneBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1,0,0,0" Padding="16">
+      <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource PaneBackground}" BorderThickness="0" Padding="16">
         <Border.RenderTransform><TranslateTransform x:Name="AssignmentPaneTransform" X="0"/></Border.RenderTransform>
         <ScrollViewer x:Name="AssignmentScrollViewer" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" IsDeferredScrollingEnabled="False" PreviewMouseWheel="AssignmentPane_PreviewMouseWheel">
           <StackPanel>
@@ -295,14 +295,8 @@
             <Border Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,5,0,10">
               <StackPanel>
                 <TextBlock Text="短押し" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,3"/>
-                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
-                <TextBlock Text="実行内容"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" ToolTip="文字列入力では、ここに入力した文字をそのまま入力します"/>
-                <UniformGrid Columns="4" Margin="-3,0,-3,5">
-                  <Button Style="{StaticResource ActionHelperButton}" Content="アクション" Tag="Short" Click="ChooseCatalogAction_Click" ToolTip="定番アクションから選ぶ"/>
-                  <Button Style="{StaticResource ActionHelperButton}" Content="プロファイル" Tag="Short" Click="ChooseProfileAction_Click" ToolTip="切り替えるプロファイルを選ぶ"/>
-                  <Button Style="{StaticResource ActionHelperButton}" Content="マクロ" Tag="Short" Click="ChooseMacro_Click" ToolTip="記録したマクロを選ぶ"/>
-                  <Button x:Name="BrowseApplicationButton" Style="{StaticResource ActionHelperButton}" Content="アプリ" Click="BrowseApplication_Click" ToolTip="アプリ・ファイル・URLを選ぶ"/>
-                </UniformGrid>
+                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
+                <TextBlock Text="実行内容"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" PreviewKeyDown="ExecutionValue_PreviewKeyDown" ToolTip="Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます"/>
                 <Button Content="入力完了" HorizontalAlignment="Right" Click="DestinationInputDone_Click" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"/>
                 <Button Content="短押しは通常入力にする（長押しのみ設定）" Click="LongPressOnly_Click" Margin="0,4,0,2"/>
               </StackPanel>
@@ -310,19 +304,12 @@
             <Expander x:Name="LongPressExpander" Header="＋ 長押しを追加（任意）" Expanded="LongPressExpander_Expanded" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">
               <StackPanel>
                 <TextBlock Text="長押し" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,3"/>
-                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonUp="ActionKind_PreviewMouseLeftButtonUp" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
-                <TextBlock Text="実行内容"/><TextBox x:Name="LongValueBox" TextChanged="EditorChanged" ToolTip="文字列入力では、ここに入力した文字をそのまま入力します"/>
-                <UniformGrid Columns="4" Margin="-3,0,-3,5">
-                  <Button Style="{StaticResource ActionHelperButton}" Content="アクション" Tag="Long" Click="ChooseCatalogAction_Click" ToolTip="定番アクションから選ぶ"/>
-                  <Button x:Name="LongChooseProfileButton" Style="{StaticResource ActionHelperButton}" Content="プロファイル" Tag="Long" Click="ChooseProfileAction_Click" ToolTip="切り替えるプロファイルを選ぶ"/>
-                  <Button Style="{StaticResource ActionHelperButton}" Content="マクロ" Tag="Long" Click="ChooseMacro_Click" ToolTip="記録したマクロを選ぶ"/>
-                  <Button x:Name="LongBrowseApplicationButton" Style="{StaticResource ActionHelperButton}" Content="アプリ" Tag="Long" Click="BrowseApplication_Click" ToolTip="アプリ・ファイル・URLを選ぶ"/>
-                </UniformGrid>
+                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
+                <TextBlock Text="実行内容"/><TextBox x:Name="LongValueBox" TextChanged="EditorChanged" PreviewKeyDown="ExecutionValue_PreviewKeyDown" ToolTip="Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます"/>
                 <Button Content="入力完了" HorizontalAlignment="Right" Click="DestinationInputDone_Click" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"/>
                 <TextBlock Text="長押し判定時間 (ms)" Margin="0,5,0,0"/><TextBox x:Name="LongPressBox" Text="500" TextChanged="EditorChanged"/>
               </StackPanel>
             </Expander>
-            <CheckBox x:Name="EnabledBox" Content="この割り当てを有効にする" IsChecked="True" Checked="EditorChanged" Unchecked="EditorChanged"/>
             <Button x:Name="AssignmentDeleteButton" Content="割り当てを削除" Style="{StaticResource DangerButton}" Margin="0,18,0,0" Click="Delete_Click"/>
             </StackPanel>
           </StackPanel>

@@ -13,7 +13,7 @@
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="CheckBox">
-      <Setter Property="Margin" Value="0,10"/><Setter Property="FontSize" Value="15"/>
+      <Setter Property="Margin" Value="0,7"/><Setter Property="FontSize" Value="15"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
     </Style>
     <Style TargetType="RadioButton">
@@ -144,7 +144,7 @@
 
         <StackPanel x:Name="LayersPanel" Visibility="Collapsed">
           <TextBlock Text="レイヤー" FontSize="27" FontWeight="Bold"/>
-          <TextBlock Text="レイヤーキーの動作を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
+          <TextBlock Text="レイヤーキーと切替表示を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,16"/>
           <Border Style="{StaticResource Card}" Margin="0,0,0,14">
             <StackPanel>
               <TextBlock Text="CapsLock レイヤー" FontSize="18" FontWeight="SemiBold"/>
@@ -156,18 +156,33 @@
               </StackPanel>
             </StackPanel>
           </Border>
-          <Border Style="{StaticResource Card}">
-            <StackPanel>
-              <TextBlock Text="Spaceの連打" FontSize="18" FontWeight="SemiBold"/>
-              <CheckBox x:Name="SpaceRepeatBox" Content="Spaceを1回押し、2回目の長押しで連打する"/>
-              <TextBlock Text="1回の長押しは常にSpaceレイヤーとして動作します。" Foreground="{DynamicResource AccentBrush}" Margin="25,0,0,18"/>
-              <TextBlock Text="連打開始までの時間" Foreground="{DynamicResource PrimaryText}"/>
-              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <TextBox x:Name="SpaceRepeatDelayBox" Width="110" Padding="8" FontSize="15"/>
-                <TextBlock Text="ms（100～2000）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="10,0,0,0"/>
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}" Padding="18">
+              <StackPanel>
+                <TextBlock Text="Spaceの連打" FontSize="18" FontWeight="SemiBold"/>
+                <CheckBox x:Name="SpaceRepeatBox">
+                  <TextBlock Text="Spaceを1回押し、2回目の長押しで連打する" TextWrapping="Wrap"/>
+                </CheckBox>
+                <TextBlock Text="1回の長押しはSpaceレイヤーとして動作します。" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" Margin="25,0,0,12"/>
+                <TextBlock Text="連打開始までの時間" Foreground="{DynamicResource PrimaryText}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <TextBox x:Name="SpaceRepeatDelayBox" Width="82" Padding="8" FontSize="15"/>
+                  <TextBlock Text="ms（100～2000）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
+                </StackPanel>
               </StackPanel>
-            </StackPanel>
-          </Border>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18" Margin="10,0,0,0">
+              <StackPanel>
+                <TextBlock Text="プロファイル切替表示" FontSize="18" FontWeight="SemiBold"/>
+                <CheckBox x:Name="ProfileOverlayBox" Margin="0,10,0,4">
+                  <TextBlock Text="切替時にプロファイル名を画面下部へ表示する" TextWrapping="Wrap"/>
+                </CheckBox>
+                <TextBlock Text="仮想デスクトップ番号のすぐ上へ、重ならないように約1秒間表示します。"
+                           TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="25,2,0,0"/>
+              </StackPanel>
+            </Border>
+          </Grid>
         </StackPanel>
 
         <StackPanel x:Name="ArchivePanel" Visibility="Collapsed">

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using Button=System.Windows.Controls.Button;
@@ -12,9 +13,13 @@ public partial class MacroInputPickerWindow:Window
     const double Gap=4;
     readonly List<Button> inputButtons=[];
     readonly string layout;
+    bool shortcutEditingMode;
+    bool syncingShortcutEditor;
     public event Action<string>? InputChosen;
+    public event Action<string>? ShortcutChanged;
     internal bool TitleBarUsesDarkMode{get;private set;}
     internal IReadOnlyList<Button> InputButtonsForTest=>inputButtons;
+    internal bool IsShortcutEditingModeForTest=>shortcutEditingMode;
 
     public MacroInputPickerWindow(string keyboardLayout)
     {
@@ -170,8 +175,73 @@ public partial class MacroInputPickerWindow:Window
     void Input_Click(object sender,RoutedEventArgs e)
     {
         if(sender is not Button{Tag:string input})return;
-        InputChosen?.Invoke(input);
-        StatusText.Text=$"「{MainWindow.DisplayInputName(input)}」を追加しました。続けて追加できます。";
+        if(shortcutEditingMode)
+        {
+            SetShortcutValue(ActionPickerWindow.AddShortcutPart(ShortcutEditorBox.Text,input),true);
+            LastChosenText.Text="直前に押したキー："+MainWindow.DisplayInputName(input);
+            StatusText.Text=$"「{MainWindow.DisplayInputName(input)}」を追加しました。入力欄で自由に修正できます。";
+        }
+        else
+        {
+            SetShortcutPreview(MainWindow.DisplayInputName(input),input);
+            InputChosen?.Invoke(input);
+            StatusText.Text=$"「{MainWindow.DisplayInputName(input)}」を追加しました。続けて追加できます。";
+        }
+    }
+
+    internal void ConfigureShortcutEditing(string initialValue)
+    {
+        shortcutEditingMode=true;
+        ShortcutEditorPanel.Visibility=Visibility.Visible;
+        ShortcutPreviewText.Visibility=Visibility.Collapsed;
+        StatusText.Text="キーを追加するか、下の入力欄を直接編集してください。";
+        SetShortcutValue(initialValue,false);
+    }
+
+    internal void SetShortcutValue(string value,bool notify=false)
+    {
+        if(ShortcutEditorBox.Text==value)return;
+        syncingShortcutEditor=true;
+        ShortcutEditorBox.Text=value;
+        ShortcutEditorBox.CaretIndex=ShortcutEditorBox.Text.Length;
+        syncingShortcutEditor=false;
+        if(notify)ShortcutChanged?.Invoke(value);
+    }
+
+    internal void SetShortcutPreview(string lastInput,string shortcut)
+    {
+        if(shortcutEditingMode){SetShortcutValue(shortcut,false);return;}
+        if(!string.IsNullOrWhiteSpace(lastInput))LastChosenText.Text="直前に押したキー："+lastInput;
+        ShortcutPreviewText.Text="現在の入力："+(string.IsNullOrWhiteSpace(shortcut)?"—":string.Join(" + ",shortcut.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)));
+    }
+
+    void ShortcutEditor_TextChanged(object sender,TextChangedEventArgs e)
+    {
+        if(shortcutEditingMode&&!syncingShortcutEditor)ShortcutChanged?.Invoke(ShortcutEditorBox.Text);
+    }
+
+    void ShortcutEditor_PreviewKeyDown(object sender,System.Windows.Input.KeyEventArgs e)
+    {
+        Key key=e.Key==Key.System?e.SystemKey:e.Key;
+        bool modifierKey=key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
+        ModifierKeys modifiers=Keyboard.Modifiers;
+        if(!modifierKey&&modifiers==ModifierKeys.None)return;
+        SetShortcutValue(MainWindow.ShortcutTextForKey(key,modifiers),true);
+        e.Handled=true;
+    }
+
+    void RemoveLastShortcutPart_Click(object sender,RoutedEventArgs e)
+    {
+        var parts=ShortcutEditorBox.Text.Split('+',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).ToList();
+        if(parts.Count>0)parts.RemoveAt(parts.Count-1);
+        SetShortcutValue(string.Join("+",parts),true);
+        ShortcutEditorBox.Focus();
+    }
+
+    void ClearShortcut_Click(object sender,RoutedEventArgs e)
+    {
+        SetShortcutValue("",true);
+        ShortcutEditorBox.Focus();
     }
 
     void Close_Click(object sender,RoutedEventArgs e)=>Close();

@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using MessageBox=System.Windows.MessageBox;
 using WpfKeyEventArgs=System.Windows.Input.KeyEventArgs;
 
 namespace RELYR;
@@ -120,7 +119,7 @@ public partial class MacroWindow:Window
         if(!editingName||current==null)return true;string name=NameBox.Text.Trim();
         if(name.Length==0||config.Macros.Any(x=>x!=current&&x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)))
         {
-            if(showError)MessageBox.Show(name.Length==0?"マクロ名を入力してください。":"同じ名前のマクロがあります。","マクロ名",MessageBoxButton.OK,MessageBoxImage.Warning);
+            if(showError)AppDialog.Show(this,name.Length==0?"マクロ名を入力してください。":"同じ名前のマクロがあります。","マクロ名",MessageBoxButton.OK,MessageBoxImage.Warning);
             loading=true;NameBox.Text=nameBeforeEdit;loading=false;current.Name=nameBeforeEdit;NameBox.IsReadOnly=true;ConfirmNameButton.Visibility=Visibility.Collapsed;editingName=false;RefreshMacros();return false;
         }
         string old=current.Name;current.Name=name;
@@ -141,7 +140,7 @@ public partial class MacroWindow:Window
     void DeleteMacro_Click(object sender,RoutedEventArgs e)
     {
         if(current==null)return;int references=config.Profiles.SelectMany(x=>x.Mappings).Count(x=>(x.Kind==ActionKind.Macro&&x.Value.Equals(current.Name,StringComparison.OrdinalIgnoreCase))||(x.LongPressKind==ActionKind.Macro&&x.LongPressValue.Equals(current.Name,StringComparison.OrdinalIgnoreCase)));string note=references>0?$"\nこのマクロを使う割り当て {references} 件も未設定に戻します。":"";
-        if(MessageBox.Show($"「{current.Name}」を削除しますか？{note}","マクロを削除",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
+        if(AppDialog.Show(this,$"「{current.Name}」を削除しますか？{note}","マクロを削除",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
         StopRecording();StopManualCapture();foreach(var map in config.Profiles.SelectMany(x=>x.Mappings)){if(map.Kind==ActionKind.Macro&&map.Value.Equals(current.Name,StringComparison.OrdinalIgnoreCase)){map.Kind=ActionKind.None;map.Value="";}if(map.LongPressKind==ActionKind.Macro&&map.LongPressValue.Equals(current.Name,StringComparison.OrdinalIgnoreCase)){map.LongPressKind=ActionKind.None;map.LongPressValue="";}}
         config.Macros.Remove(current);current=null;undoSteps.Clear();MarkChanged();RefreshMacros();if(config.Macros.Count>0)MacroList.SelectedItem=config.Macros[0];else{loading=true;NameBox.Clear();loading=false;RefreshSteps();SetEditorState();}
     }
@@ -227,7 +226,7 @@ public partial class MacroWindow:Window
     {
         if(current==null)return;if(pushUndo)PushUndo();int index=Math.Clamp(InsertionIndex(),0,current.Steps.Count);current.Steps.Insert(index,step);RefreshSteps([step]);SetEditorState();
     }
-    void AddWait_Click(object sender,RoutedEventArgs e){if(current==null)return;if(!int.TryParse(WaitBox.Text,out int ms)||ms<1||ms>600000){MessageBox.Show("待機時間は1～600000ミリ秒で入力してください。","待機時間",MessageBoxButton.OK,MessageBoxImage.Warning);return;}InsertStep(new MacroStep{Event="Wait",DelayMs=ms});MarkChanged("待機時間を追加しました。");}
+    void AddWait_Click(object sender,RoutedEventArgs e){if(current==null)return;if(!int.TryParse(WaitBox.Text,out int ms)||ms<1||ms>600000){AppDialog.Show(this,"待機時間は1～600000ミリ秒で入力してください。","待機時間",MessageBoxButton.OK,MessageBoxImage.Warning);return;}InsertStep(new MacroStep{Event="Wait",DelayMs=ms});MarkChanged("待機時間を追加しました。");}
     void CoordinateCapture_Click(object sender,RoutedEventArgs e)
     {
         if(coordinateCaptureActive){StopCoordinateCapture("座標の記録をキャンセルしました。");return;}
@@ -323,7 +322,7 @@ public partial class MacroWindow:Window
     }
     void Clear_Click(object sender,RoutedEventArgs e)
     {
-        if(current==null||current.Steps.Count==0)return;if(MessageBox.Show("登録された手順をすべて消去しますか？\n［元に戻す］で取り消すこともできます。","手順をすべて消去",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;PushUndo();current.Steps.Clear();MarkChanged();RefreshSteps();SetEditorState();
+        if(current==null||current.Steps.Count==0)return;if(AppDialog.Show(this,"登録された手順をすべて消去しますか？\n［元に戻す］で取り消すこともできます。","手順をすべて消去",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;PushUndo();current.Steps.Clear();MarkChanged();RefreshSteps();SetEditorState();
     }
     void MoveUp_Click(object sender,RoutedEventArgs e)=>MoveSelected(-1);void MoveDown_Click(object sender,RoutedEventArgs e)=>MoveSelected(1);
     void MoveSelected(int offset)
@@ -386,7 +385,7 @@ public partial class MacroWindow:Window
     }
     void ApplyStepEdit_Click(object sender,RoutedEventArgs e)
     {
-        var selected=SelectedSteps();if(selected.Count!=1)return;if(!int.TryParse(SelectedStepDelayBox.Text,out int ms)||ms<0||ms>600000){MessageBox.Show("待機時間は0～600000ミリ秒で入力してください。","手順編集",MessageBoxButton.OK,MessageBoxImage.Warning);return;}PushUndo();selected[0].DelayMs=ms;MarkChanged("手順を変更しました。");RefreshSteps(selected);SetEditorState();
+        var selected=SelectedSteps();if(selected.Count!=1)return;if(!int.TryParse(SelectedStepDelayBox.Text,out int ms)||ms<0||ms>600000){AppDialog.Show(this,"待機時間は0～600000ミリ秒で入力してください。","手順編集",MessageBoxButton.OK,MessageBoxImage.Warning);return;}PushUndo();selected[0].DelayMs=ms;MarkChanged("手順を変更しました。");RefreshSteps(selected);SetEditorState();
     }
     void ReplaceStepAction_Click(object sender,RoutedEventArgs e)
     {
@@ -430,16 +429,16 @@ public partial class MacroWindow:Window
     void StopTest_Click(object sender,RoutedEventArgs e){MacroPlayer.StopAll();FooterStatus.Text="停止しています…";}
     bool ValidateCurrent(bool requireSteps)
     {
-        if(!CommitNameEdit(true)||current==null){MessageBox.Show("先に［＋ 新規］からマクロを作成してください。","マクロ",MessageBoxButton.OK,MessageBoxImage.Information);return false;}if(requireSteps&&current.Steps.Count==0){MessageBox.Show("先にキー操作、アクション、または待機時間を追加してください。","マクロ",MessageBoxButton.OK,MessageBoxImage.Information);return false;}return true;
+        if(!CommitNameEdit(true)||current==null){AppDialog.Show(this,"先に［＋ 新規］からマクロを作成してください。","マクロ",MessageBoxButton.OK,MessageBoxImage.Information);return false;}if(requireSteps&&current.Steps.Count==0){AppDialog.Show(this,"先にキー操作、アクション、または待機時間を追加してください。","マクロ",MessageBoxButton.OK,MessageBoxImage.Information);return false;}return true;
     }
     bool SaveChanges()
     {
-        if(!ValidateCurrent(false))return false;StopRecording();StopManualCapture();var errors=ConfigValidator.Validate(config);if(errors.Count>0){MessageBox.Show(string.Join("\n",errors),"保存できません",MessageBoxButton.OK,MessageBoxImage.Warning);return false;}new ConfigService().Save(config);UpdateRenamedShortcuts();CaptureSavedState();SaveRequested=true;Changed=true;dirty=false;UnsavedStatus.Text="";Saved?.Invoke();FooterStatus.Foreground=ThemeService.Brush("AccentBrush");FooterStatus.Text="保存して反映しました。この画面を開いたまま編集を続けられます。";return true;
+        if(!ValidateCurrent(false))return false;StopRecording();StopManualCapture();var errors=ConfigValidator.Validate(config);if(errors.Count>0){AppDialog.Show(this,string.Join("\n",errors),"保存できません",MessageBoxButton.OK,MessageBoxImage.Warning);return false;}new ConfigService().Save(config);UpdateRenamedShortcuts();CaptureSavedState();SaveRequested=true;Changed=true;dirty=false;UnsavedStatus.Text="";Saved?.Invoke();FooterStatus.Foreground=ThemeService.Brush("AccentBrush");FooterStatus.Text="保存して反映しました。この画面を開いたまま編集を続けられます。";return true;
     }
     void Save_Click(object sender,RoutedEventArgs e)=>SaveChanges();
     void CreateShortcut_Click(object sender,RoutedEventArgs e)
     {
-        if(!ValidateCurrent(true)||current==null)return;StopRecording();StopManualCapture();try{if(!SaveChanges())return;ShortcutCreatedPath=ShortcutService.CreateMacroShortcut(current);FooterStatus.Text=$"デスクトップに「{System.IO.Path.GetFileName(ShortcutCreatedPath)}」を作成しました。";}catch(Exception ex){MessageBox.Show("実行アイコンを作成できませんでした。\n\n"+ex.Message,"デスクトップに作成",MessageBoxButton.OK,MessageBoxImage.Error);}
+        if(!ValidateCurrent(true)||current==null)return;StopRecording();StopManualCapture();try{if(!SaveChanges())return;ShortcutCreatedPath=ShortcutService.CreateMacroShortcut(current);FooterStatus.Text=$"デスクトップに「{System.IO.Path.GetFileName(ShortcutCreatedPath)}」を作成しました。";}catch(Exception ex){AppDialog.Show(this,"実行アイコンを作成できませんでした。\n\n"+ex.Message,"デスクトップに作成",MessageBoxButton.OK,MessageBoxImage.Error);}
     }
     void Use_Click(object sender,RoutedEventArgs e){if(!allowAssignment||!ValidateCurrent(true))return;StopRecording();StopManualCapture();accepted=true;closingConfirmed=true;DialogResult=true;}
     void Close_Click(object sender,RoutedEventArgs e)=>Close();
@@ -463,7 +462,7 @@ public partial class MacroWindow:Window
         if(accepted)return;
         if(dirty&&!closingConfirmed&&!SuppressUnsavedPromptForTest)
         {
-            var answer=MessageBox.Show("保存していない変更があります。\n\n保存してから閉じますか？","マクロの変更",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);
+            var answer=AppDialog.Show(this,"保存していない変更があります。\n\n保存してから閉じますか？","マクロの変更",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);
             if(answer==MessageBoxResult.Cancel){e.Cancel=true;return;}if(answer==MessageBoxResult.Yes&&!SaveChanges()){e.Cancel=true;return;}closingConfirmed=true;
         }
         if(!accepted&&dirty)RestoreUncommittedChanges();

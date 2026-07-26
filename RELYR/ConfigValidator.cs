@@ -33,7 +33,7 @@ public static class ConfigValidator
         }
         foreach (var profile in config.Profiles)
         {
-            foreach (var group in profile.Mappings.Where(x => x.Enabled).GroupBy(x => (x.Input.ToUpperInvariant(), x.Application.ToUpperInvariant(), x.Layer.ToUpperInvariant())).Where(x => x.Count() > 1))
+            foreach (var group in profile.Mappings.GroupBy(x => (x.Input.ToUpperInvariant(), x.Application.ToUpperInvariant(), x.Layer.ToUpperInvariant())).Where(x => x.Count() > 1))
                 errors.Add($"{profile.Name}: {group.Key.Item1} の割り当てが競合しています。");
             foreach (var map in profile.Mappings)
             {

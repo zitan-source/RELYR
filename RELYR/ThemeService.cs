@@ -66,7 +66,7 @@ internal static class ThemeService
         ["DangerHoverBackground"]="#9B3040",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#FFFFFF",
         ["KeyBackground"]="#1B2733",["ReservedKeyBackground"]="#343B44",
         ["LayerActiveBackground"]="#146B5C",["EditingKeyBackground"]="#246BC5",["EditingKeyBorderBrush"]="#75B7FF",
-        ["ActionKeyIconBrush"]="#F09A3E",["ActionDisabledIconBrush"]="#AAB4C2",["ActionShortcutIconBrush"]="#52D5BE",
+        ["ActionKeyIconBrush"]="#F09A3E",["ActionDisabledIconBrush"]="#AAB4C2",["ActionProfileIconBrush"]="#68A7FF",["ActionShortcutIconBrush"]="#52D5BE",
         ["ActionTextIconBrush"]="#E4B936",["ActionLaunchIconBrush"]="#AA78DA",["ActionMacroIconBrush"]="#E15A65"
     };
 
@@ -82,7 +82,7 @@ internal static class ThemeService
         ["DangerHoverBackground"]="#FFF1F2",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#9F2033",
         ["KeyBackground"]="#FFFFFF",["ReservedKeyBackground"]="#E5E9EE",
         ["LayerActiveBackground"]="#D4EEE8",["EditingKeyBackground"]="#1674C8",["EditingKeyBorderBrush"]="#075AA6",
-        ["ActionKeyIconBrush"]="#B85B00",["ActionDisabledIconBrush"]="#596575",["ActionShortcutIconBrush"]="#087B69",
+        ["ActionKeyIconBrush"]="#B85B00",["ActionDisabledIconBrush"]="#596575",["ActionProfileIconBrush"]="#075EAD",["ActionShortcutIconBrush"]="#087B69",
         ["ActionTextIconBrush"]="#8A6500",["ActionLaunchIconBrush"]="#7040A3",["ActionMacroIconBrush"]="#B42332"
     };
 }
