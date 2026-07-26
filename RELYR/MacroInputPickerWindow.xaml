@@ -34,6 +34,16 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
   </Window.Resources>
 
   <Grid Margin="18">
@@ -62,12 +72,37 @@
     </Border>
 
     <Grid Grid.Row="2" Margin="2,12,2,0">
-      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock x:Name="StatusText" Text="キーまたはマウスのボタンを選んでください。"
-                 Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
-      <Button Grid.Column="1" Content="完了" Click="Close_Click" Width="108" Height="40"
-              Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"
-              BorderBrush="{DynamicResource AccentBrush}"/>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="StatusText" Text="キーまたはマウスのボタンを選んでください。"
+                     Foreground="{DynamicResource AccentBrush}"/>
+          <TextBlock x:Name="LastChosenText" Text="直前に押したキー：—"
+                     Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
+          <TextBlock x:Name="ShortcutPreviewText" Text="現在の入力：—"
+                     Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" Margin="0,2,0,0"/>
+        </StackPanel>
+        <Button Grid.Column="1" Content="完了" Click="Close_Click" Width="108" Height="40"
+                Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"
+                BorderBrush="{DynamicResource AccentBrush}"/>
+      </Grid>
+      <Border x:Name="ShortcutEditorPanel" Grid.Row="1" Visibility="Collapsed"
+              Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
+              BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,0">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="現在の入力" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <TextBox x:Name="ShortcutEditorBox" Grid.Column="1" MinWidth="260"
+                   TextChanged="ShortcutEditor_TextChanged" PreviewKeyDown="ShortcutEditor_PreviewKeyDown"
+                   ToolTip="直接入力、選択削除、Backspaceによる修正ができます"/>
+          <Button Grid.Column="2" Content="1つ削除" Padding="14,8" Margin="8,0"
+                  Click="RemoveLastShortcutPart_Click"/>
+          <Button Grid.Column="3" Content="クリア" Padding="14,8" Click="ClearShortcut_Click"/>
+        </Grid>
+      </Border>
     </Grid>
   </Grid>
 </Window>

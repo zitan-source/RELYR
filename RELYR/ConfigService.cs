@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.IO;
 
 namespace RELYR;
@@ -58,7 +59,7 @@ public sealed class ConfigService
         try
         {
             if(!File.Exists(FilePath))return CreateDefault();
-            var loaded=JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(FilePath),options)??new();
+            var loaded=DeserializeConfig(File.ReadAllText(FilePath));
             int storedVersion=loaded.Version;
             var normalized=Normalize(loaded);
             if(normalized.Version!=storedVersion)Save(normalized);
@@ -89,13 +90,32 @@ public sealed class ConfigService
     public AppConfig Clone(AppConfig value)=>JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(value,options),options)??throw new InvalidOperationException("設定を複製できません。");
     public AppConfig Import(string path)
     {
-        var result=JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path),options)??throw new InvalidDataException("設定ファイルが空です。");
-        if(result.Version>16)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
+        var result=DeserializeConfig(File.ReadAllText(path));
+        if(result.Version>18)throw new InvalidDataException("この設定は新しいバージョンで作成されています。");
         if(result.Profiles is null||result.Profiles.Count==0)throw new InvalidDataException("有効なプロファイルがありません。");
         result=Normalize(result);result.CapsLockRemapPendingRestart=false;result.CapsLockRemapEffectiveBeforeRestart=false;result.CapsLockRemapChangedAtUtcTicks=0;
         var errors=ConfigValidator.Validate(result);
         if(errors.Count>0)throw new InvalidDataException("設定ファイルに問題があります。\n"+string.Join("\n",errors));
         return result;
+    }
+
+    AppConfig DeserializeConfig(string json)
+    {
+        JsonNode? parsed=JsonNode.Parse(json);
+        if(parsed is not JsonObject root)return new AppConfig();
+        int storedVersion=root["Version"]?.GetValue<int>()??0;
+        if(storedVersion<18&&root["Profiles"] is JsonArray profiles)
+        {
+            foreach(JsonObject profile in profiles.OfType<JsonObject>())
+            {
+                if(profile["Mappings"] is not JsonArray mappings)continue;
+                for(int index=mappings.Count-1;index>=0;index--)
+                {
+                    if(mappings[index] is JsonObject mapping&&mapping["Enabled"]?.GetValue<bool>()==false)mappings.RemoveAt(index);
+                }
+            }
+        }
+        return root.Deserialize<AppConfig>(options)??new AppConfig();
     }
 
     static AppConfig Normalize(AppConfig value)
@@ -121,7 +141,7 @@ public sealed class ConfigService
         foreach(var profile in value.Profiles){profile.Name=string.IsNullOrWhiteSpace(profile.Name)?"名称未設定":profile.Name;profile.Mappings??=[];profile.AutoSwitchApplications??=[];foreach(var map in profile.Mappings){if(map.Input.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock";else if(map.Input.StartsWith("F13+",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock"+map.Input[3..];if(map.Layer.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Layer="CapsLock";if(originalVersion<9&&map.LongPressKind==ActionKind.None)map.LongPressValue="";if(map.Kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse&&ActionCatalog.TryNormalizeMouseAction(map.Value,out string mouseValue)){map.Kind=ActionKind.Mouse;map.Value=mouseValue;}if(map.LongPressKind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse&&ActionCatalog.TryNormalizeMouseAction(map.LongPressValue,out string longMouseValue)){map.LongPressKind=ActionKind.Mouse;map.LongPressValue=longMouseValue;}}}
         if(!value.Profiles.Any(x=>x.Name==value.ActiveProfile))value.ActiveProfile=value.Profiles[0].Name;
         if(!Enum.IsDefined(value.ThemeMode))value.ThemeMode=AppThemeMode.System;
-        value.Version=16;
+        value.Version=18;
         return value;
     }
 

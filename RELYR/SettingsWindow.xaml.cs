@@ -28,6 +28,7 @@ public partial class SettingsWindow:Window
     public string ArchiveDestinationFolder=>ArchiveDestinationFolderBox.Text.Trim();
     public bool ShowDesktopNumberInTray=>DesktopNumberTrayBox.IsChecked==true;
     public bool CheckForUpdates=>CheckForUpdatesBox.IsChecked==true;
+    public bool ShowProfileSwitchOverlay=>ProfileOverlayBox.IsChecked==true;
     public WindowActionTarget SelectedWindowActionTarget=>CursorWindowTargetBox.IsChecked==true?WindowActionTarget.WindowUnderCursor:WindowActionTarget.ActiveWindow;
     public AppThemeMode SelectedThemeMode=>LightThemeBox.IsChecked==true?AppThemeMode.Light:DarkThemeBox.IsChecked==true?AppThemeMode.Dark:AppThemeMode.System;
     public bool AutoSave=>AutoSaveBox.IsChecked==true;
@@ -54,6 +55,7 @@ public partial class SettingsWindow:Window
         StartupBox.IsChecked=initialStartWithWindows;
         DesktopNumberTrayBox.IsChecked=config.ShowDesktopNumberInTray;
         CheckForUpdatesBox.IsChecked=config.CheckForUpdates;
+        ProfileOverlayBox.IsChecked=config.ShowProfileSwitchOverlay;
         ActiveWindowTargetBox.IsChecked=config.WindowActionTarget==WindowActionTarget.ActiveWindow;
         CursorWindowTargetBox.IsChecked=config.WindowActionTarget==WindowActionTarget.WindowUnderCursor;
         SystemThemeBox.IsChecked=config.ThemeMode==AppThemeMode.System;
@@ -140,7 +142,7 @@ public partial class SettingsWindow:Window
     async void InstallUpdate_Click(object sender,RoutedEventArgs e)
     {
         if(updateCheckInProgress||availableUpdate is not { } update||Owner is not MainWindow main)return;
-        if(System.Windows.MessageBox.Show(this,$"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？","RELYRをアップデート",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        if(AppDialog.Show(this,$"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？","RELYRをアップデート",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
         CheckForUpdatesButton.IsEnabled=false;
         InstallUpdateButton.IsEnabled=false;
         ShowDownloadProgress();
@@ -153,7 +155,7 @@ public partial class SettingsWindow:Window
         ApplyUpdateResult(lastUpdateCheck,false);
     }
 
-    void ApplyUpdateResult(UpdateCheckResult? result,bool checkedNow)
+    internal void ApplyUpdateResult(UpdateCheckResult? result,bool checkedNow)
     {
         lastUpdateCheck=result;
         availableUpdate=result?.AvailableUpdate;
@@ -166,13 +168,13 @@ public partial class SettingsWindow:Window
         InstallUpdateButton.IsEnabled=availableUpdate!=null&&!updateCheckInProgress;
         if(availableUpdate is { } update)
         {
-            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"AccentBrush");
-            UpdateStatusText.Text=$"新しいバージョン v{update.VersionText} を利用できます。";
+            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"WarningBrush");
+            UpdateStatusText.Text=$"新しいバージョン v{update.VersionText} を利用できます";
         }
         else
         {
-            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,"SecondaryText");
-            UpdateStatusText.Text=checkedNow?$"最新バージョンです（v{MainWindow.DisplayVersion}）。":$"現在のバージョンは v{MainWindow.DisplayVersion} です。［アップデートを確認］から手動で確認できます。";
+            UpdateStatusText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,checkedNow?"AccentBrush":"SecondaryText");
+            UpdateStatusText.Text=checkedNow?$"最新バージョンです（v{MainWindow.DisplayVersion}）":$"現在のバージョンは v{MainWindow.DisplayVersion} です。［アップデートを確認］から手動で確認できます。";
         }
     }
     void ShowDownloadProgress()
@@ -195,8 +197,8 @@ public partial class SettingsWindow:Window
     {
         if(AutoExtract)
         {
-            if(!Directory.Exists(ArchiveWatchFolder)){System.Windows.MessageBox.Show(this,"監視するフォルダーが見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
-            if(!string.IsNullOrWhiteSpace(ArchiveDestinationFolder)&&!Directory.Exists(ArchiveDestinationFolder)){System.Windows.MessageBox.Show(this,"解凍後の保存先が見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
+            if(!Directory.Exists(ArchiveWatchFolder)){AppDialog.Show(this,"監視するフォルダーが見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
+            if(!string.IsNullOrWhiteSpace(ArchiveDestinationFolder)&&!Directory.Exists(ArchiveDestinationFolder)){AppDialog.Show(this,"解凍後の保存先が見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}
         }
         themeAccepted=true;DialogResult=true;
     }
@@ -212,7 +214,7 @@ public partial class SettingsWindow:Window
             if(desired)
             {
                 string warning="この設定ではCapsLockレイヤーがオンです。\n\nインポートするとCapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。変更はWindowsを再起動するまで有効にならず、それまではCapsLockレイヤーも使用できません。\n\nこの設定をインポートしますか？";
-                if(System.Windows.MessageBox.Show(warning,"CapsLockレイヤーを含む設定",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
+                if(AppDialog.Show(this,warning,"CapsLockレイヤーを含む設定",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
             }
             if(desired!=current)
             {
@@ -224,7 +226,7 @@ public partial class SettingsWindow:Window
             }
             ImportedConfig=imported;DialogResult=true;
         }
-        catch(Exception ex){System.Windows.MessageBox.Show(ex.Message,"インポートできません",MessageBoxButton.OK,MessageBoxImage.Warning);}
+        catch(Exception ex){AppDialog.Show(this,ex.Message,"インポートできません",MessageBoxButton.OK,MessageBoxImage.Warning);}
     }
     void RefreshCapsRemapStatus()
     {
@@ -234,12 +236,12 @@ public partial class SettingsWindow:Window
     }
     void EnableCapsRemap_Click(object sender,RoutedEventArgs e)
     {
-        if(System.Windows.MessageBox.Show("CapsLock本来の機能を無効にし、CapsLockレイヤー専用キーへ変更します。CapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。\n\n設定しますか？","CapsLockレイヤーを有効化",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
+        if(AppDialog.Show(this,"CapsLock本来の機能を無効にし、CapsLockレイヤー専用キーへ変更します。CapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。\n\n設定しますか？","CapsLockレイヤーを有効化",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
         if(ChangeCapsRemap(true,config,true))PromptForWindowsRestart(this,true);
     }
     void DisableCapsRemap_Click(object sender,RoutedEventArgs e)
     {
-        if(System.Windows.MessageBox.Show("CapsLockレイヤーを無効にし、元のCapsLockへ戻します。\n\n設定しますか？","CapsLockへ戻す",MessageBoxButton.OKCancel,MessageBoxImage.Question)!=MessageBoxResult.OK)return;
+        if(AppDialog.Show(this,"CapsLockレイヤーを無効にし、元のCapsLockへ戻します。\n\n設定しますか？","CapsLockへ戻す",MessageBoxButton.OKCancel,MessageBoxImage.Question)!=MessageBoxResult.OK)return;
         if(ChangeCapsRemap(false,config,true))PromptForWindowsRestart(this,false);
     }
     bool ChangeCapsRemap(bool enabled,AppConfig target,bool refresh)
@@ -250,7 +252,7 @@ public partial class SettingsWindow:Window
             bool effectiveBefore=LegacyKeyRemapService.HasCapsLockToF13();LegacyKeyRemapService.SetCapsLockToF13(enabled);
             target.CapsLockLayerEnabled=enabled;target.CapsLockRemapPendingRestart=true;target.CapsLockRemapEffectiveBeforeRestart=effectiveBefore;target.CapsLockRemapChangedAtUtcTicks=DateTime.UtcNow.Ticks;new ConfigService().Save(target);CapsRemapChanged=true;if(refresh)RefreshCapsRemapStatus();return true;
         }
-        catch(Exception ex){System.Windows.MessageBox.Show(ex.Message,"設定できません",MessageBoxButton.OK,MessageBoxImage.Error);return false;}
+        catch(Exception ex){AppDialog.Show(this,ex.Message,"設定できません",MessageBoxButton.OK,MessageBoxImage.Error);return false;}
     }
 
     void BrowseArchiveWatchFolder_Click(object sender,RoutedEventArgs e)=>BrowseFolder(ArchiveWatchFolderBox,"圧縮ファイルを監視するフォルダーを選択");
@@ -265,7 +267,7 @@ public partial class SettingsWindow:Window
     void ResetAll_Click(object sender,RoutedEventArgs e)
     {
         string message="全プロファイル、全レイヤーの割り当て、マクロ、アプリ設定を初期状態へ戻します。\n\nこの操作は元に戻せません。続行しますか？";
-        if(System.Windows.MessageBox.Show(this,message,"すべての設定をリセット",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
+        if(AppDialog.Show(this,message,"すべての設定をリセット",MessageBoxButton.OKCancel,MessageBoxImage.Warning)!=MessageBoxResult.OK)return;
         try
         {
             if(!StartupService.IsProcessElevated())throw new UnauthorizedAccessException("管理者モードで起動されていません。RELYRを再インストールしてください。");
@@ -279,13 +281,13 @@ public partial class SettingsWindow:Window
             if(ResetNeedsRestart){reset.CapsLockRemapPendingRestart=true;reset.CapsLockRemapEffectiveBeforeRestart=effectiveBefore;reset.CapsLockRemapChangedAtUtcTicks=DateTime.UtcNow.Ticks;}
             new ConfigService().Save(reset);ResetConfig=reset;CapsRemapChanged=ResetNeedsRestart;DialogResult=true;
         }
-        catch(Exception ex){System.Windows.MessageBox.Show(this,"設定をリセットできませんでした。\n\n"+ex.Message,"リセットできません",MessageBoxButton.OK,MessageBoxImage.Error);}
+        catch(Exception ex){AppDialog.Show(this,"設定をリセットできませんでした。\n\n"+ex.Message,"リセットできません",MessageBoxButton.OK,MessageBoxImage.Error);}
     }
     internal static void PromptForWindowsRestart(Window owner,bool enabled)
     {
         string pending=enabled?"［キャンセル］を押した場合もCapsLockレイヤーはオンのままですが、再起動するまでは機能しません。":"［キャンセル］を押した場合も復元設定は保存されますが、再起動するまではF13レイヤーの状態が続きます。";
         string message=$"CapsLockの設定を変更しました。再起動しないと有効になりません。\n\n［OK］を押すと今すぐWindowsを再起動します。\n{pending}\n\n今すぐ再起動しますか？";
-        if(System.Windows.MessageBox.Show(owner,message,"Windowsの再起動が必要です",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
-        try{using var process=Process.Start(new ProcessStartInfo("shutdown.exe","/r /t 0"){UseShellExecute=true});}catch(Exception ex){System.Windows.MessageBox.Show(owner,"Windowsを再起動できませんでした。手動で再起動してください。\n\n"+ex.Message,"再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);}
+        if(AppDialog.Show(owner,message,"Windowsの再起動が必要です",MessageBoxButton.OKCancel,MessageBoxImage.Information)!=MessageBoxResult.OK)return;
+        try{using var process=Process.Start(new ProcessStartInfo("shutdown.exe","/r /t 0"){UseShellExecute=true});}catch(Exception ex){AppDialog.Show(owner,"Windowsを再起動できませんでした。手動で再起動してください。\n\n"+ex.Message,"再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);}
     }
 }

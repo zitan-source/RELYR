@@ -38,10 +38,17 @@ internal static class ShortcutService
         try
         {
             shortcut=shellType.InvokeMember("CreateShortcut",System.Reflection.BindingFlags.InvokeMethod,null,shell,[shortcutPath]);if(shortcut==null)throw new InvalidOperationException("ショートカットを作成できません。");Type type=shortcut.GetType();
-            type.InvokeMember("TargetPath",System.Reflection.BindingFlags.SetProperty,null,shortcut,[executable]);type.InvokeMember("Arguments",System.Reflection.BindingFlags.SetProperty,null,shortcut,[arguments]);type.InvokeMember("WorkingDirectory",System.Reflection.BindingFlags.SetProperty,null,shortcut,[Path.GetDirectoryName(executable)??""]);type.InvokeMember("Description",System.Reflection.BindingFlags.SetProperty,null,shortcut,[$"RELYR マクロ: {macroName}"]);type.InvokeMember("IconLocation",System.Reflection.BindingFlags.SetProperty,null,shortcut,[$"{executable},0"]);type.InvokeMember("Save",System.Reflection.BindingFlags.InvokeMethod,null,shortcut,null);
+            type.InvokeMember("TargetPath",System.Reflection.BindingFlags.SetProperty,null,shortcut,[executable]);type.InvokeMember("Arguments",System.Reflection.BindingFlags.SetProperty,null,shortcut,[arguments]);type.InvokeMember("WorkingDirectory",System.Reflection.BindingFlags.SetProperty,null,shortcut,[Path.GetDirectoryName(executable)??""]);type.InvokeMember("Description",System.Reflection.BindingFlags.SetProperty,null,shortcut,[$"RELYR マクロ: {macroName}"]);type.InvokeMember("IconLocation",System.Reflection.BindingFlags.SetProperty,null,shortcut,[MacroIconLocation(executable)]);type.InvokeMember("Save",System.Reflection.BindingFlags.InvokeMethod,null,shortcut,null);
         }
         finally{if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);if(Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);}
         return shortcutPath;
+    }
+    static string MacroIconLocation(string executable)
+    {
+        string installedIcon=Path.Combine(Path.GetDirectoryName(executable)??"","RELYR-Macro.ico");
+        if(File.Exists(installedIcon))return installedIcon+",0";
+        string developmentIcon=Path.Combine(AppContext.BaseDirectory,"RELYR-Macro.ico");
+        return File.Exists(developmentIcon)?developmentIcon+",0":executable+",0";
     }
     internal static string? ResolveShortcutTarget(string shortcutPath)
     {
@@ -54,6 +61,20 @@ internal static class ShortcutService
             shortcut=shellType.InvokeMember("CreateShortcut",System.Reflection.BindingFlags.InvokeMethod,null,shell,[shortcutPath]);if(shortcut==null)return null;
             string? target=shortcut.GetType().InvokeMember("TargetPath",System.Reflection.BindingFlags.GetProperty,null,shortcut,null) as string;
             return !string.IsNullOrWhiteSpace(target)&&File.Exists(target)?target:null;
+        }
+        catch{return null;}
+        finally{if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);if(shell!=null&&Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);}
+    }
+    internal static string? ResolveShortcutIconLocation(string shortcutPath)
+    {
+        if(!File.Exists(shortcutPath)||!shortcutPath.EndsWith(".lnk",StringComparison.OrdinalIgnoreCase))return null;
+        Type? shellType=Type.GetTypeFromProgID("WScript.Shell");if(shellType==null)return null;
+        object? shell=null,shortcut=null;
+        try
+        {
+            shell=Activator.CreateInstance(shellType);if(shell==null)return null;
+            shortcut=shellType.InvokeMember("CreateShortcut",System.Reflection.BindingFlags.InvokeMethod,null,shell,[shortcutPath]);if(shortcut==null)return null;
+            return shortcut.GetType().InvokeMember("IconLocation",System.Reflection.BindingFlags.GetProperty,null,shortcut,null) as string;
         }
         catch{return null;}
         finally{if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);if(shell!=null&&Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);}

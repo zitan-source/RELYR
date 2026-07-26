@@ -28,7 +28,6 @@ public sealed class Mapping
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ActionKind Kind { get; set; }
     public string Value { get; set; } = "";
-    public bool Enabled { get; set; } = true;
     public int LongPressMs { get; set; } = 500;
     public string LongPressValue { get; set; } = "";
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -50,9 +49,10 @@ public sealed class Profile
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 16;
+    public int Version { get; set; } = 18;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
+    public bool ShowProfileSwitchOverlay { get; set; } = true;
     public bool EngineEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public bool AutoExtractDesktopArchives { get; set; }

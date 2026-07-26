@@ -192,6 +192,8 @@ public static class ActionCatalog
         _ when category.StartsWith("エクスプローラー・",StringComparison.Ordinal)=>"エクスプローラー",
         "マウス・ホイール"=>"マウス",
         "アプリ起動"=>"アプリ",
+        "プロファイル切替"=>"プロファイル",
+        "任意のショートカット"=>"入力・編集",
         _=>"その他"
     };
 

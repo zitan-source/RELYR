@@ -42,9 +42,9 @@ public partial class App : System.Windows.Application
 #if PRODUCTION_PUBLISH
         if(args.Length>=2&&args[0].Equals("--elevated-task",StringComparison.OrdinalIgnoreCase))
         {
-            if(!StartupService.IsProcessElevated()){System.Windows.MessageBox.Show("管理者モードの起動タスクが正しく構成されていません。RELYRを再インストールしてください。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
+            if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者モードの起動タスクが正しく構成されていません。RELYRを再インストールしてください。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
             try{args=StartupService.DecodeElevatedArguments(args[1]);}
-            catch(Exception ex){System.Windows.MessageBox.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
+            catch(Exception ex){AppDialog.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
         }
         else if(!StartupService.IsProcessElevated())
         {
@@ -56,11 +56,11 @@ public partial class App : System.Windows.Application
                 }
                 else if(!RequestStaleInstanceRecovery(args,out string recoveryError))
                 {
-                    System.Windows.MessageBox.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+                    AppDialog.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
                 }
                 Shutdown(0);return;
             }
-            if(!StartupService.TryRunElevated(args,out string error))System.Windows.MessageBox.Show(error,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+            if(!StartupService.TryRunElevated(args,out string error))AppDialog.Show(error,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
             Shutdown(string.IsNullOrEmpty(error)?0:1);return;
         }
 #endif
@@ -178,12 +178,12 @@ public partial class App : System.Windows.Application
         }
         catch(Exception ex)
         {
-            System.Windows.MessageBox.Show("応答しないRELYRを自動復旧できませんでした。\n\n"+ex.Message,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+            AppDialog.Show("応答しないRELYRを自動復旧できませんでした。\n\n"+ex.Message,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
             Shutdown(1);
         }
     }
 #endif
-    static void ShowAlreadyRunningMessage()=>System.Windows.MessageBox.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
+    static void ShowAlreadyRunningMessage()=>AppDialog.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
     void ShutdownWithExitCode(int exitCode){Environment.ExitCode=exitCode;Shutdown(exitCode);}
     void ListenForShow(MainWindow window)
     {
@@ -242,7 +242,7 @@ public partial class App : System.Windows.Application
             var macro=new ConfigService().Load().Macros.FirstOrDefault(x=>(byId?x.Id:x.Name).Equals(macroReference,StringComparison.OrdinalIgnoreCase))??throw new InvalidOperationException(byId?"ショートカットに対応するマクロが見つかりません。":$"マクロ「{macroReference}」が見つかりません。");
             var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));var result=await MacroPlayer.PlayAsync(macro,macroConfig);if(!result.Succeeded&&!result.Cancelled)throw new InvalidOperationException(result.Message);
         }
-        catch(Exception ex){exitCode=1;System.Windows.MessageBox.Show(ex.Message,"マクロを実行できません",MessageBoxButton.OK,MessageBoxImage.Error);}
+        catch(Exception ex){exitCode=1;AppDialog.Show(ex.Message,"マクロを実行できません",MessageBoxButton.OK,MessageBoxImage.Error);}
         finally{InputEngine.ReleaseAll();Shutdown(exitCode);}
     }
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e){if(MainWindow is RELYR.MainWindow window)window.PrepareForSystemShutdown();base.OnSessionEnding(e);}
