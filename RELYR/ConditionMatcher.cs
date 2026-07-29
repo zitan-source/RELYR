@@ -30,8 +30,44 @@ public static class ConditionMatcher
     }
     public static string ProcessUnderCursor()
     {
-        if(!GetCursorPos(out var point))return "";var hwnd=GetAncestor(WindowFromPoint(point),2);if(hwnd==IntPtr.Zero)return "";GetWindowThreadProcessId(hwnd,out var pid);try{using var process=Process.GetProcessById((int)pid);return process.ProcessName;}catch{return "";}
+        return ProcessesUnderCursor().FirstOrDefault()??"";
     }
+    internal static IntPtr RootWindowUnderCursor()
+    {
+        if(!GetCursorPos(out var point))return IntPtr.Zero;
+        IntPtr leaf=WindowFromPoint(point);
+        if(leaf==IntPtr.Zero)return IntPtr.Zero;
+        IntPtr root=GetAncestor(leaf,2);
+        return root==IntPtr.Zero?leaf:root;
+    }
+    public static IReadOnlyList<string> ProcessesUnderCursor()
+    {
+        if(!GetCursorPos(out var point))return [];
+        IntPtr leaf=WindowFromPoint(point);
+        if(leaf==IntPtr.Zero)return [];
+        IntPtr root=GetAncestor(leaf,2);
+        IntPtr owner=root==IntPtr.Zero?IntPtr.Zero:GetWindow(root,4);
+        var processes=new List<string>(3);
+        // Top-level ownership identifies the host application for Chromium/Qt
+        // render children; the leaf remains a fallback for unusual windows.
+        foreach(IntPtr window in new[]{root,owner,leaf})
+        {
+            if(window==IntPtr.Zero)continue;
+            var className=new System.Text.StringBuilder(128);
+            GetClassName(window,className,className.Capacity);
+            if(IsShellClass(className.ToString()))continue;
+            GetWindowThreadProcessId(window,out var pid);
+            try
+            {
+                using var process=Process.GetProcessById((int)pid);
+                if(!processes.Contains(process.ProcessName,StringComparer.OrdinalIgnoreCase))
+                    processes.Add(process.ProcessName);
+            }
+            catch{}
+        }
+        return processes;
+    }
+    internal static bool IsShellClass(string className)=>IsTaskbarClass(className)||className is "Progman" or "WorkerW" or "Windows.UI.Core.CoreWindow";
     public static bool Matches(string condition,string actualProcess)=>string.IsNullOrWhiteSpace(condition)||Path.GetFileNameWithoutExtension(condition).Equals(Path.GetFileNameWithoutExtension(actualProcess),StringComparison.OrdinalIgnoreCase);
     [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
@@ -39,6 +75,7 @@ public static class ConditionMatcher
     [DllImport("user32.dll")]static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr hwnd,System.Text.StringBuilder text,int maxCount);
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hwnd,uint flags);
+    [DllImport("user32.dll")]static extern IntPtr GetWindow(IntPtr hwnd,uint command);
     [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr hwnd,out RECT rect);
     [DllImport("user32.dll")]static extern bool EnumWindows(EnumWindowsProc callback,IntPtr parameter);
     delegate bool EnumWindowsProc(IntPtr hwnd,IntPtr parameter);

@@ -12,6 +12,7 @@ public partial class App : System.Windows.Application
 {
 #if !PRODUCTION_PUBLISH
     internal static string EngineTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-engine-test-last.log");
+    internal static string UiTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-ui-test-last.log");
 #endif
     internal const string InstanceMutexName=@"Local\RELYR.SingleInstance.v2";
     const string SignalName=@"Local\RELYR.ShowExisting.v1";
@@ -21,6 +22,7 @@ public partial class App : System.Windows.Application
     EventWaitHandle? showSignal;
     EventWaitHandle? showAcknowledgement;
     EventWaitHandle? shutdownSignal;
+    ForegroundWindowTracker? foregroundWindowTracker;
     bool ownsMutex;
     readonly CancellationTokenSource signalStop=new();
     public App()
@@ -39,12 +41,27 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         string[] args=e.Args;
+#if !PRODUCTION_PUBLISH
+        if(args.Contains("--profile-switch-test-host",StringComparer.OrdinalIgnoreCase))
+        {
+            string title=args.SkipWhile(x=>!x.Equals("--profile-switch-test-host",StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault()
+                ??ProfileSwitchRuntimeTest.HostWindowTitle;
+            var host=new Window{Title=title,Left=160,Top=160,Width=420,Height=260,WindowStartupLocation=WindowStartupLocation.Manual,ShowInTaskbar=true};
+            MainWindow=host;host.Show();return;
+        }
+        if(args.Contains("--profile-switch-runtime-test",StringComparer.OrdinalIgnoreCase))
+        {
+            ShutdownMode=ShutdownMode.OnExplicitShutdown;
+            Dispatcher.BeginInvoke(()=>_=RunProfileSwitchRuntimeTestAndExit());
+            return;
+        }
+#endif
 #if PRODUCTION_PUBLISH
         if(args.Length>=2&&args[0].Equals("--elevated-task",StringComparison.OrdinalIgnoreCase))
         {
-            if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者モードの起動タスクが正しく構成されていません。RELYRを再インストールしてください。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
+            if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者モードの起動タスクが正しく構成されていません。RELYRを再インストールしてください。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
             try{args=StartupService.DecodeElevatedArguments(args[1]);}
-            catch(Exception ex){AppDialog.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);Shutdown(1);return;}
+            catch(Exception ex){AppDialog.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
         }
         else if(!StartupService.IsProcessElevated())
         {
@@ -59,10 +76,10 @@ public partial class App : System.Windows.Application
                 {
                     AppDialog.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
                 }
-                Shutdown(0);return;
+                ExitImmediately(0);return;
             }
             if(!StartupService.TryRunElevated(args,out string error))AppDialog.Show(error,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
-            Shutdown(string.IsNullOrEmpty(error)?0:1);return;
+            ExitImmediately(string.IsNullOrEmpty(error)?0:1);return;
         }
 #endif
 #if PRODUCTION_PUBLISH
@@ -75,21 +92,28 @@ public partial class App : System.Windows.Application
         IntPtr? shortcutTarget=ReadMacroShortcutTarget(args);
         if(ShortcutService.TryReadMacroId(args,out string macroId)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroId,true,shortcutTarget));return;}
         if(ShortcutService.TryReadMacroName(args,out string macroName)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroName,false,shortcutTarget));return;}
-        if(args.Length>=1&&args[0].Equals("--configure-elevated-launcher",StringComparison.OrdinalIgnoreCase)){try{StartupService.EnsureElevatedLauncher();Shutdown(0);}catch{Shutdown(1);}return;}
-        if(args.Length>=1&&args[0].Equals("--remove-elevated-tasks",StringComparison.OrdinalIgnoreCase)){try{StartupService.RemoveElevatedTasks();Shutdown(0);}catch{Shutdown(1);}return;}
-        if(args.Length>=1&&args[0].Equals("--uninstall-needs-restart",StringComparison.OrdinalIgnoreCase)){try{var uninstallState=new ConfigService().Load();Shutdown(UninstallRestartNeeded(uninstallState,LegacyKeyRemapService.HasCapsLockToF13())?10:0);}catch{Shutdown(10);}return;}
-        if(args.Length>=1&&args[0].Equals("--prepare-uninstall",StringComparison.OrdinalIgnoreCase)){try{LegacyKeyRemapService.SetCapsLockToF13(false);StartupService.RemoveElevatedTasks();var uninstallConfig=new ConfigService();var value=uninstallConfig.Load();value.StartWithWindows=false;value.CapsLockLayerEnabled=false;uninstallConfig.Save(value);Shutdown(0);}catch{Shutdown(1);}return;}
-        if(args.Length>=1&&args[0].Equals("--delete-user-settings",StringComparison.OrdinalIgnoreCase)){Shutdown(ConfigService.DeleteAllUserData()?0:1);return;}
-        if(args.Length>=2&&args[0].Equals("--configure-caps-remap",StringComparison.OrdinalIgnoreCase)){try{LegacyKeyRemapService.SetCapsLockToF13(args[1].Equals("on",StringComparison.OrdinalIgnoreCase));Shutdown(0);}catch{Shutdown(1);}return;}
-        if(args.Contains("--shutdown-existing",StringComparer.OrdinalIgnoreCase)){try{EventWaitHandle.OpenExisting(BuildShutdownSignalName(Environment.ProcessPath)).Set();}catch{}Shutdown(0);return;}
-        if(args.Length>=2&&args[0].Equals("--configure-startup",StringComparison.OrdinalIgnoreCase)){try{bool enabled=args[1].Equals("on",StringComparison.OrdinalIgnoreCase);StartupService.SetEnabled(enabled);var startupConfig=new ConfigService();var value=startupConfig.Load();value.StartWithWindows=enabled;startupConfig.Save(value);Shutdown(0);}catch{Shutdown(1);}return;}
+        if(args.Length>=1&&args[0].Equals("--configure-elevated-launcher",StringComparison.OrdinalIgnoreCase)){try{StartupService.EnsureElevatedLauncher();ExitImmediately(0);}catch{ExitImmediately(1);}return;}
+        if(args.Length>=1&&args[0].Equals("--remove-elevated-tasks",StringComparison.OrdinalIgnoreCase)){try{StartupService.RemoveElevatedTasks();ExitImmediately(0);}catch{ExitImmediately(1);}return;}
+        if(args.Length>=1&&args[0].Equals("--uninstall-needs-restart",StringComparison.OrdinalIgnoreCase)){try{var uninstallState=new ConfigService().Load();ExitImmediately(UninstallRestartNeeded(uninstallState,LegacyKeyRemapService.HasCapsLockToF13())?10:0);}catch{ExitImmediately(10);}return;}
+        if(args.Length>=1&&args[0].Equals("--prepare-uninstall",StringComparison.OrdinalIgnoreCase)){try{LegacyKeyRemapService.SetCapsLockToF13(false);StartupService.RemoveElevatedTasks();var uninstallConfig=new ConfigService();var value=uninstallConfig.Load();value.StartWithWindows=false;value.CapsLockLayerEnabled=false;uninstallConfig.Save(value);ExitImmediately(0);}catch{ExitImmediately(1);}return;}
+        if(args.Length>=1&&args[0].Equals("--delete-user-settings",StringComparison.OrdinalIgnoreCase)){ExitImmediately(ConfigService.DeleteAllUserData()?0:1);return;}
+        if(args.Length>=2&&args[0].Equals("--configure-caps-remap",StringComparison.OrdinalIgnoreCase)){try{LegacyKeyRemapService.SetCapsLockToF13(args[1].Equals("on",StringComparison.OrdinalIgnoreCase));ExitImmediately(0);}catch{ExitImmediately(1);}return;}
+        if(args.Contains("--shutdown-existing",StringComparer.OrdinalIgnoreCase)){try{EventWaitHandle.OpenExisting(BuildShutdownSignalName(Environment.ProcessPath)).Set();}catch{}ExitImmediately(0);return;}
+        if(args.Length>=2&&args[0].Equals("--configure-startup",StringComparison.OrdinalIgnoreCase)){try{bool enabled=args[1].Equals("on",StringComparison.OrdinalIgnoreCase);StartupService.SetEnabled(enabled);var startupConfig=new ConfigService();var value=startupConfig.Load();value.StartWithWindows=enabled;startupConfig.Save(value);ExitImmediately(0);}catch{ExitImmediately(1);}return;}
 #if !PRODUCTION_PUBLISH
         if(e.Args.Contains("--desktop-helper",StringComparer.OrdinalIgnoreCase))
         {
             var helper=new Window{Title="RELYR Desktop Test",Width=320,Height=160,WindowStartupLocation=WindowStartupLocation.CenterScreen};
             MainWindow=helper;helper.Show();return;
         }
-        if(e.Args.Contains("--ui-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(UiIntegrationTest.Run(Console.Out));return;}
+        if(e.Args.Contains("--ui-test",StringComparer.OrdinalIgnoreCase))
+        {
+            try{File.Delete(UiTestReportPath);}catch{}
+            using var uiLog=new StreamWriter(UiTestReportPath,false,Encoding.UTF8){AutoFlush=true};
+            int result=UiIntegrationTest.Run(uiLog);
+            ShutdownWithExitCode(result);
+            return;
+        }
         if (e.Args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {
             ShutdownWithExitCode(SelfTest.Run(Console.Out));
@@ -111,7 +135,7 @@ public partial class App : System.Windows.Application
         if(!ownsMutex)
         {
             if(NotifyExistingInstance()&&ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
-            Shutdown(0);return;
+            ExitImmediately(0);return;
         }
         var loadedStartupConfig=new ConfigService().Load();
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
@@ -122,10 +146,11 @@ public partial class App : System.Windows.Application
                 "RELYRを起動できません",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-            Shutdown(1);return;
+            ExitImmediately(1);return;
         }
         showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
         showAcknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset,AcknowledgementName);
+        try{foregroundWindowTracker=new ForegroundWindowTracker();}catch{}
         try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
         try{StartupService.EnsureMatchesConfig(loadedStartupConfig.StartWithWindows);}catch{}
         shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));
@@ -185,17 +210,37 @@ public partial class App : System.Windows.Application
                 throw new InvalidOperationException(terminationError);
             if(!StartupService.TryRunElevated(originalArguments,out string launchError))
                 throw new InvalidOperationException(launchError);
-            Shutdown(0);
+            ExitImmediately(0);
         }
         catch(Exception ex)
         {
             AppDialog.Show("応答しないRELYRを自動復旧できませんでした。\n\n"+ex.Message,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
-            Shutdown(1);
+            ExitImmediately(1);
         }
     }
 #endif
     static void ShowAlreadyRunningMessage()=>AppDialog.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
-    void ShutdownWithExitCode(int exitCode){Environment.ExitCode=exitCode;Shutdown(exitCode);}
+    internal static void ArmForcedProcessExit(TimeSpan delay)
+    {
+        int processId=Environment.ProcessId;
+        var watchdog=new Thread(()=>
+        {
+            Thread.Sleep(delay);
+            try{Process.GetProcessById(processId).Kill(false);}catch{}
+        }){IsBackground=true,Name="RELYR exit watchdog"};
+        watchdog.Start();
+    }
+    internal static void ExitImmediately(int exitCode)
+    {
+        // Environment.Exit can wait indefinitely for WPF/WinForms/COM shutdown
+        // handlers and suspend a managed watchdog thread. Release injected input,
+        // then remove the tray icon before the Win32 safety exit.
+        try{if(Current?.MainWindow is RELYR.MainWindow window)window.PrepareVisualsForImmediateExit();}catch{}
+        try{InputEngine.ReleaseAll();}catch{}
+        try{TerminateProcess(Process.GetCurrentProcess().Handle,unchecked((uint)exitCode));}catch{}
+        Environment.FailFast($"RELYR could not terminate normally (exit code {exitCode}).");
+    }
+    void ShutdownWithExitCode(int exitCode)=>ExitImmediately(exitCode);
     void ListenForShow(MainWindow window)
     {
         try
@@ -241,9 +286,17 @@ public partial class App : System.Windows.Application
             try{InputEngine.ReleaseAll();}catch(Exception ex){log.WriteLine("FAIL input release: "+ex.Message);result=1;}
             log.WriteLine("EXIT_CODE="+result);
             try{Console.Out.Write(File.ReadAllText(EngineTestReportPath));Console.Out.Flush();}catch{}
-            Environment.Exit(result);
+            ExitImmediately(result);
         }
     }
+#if !PRODUCTION_PUBLISH
+    async Task RunProfileSwitchRuntimeTestAndExit()
+    {
+        int result=await ProfileSwitchRuntimeTest.RunAsync();
+        try{File.AppendAllText(ProfileSwitchRuntimeTest.ReportPath,"app:runtime-test-returned"+Environment.NewLine,Encoding.UTF8);}catch{}
+        ShutdownWithExitCode(result);
+    }
+#endif
 #endif
     internal static string[] AttachMacroShortcutTarget(IReadOnlyList<string> arguments,Func<IntPtr> resolveTarget)
     {
@@ -267,12 +320,14 @@ public partial class App : System.Windows.Application
             var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));var result=await MacroPlayer.PlayAsync(macro,macroConfig,null,preferredActiveWindow);if(!result.Succeeded&&!result.Cancelled)throw new InvalidOperationException(result.Message);
         }
         catch(Exception ex){exitCode=1;AppDialog.Show(ex.Message,"マクロを実行できません",MessageBoxButton.OK,MessageBoxImage.Error);}
-        finally{InputEngine.ReleaseAll();Shutdown(exitCode);}
+        finally{ExitImmediately(exitCode);}
     }
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e){if(MainWindow is RELYR.MainWindow window)window.PrepareForSystemShutdown();base.OnSessionEnding(e);}
     void SystemPowerModeChanged(object sender,PowerModeChangedEventArgs e){if(e.Mode==PowerModes.Suspend)InputEngine.ReleaseAll();}
     void SystemSessionSwitch(object sender,SessionSwitchEventArgs e){if(e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.RemoteDisconnect)InputEngine.ReleaseAll();}
-    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
+    protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();foregroundWindowTracker?.Dispose();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);
+    [DllImport("kernel32.dll",SetLastError=true)]
+    static extern bool TerminateProcess(IntPtr process,uint exitCode);
 }

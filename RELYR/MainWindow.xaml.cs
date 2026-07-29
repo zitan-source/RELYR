@@ -37,7 +37,12 @@ public partial class MainWindow : Window
     bool profileDropDownOpen;
     string explicitProfileSwitchProcess="";
     string automaticProfileReturnName="";
+    string automaticProfileCandidateSignature="";
+    int automaticProfileCandidateSamples;
+    int automaticProfileCheckQueued;
+    IntPtr automaticProfilePointerWindow;
     DateTime suppressAutomaticProfileSwitchUntil=DateTime.MinValue;
+    readonly string automaticProfileDiagnosticLog=Environment.GetEnvironmentVariable("RELYR_PROFILE_SWITCH_LOG")??"";
     readonly System.Windows.Threading.DispatcherTimer autoSaveTimer=new(){Interval=TimeSpan.FromMilliseconds(450)};
     readonly CancellationTokenSource updateCancellation=new();
     internal static readonly TimeSpan AutomaticUpdateCheckInterval=TimeSpan.FromDays(1);
@@ -49,7 +54,6 @@ public partial class MainWindow : Window
     string selectedBaseInput="";
     bool loading, detectMode, allowClose, engineStarted, editingSelectedInput;
     int exitRequested;
-    static System.Threading.Timer? processExitFallback;
     string? pendingDetectedLayer;
     bool updateInProgress;
     DateTimeOffset lastAutomaticUpdateCheckAttempt;
@@ -58,6 +62,7 @@ public partial class MainWindow : Window
     string currentLayer="通常";
     MacroWindow? macroWindow;bool engineBeforeMacroRecording,macroEmergencyStop,macroIsRecording;
     ProfileSwitchOverlay? profileOverlay;
+    string lastProfileOverlayName="";
     Mapping? copiedMapping;
     TextBox? destinationInputTarget;
     int destinationFocusRequest;
@@ -65,6 +70,8 @@ public partial class MainWindow : Window
     UpdateCheckResult? lastUpdateCheck;
     internal event Action<UpdateCheckResult>? UpdateCheckCompleted;
     readonly System.Windows.Forms.NotifyIcon tray = new();
+    readonly bool suppressTray;
+    int trayDisposed;
     Profile CurrentProfile => config.Profiles.First(x => x.Name == config.ActiveProfile);
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x=>x.Name==appliedConfig.ActiveProfile)??appliedConfig.Profiles[0];
     public bool NeedsFirstRunSetup=>!config.FirstRunCompleted;
@@ -78,6 +85,8 @@ public partial class MainWindow : Window
     internal bool ExecuteMappingForTest(Mapping mapping,string input)=>executor.Execute(mapping,input,out _);
     internal void SwitchProfileForTest(string name)=>SwitchProfile(name,true,false);
     internal bool IsProfileOverlayVisibleForTest=>profileOverlay?.IsVisible==true;
+    internal ProfileSwitchOverlay? ProfileOverlayForTest=>profileOverlay;
+    internal void ShowProfileOverlayForTest(string name)=>ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest=>VisualInputButtons().ToList();
     internal bool TitleBarUsesDarkMode { get; private set; }
     internal static string DisplayVersion
@@ -89,8 +98,9 @@ public partial class MainWindow : Window
         get{var v=typeof(MainWindow).Assembly.GetName().Version??new Version(0,0,0);return new Version(v.Major,v.Minor,Math.Max(0,v.Build));}
     }
 
-    public MainWindow(bool skipSetup=false)
+    public MainWindow(bool skipSetup=false,bool suppressTray=false)
     {
+        this.suppressTray=suppressTray;
         loading=true;
         InitializeComponent();
         Loaded+=(_,_)=>EnsureUpdateCheckStarted();
@@ -111,6 +121,7 @@ public partial class MainWindow : Window
         capsLockRemapped=capsRestartPending?config.CapsLockRemapEffectiveBeforeRestart:configuredCapsLockRemap;
         engine.TreatF13AsCapsLock=capsLockRemapped;
         appliedConfig=store.Clone(config);
+        OverlayService.Configure(()=>appliedConfig,()=>engine.HasCapturedPhysicalInput);
         executor=new MappingExecutor(new SystemInputOutput(name=>appliedConfig.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),name=>Dispatcher.BeginInvoke(()=>SwitchProfile(name,true)),()=>appliedConfig.KeyboardLayout=="US",()=>appliedConfig));
         actionWorker=Task.Run(ProcessActions);dragActionWorker=Task.Factory.StartNew(ProcessDragActions,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
         AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();
@@ -136,6 +147,7 @@ public partial class MainWindow : Window
         engine.DragPixels = config.MouseDragPixels;
         engine.GestureThresholdPixels=config.GestureThresholdPixels;
         engine.Detected += text => Dispatcher.BeginInvoke(() => HandleDetectedInput(text));
+        engine.PointerMoved += QueueAutomaticProfileCheck;
         engine.Enabled=false;
         try { engine.Start();engineStarted=true; } catch (Exception ex) { config.EngineEnabled=false;appliedConfig.EngineEnabled=false;store.Save(config);WpfMessageBox.Show("入力フックを開始できません。エンジンを停止しました。\n\n" + ex.Message,"入力エンジンを開始できません",MessageBoxButton.OK,MessageBoxImage.Error); }
         engine.Enabled = engineStarted&&config.EngineEnabled;
@@ -143,10 +155,24 @@ public partial class MainWindow : Window
         AdminStatus.Text = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator) ? "管理者モード" : "一般権限";
         archiveWatcher.Status+=text=>Dispatcher.BeginInvoke(()=>LastInput.Text=text);
         archiveWatcher.Apply(config);
-        SetupTray();trayNumberTimer.Tick+=(_,_)=>UpdateTrayNumber();trayNumberTimer.Start();profileSwitchTimer.Tick+=(_,_)=>AutoSwitchProfile();profileSwitchTimer.Start();autoSaveTimer.Tick+=(_,_)=>{autoSaveTimer.Stop();SaveAndApply("自動保存しました");};UpdateStatus();
+        if(!suppressTray){SetupTray();trayNumberTimer.Tick+=(_,_)=>UpdateTrayNumber();trayNumberTimer.Start();}
+        profileSwitchTimer.Tick+=(_,_)=>AutoSwitchProfile();profileSwitchTimer.Start();autoSaveTimer.Tick+=(_,_)=>{autoSaveTimer.Stop();SaveAndApply("自動保存しました");};UpdateStatus();
         if(capsRestartPending){LastInput.Text="CapsLock設定は再起動待ちです — Windowsを再起動するまで変更は有効になりません";LastInput.Foreground=ThemeService.Brush("WarningBrush");}
         else if(configuredCapsLockRemap){LastInput.Text="CapsLock→F13設定を検出しました。CapsLockレイヤーとして互換動作します";LastInput.Foreground=ThemeService.Brush("AccentBrush");}
         if(skipSetup&&NeedsFirstRunSetup){config.FirstRunCompleted=true;store.Save(config);}
+    }
+
+    void QueueAutomaticProfileCheck()
+    {
+        if(Interlocked.Exchange(ref automaticProfileCheckQueued,1)!=0)return;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,new Action(()=>
+        {
+            Interlocked.Exchange(ref automaticProfileCheckQueued,0);
+            IntPtr pointerWindow=ConditionMatcher.RootWindowUnderCursor();
+            if(pointerWindow==automaticProfilePointerWindow)return;
+            automaticProfilePointerWindow=pointerWindow;
+            AutoSwitchProfile();
+        }));
     }
 
     void ArrangeInputWorkspace()
@@ -1018,6 +1044,10 @@ public partial class MainWindow : Window
         LayerNavigationColumn.Width=new GridLength(e.NewSize.Width<950?140:e.NewSize.Width<1500?150:165);HeaderBrandColumn.Width=LayerNavigationColumn.Width;
         AssignmentPaneColumn.Width=new GridLength(e.NewSize.Width<950?280:e.NewSize.Width<1500?300:320);
         MouseColumn.Width=new GridLength(e.NewSize.Width<1000?190:e.NewSize.Width<1250?230:e.NewSize.Width<1550?270:300);
+        // The mouse diagram may shrink with a compact window, but it must not
+        // grow larger than the navigation, numpad, and cursor-key groups.
+        double mouseScale=Math.Clamp(Math.Min(e.NewSize.Width/1050,e.NewSize.Height/650),.75,1.0);
+        MouseHost.Width=168*mouseScale;MouseHost.Height=260*mouseScale;
         LowerInputRow.Height=new GridLength(Math.Clamp(e.NewSize.Height*.38,240,370));
         KeyboardViewbox.MaxWidth=e.NewSize.Width<1100?double.PositiveInfinity:e.NewSize.Width<1500?1120:1220;
         WorkspaceGrid.Margin=new Thickness(gap);AssignmentPane.Padding=new Thickness(gap);UpdateLayerButtonWidths();
@@ -1055,6 +1085,8 @@ public partial class MainWindow : Window
     void ShowProfileOverlay(string profileName)
     {
         if(!appliedConfig.ShowProfileSwitchOverlay)return;
+        if(lastProfileOverlayName.Equals(profileName,StringComparison.OrdinalIgnoreCase))return;
+        lastProfileOverlayName=profileName;
         profileOverlay?.Close();
         var overlay=new ProfileSwitchOverlay(profileName);profileOverlay=overlay;
         overlay.Closed+=(_,_)=>{if(ReferenceEquals(profileOverlay,overlay))profileOverlay=null;};
@@ -1062,33 +1094,100 @@ public partial class MainWindow : Window
     }
     void AutoSwitchProfile()
     {
-        if(profileDropDownOpen||DateTime.UtcNow<suppressAutomaticProfileSwitchUntil)return;
-        if(!appliedConfig.AutoSwitchProfilesByCursor)
+        if(profileDropDownOpen||DateTime.UtcNow<suppressAutomaticProfileSwitchUntil)
         {
-            if(TryApplyAutomaticProfile(config,appliedConfig,config.ActiveProfile,engine.TryPrepareForProfileChange)){RebuildTrayMenu();ShowProfileOverlay(appliedConfig.ActiveProfile);}
+            LogAutomaticProfileSwitch($"paused dropdown={profileDropDownOpen} suppressUntil={suppressAutomaticProfileSwitchUntil:O}");
             return;
         }
-        if(!appliedConfig.Profiles.Skip(1).Any(x=>x.AutoSwitchEnabled))return;
+        if(!appliedConfig.AutoSwitchProfilesByCursor)
+        {
+            bool changed=TryApplyAutomaticProfile(config,appliedConfig,config.ActiveProfile,engine.TryPrepareForProfileChange);
+            LogAutomaticProfileSwitch($"disabled editor={config.ActiveProfile} runtime={appliedConfig.ActiveProfile} changed={changed}");
+            if(changed){RebuildTrayMenu();ShowProfileOverlay(appliedConfig.ActiveProfile);}
+            return;
+        }
+        if(!appliedConfig.Profiles.Skip(1).Any(x=>x.AutoSwitchEnabled))
+        {
+            LogAutomaticProfileSwitch("no-enabled-profiles");
+            return;
+        }
         // The taskbar is an input location, not an application profile target.
         // Keep the profile of the application that the pointer just left so its
         // Taskbar+... mappings remain available.
         bool cursorOverTaskbar=ConditionMatcher.IsCursorOverTaskbar();
-        string process=cursorOverTaskbar?"":ConditionMatcher.ProcessUnderCursor();
+        if(cursorOverTaskbar){ResetAutomaticProfileCandidate();LogAutomaticProfileSwitch($"taskbar runtime={appliedConfig.ActiveProfile}");return;}
+        var processesAtCursor=ConditionMatcher.ProcessesUnderCursor()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        // RELYR windows (the editor, profile notification, dialogs, etc.) are
+        // neutral UI surfaces. Treating them as "no matching application"
+        // feeds back into the auto switcher and can repeatedly return to the
+        // default profile while the notification itself is under the pointer.
+        if(processesAtCursor.Any(process=>IsOwnProcess(process))){ResetAutomaticProfileCandidate();LogAutomaticProfileSwitch($"own-window processes={string.Join(",",processesAtCursor)} runtime={appliedConfig.ActiveProfile}");return;}
+        var processes=processesAtCursor.Where(process=>!IsOwnProcess(process)).ToArray();
+        // Child/owner windows can change while the pointer remains inside one
+        // Chromium or Qt application. Stabilize the resolved profile rather
+        // than requiring the raw process list to be byte-for-byte identical.
+        var candidate=ResolveAutomaticProfileTarget(appliedConfig.Profiles,appliedConfig.ActiveProfile,automaticProfileReturnName,processes,cursorOverTaskbar);
+        bool stable=ObserveAutomaticProfileCandidate(candidate.Target,1);
+        LogAutomaticProfileSwitch($"observe processes={string.Join(",",processes)} candidate={candidate.Target} samples={automaticProfileCandidateSamples}/1 stable={stable} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
+        if(!stable)return;
+        string process=processes.FirstOrDefault()??"";
         // RELYR itself is never an automatic-switch target. Treat it like an
         // unmatched application so the runtime profile cannot remain stuck on
         // the application from another virtual desktop.
-        if(IsOwnProcess(process))process="";
-        if(ShouldKeepExplicitProfile(explicitProfileSwitchProcess,process,cursorOverTaskbar))return;
+        if(ShouldKeepExplicitProfile(explicitProfileSwitchProcess,process,cursorOverTaskbar)){LogAutomaticProfileSwitch($"manual-hold original={explicitProfileSwitchProcess} current={process}");return;}
         explicitProfileSwitchProcess="";
-        var resolution=ResolveAutomaticProfileTarget(appliedConfig.Profiles,appliedConfig.ActiveProfile,automaticProfileReturnName,process,cursorOverTaskbar);
-        automaticProfileReturnName=resolution.ReturnProfile;
-        if(TryApplyAutomaticProfile(config,appliedConfig,resolution.Target,engine.TryPrepareForProfileChange)){RebuildTrayMenu();ShowProfileOverlay(resolution.Target);}
+        string before=appliedConfig.ActiveProfile;
+        if(TryResolveAndApplyAutomaticProfile(config,appliedConfig,processes,cursorOverTaskbar,engine.TryPrepareForProfileChange,ref automaticProfileReturnName,out string target))
+        {
+            LogAutomaticProfileSwitch($"applied before={before} target={target} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
+            RebuildTrayMenu();
+            ShowProfileOverlay(target);
+        }
+        else LogAutomaticProfileSwitch($"not-applied before={before} target={target} runtime={appliedConfig.ActiveProfile} captured={engine.HasCapturedPhysicalInput}");
+    }
+    void LogAutomaticProfileSwitch(string message)
+    {
+        if(string.IsNullOrWhiteSpace(automaticProfileDiagnosticLog))return;
+        try
+        {
+            string? directory=Path.GetDirectoryName(automaticProfileDiagnosticLog);
+            if(!string.IsNullOrWhiteSpace(directory))Directory.CreateDirectory(directory);
+            File.AppendAllText(automaticProfileDiagnosticLog,$"{DateTime.Now:O} {message}{Environment.NewLine}");
+        }
+        catch{}
+    }
+    void ResetAutomaticProfileCandidate(){automaticProfileCandidateSignature="";automaticProfileCandidateSamples=0;}
+    bool ObserveAutomaticProfileCandidate(string signature,int requiredSamples)
+    {
+        if(!automaticProfileCandidateSignature.Equals(signature,StringComparison.OrdinalIgnoreCase))
+        {
+            automaticProfileCandidateSignature=signature;
+            automaticProfileCandidateSamples=1;
+            return requiredSamples<=1;
+        }
+        automaticProfileCandidateSamples=Math.Min(requiredSamples,automaticProfileCandidateSamples+1);
+        return automaticProfileCandidateSamples>=requiredSamples;
     }
     internal static bool TryApplyAutomaticProfile(AppConfig editingConfig,AppConfig runtimeConfig,string targetName,Func<bool> prepare)
     {
         if(runtimeConfig.ActiveProfile==targetName||!runtimeConfig.Profiles.Any(x=>x.Name==targetName))return false;
         if(!prepare())return false;
         return ApplyAutomaticProfile(editingConfig,runtimeConfig,targetName);
+    }
+    internal static bool TryResolveAndApplyAutomaticProfile(AppConfig editingConfig,AppConfig runtimeConfig,IReadOnlyCollection<string> processes,bool cursorOverTaskbar,Func<bool> prepare,ref string returnProfile,out string target)
+    {
+        var resolution=ResolveAutomaticProfileTarget(runtimeConfig.Profiles,runtimeConfig.ActiveProfile,returnProfile,processes,cursorOverTaskbar);
+        target=resolution.Target;
+        if(runtimeConfig.ActiveProfile.Equals(target,StringComparison.OrdinalIgnoreCase))
+        {
+            returnProfile=resolution.ReturnProfile;
+            return false;
+        }
+        if(!TryApplyAutomaticProfile(editingConfig,runtimeConfig,target,prepare))return false;
+        returnProfile=resolution.ReturnProfile;
+        return true;
     }
     internal static bool ApplyAutomaticProfile(AppConfig editingConfig,AppConfig runtimeConfig,string targetName)
     {
@@ -1101,10 +1200,12 @@ public partial class MainWindow : Window
     internal static Profile SelectAutomaticProfile(IReadOnlyList<Profile> profiles,string process)=>profiles.Skip(1).FirstOrDefault(x=>x.AutoSwitchEnabled&&x.AutoSwitchApplications.Any(app=>ConditionMatcher.Matches(app,process)))??profiles[0];
     internal static string SelectAutomaticProfileNameForLocation(IReadOnlyList<Profile> profiles,string currentProfile,string process,bool cursorOverTaskbar)=>cursorOverTaskbar&&profiles.Any(x=>x.Name==currentProfile)?currentProfile:SelectAutomaticProfile(profiles,process).Name;
     internal static (string Target,string ReturnProfile) ResolveAutomaticProfileTarget(IReadOnlyList<Profile> profiles,string currentProfile,string returnProfile,string process,bool cursorOverTaskbar)
+        =>ResolveAutomaticProfileTarget(profiles,currentProfile,returnProfile,string.IsNullOrWhiteSpace(process)?[]:[process],cursorOverTaskbar);
+    internal static (string Target,string ReturnProfile) ResolveAutomaticProfileTarget(IReadOnlyList<Profile> profiles,string currentProfile,string returnProfile,IReadOnlyCollection<string> processes,bool cursorOverTaskbar)
     {
         if(cursorOverTaskbar)return(currentProfile,returnProfile);
         string defaultProfile=profiles[0].Name;
-        var matched=profiles.Skip(1).FirstOrDefault(x=>x.AutoSwitchEnabled&&x.AutoSwitchApplications.Any(app=>ConditionMatcher.Matches(app,process)));
+        var matched=profiles.Skip(1).FirstOrDefault(x=>x.AutoSwitchEnabled&&x.AutoSwitchApplications.Any(app=>processes.Any(process=>ConditionMatcher.Matches(app,process))));
         if(matched!=null)
         {
             string returnTarget=ValidManualReturnProfile(profiles,returnProfile)
@@ -1186,8 +1287,13 @@ public partial class MainWindow : Window
     void UpdateAutoSaveToggleText(){if(AutoSaveStatus!=null){AutoSaveStatus.Text=AutoSaveToggle.IsChecked==true?"● 自動保存 オン":"○ 自動保存 オフ";AutoSaveStatus.Foreground=ThemeService.Brush(AutoSaveToggle.IsChecked==true?"AccentBrush":"SecondaryText");}}
     void ClearPendingActions(){while(actionQueue.TryTake(out _)){}while(dragActionQueue.TryTake(out _)){}InputEngine.EndModifierDrag();MacroPlayer.StopAll();}
     void OpenSettings_Click(object sender,RoutedEventArgs e)
+        =>OpenSettingsFrom(this);
+
+    internal void OpenSettingsFrom(Window owner,string? category=null)
     {
-        var window=new SettingsWindow(config,lastUpdateCheck){Owner=this};if(window.ShowDialog()!=true)return;
+        var window=new SettingsWindow(config,lastUpdateCheck){Owner=owner};
+        if(category!=null)window.SelectCategory(category);
+        if(window.ShowDialog()!=true)return;
         if(window.CapsRemapChanged){LastInput.Text="CapsLock設定を変更しました — Windows再起動後に反映されます";LastInput.Foreground=ThemeService.Brush("WarningBrush");}
         if(window.ResetConfig is { } reset){ApplyCompleteConfig(reset,"すべての設定を初期状態へ戻しました");if(window.ResetNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,false);return;}
         if(window.ImportedConfig is { } imported){ApplyCompleteConfig(imported,"設定をインポートして反映しました");if(window.ImportedCapsLockNeedsRestart)SettingsWindow.PromptForWindowsRestart(this,window.ImportedCapsLockEnabled);return;}
@@ -1232,6 +1338,12 @@ public partial class MainWindow : Window
         config.SpaceHoldRepeatDelayMs=window.SpaceHoldRepeatDelay;
         config.GestureThresholdPixels=window.GestureThreshold;
         config.LockCursorDuringGesture=window.LockCursorDuringGesture;
+        config.ClockBackgroundMode=window.SelectedClockBackgroundMode;
+        config.ClockDisplayMode=window.SelectedClockDisplayMode;
+        config.ClockBackgroundImage=window.ClockBackgroundImage;
+        config.ClockSolidColor=window.ClockSolidColor;
+        config.ClockShowOnAllMonitors=window.ClockShowOnAllMonitors;
+        config.InputPanelOpacityPercent=window.InputPanelOpacityPercent;
         engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels=config.GestureThresholdPixels;
@@ -1255,6 +1367,12 @@ public partial class MainWindow : Window
         destination.SpaceHoldRepeatDelayMs=source.SpaceHoldRepeatDelayMs;
         destination.GestureThresholdPixels=source.GestureThresholdPixels;
         destination.LockCursorDuringGesture=source.LockCursorDuringGesture;
+        destination.ClockBackgroundMode=source.ClockBackgroundMode;
+        destination.ClockDisplayMode=source.ClockDisplayMode;
+        destination.ClockBackgroundImage=source.ClockBackgroundImage;
+        destination.ClockSolidColor=source.ClockSolidColor;
+        destination.ClockShowOnAllMonitors=source.ClockShowOnAllMonitors;
+        destination.InputPanelOpacityPercent=source.InputPanelOpacityPercent;
     }
     void ApplyCompleteConfig(AppConfig value,string message)
     {
@@ -1427,7 +1545,23 @@ public partial class MainWindow : Window
         UpdateBannerProgress.Value=0;
     }
     void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; CurrentProfile.Mappings.Remove(selected); var input = selected.Input; selected = null; SelectInput(input,false);UpdateLayerButtons();ClearExecutionFocus(s as FrameworkElement);MarkDirty();ColorButtons();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush"); }
-    void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;MacroPlayer.PlaybackFinished-=MacroPlaybackFinished;updateCancellation.Cancel();profileOverlay?.Close();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();tray.Visible=false;tray.Dispose();numberedTrayIcon?.Dispose();defaultTrayIcon?.Dispose();archiveWatcher.Dispose();updateCancellation.Dispose(); }
+    void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;MacroPlayer.PlaybackFinished-=MacroPlaybackFinished;engine.PointerMoved-=QueueAutomaticProfileCheck;updateCancellation.Cancel();profileOverlay?.Close();OverlayService.Shutdown();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();RemoveTrayIconForImmediateExit();archiveWatcher.Dispose();updateCancellation.Dispose(); }
+    internal void RemoveTrayIconForImmediateExit()
+    {
+        if(suppressTray||Interlocked.Exchange(ref trayDisposed,1)!=0)return;
+        try{tray.Visible=false;}catch{}
+        try{tray.Dispose();}catch{}
+        try{numberedTrayIcon?.Dispose();}catch{}
+        try{defaultTrayIcon?.Dispose();}catch{}
+        numberedTrayIcon=null;
+        defaultTrayIcon=null;
+    }
+    internal void PrepareVisualsForImmediateExit()
+    {
+        try{profileOverlay?.HideImmediatelyForProcessExit();}catch{}
+        try{Hide();}catch{}
+        RemoveTrayIconForImmediateExit();
+    }
     public void PrepareForSystemShutdown()
     {
         allowClose=true;
@@ -1442,15 +1576,16 @@ public partial class MainWindow : Window
         if(Interlocked.Exchange(ref exitRequested,1)!=0)return;
         allowClose=true;
         // WPF/WinFormsの後処理が停止しても、トレイ終了後にプロセスだけを残さない。
-        processExitFallback=new System.Threading.Timer(_=>Environment.Exit(0),null,TimeSpan.FromSeconds(5),Timeout.InfiniteTimeSpan);
+        App.ArmForcedProcessExit(TimeSpan.FromSeconds(3));
         try
         {
             Close();
-            System.Windows.Application.Current?.Shutdown(0);
+            InputEngine.ReleaseAll();
+            App.ExitImmediately(0);
         }
         catch
         {
-            Environment.Exit(1);
+            App.ExitImmediately(1);
         }
     }
     string? PromptText(string title,string label,string initial)

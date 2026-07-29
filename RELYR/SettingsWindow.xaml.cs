@@ -36,6 +36,12 @@ public partial class SettingsWindow:Window
     public int SpaceHoldRepeatDelay=>int.TryParse(SpaceRepeatDelayBox.Text,out var value)?Math.Clamp(value,100,2000):400;
     public int GestureThreshold=>int.TryParse(GestureThresholdBox.Text,out var value)?Math.Clamp(value,3,100):12;
     public bool LockCursorDuringGesture=>LockGestureCursorBox.IsChecked==true;
+    public ClockBackgroundMode SelectedClockBackgroundMode=>ClockImageBackgroundBox.IsChecked==true?ClockBackgroundMode.Image:ClockSolidBackgroundBox.IsChecked==true?ClockBackgroundMode.Solid:ClockBackgroundMode.FrostedScreen;
+    public ClockDisplayMode SelectedClockDisplayMode=>(ClockDisplayMode)Math.Clamp(ClockDisplayModeBox.SelectedIndex,0,3);
+    public string ClockBackgroundImage=>ClockBackgroundImageBox.Text.Trim();
+    public string ClockSolidColor=>NormalizeClockColor(ClockSolidColorBox.Text);
+    public bool ClockShowOnAllMonitors=>ClockAllMonitorsBox.IsChecked==true;
+    public int InputPanelOpacityPercent=>(int)Math.Round(InputPanelOpacitySlider.Value);
     public bool CapsRemapChanged { get; private set; }
     public AppConfig? ResetConfig { get; private set; }
     public bool ResetNeedsRestart { get; private set; }
@@ -69,6 +75,17 @@ public partial class SettingsWindow:Window
         SpaceRepeatDelayBox.Text=config.SpaceHoldRepeatDelayMs.ToString();
         GestureThresholdBox.Text=config.GestureThresholdPixels.ToString();
         LockGestureCursorBox.IsChecked=config.LockCursorDuringGesture;
+        ClockFrostedBackgroundBox.IsChecked=config.ClockBackgroundMode==ClockBackgroundMode.FrostedScreen;
+        ClockImageBackgroundBox.IsChecked=config.ClockBackgroundMode==ClockBackgroundMode.Image;
+        ClockSolidBackgroundBox.IsChecked=config.ClockBackgroundMode==ClockBackgroundMode.Solid;
+        ClockDisplayModeBox.ItemsSource=new[]{"時・分","時・分・秒","月日・曜日・時刻","年月日・曜日・秒まで"};
+        ClockDisplayModeBox.SelectedIndex=(int)config.ClockDisplayMode;
+        ClockBackgroundImageBox.Text=config.ClockBackgroundImage;
+        ClockSolidColorBox.Text=NormalizeClockColor(config.ClockSolidColor);
+        ClockAllMonitorsBox.IsChecked=config.ClockShowOnAllMonitors;
+        InputPanelOpacitySlider.Value=Math.Clamp(config.InputPanelOpacityPercent,40,100);
+        UpdateInputPanelOpacityText();
+        UpdateClockBackgroundControls();
         ArchiveWatchFolderBox.Text=string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):config.ArchiveWatchFolder;
         ArchiveDestinationFolderBox.Text=config.ArchiveDestinationFolder;
         ExtractBox.IsChecked=config.AutoExtractDesktopArchives;
@@ -103,8 +120,16 @@ public partial class SettingsWindow:Window
         AppearancePanel.Visibility=selected=="Appearance"?Visibility.Visible:Visibility.Collapsed;
         UpdatePanel.Visibility=selected=="Update"?Visibility.Visible:Visibility.Collapsed;
         LayersPanel.Visibility=selected=="Layers"?Visibility.Visible:Visibility.Collapsed;
+        OverlayPanel.Visibility=selected=="Overlay"?Visibility.Visible:Visibility.Collapsed;
         ArchivePanel.Visibility=selected=="Archive"?Visibility.Visible:Visibility.Collapsed;
         DataPanel.Visibility=selected=="Data"?Visibility.Visible:Visibility.Collapsed;
+    }
+
+    internal void SelectCategory(string category)
+    {
+        var item=CategoryList.Items.Cast<System.Windows.Controls.ListBoxItem>()
+            .FirstOrDefault(candidate=>string.Equals(candidate.Tag?.ToString(),category,StringComparison.Ordinal));
+        if(item!=null)CategoryList.SelectedItem=item;
     }
 
     void ThemeMode_Changed(object sender,RoutedEventArgs e)
@@ -112,6 +137,58 @@ public partial class SettingsWindow:Window
         if(themeSelectionLoading)return;
         ThemeService.Apply(SelectedThemeMode);
         RefreshCapsRemapStatus();
+    }
+
+    void ClockBackground_Changed(object sender,RoutedEventArgs e)=>UpdateClockBackgroundControls();
+    void ClockSolidColor_Changed(object sender,System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if(ClockSolidColorSample==null)return;
+        bool valid=TryClockColor(ClockSolidColorBox.Text,out var color);
+        ClockSolidColorSample.Background=new System.Windows.Media.SolidColorBrush(color);
+        ClockSolidColorBox.BorderBrush=valid?ThemeService.Brush("BorderBrush"):ThemeService.Brush("DangerBrush");
+    }
+    void ClockColorPreset_Click(object sender,RoutedEventArgs e)
+    {
+        if(sender is System.Windows.Controls.Button{Tag:string color})ClockSolidColorBox.Text=color;
+    }
+    internal static bool TryClockColor(string? value,out System.Windows.Media.Color color)
+    {
+        try
+        {
+            if(System.Windows.Media.ColorConverter.ConvertFromString(value) is System.Windows.Media.Color parsed)
+            {
+                color=parsed;
+                return true;
+            }
+        }
+        catch(FormatException){}
+        color=System.Windows.Media.Color.FromRgb(16,31,46);
+        return false;
+    }
+    internal static string NormalizeClockColor(string? value)
+        =>TryClockColor(value,out var color)?$"#{color.R:X2}{color.G:X2}{color.B:X2}":"#101F2E";
+    void InputPanelOpacity_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>UpdateInputPanelOpacityText();
+    void UpdateInputPanelOpacityText()
+    {
+        if(InputPanelOpacityValueText!=null)InputPanelOpacityValueText.Text=$"{Math.Round(InputPanelOpacitySlider.Value):0}%";
+    }
+    void UpdateClockBackgroundControls()
+    {
+        if(ClockImagePicker==null)return;
+        ClockImagePicker.IsEnabled=ClockImageBackgroundBox.IsChecked==true;
+        ClockImagePicker.Opacity=ClockImagePicker.IsEnabled?1:.5;
+        ClockSolidPicker.IsEnabled=ClockSolidBackgroundBox.IsChecked==true;
+        ClockSolidPicker.Opacity=ClockSolidPicker.IsEnabled?1:.5;
+    }
+
+    void BrowseClockBackground_Click(object sender,RoutedEventArgs e)
+    {
+        var dialog=new Microsoft.Win32.OpenFileDialog
+        {
+            Title="クロックの背景画像を選択",
+            Filter="画像ファイル|*.jpg;*.jpeg;*.png;*.bmp;*.webp|すべてのファイル|*.*"
+        };
+        if(dialog.ShowDialog(this)==true)ClockBackgroundImageBox.Text=dialog.FileName;
     }
 
     async void CheckForUpdates_Click(object sender,RoutedEventArgs e)
@@ -199,6 +276,10 @@ public partial class SettingsWindow:Window
     static string FormatBytes(long bytes)=>bytes>=1024*1024?$"{bytes/1024d/1024d:0.0} MB":bytes>=1024?$"{bytes/1024d:0.0} KB":$"{bytes} B";
     void Save_Click(object sender,RoutedEventArgs e)
     {
+        if(SelectedClockBackgroundMode==ClockBackgroundMode.Image&&!File.Exists(ClockBackgroundImage))
+        {
+            AppDialog.Show(this,"クロックに使用する背景画像を［参照…］から選択してください。","クロックの背景",MessageBoxButton.OK,MessageBoxImage.Warning);return;
+        }
         if(AutoExtract)
         {
             if(!Directory.Exists(ArchiveWatchFolder)){AppDialog.Show(this,"監視するフォルダーが見つかりません。［参照］から実在するフォルダーを選択してください。","自動解凍の設定",MessageBoxButton.OK,MessageBoxImage.Warning);return;}

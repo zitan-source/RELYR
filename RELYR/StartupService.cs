@@ -88,9 +88,8 @@ public static class StartupService
         {
             RequireElevated();
             using var current=Process.GetCurrentProcess();
-            string executable=Path.GetFullPath(CurrentExecutablePath());
             var targetIds=new List<int>();
-            foreach(var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(executable)))
+            foreach(var process in Process.GetProcessesByName("RELYR"))
             {
                 using(process)
                 {
@@ -98,7 +97,7 @@ public static class StartupService
                     try
                     {
                         string? candidate=process.MainModule?.FileName;
-                        if(candidate!=null&&SameExecutablePath(executable,candidate))targetIds.Add(process.Id);
+                        if(candidate!=null&&IsRelyrExecutable(candidate))targetIds.Add(process.Id);
                     }
                     catch{}
                 }
@@ -140,22 +139,13 @@ public static class StartupService
                 using(process)
                 {
                     if(process.Id==currentProcessId)continue;
-                    int threadCount;
-                    try{threadCount=process.Threads.Count;}
-                    catch{continue;}
                     try
                     {
                         string? executablePath=process.MainModule?.FileName;
                         if(executablePath==null)continue;
-                        var version=FileVersionInfo.GetVersionInfo(executablePath);
-                        if(IsOrphanedRelyrProcess(
-                            Path.GetFileName(executablePath),
-                            version.ProductName,
-                            version.OriginalFilename,
-                            threadCount))
-                            orphanIds.Add(process.Id);
+                        if(IsRelyrExecutable(executablePath))orphanIds.Add(process.Id);
                     }
-                    catch(System.ComponentModel.Win32Exception) when(ShouldBlockUnverifiedRelyr(threadCount))
+                    catch(System.ComponentModel.Win32Exception)
                     {
                         // 管理者権限の旧RELYRを一般権限から確認できない場合、
                         // 新しい入力フックを重ねず、安全側で起動を中止する。
@@ -203,13 +193,20 @@ public static class StartupService
         catch(Exception ex){error=ex.Message;return false;}
     }
 
-    internal static bool IsOrphanedRelyrProcess(string fileName,string? productName,string? originalFileName,int threadCount)
-        =>threadCount<=1
-          &&fileName.Equals("RELYR.exe",StringComparison.OrdinalIgnoreCase)
+    internal static bool IsRelyrExecutable(string executablePath)
+    {
+        var version=FileVersionInfo.GetVersionInfo(executablePath);
+        return IsRelyrExecutableIdentity(
+            Path.GetFileName(executablePath),
+            version.ProductName,
+            version.OriginalFilename);
+    }
+
+    internal static bool IsRelyrExecutableIdentity(string fileName,string? productName,string? originalFileName)
+        =>fileName.Equals("RELYR.exe",StringComparison.OrdinalIgnoreCase)
           &&string.Equals(productName,"RELYR",StringComparison.OrdinalIgnoreCase)
           &&(string.Equals(originalFileName,"RELYR.exe",StringComparison.OrdinalIgnoreCase)
              ||string.Equals(originalFileName,"RELYR.dll",StringComparison.OrdinalIgnoreCase));
-    internal static bool ShouldBlockUnverifiedRelyr(int threadCount)=>threadCount<=1;
 
     internal static bool SameExecutablePath(string first,string second)
     {
