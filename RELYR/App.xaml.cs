@@ -48,6 +48,7 @@ public partial class App : System.Windows.Application
         }
         else if(!StartupService.IsProcessElevated())
         {
+            args=AttachMacroShortcutTarget(args,WindowMonitorService.GetActiveWindowForShortcut);
             if(IsMainUiLaunch(args)&&MainInstanceExists())
             {
                 if(NotifyExistingInstance())
@@ -71,8 +72,9 @@ public partial class App : System.Windows.Application
             return;
         }
 #endif
-        if(ShortcutService.TryReadMacroId(args,out string macroId)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroId,true));return;}
-        if(ShortcutService.TryReadMacroName(args,out string macroName)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroName,false));return;}
+        IntPtr? shortcutTarget=ReadMacroShortcutTarget(args);
+        if(ShortcutService.TryReadMacroId(args,out string macroId)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroId,true,shortcutTarget));return;}
+        if(ShortcutService.TryReadMacroName(args,out string macroName)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunMacroShortcutAndExit(macroName,false,shortcutTarget));return;}
         if(args.Length>=1&&args[0].Equals("--configure-elevated-launcher",StringComparison.OrdinalIgnoreCase)){try{StartupService.EnsureElevatedLauncher();Shutdown(0);}catch{Shutdown(1);}return;}
         if(args.Length>=1&&args[0].Equals("--remove-elevated-tasks",StringComparison.OrdinalIgnoreCase)){try{StartupService.RemoveElevatedTasks();Shutdown(0);}catch{Shutdown(1);}return;}
         if(args.Length>=1&&args[0].Equals("--uninstall-needs-restart",StringComparison.OrdinalIgnoreCase)){try{var uninstallState=new ConfigService().Load();Shutdown(UninstallRestartNeeded(uninstallState,LegacyKeyRemapService.HasCapsLockToF13())?10:0);}catch{Shutdown(10);}return;}
@@ -111,10 +113,19 @@ public partial class App : System.Windows.Application
             if(NotifyExistingInstance()&&ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
             Shutdown(0);return;
         }
-        showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
-        showAcknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset,AcknowledgementName);
         var loadedStartupConfig=new ConfigService().Load();
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
+        if(!StartupService.TryTerminateOrphanedRelyrInstances(TimeSpan.FromSeconds(3),out string orphanError))
+        {
+            AppDialog.Show(
+                "以前のRELYRの終了処理が残っているため、安全のため入力機能を開始しません。\n\n"+orphanError,
+                "RELYRを起動できません",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);return;
+        }
+        showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
+        showAcknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset,AcknowledgementName);
         try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
         try{StartupService.EnsureMatchesConfig(loadedStartupConfig.StartWithWindows);}catch{}
         shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));
@@ -234,13 +245,26 @@ public partial class App : System.Windows.Application
         }
     }
 #endif
-    async Task RunMacroShortcutAndExit(string macroReference,bool byId)
+    internal static string[] AttachMacroShortcutTarget(IReadOnlyList<string> arguments,Func<IntPtr> resolveTarget)
+    {
+        if(ReadMacroShortcutTarget(arguments)!=null||!ShortcutService.TryReadMacroId(arguments,out _)&&!ShortcutService.TryReadMacroName(arguments,out _))return [..arguments];
+        IntPtr target=resolveTarget();
+        return target==IntPtr.Zero?[..arguments]:[..arguments,"--target-hwnd",target.ToInt64().ToString(System.Globalization.CultureInfo.InvariantCulture)];
+    }
+    internal static IntPtr? ReadMacroShortcutTarget(IReadOnlyList<string> arguments)
+    {
+        for(int i=0;i+1<arguments.Count;i++)
+            if(arguments[i].Equals("--target-hwnd",StringComparison.OrdinalIgnoreCase)&&long.TryParse(arguments[i+1],System.Globalization.NumberStyles.Integer,System.Globalization.CultureInfo.InvariantCulture,out long value)&&value!=0)
+                return new IntPtr(value);
+        return null;
+    }
+    async Task RunMacroShortcutAndExit(string macroReference,bool byId,IntPtr? preferredActiveWindow)
     {
         int exitCode=0;
         try
         {
             var macro=new ConfigService().Load().Macros.FirstOrDefault(x=>(byId?x.Id:x.Name).Equals(macroReference,StringComparison.OrdinalIgnoreCase))??throw new InvalidOperationException(byId?"ショートカットに対応するマクロが見つかりません。":$"マクロ「{macroReference}」が見つかりません。");
-            var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));var result=await MacroPlayer.PlayAsync(macro,macroConfig);if(!result.Succeeded&&!result.Cancelled)throw new InvalidOperationException(result.Message);
+            var macroConfig=new ConfigService().Load();macro=macroConfig.Macros.First(x=>x.Id.Equals(macro.Id,StringComparison.OrdinalIgnoreCase));var result=await MacroPlayer.PlayAsync(macro,macroConfig,null,preferredActiveWindow);if(!result.Succeeded&&!result.Cancelled)throw new InvalidOperationException(result.Message);
         }
         catch(Exception ex){exitCode=1;AppDialog.Show(ex.Message,"マクロを実行できません",MessageBoxButton.OK,MessageBoxImage.Error);}
         finally{InputEngine.ReleaseAll();Shutdown(exitCode);}

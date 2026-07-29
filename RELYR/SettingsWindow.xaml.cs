@@ -34,6 +34,8 @@ public partial class SettingsWindow:Window
     public bool AutoSave=>AutoSaveBox.IsChecked==true;
     public bool SpaceHoldRepeat=>SpaceRepeatBox.IsChecked==true;
     public int SpaceHoldRepeatDelay=>int.TryParse(SpaceRepeatDelayBox.Text,out var value)?Math.Clamp(value,100,2000):400;
+    public int GestureThreshold=>int.TryParse(GestureThresholdBox.Text,out var value)?Math.Clamp(value,3,100):12;
+    public bool LockCursorDuringGesture=>LockGestureCursorBox.IsChecked==true;
     public bool CapsRemapChanged { get; private set; }
     public AppConfig? ResetConfig { get; private set; }
     public bool ResetNeedsRestart { get; private set; }
@@ -65,6 +67,8 @@ public partial class SettingsWindow:Window
         AutoSaveBox.IsChecked=config.AutoSave;
         SpaceRepeatBox.IsChecked=config.SpaceHoldRepeatEnabled;
         SpaceRepeatDelayBox.Text=config.SpaceHoldRepeatDelayMs.ToString();
+        GestureThresholdBox.Text=config.GestureThresholdPixels.ToString();
+        LockGestureCursorBox.IsChecked=config.LockCursorDuringGesture;
         ArchiveWatchFolderBox.Text=string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):config.ArchiveWatchFolder;
         ArchiveDestinationFolderBox.Text=config.ArchiveDestinationFolder;
         ExtractBox.IsChecked=config.AutoExtractDesktopArchives;

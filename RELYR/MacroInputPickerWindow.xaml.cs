@@ -133,8 +133,8 @@ public partial class MacroInputPickerWindow:Window
         Canvas.SetLeft(tiltLabel,bodyX);Canvas.SetTop(tiltLabel,bodyY+96);InputCanvas.Children.Add(tiltLabel);
         AddButton("TiltLeft","◀",bodyX+44,bodyY+108,38,28);
         AddButton("TiltRight","▶",bodyX+86,bodyY+108,38,28);
-        AddButton("MouseBack","戻る",bodyX+20,bodyY+151,48,31);
-        AddButton("MouseForward","進む",bodyX+20,bodyY+186,48,31);
+        AddButton("MouseForward","進む",bodyX+20,bodyY+151,48,31);
+        AddButton("MouseBack","戻る",bodyX+20,bodyY+186,48,31);
         AddButton("MouseX","X1",bodyX+112,bodyY+151,36,66);
     }
 

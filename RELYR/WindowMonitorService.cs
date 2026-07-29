@@ -6,18 +6,51 @@ namespace RELYR;
 internal static class WindowMonitorService
 {
     internal enum Direction { Left, Right, Up, Down }
-
-    internal static IntPtr ResolveTarget(WindowActionTarget target)
+    internal readonly record struct WindowCandidate(IntPtr Handle,string ClassName,bool Visible);
+    static readonly HashSet<string> ShortcutShellClasses=new(StringComparer.OrdinalIgnoreCase)
     {
-        var window=target==WindowActionTarget.WindowUnderCursor
+        "Shell_TrayWnd",
+        "Shell_SecondaryTrayWnd",
+        "Progman",
+        "WorkerW",
+        "Windows.UI.Core.CoreWindow"
+    };
+
+    internal static IntPtr ResolveTarget(WindowActionTarget target,IntPtr? preferredActiveWindow=null)
+    {
+        var window=target==WindowActionTarget.ActiveWindow&&preferredActiveWindow is { } preferred&&IsUsableWindow(preferred)
+            ?preferred
+            :target==WindowActionTarget.WindowUnderCursor
             ?RootWindowUnderCursor()
             :VirtualDesktopService.GetForegroundRootWindow();
-        if(window==IntPtr.Zero||!IsWindow(window)||!IsWindowVisible(window))
+        if(!IsUsableWindow(window))
             throw new InvalidOperationException(target==WindowActionTarget.WindowUnderCursor
                 ?"マウスカーソルの位置に操作できるウィンドウがありません。"
                 :"操作できるアクティブウィンドウがありません。");
         return window;
     }
+
+    // タスクバー等を前面ウィンドウの候補から除外し、直前の通常ウィンドウを取得する。
+    internal static IntPtr GetActiveWindowForShortcut()
+    {
+        IntPtr current=GetAncestor(GetForegroundWindow(),2);
+        while(current!=IntPtr.Zero)
+        {
+            var className=new System.Text.StringBuilder(256);
+            GetClassName(current,className,className.Capacity);
+            if(IsShortcutTargetCandidate(new(current,className.ToString(),IsWindowVisible(current))))return current;
+            current=GetWindow(current,2);
+        }
+        return IntPtr.Zero;
+    }
+
+    internal static bool IsShortcutTargetCandidate(WindowCandidate candidate)
+        =>candidate.Handle!=IntPtr.Zero&&candidate.Visible&&!ShortcutShellClasses.Contains(candidate.ClassName);
+
+    internal static IntPtr SelectShortcutTarget(IEnumerable<WindowCandidate> candidates)
+        =>candidates.FirstOrDefault(IsShortcutTargetCandidate).Handle;
+
+    internal static bool IsUsableWindow(IntPtr window)=>window!=IntPtr.Zero&&IsWindow(window)&&IsWindowVisible(window);
 
     internal static void Minimize(WindowActionTarget target)=>Minimize(ResolveTarget(target));
     internal static void Minimize(IntPtr window)=>ShowWindow(ValidateTarget(window),6);
@@ -106,7 +139,7 @@ internal static class WindowMonitorService
 
     static IntPtr ValidateTarget(IntPtr window)
     {
-        if(window==IntPtr.Zero||!IsWindow(window)||!IsWindowVisible(window))
+        if(!IsUsableWindow(window))
             throw new InvalidOperationException("操作対象のウィンドウがなくなりました。");
         return window;
     }
@@ -147,5 +180,8 @@ internal static class WindowMonitorService
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hWnd,uint flags);
     [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")]static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]static extern IntPtr GetWindow(IntPtr hWnd,uint command);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr hWnd,System.Text.StringBuilder className,int maxCount);
     [DllImport("user32.dll",SetLastError=true)]static extern bool PostMessage(IntPtr hWnd,uint message,IntPtr wParam,IntPtr lParam);
 }

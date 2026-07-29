@@ -13,12 +13,12 @@ public interface IInputOutput
     void SwitchProfile(string name);
 }
 
-public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Action<string>? switchProfile=null,Func<bool>? useUsLayout=null,Func<AppConfig?>? getConfig=null):IInputOutput
+public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Action<string>? switchProfile=null,Func<bool>? useUsLayout=null,Func<AppConfig?>? getConfig=null,Func<IntPtr?>? getPreferredActiveWindow=null):IInputOutput
 {
     public void NeutralizeSourceKey(string input)=>InputEngine.NeutralizePhysicalSourceKey(input);
     public void SendShortcut(string value)
     {
-        InputEngine.SendShortcut(value,useUsLayout?.Invoke()==true,getConfig?.Invoke()?.WindowActionTarget??WindowActionTarget.ActiveWindow);
+        InputEngine.SendShortcut(value,useUsLayout?.Invoke()==true,getConfig?.Invoke()?.WindowActionTarget??WindowActionTarget.ActiveWindow,getPreferredActiveWindow?.Invoke());
     }
     public void SendText(string value)=>InputEngine.SendText(value,useUsLayout?.Invoke()==true);
     public void SendMouse(string value)=>InputEngine.SendMouse(value);

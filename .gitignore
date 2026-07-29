@@ -3,6 +3,7 @@
 **/bin-*/
 **/obj-*/
 artifacts/
+.build-check/
 .vs/
 .vscode/
 .idea/

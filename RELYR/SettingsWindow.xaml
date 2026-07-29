@@ -59,10 +59,10 @@
                  BorderThickness="0" SelectionChanged="Category_SelectionChanged" ItemContainerStyle="{StaticResource SideItem}">
           <ListBoxItem Content="一般" Tag="General"/>
           <ListBoxItem Content="外観" Tag="Appearance"/>
-          <ListBoxItem Content="アップデート" Tag="Update"/>
           <ListBoxItem Content="レイヤー" Tag="Layers"/>
           <ListBoxItem Content="自動解凍" Tag="Archive"/>
           <ListBoxItem Content="データ管理" Tag="Data"/>
+          <ListBoxItem Content="アップデート" Tag="Update"/>
         </ListBox>
       </Grid>
     </Border>
@@ -73,8 +73,8 @@
       <Grid>
         <StackPanel x:Name="GeneralPanel">
           <TextBlock Text="一般" FontSize="27" FontWeight="Bold"/>
-          <TextBlock Text="Windowsと保存に関する基本設定です。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
-          <Border Style="{StaticResource Card}">
+          <TextBlock Text="Windowsと保存に関する基本設定です。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,14"/>
+          <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,8">
             <StackPanel>
               <TextBlock Text="Windows" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,5"/>
               <CheckBox x:Name="StartupBox" Content="サインイン時に自動で起動する"/>
@@ -108,6 +108,14 @@
               <TextBlock Text="明るい背景と濃い文字で表示します。" Foreground="{DynamicResource SecondaryText}" Margin="25,-3,0,8"/>
               <RadioButton x:Name="DarkThemeBox" GroupName="ThemeMode" Content="ダークモード" Foreground="{DynamicResource PrimaryText}" Margin="0,8" Checked="ThemeMode_Changed"/>
               <TextBlock Text="暗い背景で画面のまぶしさを抑えます。" Foreground="{DynamicResource SecondaryText}" Margin="25,-3,0,0"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Text="プロファイル切替" FontSize="18" FontWeight="SemiBold"/>
+              <CheckBox x:Name="ProfileOverlayBox" Margin="0,10,0,0">
+                <TextBlock Text="切替時にプロファイル名を画面下部へ表示する" TextWrapping="Wrap"/>
+              </CheckBox>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -157,7 +165,7 @@
             </StackPanel>
           </Border>
           <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Border Style="{StaticResource Card}" Padding="18">
               <StackPanel>
                 <TextBlock Text="Spaceの連打" FontSize="18" FontWeight="SemiBold"/>
@@ -174,12 +182,16 @@
             </Border>
             <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18" Margin="10,0,0,0">
               <StackPanel>
-                <TextBlock Text="プロファイル切替表示" FontSize="18" FontWeight="SemiBold"/>
-                <CheckBox x:Name="ProfileOverlayBox" Margin="0,10,0,4">
-                  <TextBlock Text="切替時にプロファイル名を画面下部へ表示する" TextWrapping="Wrap"/>
+                <TextBlock Text="ジェスチャー感度" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="方向を確定する移動量" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,8,0,8"/>
+                <StackPanel Orientation="Horizontal">
+                  <TextBox x:Name="GestureThresholdBox" Width="72" Padding="8" FontSize="15"/>
+                  <TextBlock Text="px（3～100）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
+                </StackPanel>
+                <TextBlock Text="小さいほど少ない動きで反応します。" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" Margin="0,10,0,0"/>
+                <CheckBox x:Name="LockGestureCursorBox" Margin="0,8,0,0" ToolTip="オフにすると、カーソルを動かしながらジェスチャーできます">
+                  <TextBlock Text="ジェスチャー中にカーソルを固定する" TextWrapping="Wrap"/>
                 </CheckBox>
-                <TextBlock Text="仮想デスクトップ番号のすぐ上へ、重ならないように約1秒間表示します。"
-                           TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="25,2,0,0"/>
               </StackPanel>
             </Border>
           </Grid>
