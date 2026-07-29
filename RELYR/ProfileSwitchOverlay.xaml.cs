@@ -1,11 +1,12 @@
 using System.Windows;
-using System.Windows.Media.Animation;
+using System.Runtime.InteropServices;
 
 namespace RELYR;
 
 public partial class ProfileSwitchOverlay:Window
 {
     readonly TimeSpan visibleDuration;
+    System.Threading.Timer? hideTimer;
 
     internal ProfileSwitchOverlay(string profileName,TimeSpan? duration=null)
     {
@@ -13,21 +14,23 @@ public partial class ProfileSwitchOverlay:Window
         ProfileNameText.Text=profileName;
         visibleDuration=duration??TimeSpan.FromSeconds(1);
         Loaded+=OverlayLoaded;
+        Closed+=(_,_)=>{hideTimer?.Dispose();hideTimer=null;};
     }
 
-    async void OverlayLoaded(object sender,RoutedEventArgs e)
+    void OverlayLoaded(object sender,RoutedEventArgs e)
     {
         PositionOnCurrentScreen();
-        try
+        var handle=new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        hideTimer=new System.Threading.Timer(_=>
         {
-            var fadeDuration=TimeSpan.FromMilliseconds(Math.Min(180,visibleDuration.TotalMilliseconds/3));
-            var hold=visibleDuration-fadeDuration;
-            if(hold>TimeSpan.Zero)await Task.Delay(hold);
-            BeginAnimation(OpacityProperty,new DoubleAnimation(1,0,fadeDuration));
-            await Task.Delay(fadeDuration);
-            Close();
-        }
-        catch(TaskCanceledException){}
+            // Hide through Win32 first so the notification cannot remain visible
+            // when the WPF dispatcher is temporarily busy.
+            if(handle!=IntPtr.Zero)ShowWindow(handle,0);
+            _=Dispatcher.BeginInvoke(new Action(()=>
+            {
+                if(IsLoaded)Close();
+            }));
+        },null,visibleDuration,Timeout.InfiniteTimeSpan);
     }
 
     void PositionOnCurrentScreen()
@@ -42,4 +45,15 @@ public partial class ProfileSwitchOverlay:Window
         // Windowsの表示領域より少し上へ積み重ねる。
         Top=Math.Max(topLeft.Y+16,bottomRight.Y-ActualHeight-118);
     }
+
+    internal void HideImmediatelyForProcessExit()
+    {
+        hideTimer?.Dispose();
+        hideTimer=null;
+        var handle=new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if(handle!=IntPtr.Zero)ShowWindow(handle,0);
+    }
+
+    [DllImport("user32.dll")]
+    static extern bool ShowWindow(IntPtr window,int command);
 }

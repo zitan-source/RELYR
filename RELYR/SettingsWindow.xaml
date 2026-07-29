@@ -39,6 +39,74 @@
       <Setter Property="Padding" Value="22"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
     </Style>
+    <Style x:Key="ThemedComboBoxItem" TargetType="ComboBoxItem">
+      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Style.Triggers>
+        <Trigger Property="IsHighlighted" Value="True">
+          <Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
+          <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Trigger>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+          <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="ThemedComboBox" TargetType="ComboBox">
+      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedComboBoxItem}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="ComboBorder" Background="{DynamicResource ControlBackground}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4">
+                      <Grid>
+                        <ContentPresenter Margin="10,0,34,0" VerticalAlignment="Center"
+                                          HorizontalAlignment="Left"
+                                          TextElement.Foreground="{DynamicResource PrimaryText}"
+                                          Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType={x:Type ComboBox}}}"/>
+                        <Path Width="8" Height="5" HorizontalAlignment="Right" VerticalAlignment="Center"
+                              Margin="0,0,12,0" Fill="{DynamicResource SecondaryText}"
+                              Data="M 0,0 L 8,0 L 4,5 Z"/>
+                      </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="ComboBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
+                        <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                     AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                        MaxHeight="250" Background="{DynamicResource ControlBackground}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4"
+                        SnapsToDevicePixels="True">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsPresenter/>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background" Value="{DynamicResource DangerBackground}"/><Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/><Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/><Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
@@ -60,6 +128,7 @@
           <ListBoxItem Content="一般" Tag="General"/>
           <ListBoxItem Content="外観" Tag="Appearance"/>
           <ListBoxItem Content="レイヤー" Tag="Layers"/>
+          <ListBoxItem Content="オーバーレイ" Tag="Overlay"/>
           <ListBoxItem Content="自動解凍" Tag="Archive"/>
           <ListBoxItem Content="データ管理" Tag="Data"/>
           <ListBoxItem Content="アップデート" Tag="Update"/>
@@ -117,6 +186,78 @@
                 <TextBlock Text="切替時にプロファイル名を画面下部へ表示する" TextWrapping="Wrap"/>
               </CheckBox>
             </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <StackPanel x:Name="OverlayPanel" Visibility="Collapsed">
+          <TextBlock Text="オーバーレイ" FontSize="27" FontWeight="Bold"/>
+          <TextBlock Text="テンキー画面の透過率と、クロック画面の表示を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,14"/>
+          <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,10">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="64"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="テンキー画面の透過率" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="数字が大きいほど濃く表示します" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
+              </StackPanel>
+              <Slider x:Name="InputPanelOpacitySlider" Grid.Column="1" Minimum="40" Maximum="100"
+                      TickFrequency="5" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                      ValueChanged="InputPanelOpacity_Changed" Margin="8,0,12,0"/>
+              <TextBlock x:Name="InputPanelOpacityValueText" Grid.Column="2" VerticalAlignment="Center"
+                         HorizontalAlignment="Right" FontWeight="SemiBold"/>
+            </Grid>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,10">
+            <StackPanel>
+              <TextBlock Text="背景" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,7"/>
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="ClockFrostedBackgroundBox" GroupName="ClockBackground" Content="現在の画面をすりガラス風にする" Margin="0,7,18,7" Checked="ClockBackground_Changed"/>
+                <RadioButton x:Name="ClockImageBackgroundBox" GroupName="ClockBackground" Content="画像" Margin="0,7,18,7" Checked="ClockBackground_Changed"/>
+                <RadioButton x:Name="ClockSolidBackgroundBox" GroupName="ClockBackground" Content="単色" Margin="0,7" Checked="ClockBackground_Changed"/>
+              </StackPanel>
+              <Grid x:Name="ClockSolidPicker" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="150"/>
+                  <ColumnDefinition Width="42"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="ClockSolidColorBox" MinHeight="36" Padding="9,6" VerticalContentAlignment="Center"
+                         TextChanged="ClockSolidColor_Changed" ToolTip="#RRGGBB形式で入力します"/>
+                <Border x:Name="ClockSolidColorSample" Grid.Column="1" Width="32" Height="32" Margin="8,0,0,0"
+                        CornerRadius="6" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}"/>
+                <WrapPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0,0,0">
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#101F2E" Background="#101F2E" ToolTip="ネイビー" Click="ClockColorPreset_Click"/>
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#111827" Background="#111827" ToolTip="チャコール" Click="ClockColorPreset_Click"/>
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#0F3D3E" Background="#0F3D3E" ToolTip="ディープグリーン" Click="ClockColorPreset_Click"/>
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#312E81" Background="#312E81" ToolTip="インディゴ" Click="ClockColorPreset_Click"/>
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#4A1D2A" Background="#4A1D2A" ToolTip="ボルドー" Click="ClockColorPreset_Click"/>
+                  <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#000000" Background="#000000" ToolTip="ブラック" Click="ClockColorPreset_Click"/>
+                </WrapPanel>
+              </Grid>
+              <Grid x:Name="ClockImagePicker" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="ClockBackgroundImageBox" MinHeight="38" Padding="9,7" VerticalContentAlignment="Center" IsReadOnly="True"/>
+                <Button Grid.Column="1" Content="参照…" Click="BrowseClockBackground_Click" Margin="8,0,0,0"/>
+              </Grid>
+              <TextBlock Text="すりガラスでは、起動直前の各モニター画面をぼかして表示します。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Padding="18">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <StackPanel Margin="0,0,14,0">
+                <TextBlock Text="時計の表示" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                <ComboBox x:Name="ClockDisplayModeBox" MinHeight="38" Padding="10,6"
+                          Style="{StaticResource ThemedComboBox}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="表示するモニター" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                <CheckBox x:Name="ClockAllMonitorsBox" Content="すべてのモニターに時計を表示する"/>
+              </StackPanel>
+            </Grid>
           </Border>
         </StackPanel>
 

@@ -153,9 +153,9 @@
     <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBackground}" Padding="10">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition x:Name="HeaderBrandColumn" Width="150"/><ColumnDefinition/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="ProductNameText" Text="RELYR" FontWeight="Bold" FontSize="27"
+        <TextBlock x:Name="ProductNameText" Text="RELYR" FontWeight="Bold" FontSize="30"
                    Margin="0" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"
-                   HorizontalAlignment="Stretch" TextAlignment="Center"/>
+                   HorizontalAlignment="Left" TextAlignment="Left"/>
         <TextBlock x:Name="VersionText" Text="v—" Visibility="Collapsed" Width="0" Height="0" Margin="0"/>
         <WrapPanel x:Name="ToolbarPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <TextBlock Text="配列" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource SecondaryText}"/><ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="82" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
@@ -282,7 +282,7 @@
             <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="0,0,12,0" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Stretch"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312"/></Viewbox>
             <Border x:Name="MouseFrame" Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Margin="0,0,0,2" Panel.ZIndex="0"/>
             <TextBlock Grid.Column="1" Text="マウス" Style="{StaticResource LowerGroupTitle}" Panel.ZIndex="2" HorizontalAlignment="Left" VerticalAlignment="Top"/>
-            <Viewbox x:Name="MouseHost" Grid.Column="1" Margin="8,22,8,8" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Stretch" Panel.ZIndex="1"/>
+            <Viewbox x:Name="MouseHost" Grid.Column="1" Margin="8,22,8,8" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
           </Grid>
         </Grid>
       </Grid>

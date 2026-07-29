@@ -5,6 +5,8 @@ namespace RELYR;
 public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile, Gesture }
 public enum AppThemeMode { System, Dark, Light }
 public enum WindowActionTarget { ActiveWindow, WindowUnderCursor }
+public enum ClockBackgroundMode { FrostedScreen, Image, Solid }
+public enum ClockDisplayMode { Time, TimeWithSeconds, DateAndTime, FullDateAndTime }
 
 public sealed class MacroStep
 {
@@ -101,6 +103,14 @@ public sealed class AppConfig
     public int MouseDragPixels { get; set; } = 6;
     public int GestureThresholdPixels { get; set; } = 12;
     public bool LockCursorDuringGesture { get; set; } = true;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ClockBackgroundMode ClockBackgroundMode { get; set; } = ClockBackgroundMode.FrostedScreen;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public ClockDisplayMode ClockDisplayMode { get; set; } = ClockDisplayMode.DateAndTime;
+    public string ClockBackgroundImage { get; set; } = "";
+    public string ClockSolidColor { get; set; } = "#101F2E";
+    public bool ClockShowOnAllMonitors { get; set; } = true;
+    public int InputPanelOpacityPercent { get; set; } = 96;
     public List<MacroDefinition> Macros { get; set; } = [];
     public List<GestureDefinition> Gestures { get; set; } = [];
     public List<Profile> Profiles { get; set; } = [new()];

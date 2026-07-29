@@ -16,6 +16,7 @@ public partial class ActionPickerWindow:Window
     public CatalogAction? SelectedAction=>result??ActionList.SelectedItem as CatalogAction;
     internal bool TitleBarUsesDarkMode{get;private set;}
     internal IReadOnlyList<CatalogAction> ActionsForTest=>allActions;
+    internal Action<Window>? OpenClockSettingsForTest;
 
     public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS",IEnumerable<GestureDefinition>? gestures=null,bool includeGestures=false,string? initialMajorCategory=null)
     {
@@ -73,6 +74,15 @@ public partial class ActionPickerWindow:Window
     {
         SelectButton.IsEnabled=ActionList.SelectedItem is CatalogAction;
         SelectedDescription.Text=(ActionList.SelectedItem as CatalogAction)?.Description??"";
+        ClockSettingsButton.Visibility=(ActionList.SelectedItem as CatalogAction)?.Value==OverlayService.ClockAction
+            ?Visibility.Visible:Visibility.Collapsed;
+    }
+
+    void ClockSettings_Click(object sender,RoutedEventArgs e)
+    {
+        if(OpenClockSettingsForTest is { } test){test(this);return;}
+        for(Window? owner=Owner;owner!=null;owner=owner.Owner)
+            if(owner is MainWindow main){main.OpenSettingsFrom(this,"Overlay");return;}
     }
 
     void ActionDoubleClick(object sender,MouseButtonEventArgs e){if(ActionList.SelectedItem is CatalogAction action)Accept(action);}

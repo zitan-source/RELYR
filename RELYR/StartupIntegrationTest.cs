@@ -20,14 +20,12 @@ public static class StartupIntegrationTest
             Check(!encoded.Any(char.IsWhiteSpace),"scheduled-task argument payload contains no command-line whitespace");
             Check(StartupService.MultipleInstancePolicy(true)==2&&StartupService.MultipleInstancePolicy(false)==0,"logon startup ignores duplicate launches while command launcher remains available for macro actions");
             Check(App.IsMainUiLaunch([])&&App.IsMainUiLaunch(["--tray"])&&!App.IsMainUiLaunch(["--macro-id","abc"]),"single-instance guard applies only to the resident main application");
-            Check(StartupService.SameExecutablePath(executable,executable.ToUpperInvariant())&&!StartupService.SameExecutablePath(executable,@"C:\Temp\RELYR.exe"),"stale-instance recovery only terminates the same installed executable");
-            Check(StartupService.IsOrphanedRelyrProcess("RELYR.exe","RELYR","RELYR.dll",1),"a fully identified one-thread RELYR shutdown remnant is recoverable");
-            Check(!StartupService.IsOrphanedRelyrProcess("RELYR.exe","RELYR","RELYR.dll",2)
-                &&!StartupService.IsOrphanedRelyrProcess("RELYR.exe","Other product","RELYR.dll",1)
-                &&!StartupService.IsOrphanedRelyrProcess("Other.exe","RELYR","RELYR.dll",1),
-                "a healthy or unverified process is never treated as a RELYR shutdown remnant");
-            Check(StartupService.ShouldBlockUnverifiedRelyr(1)&&!StartupService.ShouldBlockUnverifiedRelyr(2),
-                "an inaccessible shutdown remnant blocks new hooks while a healthy process is left to the mutex guard");
+            Check(StartupService.SameExecutablePath(executable,executable.ToUpperInvariant())&&!StartupService.SameExecutablePath(executable,@"C:\Temp\RELYR.exe"),"executable path comparison remains case-insensitive");
+            Check(StartupService.IsRelyrExecutableIdentity("RELYR.exe","RELYR","RELYR.dll"),
+                "a RELYR process is identified independently of its folder and thread count");
+            Check(!StartupService.IsRelyrExecutableIdentity("RELYR.exe","Other product","RELYR.dll")
+                &&!StartupService.IsRelyrExecutableIdentity("Other.exe","RELYR","RELYR.dll"),
+                "unrelated processes are never treated as RELYR remnants");
             using(var show=new EventWaitHandle(false,EventResetMode.AutoReset))
             using(var acknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset))
             {

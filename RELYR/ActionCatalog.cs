@@ -9,7 +9,7 @@ public static class ActionCatalog
 {
     static readonly IReadOnlyDictionary<string,string> MouseActionLabels=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["MouseLeft"]="左クリック",["ShiftDrag"]="Shift + 左クリック",["CtrlDrag"]="Ctrl + 左クリック",
+        ["MouseLeft"]="左クリック",["ShiftDrag"]="Shift + 左クリック",["CtrlDrag"]="Ctrl + 左クリック",["AltDrag"]="Alt + 左クリック",
         ["MouseRight"]="右クリック",["MouseMiddle"]="ホイールクリック",["WheelUp"]="ホイール上",["WheelDown"]="ホイール下",
         ["TiltLeft"]="チルト左",["TiltRight"]="チルト右",["MouseBack"]="戻る",["MouseForward"]="進む",["MouseX"]="追加ボタン"
     };
@@ -33,6 +33,7 @@ public static class ActionCatalog
         }
         if(input.Equals("Shift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftShift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Shift+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="ShiftDrag";return true;}
         if(input.Equals("Ctrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftCtrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Ctrl+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="CtrlDrag";return true;}
+        if(input.Equals("Alt+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftAlt+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Alt+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="AltDrag";return true;}
         var action=Items.FirstOrDefault(x=>x.Kind==ActionKind.Mouse&&x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
         normalized=action?.Value??input;return action!=null;
     }
@@ -185,6 +186,7 @@ public static class ActionCatalog
         new("マウス・ホイール","左クリック","左ボタンをクリックします",ActionKind.Mouse,"MouseLeft"),
         new("マウス・ホイール","Shift+左クリック","単発ではShift+左クリック、ドラッグではShiftと左ボタンを終了まで保持します",ActionKind.Mouse,"ShiftDrag"),
         new("マウス・ホイール","Ctrl+左クリック","単発ではCtrl+左クリック、ドラッグではCtrlと左ボタンを終了まで保持します",ActionKind.Mouse,"CtrlDrag"),
+        new("マウス・ホイール","Alt+左クリック","単発ではAlt+左クリック、ドラッグではAltと左ボタンを終了まで保持します",ActionKind.Mouse,"AltDrag"),
         new("マウス・ホイール","右クリック","右ボタンをクリックします",ActionKind.Mouse,"MouseRight"),
         new("マウス・ホイール","中クリック","ホイールボタンをクリックします",ActionKind.Mouse,"MouseMiddle"),
         new("マウス・ホイール","ホイール上","上方向へスクロールします",ActionKind.Mouse,"WheelUp"),
@@ -193,6 +195,11 @@ public static class ActionCatalog
         new("マウス・ホイール","チルト右","対応マウスで横方向へスクロールします",ActionKind.Mouse,"TiltRight"),
         new("マウス・ホイール","戻るボタン","マウスの戻るボタンを送信します",ActionKind.Mouse,"MouseBack"),
         new("マウス・ホイール","進むボタン","マウスの進むボタンを送信します",ActionKind.Mouse,"MouseForward"),
+
+        new("オーバーレイ・入力","テンキー","半透明のテンキーを表示し、直前の入力先へクリックした数字を送ります",ActionKind.Shortcut,OverlayService.NumpadAction),
+        new("オーバーレイ・入力","ナビゲーション＋テンキー＋方向キー","ナビゲーション、方向キー、テンキーをまとめた半透明パネルを表示します",ActionKind.Shortcut,OverlayService.ExtendedKeypadAction),
+        new("オーバーレイ・画面","ブランク","すべてのモニターを黒く覆います。キー入力またはマウス移動で戻ります",ActionKind.Shortcut,OverlayService.BlankAction),
+        new("オーバーレイ・画面","クロック","時計を表示するスクリーンセーバー風オーバーレイを起動します",ActionKind.Shortcut,OverlayService.ClockAction),
 
         new("Windowsアプリ・基本","設定","Windowsの設定を開きます",ActionKind.Launch,"ms-settings:"),
         new("Windowsアプリ・基本","コントロールパネル","従来のコントロールパネルを開きます",ActionKind.Launch,"control.exe"),
@@ -228,6 +235,7 @@ public static class ActionCatalog
         _ when category.StartsWith("ブラウザー・",StringComparison.Ordinal)=>"ブラウザー",
         _ when category.StartsWith("エクスプローラー・",StringComparison.Ordinal)=>"エクスプローラー",
         "マウス・ホイール"=>"マウス",
+        _ when category.StartsWith("オーバーレイ・",StringComparison.Ordinal)=>"オーバーレイ",
         _ when category.StartsWith("Windowsアプリ・",StringComparison.Ordinal)=>"Windowsアプリ",
         "プロファイル切替"=>"プロファイル",
         "任意のショートカット"=>"入力・編集",

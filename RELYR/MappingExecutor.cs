@@ -107,5 +107,5 @@ public sealed class MappingExecutor(IInputOutput output)
         }
         catch(Exception ex){InputEngine.ReleaseAll();executedValue="エラー: "+ex.Message;return true;}
     }
-    internal static bool IsModifierDrag(string? value)=>value is not null&&(value.Equals("ShiftDrag",StringComparison.OrdinalIgnoreCase)||value.Equals("CtrlDrag",StringComparison.OrdinalIgnoreCase));
+    internal static bool IsModifierDrag(string? value)=>value is not null&&(value.Equals("ShiftDrag",StringComparison.OrdinalIgnoreCase)||value.Equals("CtrlDrag",StringComparison.OrdinalIgnoreCase)||value.Equals("AltDrag",StringComparison.OrdinalIgnoreCase));
 }

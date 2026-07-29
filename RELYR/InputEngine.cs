@@ -97,6 +97,7 @@ public sealed class InputEngine : IDisposable
     public Func<string,bool>? IsGesturePress { get; set; }
     public Func<string,bool>? IsGestureLongPress { get; set; }
     public event Action<string>? Detected;
+    public event Action? PointerMoved;
 
     public InputEngine(){ keyboardProc=KeyboardCallback; mouseProc=MouseCallback; }
     public void Start()
@@ -176,6 +177,7 @@ public sealed class InputEngine : IDisposable
         if(d.dwExtraInfo==(UIntPtr)Marker) return Next(n,w,l);
         bool down=w==(IntPtr)WM_KEYDOWN||w==(IntPtr)WM_SYSKEYDOWN, up=w==(IntPtr)WM_KEYUP||w==(IntPtr)WM_SYSKEYUP;
         if(!down&&!up) return Next(n,w,l);
+        if(OverlayService.FullScreenVisible){ResetCapturedState(false);OverlayService.TryDismissFullScreenKeyboard(down);return (IntPtr)1;}
         int vk=(int)d.vkCode; string key=HookKeyName(vk,d.scanCode,UseUsLayout,TreatF13AsCapsLock);
         bool currentLayerRelease=deferredLayer!=null&&up&&(key.Equals(deferredLayer,StringComparison.OrdinalIgnoreCase)||IsLayerRelease(deferredLayer,vk,d.scanCode,true));
         if(!currentLayerRelease)
@@ -249,10 +251,14 @@ public sealed class InputEngine : IDisposable
         if(n<0) return Next(n,w,l);
         var d=Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l); int msg=w.ToInt32();
         if(d.dwExtraInfo==(UIntPtr)Marker) return Next(n,w,l);
+        if(OverlayService.FullScreenVisible){ResetCapturedState(false);OverlayService.TryDismissFullScreenMouse(msg,d.pt.x,d.pt.y);return (IntPtr)1;}
         if(TryHandleCoordinateCapture(msg,d.pt.x,d.pt.y))return (IntPtr)1;
         if(Environment.TickCount64<mousePassthroughUntil)return Next(n,w,l);
         if(msg==0x200)
         {
+            // Keep the hook callback lightweight: consumers only enqueue work and
+            // resolve the application under the pointer later on the UI thread.
+            PointerMoved?.Invoke();
             if(CaptureMouseMoves&&Environment.TickCount64-lastRecordedMove>=50){lastRecordedMove=Environment.TickCount64;Detected?.Invoke($"MouseMove:{d.pt.x},{d.pt.y}");}
             var gesture=presses.FirstOrDefault(x=>x.Value.IsDown&&x.Value.GestureActive&&!x.Value.GestureExpired);
             if(gesture.Value!=null)
@@ -595,7 +601,7 @@ public sealed class InputEngine : IDisposable
     void CancelLayerSafety(){layerSafetyTimer?.Dispose();layerSafetyTimer=null;layerSafetyExpired=false;}
     internal void ExpireLayerForTest()=>layerSafetyExpired=true;
     void ResetCapturedState(bool release){string? releasedLayer;lock(stateLock){releasedLayer=deferredLayer;foreach(var state in presses.Values){state.IsDown=false;state.Timer?.Dispose();state.GestureSafetyTimer?.Dispose();state.GestureMotionTimer?.Dispose();state.GestureActive=false;state.GestureExpired=true;Interlocked.Exchange(ref state.Ended,1);state.ReleaseSignal?.TrySetResult();}presses.Clear();held.Clear();CancelLayerRepeat();CancelLayerSafety();deferredLayer=null;layerUsed=false;nativeRightLayerDrag=false;}QueueMouseLayerRelease(releasedLayer??"");if(release)ReleaseAll();else EndModifierDrag();}
-    void StopAndRelease(){enabled=false;ResetCapturedState(false);_=Task.Run(async()=>{ReleaseAll();if(ExitOnEmergency){await Task.Delay(80);Environment.Exit(2);}});}
+    void StopAndRelease(){enabled=false;ResetCapturedState(false);_=Task.Run(async()=>{ReleaseAll();if(ExitOnEmergency){await Task.Delay(80);App.ExitImmediately(2);}});}
     static double Distance(int x1,int y1,int x2,int y2)=>Math.Sqrt(Math.Pow(x2-x1,2)+Math.Pow(y2-y1,2));
     static string UsKeyName(int vk)=>vk switch{0xC0=>"`",0xBD=>"-",0xBB=>"=",0xDB=>"[",0xDD=>"]",0xDC=>"\\",0xBA=>";",0xDE=>"'",_=>KeyName(vk)};
     internal static string HookKeyName(int vk,uint scanCode,bool useUsLayout,bool treatF13AsCapsLock)
@@ -619,6 +625,7 @@ public sealed class InputEngine : IDisposable
 
     public static void SendShortcut(string value,bool useUsLayout=false,WindowActionTarget windowTarget=WindowActionTarget.ActiveWindow,IntPtr? preferredActiveWindow=null)
     {
+        if(OverlayService.TryShow(value))return;
         if(TryDispatchWindowAction(value,windowTarget,preferredActiveWindow))return;
         value=ResolveShortcutAlias(value);
         if(IsLockWorkStationShortcut(value))
@@ -757,6 +764,7 @@ public sealed class InputEngine : IDisposable
     internal static bool TryResolveShiftedSymbolForTest(string value,bool useUsLayout,out ushort key)=>TryResolveShiftedSymbol(value,useUsLayout,out key);
     internal static bool IsRecognizedShortcut(string value)
     {
+        if(OverlayService.IsOverlayAction(value))return true;
         if(TryGetImeAction(value,out _))return true;
         if(value.Equals("MoveWindowDesktopRight",StringComparison.OrdinalIgnoreCase)||value.Equals("MoveWindowDesktopLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeUnderCursor",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("RestoreOrMinimizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MinimizeActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowRight",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMinimizeAllWindows",StringComparison.OrdinalIgnoreCase))return true;
         if(value.StartsWith("MoveWindowMonitor",StringComparison.OrdinalIgnoreCase))return Enum.TryParse<WindowMonitorService.Direction>(value[17..],true,out _);
@@ -959,9 +967,9 @@ public sealed class InputEngine : IDisposable
 
     static bool TryModifierDragAction(string action,out ushort modifier,out int phase)
     {
-        string value=action.Trim();modifier=value.StartsWith("ShiftDrag",StringComparison.OrdinalIgnoreCase)?(ushort)0x10:value.StartsWith("CtrlDrag",StringComparison.OrdinalIgnoreCase)?(ushort)0x11:(ushort)0;
+        string value=action.Trim();modifier=value.StartsWith("ShiftDrag",StringComparison.OrdinalIgnoreCase)?(ushort)0x10:value.StartsWith("CtrlDrag",StringComparison.OrdinalIgnoreCase)?(ushort)0x11:value.StartsWith("AltDrag",StringComparison.OrdinalIgnoreCase)?(ushort)0x12:(ushort)0;
         if(modifier==0){phase=0;return false;}
-        string name=modifier==0x10?"ShiftDrag":"CtrlDrag";
+        string name=modifier==0x10?"ShiftDrag":modifier==0x11?"CtrlDrag":"AltDrag";
         if(value.Equals(name,StringComparison.OrdinalIgnoreCase)){phase=0;return true;}
         if(value.Equals(name+":Start",StringComparison.OrdinalIgnoreCase)){phase=1;return true;}
         if(value.Equals(name+":End",StringComparison.OrdinalIgnoreCase)){phase=2;return true;}
@@ -1036,12 +1044,32 @@ public sealed class InputEngine : IDisposable
     }
     public static void ReleaseAll()
     {
-        lock(OutputLock)
+        // 終了時に入力送信スレッドとフックコールバックが互いのロックを
+        // 待っても、プロセスを永久に残さない。通常経路を短時間だけ待ち、
+        // 取得できなければ保持され得る入力をWin32へ直接解放する。
+        if(!Monitor.TryEnter(OutputLock,250))
+        {
+            ForceReleaseWithoutOutputLock();
+            return;
+        }
+        try
         {
             foreach(ushort key in InjectedKeysDown.ToArray())SendKeyUpWithRetry(key);
             foreach(int button in InjectedMouseButtonsDown.ToArray())switch(button){case 1:SendMouseUpWithRetry(4);break;case 2:SendMouseUpWithRetry(16);break;case 3:SendMouseUpWithRetry(64);break;case 4:SendMouseUpWithRetry(0x100,1);break;case 5:SendMouseUpWithRetry(0x100,2);break;}
             modifierDragKey=0;modifierDragMouseDown=false;Interlocked.Exchange(ref modifierDragStartedAt,0);modifierDragSafetyTimer?.Dispose();modifierDragSafetyTimer=null;
         }
+        finally{Monitor.Exit(OutputLock);}
+    }
+    static void ForceReleaseWithoutOutputLock()
+    {
+        foreach(byte key in new byte[]{0x10,0x11,0x12,0x5B,0x5C,0x14,0x20})
+            keybd_event(key,0,2,(UIntPtr)Marker);
+        mouse_event(4,0,0,0,(UIntPtr)Marker);
+        mouse_event(16,0,0,0,(UIntPtr)Marker);
+        mouse_event(64,0,0,0,(UIntPtr)Marker);
+        mouse_event(0x100,0,0,1,(UIntPtr)Marker);
+        mouse_event(0x100,0,0,2,(UIntPtr)Marker);
+        modifierDragKey=0;modifierDragMouseDown=false;Interlocked.Exchange(ref modifierDragStartedAt,0);
     }
     internal static bool HasInjectedInputForTest(){lock(OutputLock)return InjectedKeysDown.Count>0||InjectedMouseButtonsDown.Count>0;}
     internal static void ExpireInjectedInputsForTest(){lock(OutputLock){foreach(var key in InjectedKeysDown)InjectedKeyDownAt[key]=0;foreach(var button in InjectedMouseButtonsDown)InjectedMouseDownAt[button]=0;}ReleaseStaleInjectedInputs();}
@@ -1075,6 +1103,10 @@ public sealed class InputEngine : IDisposable
         }
     }
     internal bool HookTestStateCleanForTest=>hookTestStateClean;
+    internal bool HasCapturedPhysicalInput
+    {
+        get{lock(stateLock)return deferredLayer!=null||held.Count>0||presses.Values.Any(x=>x.IsDown);}
+    }
     internal bool IsDisposedForTest=>disposed;
     internal void CancelLongPressTimerForTest(string input){lock(stateLock)if(presses.TryGetValue(input,out var state)){state.Timer?.Dispose();state.Timer=null;}}
     public void ResetStateForTest(){ResetCapturedState(false);held.Clear();lastSpaceTapTick=0;}
@@ -1083,12 +1115,27 @@ public sealed class InputEngine : IDisposable
         if(disposed)return;disposed=true;
         enabled=false;
         if(ReferenceEquals(directTestTarget,this))directTestTarget=null;
-        uint threadId=hookThreadId;if(threadId!=0)PostThreadMessage(threadId,WM_QUIT,UIntPtr.Zero,IntPtr.Zero);
-        if(hookThread!=null&&!ReferenceEquals(Thread.CurrentThread,hookThread))hookThread.Join(2000);
+        ResetCapturedState(true);
         if(keyboardHook!=IntPtr.Zero){UnhookWindowsHookEx(keyboardHook);keyboardHook=IntPtr.Zero;}
         if(mouseHook!=IntPtr.Zero){UnhookWindowsHookEx(mouseHook);mouseHook=IntPtr.Zero;}
-        ResetCapturedState(true);
+        uint threadId=hookThreadId;
+        if(threadId!=0)
+            for(int attempt=0;attempt<3;attempt++)
+            {
+                if(PostThreadMessage(threadId,WM_QUIT,UIntPtr.Zero,IntPtr.Zero))break;
+                Thread.Sleep(20);
+            }
+        if(hookThread!=null&&!ReferenceEquals(Thread.CurrentThread,hookThread)&&!hookThread.Join(2000)&&threadId!=0)
+            TerminateHookThread(threadId);
         hookThread=null;hookReady.Dispose();hookTestCompleted.Dispose();
+    }
+
+    static void TerminateHookThread(uint threadId)
+    {
+        IntPtr handle=OpenThread(0x0001,false,threadId);
+        if(handle==IntPtr.Zero)return;
+        try{TerminateThread(handle,0);}
+        finally{CloseHandle(handle);}
     }
 
     sealed class PressState{public bool IsDown,Handled,Dragged,Immediate,NativeMouseDrag,FireOnDown,Cancelled,IsGesture,GestureActive,GestureExpired,GestureMoved;public int X,Y,Ended,LongFired,LongPressMs,GestureCursorX,GestureCursorY,GestureLastX,GestureLastY,GestureDx,GestureDy;public string? GestureDirection;public long DownTick;public System.Threading.Timer? Timer,GestureSafetyTimer,GestureMotionTimer;public TaskCompletionSource? ReleaseSignal;}
@@ -1105,6 +1152,9 @@ public sealed class InputEngine : IDisposable
     [DllImport("user32.dll")]static extern IntPtr CallNextHookEx(IntPtr hhk,int nCode,IntPtr wParam,IntPtr lParam);
     [DllImport("kernel32.dll",CharSet=CharSet.Unicode)]static extern IntPtr GetModuleHandle(string? name);
     [DllImport("kernel32.dll")]static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr OpenThread(uint desiredAccess,bool inheritHandle,uint threadId);
+    [DllImport("kernel32.dll",SetLastError=true)]static extern bool TerminateThread(IntPtr thread,uint exitCode);
+    [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr handle);
     [DllImport("user32.dll")]static extern int GetMessage(out MSG message,IntPtr window,uint minimum,uint maximum);
     [DllImport("user32.dll")]static extern bool PostThreadMessage(uint threadId,uint message,UIntPtr wParam,IntPtr lParam);
     [DllImport("user32.dll")]static extern uint SendInput(uint count,INPUT[] inputs,int size);
