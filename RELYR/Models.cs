@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace RELYR;
 
-public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile }
+public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile, Gesture }
 public enum AppThemeMode { System, Dark, Light }
 public enum WindowActionTarget { ActiveWindow, WindowUnderCursor }
 
@@ -47,9 +47,24 @@ public sealed class Profile
     public List<string> AutoSwitchApplications { get; set; } = [];
 }
 
+public sealed class GestureDefinition
+{
+    public string Name { get; set; } = "";
+    public ActionKind UpKind { get; set; }
+    public string UpValue { get; set; } = "";
+    public ActionKind DownKind { get; set; }
+    public string DownValue { get; set; } = "";
+    public ActionKind LeftKind { get; set; }
+    public string LeftValue { get; set; } = "";
+    public ActionKind RightKind { get; set; }
+    public string RightValue { get; set; } = "";
+    public ActionKind CenterKind { get; set; }
+    public string CenterValue { get; set; } = "";
+}
+
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 18;
+    public int Version { get; set; } = 23;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool ShowProfileSwitchOverlay { get; set; } = true;
@@ -84,6 +99,9 @@ public sealed class AppConfig
     public string EmergencyShortcut { get; set; } = "Ctrl+Alt+Shift+F12";
     public int DoubleClickMs { get; set; } = 350;
     public int MouseDragPixels { get; set; } = 6;
+    public int GestureThresholdPixels { get; set; } = 12;
+    public bool LockCursorDuringGesture { get; set; } = true;
     public List<MacroDefinition> Macros { get; set; } = [];
+    public List<GestureDefinition> Gestures { get; set; } = [];
     public List<Profile> Profiles { get; set; } = [new()];
 }

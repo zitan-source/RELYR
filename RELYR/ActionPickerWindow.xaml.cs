@@ -6,6 +6,7 @@ namespace RELYR;
 
 public partial class ActionPickerWindow:Window
 {
+    internal const string AllCategories="すべて";
     readonly List<CatalogAction> allActions;
     readonly string keyboardLayout;
     List<CatalogAction> filtered=[];
@@ -16,16 +17,16 @@ public partial class ActionPickerWindow:Window
     internal bool TitleBarUsesDarkMode{get;private set;}
     internal IReadOnlyList<CatalogAction> ActionsForTest=>allActions;
 
-    public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS")
+    public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS",IEnumerable<GestureDefinition>? gestures=null,bool includeGestures=false,string? initialMajorCategory=null)
     {
         InitializeComponent();
         this.keyboardLayout=keyboardLayout;
-        allActions=[
-            new CatalogAction("割り当て","無効化","元の入力も実行せず、この割り当てを無効にします",ActionKind.Disabled,""),
-            ..ActionCatalog.Items
-        ];
+        // 無効化とジェスチャーはメイン編集画面の専用ボタンから選ぶ。
+        // ショートカット一覧には通常のアクションだけを表示する。
+        allActions=[..ActionCatalog.Items];
         MainWindow.FollowWindowsTitleBarTheme(this,value=>TitleBarUsesDarkMode=value);
         RefreshSearch();
+        if(initialMajorCategory!=null&&MajorCategoryList.Items.Contains(initialMajorCategory))MajorCategoryList.SelectedItem=initialMajorCategory;
     }
 
     void SearchChanged(object sender,TextChangedEventArgs e)=>RefreshSearch();
@@ -34,27 +35,39 @@ public partial class ActionPickerWindow:Window
         string? selectedMajor=MajorCategoryList.SelectedItem as string;
         string text=SearchBox?.Text.Trim()??"";
         filtered=(text.Length==0?allActions:allActions.Where(x=>new[]{x.MajorCategory,x.Category,x.Name,x.Description,x.Value}.Any(value=>value.Contains(text,StringComparison.OrdinalIgnoreCase)))).ToList();
-        var majors=filtered.Select(x=>x.MajorCategory).Distinct().ToList();
+        var majors=OrderMajorCategories(filtered.Select(x=>x.MajorCategory));
         MajorCategoryList.ItemsSource=majors;
         MajorCategoryList.SelectedItem=selectedMajor!=null&&majors.Contains(selectedMajor)?selectedMajor:majors.FirstOrDefault();
         if(MajorCategoryList.SelectedItem==null){CategoryList.ItemsSource=null;ActionList.ItemsSource=null;ResultCount.Text="0件";}
     }
 
+    internal static List<string> OrderMajorCategories(IEnumerable<string> categories)
+        =>categories.Where(x=>x!="その他").Distinct().ToList();
+
     void MajorCategoryChanged(object sender,SelectionChangedEventArgs e)
     {
         string? selectedCategory=CategoryList.SelectedItem as string;
         if(MajorCategoryList.SelectedItem is not string major){CategoryList.ItemsSource=null;ActionList.ItemsSource=null;return;}
-        var categories=filtered.Where(x=>x.MajorCategory==major).Select(x=>x.Category).Distinct().ToList();
+        var categories=CategoriesForMajor(filtered,major);
         CategoryList.ItemsSource=categories;
         CategoryList.SelectedItem=selectedCategory!=null&&categories.Contains(selectedCategory)?selectedCategory:categories.FirstOrDefault();
+        RefreshActions();
     }
 
-    void CategoryChanged(object sender,SelectionChangedEventArgs e)
+    void CategoryChanged(object sender,SelectionChangedEventArgs e)=>RefreshActions();
+
+    void RefreshActions()
     {
         if(MajorCategoryList.SelectedItem is not string major||CategoryList.SelectedItem is not string category){ActionList.ItemsSource=null;ResultCount.Text="0件";return;}
-        var actions=filtered.Where(x=>x.MajorCategory==major&&x.Category==category).ToList();
+        var actions=ActionsForCategory(filtered,major,category);
         ActionList.ItemsSource=actions;ActionList.SelectedIndex=-1;ResultCount.Text=$"{actions.Count}件";
     }
+
+    internal static List<string> CategoriesForMajor(IEnumerable<CatalogAction> actions,string major)
+        =>[AllCategories,..actions.Where(x=>x.MajorCategory==major).Select(x=>x.Category).Distinct()];
+
+    internal static List<CatalogAction> ActionsForCategory(IEnumerable<CatalogAction> actions,string major,string category)
+        =>actions.Where(x=>x.MajorCategory==major&&(category==AllCategories||x.Category==category)).ToList();
 
     void ActionChanged(object sender,SelectionChangedEventArgs e)
     {

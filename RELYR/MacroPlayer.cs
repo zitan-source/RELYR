@@ -15,25 +15,25 @@ public static class MacroPlayer
 
     public static void Play(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null)=>_ = PlayAsync(macro,config,switchProfile);
 
-    internal static Task<MacroPlaybackResult> PlayAsync(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null)
+    internal static Task<MacroPlaybackResult> PlayAsync(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null,IntPtr? preferredActiveWindow=null)
     {
         CancellationTokenSource source;Task previous;Task<MacroPlaybackResult> task;
         lock(gate)
         {
             current?.Cancel();source=new CancellationTokenSource();current=source;previous=currentTask;
-            task=Task.Run(()=>RunAfter(previous,macro,source,config,switchProfile));currentTask=task;
+            task=Task.Run(()=>RunAfter(previous,macro,source,config,switchProfile,preferredActiveWindow));currentTask=task;
         }
         return task;
     }
 
-    static async Task<MacroPlaybackResult> RunAfter(Task previous,MacroDefinition macro,CancellationTokenSource source,AppConfig? config,Action<string>? switchProfile)
+    static async Task<MacroPlaybackResult> RunAfter(Task previous,MacroDefinition macro,CancellationTokenSource source,AppConfig? config,Action<string>? switchProfile,IntPtr? preferredActiveWindow)
     {
         MacroPlaybackResult result;var state=new ExecutionState();
         try
         {
             try{await previous.ConfigureAwait(false);}catch{}
             var token=source.Token;token.ThrowIfCancellationRequested();
-            var executor=config==null?null:new MappingExecutor(new SystemInputOutput(name=>config.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),switchProfile??(name=>{if(config.Profiles.Any(x=>x.Name==name)){config.ActiveProfile=name;new ConfigService().Save(config);}}),()=>config.KeyboardLayout=="US",()=>config));
+            var executor=config==null?null:new MappingExecutor(new SystemInputOutput(name=>config.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),switchProfile??(name=>{if(config.Profiles.Any(x=>x.Name==name)){config.ActiveProfile=name;new ConfigService().Save(config);}}),()=>config.KeyboardLayout=="US",()=>config,()=>preferredActiveWindow));
             await RunSteps(macro,executor,config,switchProfile,new HashSet<string>(StringComparer.OrdinalIgnoreCase),0,state,token).ConfigureAwait(false);
             result=new(true,false,$"「{macro.Name}」を実行しました。",state.ExecutedSteps);
         }

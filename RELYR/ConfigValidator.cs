@@ -9,6 +9,16 @@ public static class ConfigValidator
         if (config.Profiles.Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != config.Profiles.Count)
             errors.Add("同名のプロファイルがあります。");
         if(config.Macros.Select(x=>x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=config.Macros.Count)errors.Add("同名のマクロがあります。");
+        if(config.Gestures.Select(x=>x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=config.Gestures.Count)errors.Add("同名のジェスチャーがあります。");
+        foreach(var gesture in config.Gestures)
+        {
+            if(string.IsNullOrWhiteSpace(gesture.Name))errors.Add("名前が空のジェスチャーがあります。");
+            ValidateGestureAction(config,gesture,"上",gesture.UpKind,gesture.UpValue,errors);
+            ValidateGestureAction(config,gesture,"下",gesture.DownKind,gesture.DownValue,errors);
+            ValidateGestureAction(config,gesture,"左",gesture.LeftKind,gesture.LeftValue,errors);
+            ValidateGestureAction(config,gesture,"右",gesture.RightKind,gesture.RightValue,errors);
+            ValidateGestureAction(config,gesture,"短押し",gesture.CenterKind,gesture.CenterValue,errors);
+        }
         foreach(var macro in config.Macros)
         {
             if(string.IsNullOrWhiteSpace(macro.Name))errors.Add("名前が空のマクロがあります。");
@@ -43,9 +53,20 @@ public static class ConfigValidator
                 if(map.LongPressKind==ActionKind.Macro&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Macros.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: 長押しマクロ「{map.LongPressValue}」が見つかりません。");
                 if(map.Kind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Profiles.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: プロファイル「{map.Value}」が見つかりません。");
                 if(map.LongPressKind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Profiles.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: 長押しプロファイル「{map.LongPressValue}」が見つかりません。");
+                if(map.Kind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Gestures.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: ジェスチャー「{map.Value}」が見つかりません。");
+                if(map.Kind==ActionKind.Gesture&&map.LongPressKind!=ActionKind.None)errors.Add($"{profile.Name}/{map.Input}: ジェスチャーと長押し動作は同時に設定できません。");
+                if(map.LongPressKind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Gestures.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: ジェスチャー「{map.LongPressValue}」が見つかりません。");
             }
         }
         return errors;
+    }
+
+    static void ValidateGestureAction(AppConfig config,GestureDefinition gesture,string direction,ActionKind kind,string value,List<string> errors)
+    {
+        if(kind==ActionKind.Gesture)errors.Add($"{gesture.Name}/{direction}: ジェスチャーを入れ子にはできません。");
+        if(kind is not ActionKind.None and not ActionKind.Disabled&&string.IsNullOrWhiteSpace(value))errors.Add($"{gesture.Name}/{direction}: 実行内容が空です。");
+        if(kind==ActionKind.Macro&&!config.Macros.Any(x=>x.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{gesture.Name}/{direction}: マクロ「{value}」が見つかりません。");
+        if(kind==ActionKind.Profile&&!config.Profiles.Any(x=>x.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{gesture.Name}/{direction}: プロファイル「{value}」が見つかりません。");
     }
 
     static IReadOnlyList<string>? FindMacroCycle(MacroDefinition macro,IReadOnlyDictionary<string,MacroDefinition> macros,HashSet<string> visiting,List<string> path)

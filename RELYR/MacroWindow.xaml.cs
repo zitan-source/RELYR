@@ -399,7 +399,7 @@ public partial class MacroWindow:Window
     static string HumanTitle(MacroStep step)
     {
         if(step.Event.Equals("Wait",StringComparison.OrdinalIgnoreCase))return $"待機 {step.DelayMs} ms";
-        if(step.RecordedActionKind is { } kind){var catalog=ActionCatalog.Items.FirstOrDefault(x=>x.Kind==kind&&x.Value.Equals(step.RecordedActionValue,StringComparison.OrdinalIgnoreCase));return catalog?.Name??kind switch{ActionKind.Text=>$"文字列を入力「{Shorten(step.RecordedActionValue,24)}」",ActionKind.Launch=>$"開く: {Shorten(step.RecordedActionValue,30)}",ActionKind.Macro=>$"マクロを実行: {step.RecordedActionValue}",ActionKind.Profile=>$"プロファイル切替: {step.RecordedActionValue}",_=>step.RecordedActionValue};}
+        if(step.RecordedActionKind is { } kind){var catalog=ActionCatalog.Items.FirstOrDefault(x=>x.Kind==kind&&x.Value.Equals(step.RecordedActionValue,StringComparison.OrdinalIgnoreCase));return kind==ActionKind.Mouse?MainWindow.DisplayActionValue(kind,step.RecordedActionValue):catalog?.Name??kind switch{ActionKind.Text=>$"文字列を入力「{Shorten(step.RecordedActionValue,24)}」",ActionKind.Launch=>$"開く: {Shorten(step.RecordedActionValue,30)}",ActionKind.Macro=>$"マクロを実行: {step.RecordedActionValue}",ActionKind.Profile=>$"プロファイル切替: {step.RecordedActionValue}",_=>step.RecordedActionValue};}
         if(step.Event.StartsWith("MouseMoveRelative:",StringComparison.OrdinalIgnoreCase))return "マウスを相対移動";if(step.Event.StartsWith("MouseMove:",StringComparison.OrdinalIgnoreCase))return "マウスを指定位置へ移動";
         if(step.Event.EndsWith(" Down",StringComparison.OrdinalIgnoreCase))return MainWindow.DisplayInputName(step.Event[..^5])+" を押す";if(step.Event.EndsWith(" Up",StringComparison.OrdinalIgnoreCase))return MainWindow.DisplayInputName(step.Event[..^3])+" を離す";return step.Event;
     }

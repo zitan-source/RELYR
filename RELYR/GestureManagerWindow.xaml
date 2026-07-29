@@ -1,0 +1,69 @@
+<Window x:Class="RELYR.GestureManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ジェスチャー管理" Width="900" Height="650" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" ShowInTaskbar="False">
+  <Window.Resources>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+  </Window.Resources>
+  <Grid Margin="20">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock Text="ジェスチャー管理" FontSize="25" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+      <TextBlock Text="ジェスチャーを割り当てたボタンを押したまま、マウスを動かす方向と、動かさずに離したときの操作を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
+    </StackPanel>
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Border Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="10">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="ジェスチャー一覧" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+          <ListBox x:Name="GestureList" Grid.Row="1" DisplayMemberPath="Name" SelectionChanged="GestureSelectionChanged"
+                   Background="{DynamicResource InputBackground}" Foreground="{DynamicResource PrimaryText}" BorderBrush="{DynamicResource BorderBrush}"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+          <UniformGrid Grid.Row="2" Columns="3" Margin="0,9,0,0">
+            <Button Content="追加" Style="{StaticResource AppButtonStyle}" Margin="3" Click="AddGesture_Click"/>
+            <Button Content="名前変更" Style="{StaticResource AppButtonStyle}" Margin="3" Click="RenameGesture_Click"/>
+            <Button Content="削除" Style="{StaticResource DangerButton}" Margin="3" Click="DeleteGesture_Click"/>
+          </UniformGrid>
+        </Grid>
+      </Border>
+      <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="16">
+        <Grid x:Name="GestureEditor" IsEnabled="False">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock x:Name="GestureTitle" FontSize="21" FontWeight="Bold" Margin="0,0,0,12"/>
+          <UniformGrid Grid.Row="1" Rows="5">
+            <Border Margin="0,3" Padding="10" Background="{DynamicResource InputBackground}" CornerRadius="4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition/><ColumnDefinition Width="84"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions><TextBlock Text="上" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock x:Name="UpActionText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><Button Grid.Column="2" Content="選択…" Tag="Up" Style="{StaticResource AppButtonStyle}" Margin="3" Click="SelectAction_Click"/><Button Grid.Column="3" Content="クリア" Tag="Up" Style="{StaticResource AppButtonStyle}" Margin="3" Click="ClearAction_Click"/></Grid></Border>
+            <Border Margin="0,3" Padding="10" Background="{DynamicResource InputBackground}" CornerRadius="4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition/><ColumnDefinition Width="84"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions><TextBlock Text="下" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock x:Name="DownActionText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><Button Grid.Column="2" Content="選択…" Tag="Down" Style="{StaticResource AppButtonStyle}" Margin="3" Click="SelectAction_Click"/><Button Grid.Column="3" Content="クリア" Tag="Down" Style="{StaticResource AppButtonStyle}" Margin="3" Click="ClearAction_Click"/></Grid></Border>
+            <Border Margin="0,3" Padding="10" Background="{DynamicResource InputBackground}" CornerRadius="4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition/><ColumnDefinition Width="84"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions><TextBlock Text="左" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock x:Name="LeftActionText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><Button Grid.Column="2" Content="選択…" Tag="Left" Style="{StaticResource AppButtonStyle}" Margin="3" Click="SelectAction_Click"/><Button Grid.Column="3" Content="クリア" Tag="Left" Style="{StaticResource AppButtonStyle}" Margin="3" Click="ClearAction_Click"/></Grid></Border>
+            <Border Margin="0,3" Padding="10" Background="{DynamicResource InputBackground}" CornerRadius="4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition/><ColumnDefinition Width="84"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions><TextBlock Text="右" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock x:Name="RightActionText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><Button Grid.Column="2" Content="選択…" Tag="Right" Style="{StaticResource AppButtonStyle}" Margin="3" Click="SelectAction_Click"/><Button Grid.Column="3" Content="クリア" Tag="Right" Style="{StaticResource AppButtonStyle}" Margin="3" Click="ClearAction_Click"/></Grid></Border>
+            <Border Margin="0,3" Padding="10" Background="{DynamicResource InputBackground}" CornerRadius="4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition/><ColumnDefinition Width="84"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions><TextBlock Text="短押し" FontWeight="Bold" VerticalAlignment="Center" ToolTip="方向を入力せずにボタンを離したときの動作"/><TextBlock x:Name="CenterActionText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><Button Grid.Column="2" Content="選択…" Tag="Center" Style="{StaticResource AppButtonStyle}" Margin="3" Click="SelectAction_Click"/><Button Grid.Column="3" Content="クリア" Tag="Center" Style="{StaticResource AppButtonStyle}" Margin="3" Click="ClearAction_Click"/></Grid></Border>
+          </UniformGrid>
+          <TextBlock Grid.Row="2" Text="ジェスチャーの入れ子は安全のため選択できません。" Foreground="{DynamicResource SecondaryText}" Margin="0,10,0,0"/>
+        </Grid>
+      </Border>
+    </Grid>
+    <Grid Grid.Row="2" Margin="0,16,0,0">
+      <TextBlock x:Name="StatusText" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="キャンセル" Style="{StaticResource AppButtonStyle}" Margin="3" Click="Cancel_Click"/>
+        <Button Content="変更を反映" Style="{StaticResource AccentAppButtonStyle}" Margin="3" Click="Apply_Click"/>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

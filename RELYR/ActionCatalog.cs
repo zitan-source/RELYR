@@ -7,9 +7,30 @@ public sealed record CatalogAction(string Category,string Name,string Descriptio
 
 public static class ActionCatalog
 {
+    static readonly IReadOnlyDictionary<string,string> MouseActionLabels=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["MouseLeft"]="左クリック",["ShiftDrag"]="Shift + 左クリック",["CtrlDrag"]="Ctrl + 左クリック",
+        ["MouseRight"]="右クリック",["MouseMiddle"]="ホイールクリック",["WheelUp"]="ホイール上",["WheelDown"]="ホイール下",
+        ["TiltLeft"]="チルト左",["TiltRight"]="チルト右",["MouseBack"]="戻る",["MouseForward"]="進む",["MouseX"]="追加ボタン"
+    };
+
+    public static string DisplayMouseAction(string? value)
+    {
+        string input=(value??"").Trim();
+        return MouseActionLabels.TryGetValue(input,out string? label)?"マウス："+label:input;
+    }
+
     public static bool TryNormalizeMouseAction(string? value,out string normalized)
     {
         string input=(value??"").Trim();
+        const string displayPrefix="マウス：";
+        bool displayedValue=input.StartsWith(displayPrefix,StringComparison.Ordinal);
+        if(displayedValue)input=input[displayPrefix.Length..].Trim();
+        if(displayedValue)
+        {
+            var displayed=MouseActionLabels.FirstOrDefault(x=>x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
+            if(!string.IsNullOrEmpty(displayed.Key)){normalized=displayed.Key;return true;}
+        }
         if(input.Equals("Shift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftShift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Shift+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="ShiftDrag";return true;}
         if(input.Equals("Ctrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftCtrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Ctrl+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="CtrlDrag";return true;}
         var action=Items.FirstOrDefault(x=>x.Kind==ActionKind.Mouse&&x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
@@ -173,10 +194,26 @@ public static class ActionCatalog
         new("マウス・ホイール","戻るボタン","マウスの戻るボタンを送信します",ActionKind.Mouse,"MouseBack"),
         new("マウス・ホイール","進むボタン","マウスの進むボタンを送信します",ActionKind.Mouse,"MouseForward"),
 
-        new("アプリ起動","電卓","Windows電卓を開きます",ActionKind.Launch,"calc.exe"),
-        new("アプリ起動","メモ帳","メモ帳を開きます",ActionKind.Launch,"notepad.exe"),
-        new("アプリ起動","ペイント","ペイントを開きます",ActionKind.Launch,"mspaint.exe"),
-        new("アプリ起動","エクスプローラー","エクスプローラーを開きます",ActionKind.Launch,"explorer.exe")
+        new("Windowsアプリ・基本","設定","Windowsの設定を開きます",ActionKind.Launch,"ms-settings:"),
+        new("Windowsアプリ・基本","コントロールパネル","従来のコントロールパネルを開きます",ActionKind.Launch,"control.exe"),
+        new("Windowsアプリ・基本","エクスプローラー","ファイルエクスプローラーを開きます",ActionKind.Launch,"explorer.exe"),
+        new("Windowsアプリ・基本","タスクマネージャー","実行中のアプリやシステム負荷を確認します",ActionKind.Launch,"taskmgr.exe"),
+        new("Windowsアプリ・基本","Windows ターミナル","Windows ターミナルを開きます",ActionKind.Launch,"wt.exe"),
+        new("Windowsアプリ・基本","コマンドプロンプト","コマンドプロンプトを開きます",ActionKind.Launch,"cmd.exe"),
+        new("Windowsアプリ・基本","Windows PowerShell","Windows PowerShellを開きます",ActionKind.Launch,"powershell.exe"),
+        new("Windowsアプリ・標準ツール","電卓","Windows電卓を開きます",ActionKind.Launch,"calc.exe"),
+        new("Windowsアプリ・標準ツール","メモ帳","メモ帳を開きます",ActionKind.Launch,"notepad.exe"),
+        new("Windowsアプリ・標準ツール","ペイント","ペイントを開きます",ActionKind.Launch,"mspaint.exe"),
+        new("Windowsアプリ・標準ツール","切り取りツール","画面キャプチャ用の切り取りツールを開きます",ActionKind.Launch,"ms-screenclip:"),
+        new("Windowsアプリ・管理ツール","ディスクの管理","ディスクとパーティションを管理します",ActionKind.Launch,"diskmgmt.msc"),
+        new("Windowsアプリ・管理ツール","デバイスマネージャー","接続されているデバイスとドライバーを管理します",ActionKind.Launch,"devmgmt.msc"),
+        new("Windowsアプリ・管理ツール","コンピューターの管理","Windowsの管理ツールをまとめて開きます",ActionKind.Launch,"compmgmt.msc"),
+        new("Windowsアプリ・管理ツール","サービス","Windowsサービスを管理します",ActionKind.Launch,"services.msc"),
+        new("Windowsアプリ・管理ツール","イベントビューアー","Windowsのイベントログを確認します",ActionKind.Launch,"eventvwr.msc"),
+        new("Windowsアプリ・管理ツール","レジストリエディター","Windowsレジストリを編集します",ActionKind.Launch,"regedit.exe"),
+        new("Windowsアプリ・診断","システム情報","PCのハードウェアとWindows情報を表示します",ActionKind.Launch,"msinfo32.exe"),
+        new("Windowsアプリ・診断","リソースモニター","CPU・メモリ・ディスク・ネットワークの詳細を表示します",ActionKind.Launch,"resmon.exe"),
+        new("Windowsアプリ・診断","DirectX 診断ツール","DirectXとグラフィックス環境を確認します",ActionKind.Launch,"dxdiag.exe")
     ];
 
     public static string GetMajorCategory(string category)=>category switch
@@ -191,7 +228,7 @@ public static class ActionCatalog
         _ when category.StartsWith("ブラウザー・",StringComparison.Ordinal)=>"ブラウザー",
         _ when category.StartsWith("エクスプローラー・",StringComparison.Ordinal)=>"エクスプローラー",
         "マウス・ホイール"=>"マウス",
-        "アプリ起動"=>"アプリ",
+        _ when category.StartsWith("Windowsアプリ・",StringComparison.Ordinal)=>"Windowsアプリ",
         "プロファイル切替"=>"プロファイル",
         "任意のショートカット"=>"入力・編集",
         _=>"その他"

@@ -127,6 +127,90 @@ public static class StartupService
         catch(Exception ex){error=ex.Message;return false;}
     }
 
+    public static bool TryTerminateOrphanedRelyrInstances(TimeSpan timeout,out string error)
+    {
+        error="";
+        try
+        {
+            int currentProcessId=Environment.ProcessId;
+            var orphanIds=new List<int>();
+            var inaccessibleOrphanIds=new List<int>();
+            foreach(var process in Process.GetProcessesByName("RELYR"))
+            {
+                using(process)
+                {
+                    if(process.Id==currentProcessId)continue;
+                    int threadCount;
+                    try{threadCount=process.Threads.Count;}
+                    catch{continue;}
+                    try
+                    {
+                        string? executablePath=process.MainModule?.FileName;
+                        if(executablePath==null)continue;
+                        var version=FileVersionInfo.GetVersionInfo(executablePath);
+                        if(IsOrphanedRelyrProcess(
+                            Path.GetFileName(executablePath),
+                            version.ProductName,
+                            version.OriginalFilename,
+                            threadCount))
+                            orphanIds.Add(process.Id);
+                    }
+                    catch(System.ComponentModel.Win32Exception) when(ShouldBlockUnverifiedRelyr(threadCount))
+                    {
+                        // 管理者権限の旧RELYRを一般権限から確認できない場合、
+                        // 新しい入力フックを重ねず、安全側で起動を中止する。
+                        inaccessibleOrphanIds.Add(process.Id);
+                    }
+                    catch
+                    {
+                        // AccessできずRELYRと確認できないプロセスは終了しない。
+                    }
+                }
+            }
+
+            if(inaccessibleOrphanIds.Count>0)
+            {
+                error="管理者権限で終了処理だけが残っている旧RELYRを確認しました"
+                    +$"（PID {string.Join(", ",inaccessibleOrphanIds)}）。"
+                    +"新しいRELYRを管理者権限で起動すると自動的に回収できます。";
+                return false;
+            }
+
+            foreach(int processId in orphanIds)
+            {
+                try
+                {
+                    using var process=Process.GetProcessById(processId);
+                    process.Kill(false);
+                    if(!process.WaitForExit((int)Math.Clamp(timeout.TotalMilliseconds,1,int.MaxValue)))
+                    {
+                        error=$"終了処理だけが残った旧RELYR（PID {processId}）を終了できませんでした。";
+                        return false;
+                    }
+                }
+                catch(ArgumentException)
+                {
+                    // 列挙後に自然終了した。
+                }
+                catch(Exception ex)
+                {
+                    error=$"終了処理だけが残った旧RELYR（PID {processId}）を終了できませんでした: {ex.Message}";
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch(Exception ex){error=ex.Message;return false;}
+    }
+
+    internal static bool IsOrphanedRelyrProcess(string fileName,string? productName,string? originalFileName,int threadCount)
+        =>threadCount<=1
+          &&fileName.Equals("RELYR.exe",StringComparison.OrdinalIgnoreCase)
+          &&string.Equals(productName,"RELYR",StringComparison.OrdinalIgnoreCase)
+          &&(string.Equals(originalFileName,"RELYR.exe",StringComparison.OrdinalIgnoreCase)
+             ||string.Equals(originalFileName,"RELYR.dll",StringComparison.OrdinalIgnoreCase));
+    internal static bool ShouldBlockUnverifiedRelyr(int threadCount)=>threadCount<=1;
+
     internal static bool SameExecutablePath(string first,string second)
     {
         try{return Path.GetFullPath(first).Equals(Path.GetFullPath(second),StringComparison.OrdinalIgnoreCase);}
