@@ -13,7 +13,7 @@ public static class MacroPlayer
 
     public static event Action<MacroPlaybackResult>? PlaybackFinished;
 
-    public static void Play(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null)=>_ = PlayAsync(macro,config,switchProfile);
+    public static void Play(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null,IntPtr? preferredActiveWindow=null)=>_ = PlayAsync(macro,config,switchProfile,preferredActiveWindow);
 
     internal static Task<MacroPlaybackResult> PlayAsync(MacroDefinition macro,AppConfig? config=null,Action<string>? switchProfile=null,IntPtr? preferredActiveWindow=null)
     {
@@ -33,6 +33,7 @@ public static class MacroPlayer
         {
             try{await previous.ConfigureAwait(false);}catch{}
             var token=source.Token;token.ThrowIfCancellationRequested();
+            WindowMonitorService.PrepareShortcutTarget(preferredActiveWindow);
             var executor=config==null?null:new MappingExecutor(new SystemInputOutput(name=>config.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),switchProfile??(name=>{if(config.Profiles.Any(x=>x.Name==name)){config.ActiveProfile=name;new ConfigService().Save(config);}}),()=>config.KeyboardLayout=="US",()=>config,()=>preferredActiveWindow));
             await RunSteps(macro,executor,config,switchProfile,new HashSet<string>(StringComparer.OrdinalIgnoreCase),0,state,token).ConfigureAwait(false);
             result=new(true,false,$"「{macro.Name}」を実行しました。",state.ExecutedSteps);

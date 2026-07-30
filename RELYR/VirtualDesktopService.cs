@@ -33,7 +33,32 @@ public static class VirtualDesktopService
         finally{Marshal.ReleaseComObject(manager);}
     }
 
-    internal static bool ActivateWindow(IntPtr window)=>SetForegroundWindow(window);
+    internal static bool AllowAnyProcessToSetForegroundWindow()=>AllowSetForegroundWindow(unchecked((uint)-1));
+
+    internal static bool ActivateWindow(IntPtr window)
+    {
+        if(window==IntPtr.Zero||!IsWindow(window))return false;
+        if(IsIconic(window))ShowWindowAsync(window,9);
+        if(GetForegroundWindow()==window)return true;
+
+        BringWindowToTop(window);
+        if(SetForegroundWindow(window)||GetForegroundWindow()==window)return true;
+
+        uint currentThread=GetCurrentThreadId();
+        uint foregroundThread=GetWindowThreadProcessId(GetForegroundWindow(),out _);
+        bool attached=foregroundThread!=0
+            &&foregroundThread!=currentThread
+            &&AttachThreadInput(currentThread,foregroundThread,true);
+        try
+        {
+            BringWindowToTop(window);
+            return SetForegroundWindow(window)||GetForegroundWindow()==window;
+        }
+        finally
+        {
+            if(attached)AttachThreadInput(currentThread,foregroundThread,false);
+        }
+    }
 
     internal static List<Guid> ParseDesktopIds(byte[]? bytes)
     {
@@ -56,4 +81,12 @@ public static class VirtualDesktopService
     [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hwnd,uint flags);
     [DllImport("user32.dll")]static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")]static extern bool AllowSetForegroundWindow(uint processId);
+    [DllImport("user32.dll")]static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")]static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")]static extern bool ShowWindowAsync(IntPtr hwnd,int command);
+    [DllImport("user32.dll")]static extern bool BringWindowToTop(IntPtr hwnd);
+    [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint processId);
+    [DllImport("kernel32.dll")]static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll",SetLastError=true)]static extern bool AttachThreadInput(uint attach,uint attachTo,bool value);
 }

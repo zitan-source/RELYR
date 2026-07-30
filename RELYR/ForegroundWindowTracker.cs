@@ -12,11 +12,16 @@ internal sealed class ForegroundWindowTracker : IDisposable
     const long SharedMemorySize=sizeof(long);
     const uint EventSystemForeground=0x0003;
     const uint WineventOutOfContext=0x0000;
+    static readonly string PersistedWindowPath=Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RELYR",
+        "last-foreground-window.txt");
     readonly object sync=new();
     readonly MemoryMappedFile sharedMemory;
     readonly MemoryMappedViewAccessor sharedView;
     readonly WinEventDelegate callback;
     IntPtr hook;
+    IntPtr lastRemembered;
     bool disposed;
 
     internal ForegroundWindowTracker()
@@ -47,7 +52,10 @@ internal sealed class ForegroundWindowTracker : IDisposable
             if(disposed)return;
             sharedView.Write(0,window.ToInt64());
             sharedView.Flush();
+            if(lastRemembered==window)return;
+            lastRemembered=window;
         }
+        PersistWindow(PersistedWindowPath,window);
     }
 
     internal static bool ShouldTrackWindow(WindowMonitorService.WindowCandidate candidate,uint processId,uint ownProcessId)
@@ -59,11 +67,41 @@ internal sealed class ForegroundWindowTracker : IDisposable
         {
             using var memory=MemoryMappedFile.OpenExisting(SharedMemoryName,MemoryMappedFileRights.Read);
             using var view=memory.CreateViewAccessor(0,SharedMemorySize,MemoryMappedFileAccess.Read);
-            return new IntPtr(view.ReadInt64(0));
+            IntPtr shared=new(view.ReadInt64(0));
+            if(shared!=IntPtr.Zero)return shared;
         }
-        catch(FileNotFoundException){return IntPtr.Zero;}
-        catch(UnauthorizedAccessException){return IntPtr.Zero;}
-        catch(IOException){return IntPtr.Zero;}
+        catch(FileNotFoundException){}
+        catch(UnauthorizedAccessException){}
+        catch(IOException){}
+        return ReadPersistedWindow(PersistedWindowPath);
+    }
+
+    internal static void PersistWindow(string path,IntPtr window)
+    {
+        try
+        {
+            string? directory=Path.GetDirectoryName(path);
+            if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);
+            string temporary=path+".tmp";
+            File.WriteAllText(temporary,window.ToInt64().ToString(System.Globalization.CultureInfo.InvariantCulture));
+            File.Move(temporary,path,true);
+        }
+        catch{}
+    }
+
+    internal static IntPtr ReadPersistedWindow(string path)
+    {
+        try
+        {
+            return long.TryParse(
+                File.ReadAllText(path),
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out long value)
+                ?new IntPtr(value)
+                :IntPtr.Zero;
+        }
+        catch{return IntPtr.Zero;}
     }
 
     public void Dispose()

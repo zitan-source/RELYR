@@ -107,7 +107,7 @@ Get-ChildItem -LiteralPath (Split-Path $installer) -File -Filter 'RELYR-Setup-*'
 
 # The installer contains these payloads already. Keep only the distributable
 # installer and checksum, and remove compiler output that can be regenerated.
-foreach($payload in @('RELYR.exe','VirtualDesktopAccessor.dll','LICENSE.txt','THIRD-PARTY-NOTICES.md')){
+foreach($payload in @('RELYR.exe','RELYR-Macro.ico','VirtualDesktopAccessor.dll','LICENSE.txt','THIRD-PARTY-NOTICES.md')){
   $path=Join-Path (Split-Path $installer) $payload
   if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}
 }

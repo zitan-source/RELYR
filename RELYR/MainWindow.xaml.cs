@@ -27,8 +27,9 @@ public partial class MainWindow : Window
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
+    readonly MappingExecutor deckExecutor;
     readonly ArchiveWatcher archiveWatcher = new();
-    readonly BlockingCollection<(Mapping Map,string Input)> actionQueue=new(256);
+    readonly BlockingCollection<(Mapping Map,string Input,bool ForceActiveWindow)> actionQueue=new(256);
     readonly Task actionWorker;
     readonly BlockingCollection<(Mapping? Map,string Input)> dragActionQueue=new();
     readonly Task dragActionWorker;
@@ -65,6 +66,9 @@ public partial class MainWindow : Window
     string lastProfileOverlayName="";
     Mapping? copiedMapping;
     TextBox? destinationInputTarget;
+    readonly List<System.Windows.Controls.Button> deckManagementButtons=[];
+    readonly Dictionary<System.Windows.Controls.Button,TextBlock> deckManagementNameLabels=[];
+    bool deckManagementMode;
     int destinationFocusRequest;
     UpdateInfo? availableUpdate;
     UpdateCheckResult? lastUpdateCheck;
@@ -76,6 +80,7 @@ public partial class MainWindow : Window
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x=>x.Name==appliedConfig.ActiveProfile)??appliedConfig.Profiles[0];
     public bool NeedsFirstRunSetup=>!config.FirstRunCompleted;
     internal bool IsInputHookDisposedForTest=>engine.IsDisposedForTest;
+    internal bool IsInputEngineReadyForTest=>engineStarted&&engine.Enabled;
     internal bool HasDestinationInputTargetForTest=>destinationInputTarget!=null;
     internal bool IsEditingSelectedInputForTest=>editingSelectedInput;
     internal Profile CurrentProfileForTest=>CurrentProfile;
@@ -88,6 +93,8 @@ public partial class MainWindow : Window
     internal ProfileSwitchOverlay? ProfileOverlayForTest=>profileOverlay;
     internal void ShowProfileOverlayForTest(string name)=>ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest=>VisualInputButtons().ToList();
+    internal IReadOnlyList<System.Windows.Controls.Button> DeckManagementButtonsForTest=>deckManagementButtons;
+    internal WindowActionTarget DeckWindowActionTargetForTest=>DeckExecutionConfig().WindowActionTarget;
     internal bool TitleBarUsesDarkMode { get; private set; }
     internal static string DisplayVersion
     {
@@ -98,7 +105,7 @@ public partial class MainWindow : Window
         get{var v=typeof(MainWindow).Assembly.GetName().Version??new Version(0,0,0);return new Version(v.Major,v.Minor,Math.Max(0,v.Build));}
     }
 
-    public MainWindow(bool skipSetup=false,bool suppressTray=false)
+    public MainWindow(bool skipSetup=false,bool suppressTray=false,AppConfig? startupConfig=null)
     {
         this.suppressTray=suppressTray;
         loading=true;
@@ -111,7 +118,7 @@ public partial class MainWindow : Window
         ArrangeInputWorkspace();
         VersionText.Text="v"+DisplayVersion;
         Title="RELYR v"+DisplayVersion;
-        config = store.Load();
+        config = startupConfig??store.Load();
         ThemeService.Apply(config.ThemeMode);
         ThemeService.ThemeChanged+=AppThemeChanged;
         MacroPlayer.PlaybackFinished+=MacroPlaybackFinished;
@@ -121,8 +128,12 @@ public partial class MainWindow : Window
         capsLockRemapped=capsRestartPending?config.CapsLockRemapEffectiveBeforeRestart:configuredCapsLockRemap;
         engine.TreatF13AsCapsLock=capsLockRemapped;
         appliedConfig=store.Clone(config);
-        OverlayService.Configure(()=>appliedConfig,()=>engine.HasCapturedPhysicalInput);
+        OverlayService.Configure(
+            ()=>appliedConfig,
+            ()=>engine.HasCapturedPhysicalInput,
+            mapping=>{try{if(!actionQueue.IsAddingCompleted)actionQueue.TryAdd((mapping,mapping.Input,true));}catch(InvalidOperationException){}});
         executor=new MappingExecutor(new SystemInputOutput(name=>appliedConfig.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),name=>Dispatcher.BeginInvoke(()=>SwitchProfile(name,true)),()=>appliedConfig.KeyboardLayout=="US",()=>appliedConfig));
+        deckExecutor=new MappingExecutor(new SystemInputOutput(name=>appliedConfig.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),name=>Dispatcher.BeginInvoke(()=>SwitchProfile(name,true)),()=>appliedConfig.KeyboardLayout=="US",DeckExecutionConfig));
         actionWorker=Task.Run(ProcessActions);dragActionWorker=Task.Factory.StartNew(ProcessDragActions,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
         AutoSaveToggle.IsChecked=config.AutoSave;UpdateAutoSaveToggleText();
         KeyboardLayoutBox.SelectedIndex=config.KeyboardLayout=="US"?1:0;
@@ -132,7 +143,7 @@ public partial class MainWindow : Window
         KindBox.ItemsSource=shortActionOptions;LongKindBox.ItemsSource=longActionOptions;
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
         LongKindBox.SelectedValuePath=nameof(ActionOption.Kind);
-        BuildKeyboard();engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;RefreshProfiles();UpdateLayerButtons();
+        BuildKeyboard();BuildDeckManagementPanel();engine.UseUsLayout=config.KeyboardLayout=="US";engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;RefreshProfiles();UpdateLayerButtons();
         engine.InputReceived = HandleInput;
         InputEngine.DesktopActionFailed=message=>Dispatcher.BeginInvoke(()=>{LastInput.Text="仮想デスクトップ操作エラー: "+message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});
         engine.QualifyInput = QualifyInput;
@@ -415,9 +426,36 @@ public partial class MainWindow : Window
     {
         if(sender is not System.Windows.Controls.Button{Tag:string key})return;
         e.Handled=true;
+        if(DeckPanelLayout.IsInputName(key))
+        {
+            RenameDeckButton(key);
+            return;
+        }
         if(key=="Space"&&currentLayer is "通常" or "Space"){ShowInlineNotice("Spaceキーはレイヤー専用のため変更できません");return;}
         var menu=CreateInputContextMenu(key);menu.PlacementTarget=(System.Windows.Controls.Button)sender;menu.IsOpen=true;
     }
+    void RenameDeckButton(string input)
+    {
+        var mapping=CurrentProfile.Mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        string? name=PromptText("Deckボタン名","ボタンの下に表示する名前",mapping?.Description??"");
+        if(name==null)return;
+        SetDeckButtonName(input,name);
+    }
+    void SetDeckButtonName(string input,string name)
+    {
+        var mapping=CurrentProfile.Mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        if(mapping==null)
+        {
+            mapping=new Mapping{Input=input,Layer=DeckPanelLayout.Layer};
+            CurrentProfile.Mappings.Add(mapping);
+        }
+        mapping.Description=name;
+        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description))
+            CurrentProfile.Mappings.Remove(mapping);
+        MarkDirty();
+        ColorButtons();
+    }
+    internal void SetDeckButtonNameForTest(string input,string name)=>SetDeckButtonName(input,name);
     internal ContextMenu CreateInputContextMenu(string key)
     {
         string input=currentLayer=="通常"?key:currentLayer+"+"+key;
@@ -654,6 +692,98 @@ public partial class MainWindow : Window
         config.Profiles=window.ResultProfiles.ToList();
         ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();
     }
+    void BuildDeckManagementPanel()
+    {
+        DeckManagementGrid.Children.Clear();
+        deckManagementButtons.Clear();
+        deckManagementNameLabels.Clear();
+        for(int slot=1;slot<=DeckPanelLayout.SlotCount;slot++)
+        {
+            int capturedSlot=slot;
+            var button=new System.Windows.Controls.Button
+            {
+                Tag=DeckPanelLayout.InputName(slot),
+                Margin=new Thickness(2),
+                MinWidth=0,
+                MinHeight=0,
+                Padding=new Thickness(3),
+                FontSize=11,
+                HorizontalContentAlignment=System.Windows.HorizontalAlignment.Center,
+                VerticalContentAlignment=System.Windows.VerticalAlignment.Center,
+                Style=(Style)FindResource("DeckButtonStyle")
+            };
+            button.Click+=(_,_)=>SelectInput(DeckPanelLayout.InputName(capturedSlot));
+            button.PreviewMouseRightButtonDown+=InputButton_RightClick;
+            button.Width=DeckPanelLayout.KeyWidth;
+            button.Height=DeckPanelLayout.KeyHeight;
+            button.Margin=new Thickness(2,0,2,0);
+            var nameLabel=DeckPanelLayout.CreateNameLabel(null);
+            var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=70};
+            cell.Children.Add(button);
+            cell.Children.Add(nameLabel);
+            DeckManagementGrid.Children.Add(cell);
+            deckManagementButtons.Add(button);
+            deckManagementNameLabels[button]=nameLabel;
+        }
+        ColorDeckManagementButtons();
+    }
+    void OpenDeckPanelManager_Click(object sender,RoutedEventArgs e)
+    {
+        deckManagementMode=true;
+        currentLayer=DeckPanelLayout.Layer;
+        KeyboardWorkspace.Visibility=Visibility.Collapsed;
+        DeckWorkspace.Visibility=Visibility.Visible;
+        DetectInputButton.Visibility=Visibility.Collapsed;
+        DeckKeypadInputButton.Visibility=Visibility.Visible;
+        LongPressExpander.Visibility=Visibility.Collapsed;
+        LongPressOnlyButton.Visibility=Visibility.Collapsed;
+        KindBox.ItemsSource=ActionOptions(allowGesture:false).Where(x=>x.Kind!=ActionKind.Gesture).ToArray();
+        KindBox.SelectedValuePath=nameof(ActionOption.Kind);
+        ClearSelectedInput(DeckPanelManagerButton);
+        UpdateLayerButtons();
+        ColorButtons();
+    }
+    void ShowKeyboardWorkspace()
+    {
+        if(!deckManagementMode)return;
+        deckManagementMode=false;
+        KeyboardWorkspace.Visibility=Visibility.Visible;
+        DeckWorkspace.Visibility=Visibility.Collapsed;
+        DetectInputButton.Visibility=Visibility.Visible;
+        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
+        LongPressExpander.Visibility=Visibility.Visible;
+        LongPressOnlyButton.Visibility=Visibility.Visible;
+        KindBox.ItemsSource=ActionOptions(allowGesture:true);
+        KindBox.SelectedValuePath=nameof(ActionOption.Kind);
+    }
+    void DeckKeypadInput_Click(object sender,RoutedEventArgs e)
+    {
+        if(!deckManagementMode||selected==null)
+        {
+            ShowInlineNotice("先にDeckパネルのボタンを選択してください");
+            return;
+        }
+        var picker=new MacroInputPickerWindow(config.KeyboardLayout){Owner=this};
+        bool shortcut=(KindBox.SelectedValue is ActionKind kind?kind:EditorActionKind(selected.Kind))==ActionKind.Shortcut;
+        if(shortcut)
+        {
+            picker.ConfigureShortcutEditing(ValueBox.Text);
+            picker.ShortcutChanged+=value=>
+            {
+                KindBox.SelectedValue=ActionKind.Shortcut;
+                ValueBox.Text=value;
+            };
+        }
+        else
+        {
+            picker.InputChosen+=input=>
+            {
+                KindBox.SelectedValue=ActionKind.Key;
+                ValueBox.Text=input;
+            };
+        }
+        picker.ShowDialog();
+    }
     void ApplyProfileAction(string profileName,bool longPress)
     {
         if(selected==null||!config.Profiles.Any(x=>x.Name.Equals(profileName,StringComparison.OrdinalIgnoreCase)))return;
@@ -723,7 +853,7 @@ public partial class MainWindow : Window
     }
     static string DisplayInputPart(string value)=>value switch
     {
-        "通常"=>"通常","Space"=>"Space","CapsLock"=>"CapsLock","MouseRight"=>"右クリック","MouseBack"=>"戻る","MouseForward"=>"進む","Taskbar"=>"タスクバー上",
+        "通常"=>"通常","Space"=>"Space","CapsLock"=>"CapsLock","MouseRight"=>"右クリック","MouseBack"=>"戻る","MouseForward"=>"進む","Taskbar"=>"タスクバー上",DeckPanelLayout.Layer=>"Deck",
         "MouseLeft"=>"左クリック","MouseMiddle"=>"ホイールクリック","MouseX"=>"追加ボタン","WheelUp"=>"ホイール上","WheelDown"=>"ホイール下","TiltLeft"=>"チルト左","TiltRight"=>"チルト右",_=>value
     };
     void EditorChanged(object sender, EventArgs e)
@@ -738,6 +868,10 @@ public partial class MainWindow : Window
         else{selected.LongPressKind=longAction.Kind;selected.LongPressValue=longAction.Value;}
         selected.Layer=currentLayer;if (int.TryParse(LongPressBox.Text, out var ms)) selected.LongPressMs = ms;
         if(MappingHasConfiguredAction(selected))
+        {
+            if(!CurrentProfile.Mappings.Contains(selected))CurrentProfile.Mappings.Add(selected);
+        }
+        else if(deckManagementMode&&!string.IsNullOrWhiteSpace(selected.Description))
         {
             if(!CurrentProfile.Mappings.Contains(selected))CurrentProfile.Mappings.Add(selected);
         }
@@ -803,7 +937,7 @@ public partial class MainWindow : Window
             var action=GestureAction(definition,direction);
             if(action.Kind is ActionKind.None or ActionKind.Disabled||string.IsNullOrWhiteSpace(action.Value))return action.Kind==ActionKind.Disabled;
             var gestureMap=new Mapping{Input=source.Input,Layer=source.Layer,Kind=action.Kind,Value=action.Value};
-            if(!actionQueue.TryAdd((gestureMap,input)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");});else RecordMappedAction(gestureMap,input);
+            if(!actionQueue.TryAdd((gestureMap,input,false)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");});else RecordMappedAction(gestureMap,input);
             return true;
         }
         bool longPress=input.EndsWith(":Long",StringComparison.OrdinalIgnoreCase),dragStart=input.EndsWith(":DragStart",StringComparison.OrdinalIgnoreCase),dragEnd=input.EndsWith(":DragEnd",StringComparison.OrdinalIgnoreCase),pressStart=input.EndsWith(":PressStart",StringComparison.OrdinalIgnoreCase),pressEnd=input.EndsWith(":PressEnd",StringComparison.OrdinalIgnoreCase);
@@ -813,7 +947,7 @@ public partial class MainWindow : Window
         var snapshot=CloneMapping(map);
         if((pressStart||pressEnd||dragStart||dragEnd)&&MappingExecutor.IsModifierDrag(snapshot.Value)){bool queued=QueueDragAction(snapshot,input);if(queued)RecordMappedAction(snapshot,input);return queued;}
         if(pressStart||pressEnd)return false;
-        if(!actionQueue.TryAdd((snapshot,input)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");});else RecordMappedAction(snapshot,input);return true;
+        if(!actionQueue.TryAdd((snapshot,input,false)))Dispatcher.BeginInvoke(()=>{LastInput.Text="連続入力が多すぎるため一部を安全に破棄しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");});else RecordMappedAction(snapshot,input);return true;
     }
     internal static (ActionKind Kind,string Value) GestureAction(GestureDefinition gesture,string direction)=>direction switch
     {
@@ -822,9 +956,15 @@ public partial class MainWindow : Window
         _=>(gesture.CenterKind,gesture.CenterValue)
     };
     void RecordMappedAction(Mapping map,string input){if(macroIsRecording&&config.RecordMappedActionsInMacros)Dispatcher.BeginInvoke(()=>macroWindow?.CaptureMappedAction(map,input));}
+    AppConfig DeckExecutionConfig()
+    {
+        var snapshot=store.Clone(appliedConfig);
+        snapshot.WindowActionTarget=WindowActionTarget.ActiveWindow;
+        return snapshot;
+    }
     void ProcessActions()
     {
-        foreach(var item in actionQueue.GetConsumingEnumerable())try{bool result=executor.Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?ThemeService.Brush("DangerBrush"):ThemeService.Brush("AccentBrush");});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="実行エラー: "+ex.Message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});}
+        foreach(var item in actionQueue.GetConsumingEnumerable())try{bool result=(item.ForceActiveWindow?deckExecutor:executor).Execute(item.Map,item.Input,out var value);if(result)Dispatcher.BeginInvoke(()=>{LastInput.Text=$"実行: {item.Map.Input} → {value}";LastInput.Foreground=value.StartsWith("エラー:",StringComparison.Ordinal)?ThemeService.Brush("DangerBrush"):ThemeService.Brush("AccentBrush");});}catch(Exception ex){InputEngine.ReleaseAll();Dispatcher.BeginInvoke(()=>{LastInput.Text="実行エラー: "+ex.Message;LastInput.Foreground=ThemeService.Brush("DangerBrush");});}
     }
     void ProcessDragActions()
     {
@@ -874,6 +1014,25 @@ public partial class MainWindow : Window
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b,250);ToolTipService.SetBetweenShowDelay(b,80);ToolTipService.SetShowDuration(b,20000);
         }
+        ColorDeckManagementButtons();
+    }
+    void ColorDeckManagementButtons()
+    {
+        foreach(var button in deckManagementButtons)
+        {
+            if(button.Tag is not string input)continue;
+            var mapping=FindProfileMapping(config.Profiles,CurrentProfile.Name,input);
+            var assigned=MappingInterceptsInput(mapping)?mapping:null;
+            bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
+            button.Background=editing?ThemeService.Brush("EditingKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+            button.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
+            button.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+            button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
+            if(deckManagementNameLabels.TryGetValue(button,out var nameLabel))nameLabel.Text=mapping?.Description??"";
+            button.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):null;
+            ToolTipService.SetInitialShowDelay(button,250);
+            ToolTipService.SetShowDuration(button,20000);
+        }
     }
     internal static WpfColor AssignmentColorFor(Mapping mapping)
     {
@@ -905,7 +1064,7 @@ public partial class MainWindow : Window
         ActionKind.Disabled=>"無効化",ActionKind.Key=>"別のキー",ActionKind.Shortcut=>"ショートカット",ActionKind.Text=>"文字列入力",
         ActionKind.Launch=>"アプリ・ファイル・URL",ActionKind.Mouse=>"マウス操作",ActionKind.Macro=>"マクロ",ActionKind.Profile=>"プロファイル切替",ActionKind.Gesture=>"ジェスチャー",_=>"未設定"
     };
-    static string FriendlyActionValue(ActionKind kind,string value)
+    internal static string FriendlyActionValue(ActionKind kind,string value)
     {
         if(kind==ActionKind.Disabled)return "入力しない";
         if(kind==ActionKind.Profile)return ProfileDisplayValue(value);
@@ -926,7 +1085,7 @@ public partial class MainWindow : Window
     };
     IEnumerable<System.Windows.Controls.Button> VisualInputButtons()=>InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).Concat(InputButtons(MousePanel));
     static IEnumerable<System.Windows.Controls.Button> InputButtons(System.Windows.Controls.Panel panel){foreach(UIElement child in panel.Children){if(child is System.Windows.Controls.Button b&&b.Tag is string)yield return b;if(child is System.Windows.Controls.Panel nested)foreach(var b2 in InputButtons(nested))yield return b2;}}
-    static string LayerDisplayName(string layer)=>layer switch{"通常"=>"通常レイヤー","Taskbar"=>"タスクバー上で有効",_=>layer+" レイヤー"};
+    static string LayerDisplayName(string layer)=>layer switch{"通常"=>"通常レイヤー","Taskbar"=>"タスクバー上で有効",DeckPanelLayout.Layer=>"Deckパネル",_=>layer+" レイヤー"};
     void MarkDirty()
     {
         if(config.AutoSave)
@@ -961,6 +1120,10 @@ public partial class MainWindow : Window
             b.Foreground=ThemeService.Brush("PrimaryText");
             b.ToolTip=blocked?$"通常レイヤーの{MouseLayerLabel(b.Tag?.ToString()??"")}にジェスチャーが割り当てられているため使用できません。ジェスチャーを削除すると再び使用できます。":null;
         }
+        bool deckActive=deckManagementMode;
+        DeckPanelManagerButton.Background=ThemeService.Brush(deckActive?"LayerActiveBackground":"KeyBackground");
+        DeckPanelManagerButton.BorderBrush=ThemeService.Brush(deckActive?"AccentBrush":"SubtleBorderBrush");
+        DeckPanelManagerButton.Foreground=ThemeService.Brush("PrimaryText");
         if(InputDisplayText!=null)InputDisplayText.Text=selected==null?"キーを選択してください":DisplayInputName(selected.Input);
     }
     internal static bool IsMouseLayerBlockedByDirectGesture(IReadOnlyList<Profile> profiles,string profileName,string layer)
@@ -1272,6 +1435,7 @@ public partial class MainWindow : Window
     void LayerButton_Click(object sender,RoutedEventArgs e)
     {
         if(sender is not System.Windows.Controls.Button{Tag:string layer} button)return;
+        ShowKeyboardWorkspace();
         ClearExecutionFocus(button);
         if(IsMouseLayerBlockedByDirectGesture(config.Profiles,CurrentProfile.Name,layer)){ShowInlineNotice($"{MouseLayerLabel(layer)}レイヤーは通常レイヤーのジェスチャーと競合しているため使用できません");return;}
         if(layer=="CapsLock"&&!ConfirmCapsLockLayer())return;

@@ -26,7 +26,11 @@ public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Ac
     {
         using var process=Process.Start(new ProcessStartInfo(value){UseShellExecute=true});
     }
-    public void RunMacro(string name){var macro=findMacro(name)??throw new InvalidOperationException("マクロが見つかりません: "+name);MacroPlayer.Play(macro,getConfig?.Invoke(),switchProfile);}
+    public void RunMacro(string name)
+    {
+        var macro=findMacro(name)??throw new InvalidOperationException("マクロが見つかりません: "+name);
+        MacroPlayer.Play(macro,getConfig?.Invoke(),switchProfile,getPreferredActiveWindow?.Invoke());
+    }
     public void SwitchProfile(string name)=>(switchProfile??throw new InvalidOperationException("プロファイル切替を利用できません。"))(name);
 }
 

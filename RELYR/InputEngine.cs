@@ -52,6 +52,7 @@ public sealed class InputEngine : IDisposable
     readonly object stateLock=new();
     readonly HashSet<int> held=[];
     readonly Dictionary<string, PressState> presses=new(StringComparer.OrdinalIgnoreCase);
+    readonly HashSet<string> committedGestureSources=new(StringComparer.OrdinalIgnoreCase);
     string? deferredLayer;
     System.Threading.Timer? layerSafetyTimer;
     volatile bool layerSafetyExpired;
@@ -71,7 +72,7 @@ public sealed class InputEngine : IDisposable
         {
             if(enabled==value)return;
             enabled=value;
-            if(!value)ResetCapturedState(true);
+            if(!value)ResetCapturedState(true,true);
         }
     }
     public bool CaptureMouseMoves { get; set; }
@@ -177,7 +178,7 @@ public sealed class InputEngine : IDisposable
         if(d.dwExtraInfo==(UIntPtr)Marker) return Next(n,w,l);
         bool down=w==(IntPtr)WM_KEYDOWN||w==(IntPtr)WM_SYSKEYDOWN, up=w==(IntPtr)WM_KEYUP||w==(IntPtr)WM_SYSKEYUP;
         if(!down&&!up) return Next(n,w,l);
-        if(OverlayService.FullScreenVisible){ResetCapturedState(false);OverlayService.TryDismissFullScreenKeyboard(down);return (IntPtr)1;}
+        if(OverlayService.FullScreenVisible){ResetCapturedState(false,true);OverlayService.TryDismissFullScreenKeyboard(down);return (IntPtr)1;}
         int vk=(int)d.vkCode; string key=HookKeyName(vk,d.scanCode,UseUsLayout,TreatF13AsCapsLock);
         bool currentLayerRelease=deferredLayer!=null&&up&&(key.Equals(deferredLayer,StringComparison.OrdinalIgnoreCase)||IsLayerRelease(deferredLayer,vk,d.scanCode,true));
         if(!currentLayerRelease)
@@ -187,7 +188,7 @@ public sealed class InputEngine : IDisposable
         if(down) held.Add(vk); else held.Remove(vk);
         if(down&&EmergencyHeld(vk)){ StopAndRelease(); Detected?.Invoke("緊急停止"); return (IntPtr)1; }
         Detected?.Invoke($"{key} {(down?"Down":"Up")}");
-        if(!Enabled) return Next(n,w,l);
+        if(!Enabled){if(up)committedGestureSources.Remove(key);return Next(n,w,l);}
         if(nativeRightLayerDrag)
         {
             string rightLayerInput="MouseRight+"+key;
@@ -251,7 +252,7 @@ public sealed class InputEngine : IDisposable
         if(n<0) return Next(n,w,l);
         var d=Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l); int msg=w.ToInt32();
         if(d.dwExtraInfo==(UIntPtr)Marker) return Next(n,w,l);
-        if(OverlayService.FullScreenVisible){ResetCapturedState(false);OverlayService.TryDismissFullScreenMouse(msg,d.pt.x,d.pt.y);return (IntPtr)1;}
+        if(OverlayService.FullScreenVisible){ResetCapturedState(false,true);OverlayService.TryDismissFullScreenMouse(msg,d.pt.x,d.pt.y);return (IntPtr)1;}
         if(TryHandleCoordinateCapture(msg,d.pt.x,d.pt.y))return (IntPtr)1;
         if(Environment.TickCount64<mousePassthroughUntil)return Next(n,w,l);
         if(msg==0x200)
@@ -308,7 +309,7 @@ public sealed class InputEngine : IDisposable
         {
             if(layerSafetyExpired)ResetCapturedState(false);
         }
-        if(!Enabled){Detected?.Invoke(name+(rawDown?" Down":rawUp?" Up":""));return Next(n,w,l);}
+        if(!Enabled){if(rawUp)committedGestureSources.Remove(name);Detected?.Invoke(name+(rawDown?" Down":rawUp?" Up":""));return Next(n,w,l);}
         if(nativeRightLayerDrag&&!currentLayerRelease)
         {
             string rightLayerInput="MouseRight+"+name;
@@ -398,10 +399,12 @@ public sealed class InputEngine : IDisposable
 
     IntPtr ProcessPress(string input,bool down,bool up,int n,IntPtr w,IntPtr l,int x=0,int y=0,bool fireOnDown=false,bool repeatWhileHeld=false)
     {
+        string gestureSource=PhysicalInputToken(input);
+        bool committedGesture=committedGestureSources.Contains(gestureSource);
         bool mapped=HasMapping?.Invoke(input)==true;
         if(down&&!presses.ContainsKey(input))
         {
-            var state=new PressState{IsDown=true,Handled=mapped,X=x,Y=y}; presses[input]=state;
+            var state=new PressState{IsDown=true,Handled=mapped,X=x,Y=y,GestureActionCommitted=committedGesture}; presses[input]=state;
             if(mapped)
             {
                 bool immediateGesture=IsGesturePress?.Invoke(input)==true;
@@ -421,6 +424,8 @@ public sealed class InputEngine : IDisposable
         else if(down&&presses.TryGetValue(input,out var existing)){if(existing.Handled&&existing.FireOnDown&&repeatWhileHeld)InputReceived?.Invoke(input);return existing.Handled?(IntPtr)1:Next(n,w,l);}
         if(up&&presses.Remove(input,out var current))
         {
+            committedGesture|=current.GestureActionCommitted;
+            committedGestureSources.Remove(gestureSource);
             current.IsDown=false; current.Timer?.Dispose();current.GestureSafetyTimer?.Dispose();current.GestureMotionTimer?.Dispose();
             if(current.NativeMouseDrag){current.ReleaseSignal?.TrySetResult();return (IntPtr)1;}
             if(current.Handled)
@@ -431,7 +436,7 @@ public sealed class InputEngine : IDisposable
                 else if(current.IsGesture)
                 {
                     CommitGestureMovement(input,current);
-                    if(current.GestureActive&&!current.GestureExpired&&!current.GestureMoved&&current.GestureDirection==null)InputReceived?.Invoke(input+":Gesture:Center");
+                    if(current.GestureActive&&!current.GestureExpired&&!current.GestureMoved&&!committedGesture&&current.GestureDirection==null)InputReceived?.Invoke(input+":Gesture:Center");
                 }
                 else if(current.Dragged)InputReceived?.Invoke(input+":DragEnd");
                 else if(current.LongPressMs>0&&Environment.TickCount64-current.DownTick>=current.LongPressMs&&Interlocked.CompareExchange(ref current.LongFired,1,0)==0)
@@ -444,7 +449,7 @@ public sealed class InputEngine : IDisposable
             }
             return Next(n,w,l);
         }
-        if(up)return Next(n,w,l);
+        if(up){committedGestureSources.Remove(gestureSource);return Next(n,w,l);}
         return mapped?(IntPtr)1:Next(n,w,l);
     }
 
@@ -495,7 +500,9 @@ public sealed class InputEngine : IDisposable
         state.GestureDx=0;state.GestureDy=0;
         if(!TryGetGestureDirection(dx,dy,GestureThresholdPixels,out string direction))return false;
         state.GestureMoved=true;
+        state.GestureActionCommitted=true;
         state.GestureDirection=direction;
+        committedGestureSources.Add(PhysicalInputToken(input));
         InputReceived?.Invoke(input+":Gesture:"+direction);
         Detected?.Invoke(input+" Gesture "+direction);
         return true;
@@ -600,8 +607,8 @@ public sealed class InputEngine : IDisposable
     }
     void CancelLayerSafety(){layerSafetyTimer?.Dispose();layerSafetyTimer=null;layerSafetyExpired=false;}
     internal void ExpireLayerForTest()=>layerSafetyExpired=true;
-    void ResetCapturedState(bool release){string? releasedLayer;lock(stateLock){releasedLayer=deferredLayer;foreach(var state in presses.Values){state.IsDown=false;state.Timer?.Dispose();state.GestureSafetyTimer?.Dispose();state.GestureMotionTimer?.Dispose();state.GestureActive=false;state.GestureExpired=true;Interlocked.Exchange(ref state.Ended,1);state.ReleaseSignal?.TrySetResult();}presses.Clear();held.Clear();CancelLayerRepeat();CancelLayerSafety();deferredLayer=null;layerUsed=false;nativeRightLayerDrag=false;}QueueMouseLayerRelease(releasedLayer??"");if(release)ReleaseAll();else EndModifierDrag();}
-    void StopAndRelease(){enabled=false;ResetCapturedState(false);_=Task.Run(async()=>{ReleaseAll();if(ExitOnEmergency){await Task.Delay(80);App.ExitImmediately(2);}});}
+    void ResetCapturedState(bool release,bool clearGestureSuppressions=false){string? releasedLayer;lock(stateLock){releasedLayer=deferredLayer;foreach(var state in presses.Values){state.IsDown=false;state.Timer?.Dispose();state.GestureSafetyTimer?.Dispose();state.GestureMotionTimer?.Dispose();state.GestureActive=false;state.GestureExpired=true;Interlocked.Exchange(ref state.Ended,1);state.ReleaseSignal?.TrySetResult();}presses.Clear();held.Clear();CancelLayerRepeat();CancelLayerSafety();deferredLayer=null;layerUsed=false;nativeRightLayerDrag=false;if(clearGestureSuppressions)committedGestureSources.Clear();}QueueMouseLayerRelease(releasedLayer??"");if(release)ReleaseAll();else EndModifierDrag();}
+    void StopAndRelease(){enabled=false;ResetCapturedState(false,true);_=Task.Run(async()=>{ReleaseAll();if(ExitOnEmergency){await Task.Delay(80);App.ExitImmediately(2);}});}
     static double Distance(int x1,int y1,int x2,int y2)=>Math.Sqrt(Math.Pow(x2-x1,2)+Math.Pow(y2-y1,2));
     static string UsKeyName(int vk)=>vk switch{0xC0=>"`",0xBD=>"-",0xBB=>"=",0xDB=>"[",0xDD=>"]",0xDC=>"\\",0xBA=>";",0xDE=>"'",_=>KeyName(vk)};
     internal static string HookKeyName(int vk,uint scanCode,bool useUsLayout,bool treatF13AsCapsLock)
@@ -1091,17 +1098,41 @@ public sealed class InputEngine : IDisposable
     internal bool HasCapturedStateForTest(){lock(stateLock)return deferredLayer!=null||presses.Count>0||held.Count>0;}
     internal bool HasActiveLayerStateForTest(){lock(stateLock)return deferredLayer!=null||presses.Keys.Any(x=>x.StartsWith("Space+",StringComparison.OrdinalIgnoreCase)||x.StartsWith("CapsLock+",StringComparison.OrdinalIgnoreCase)||x.StartsWith("MouseRight+",StringComparison.OrdinalIgnoreCase));}
     public bool TryPrepareForProfileChange()
+        =>TryPrepareForProfileChange(vk=>(GetAsyncKeyState(vk)&0x8000)!=0);
+
+    internal bool TryPrepareForProfileChange(Func<int,bool> isKeyDown)
     {
         lock(stateLock)
         {
             // 入力途中で参照するマッピングを切り替えると、DownとUpが別の
             // プロファイルで処理される。物理入力がすべて離れるまで切替を待つ。
-            if(deferredLayer!=null||held.Count>0||presses.Values.Any(x=>x.IsDown))return false;
+            bool captured=deferredLayer!=null||held.Count>0||presses.Values.Any(x=>x.IsDown);
+            if(captured&&CapturedPhysicalInputIsDown(isKeyDown))return false;
             ResetCapturedState(false);
             lastSpaceTapTick=0;
             return true;
         }
     }
+    bool CapturedPhysicalInputIsDown(Func<int,bool> isKeyDown)
+    {
+        if(held.Any(isKeyDown))return true;
+        if(deferredLayer!=null&&PhysicalInputVirtualKey(deferredLayer) is int layerKey&&isKeyDown(layerKey))return true;
+        return presses.Where(x=>x.Value.IsDown)
+            .Select(x=>PhysicalInputVirtualKey(x.Key))
+            .Any(vk=>vk is int key&&isKeyDown(key));
+    }
+    static int? PhysicalInputVirtualKey(string input)
+    {
+        string token=PhysicalInputToken(input);
+        return token.ToUpperInvariant() switch
+        {
+            "MOUSELEFT"=>0x01,"MOUSERIGHT"=>0x02,"MOUSEMIDDLE"=>0x04,
+            "MOUSEBACK"=>0x05,"MOUSEFORWARD" or "MOUSEX"=>0x06,
+            "WHEELUP" or "WHEELDOWN" or "TILTLEFT" or "TILTRIGHT"=>null,
+            _=>ParseKey(token) is ushort vk&&vk!=0?vk:null
+        };
+    }
+    static string PhysicalInputToken(string input)=>input[(input.LastIndexOf('+')+1)..];
     internal bool HookTestStateCleanForTest=>hookTestStateClean;
     internal bool HasCapturedPhysicalInput
     {
@@ -1109,13 +1140,13 @@ public sealed class InputEngine : IDisposable
     }
     internal bool IsDisposedForTest=>disposed;
     internal void CancelLongPressTimerForTest(string input){lock(stateLock)if(presses.TryGetValue(input,out var state)){state.Timer?.Dispose();state.Timer=null;}}
-    public void ResetStateForTest(){ResetCapturedState(false);held.Clear();lastSpaceTapTick=0;}
+    public void ResetStateForTest(){ResetCapturedState(false,true);held.Clear();lastSpaceTapTick=0;}
     public void Dispose()
     {
         if(disposed)return;disposed=true;
         enabled=false;
         if(ReferenceEquals(directTestTarget,this))directTestTarget=null;
-        ResetCapturedState(true);
+        ResetCapturedState(true,true);
         if(keyboardHook!=IntPtr.Zero){UnhookWindowsHookEx(keyboardHook);keyboardHook=IntPtr.Zero;}
         if(mouseHook!=IntPtr.Zero){UnhookWindowsHookEx(mouseHook);mouseHook=IntPtr.Zero;}
         uint threadId=hookThreadId;
@@ -1138,7 +1169,7 @@ public sealed class InputEngine : IDisposable
         finally{CloseHandle(handle);}
     }
 
-    sealed class PressState{public bool IsDown,Handled,Dragged,Immediate,NativeMouseDrag,FireOnDown,Cancelled,IsGesture,GestureActive,GestureExpired,GestureMoved;public int X,Y,Ended,LongFired,LongPressMs,GestureCursorX,GestureCursorY,GestureLastX,GestureLastY,GestureDx,GestureDy;public string? GestureDirection;public long DownTick;public System.Threading.Timer? Timer,GestureSafetyTimer,GestureMotionTimer;public TaskCompletionSource? ReleaseSignal;}
+    sealed class PressState{public bool IsDown,Handled,Dragged,Immediate,NativeMouseDrag,FireOnDown,Cancelled,IsGesture,GestureActive,GestureExpired,GestureMoved,GestureActionCommitted;public int X,Y,Ended,LongFired,LongPressMs,GestureCursorX,GestureCursorY,GestureLastX,GestureLastY,GestureDx,GestureDy;public string? GestureDirection;public long DownTick;public System.Threading.Timer? Timer,GestureSafetyTimer,GestureMotionTimer;public TaskCompletionSource? ReleaseSignal;}
     delegate IntPtr HookProc(int nCode,IntPtr wParam,IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)]struct KBDLLHOOKSTRUCT{public uint vkCode,scanCode,flags,time;public UIntPtr dwExtraInfo;}
     [StructLayout(LayoutKind.Sequential)]struct MSLLHOOKSTRUCT{public POINT pt;public int mouseData,flags,time;public UIntPtr dwExtraInfo;}

@@ -42,6 +42,10 @@
       <EventSetter Event="PreviewMouseRightButtonDown" Handler="InputButton_RightClick"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="KeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"><Grid><Border Height="1" Margin="3,1,3,0" VerticalAlignment="Top" Background="#24FFFFFF" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="KeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="KeyBorder" Property="Opacity" Value="0.94"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="KeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DeckButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="FontSize" Value="11"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DeckKeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"><Grid><Border Height="1" Margin="3,1,3,0" VerticalAlignment="Top" Background="#24FFFFFF" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="Opacity" Value="0.94"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DeckKeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="LayerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="FontSize" Value="15"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -232,16 +236,19 @@
           </ScrollViewer>
           <StackPanel x:Name="LeftBottomActions" Grid.Row="1" Margin="0,8,0,0">
             <Button x:Name="MacroManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenMacros_Click" ToolTip="操作を記録してキーへ割り当てます">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="●" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="マクロ" Margin="8,0,0,0"/></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="●" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="マクロ" Margin="8,0,0,0" TextAlignment="Left" HorizontalAlignment="Stretch"/></Grid>
             </Button>
             <Button x:Name="ProfileManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenProfileManager_Click" ToolTip="プロファイルの追加、編集、自動切替を管理します">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="☰" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="プロファイル管理" Margin="8,0,0,0"/></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="☰" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="プロファイル管理" Margin="8,0,0,0" TextAlignment="Left" HorizontalAlignment="Stretch"/></Grid>
             </Button>
             <Button x:Name="GestureManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenGestureManager_Click" ToolTip="長押し後に上下左右へ動かすジェスチャーを管理します">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="✣" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="ジェスチャー管理" Margin="8,0,0,0"/></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="✣" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="ジェスチャー管理" Margin="8,0,0,0" TextAlignment="Left" HorizontalAlignment="Stretch"/></Grid>
+            </Button>
+            <Button x:Name="DeckPanelManagerButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenDeckPanelManager_Click" ToolTip="Deckオーバーレイの45個のボタンを管理します">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="▦" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="Deckパネル&#x0a;管理" FontSize="9" LineHeight="10" Margin="8,0,0,0" TextAlignment="Left" HorizontalAlignment="Stretch"/></Grid>
             </Button>
             <Button x:Name="AppSettingsButton" Style="{StaticResource ToolbarButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OpenSettings_Click" ToolTip="自動起動や自動解凍を設定します">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="⚙" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="設定" Margin="8,0,0,0"/></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="⚙" HorizontalAlignment="Center"/><TextBlock Grid.Column="1" Text="設定" Margin="8,0,0,0" TextAlignment="Left" HorizontalAlignment="Stretch"/></Grid>
             </Button>
           </StackPanel>
         </Grid>
@@ -273,7 +280,7 @@
           </StackPanel>
 
         </StackPanel>
-        <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition x:Name="LowerInputRow" Height="320"/></Grid.RowDefinitions>
+        <Grid x:Name="KeyboardWorkspace"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition x:Name="LowerInputRow" Height="320"/></Grid.RowDefinitions>
           <Viewbox x:Name="KeyboardViewbox" MaxWidth="1220" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Top">
             <Canvas x:Name="KeyboardPanel" Width="960" Height="364"/>
           </Viewbox>
@@ -285,6 +292,9 @@
             <Viewbox x:Name="MouseHost" Grid.Column="1" Margin="8,22,8,8" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
           </Grid>
         </Grid>
+        <Viewbox x:Name="DeckWorkspace" Visibility="Collapsed" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" VerticalAlignment="Top">
+          <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
+        </Viewbox>
       </Grid>
 
       <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource PaneBackground}" BorderThickness="0" Padding="16">
@@ -292,6 +302,7 @@
         <ScrollViewer x:Name="AssignmentScrollViewer" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" IsDeferredScrollingEnabled="False" PreviewMouseWheel="AssignmentPane_PreviewMouseWheel">
           <StackPanel>
             <Button x:Name="DetectInputButton" Content="押した入力を検出" Click="Detect_Click" Margin="0,0,0,10"/>
+            <Button x:Name="DeckKeypadInputButton" Content="キーパッドから入力" Click="DeckKeypadInput_Click" Margin="0,0,0,10" Visibility="Collapsed"/>
             <Border Background="{DynamicResource CardBackground}" Padding="10" Margin="0,0,0,8" CornerRadius="4">
               <StackPanel><TextBlock Text="入力元" Foreground="{DynamicResource SecondaryText}"/><TextBlock x:Name="InputDisplayText" Text="キーを選択してください" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"/></StackPanel>
             </Border>
@@ -303,7 +314,7 @@
                 <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
                 <TextBlock Text="実行内容"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" PreviewKeyDown="ExecutionValue_PreviewKeyDown" ToolTip="Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます"/>
                 <Button Content="入力完了" HorizontalAlignment="Right" Click="DestinationInputDone_Click" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"/>
-                <Button Content="短押しは通常入力にする（長押しのみ設定）" Click="LongPressOnly_Click" Margin="0,4,0,2"/>
+                <Button x:Name="LongPressOnlyButton" Content="短押しは通常入力にする（長押しのみ設定）" Click="LongPressOnly_Click" Margin="0,4,0,2"/>
               </StackPanel>
             </Border>
             <Expander x:Name="LongPressExpander" Header="＋ 長押しを追加（任意）" Expanded="LongPressExpander_Expanded" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" Padding="10" Margin="0,0,0,10">

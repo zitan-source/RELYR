@@ -198,6 +198,7 @@ public static class ActionCatalog
 
         new("オーバーレイ・入力","テンキー","半透明のテンキーを表示し、直前の入力先へクリックした数字を送ります",ActionKind.Shortcut,OverlayService.NumpadAction),
         new("オーバーレイ・入力","ナビゲーション＋テンキー＋方向キー","ナビゲーション、方向キー、テンキーをまとめた半透明パネルを表示します",ActionKind.Shortcut,OverlayService.ExtendedKeypadAction),
+        new("オーバーレイ・入力","Deckパネル","設定した45個のボタンを、入力先を変えない半透明パネルで表示します",ActionKind.Shortcut,OverlayService.DeckPanelAction),
         new("オーバーレイ・画面","ブランク","すべてのモニターを黒く覆います。キー入力またはマウス移動で戻ります",ActionKind.Shortcut,OverlayService.BlankAction),
         new("オーバーレイ・画面","クロック","時計を表示するスクリーンセーバー風オーバーレイを起動します",ActionKind.Shortcut,OverlayService.ClockAction),
 

@@ -66,6 +66,14 @@ public partial class App : System.Windows.Application
         else if(!StartupService.IsProcessElevated())
         {
             args=AttachMacroShortcutTarget(args,WindowMonitorService.GetActiveWindowForShortcut);
+            // The process launched by the taskbar owns the foreground permission that
+            // the elevated scheduled-task process does not. Restore the captured target
+            // and pass that permission on before signalling or starting RELYR.
+            if(ReadMacroShortcutTarget(args) is { } launchTarget)
+            {
+                VirtualDesktopService.AllowAnyProcessToSetForegroundWindow();
+                WindowMonitorService.PrepareShortcutTarget(launchTarget);
+            }
             if(IsMainUiLaunch(args)&&MainInstanceExists())
             {
                 if(NotifyExistingInstance())
@@ -137,9 +145,11 @@ public partial class App : System.Windows.Application
             if(NotifyExistingInstance()&&ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
             ExitImmediately(0);return;
         }
+        try{foregroundWindowTracker=new ForegroundWindowTracker();}catch{}
         var loadedStartupConfig=new ConfigService().Load();
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
-        if(!StartupService.TryTerminateOrphanedRelyrInstances(TimeSpan.FromSeconds(3),out string orphanError))
+        if(ShouldScanForOrphans(args)
+           &&!StartupService.TryTerminateOrphanedRelyrInstances(TimeSpan.FromSeconds(3),out string orphanError))
         {
             AppDialog.Show(
                 "以前のRELYRの終了処理が残っているため、安全のため入力機能を開始しません。\n\n"+orphanError,
@@ -150,19 +160,36 @@ public partial class App : System.Windows.Application
         }
         showSignal=new EventWaitHandle(false,EventResetMode.AutoReset,SignalName);
         showAcknowledgement=new EventWaitHandle(false,EventResetMode.AutoReset,AcknowledgementName);
-        try{foregroundWindowTracker=new ForegroundWindowTracker();}catch{}
-        try{foreach(var macro in loadedStartupConfig.Macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
-        try{StartupService.EnsureMatchesConfig(loadedStartupConfig.StartWithWindows);}catch{}
         shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));
-        var window=new MainWindow(args.Contains("--skip-setup",StringComparer.OrdinalIgnoreCase));
+        var window=new MainWindow(args.Contains("--skip-setup",StringComparer.OrdinalIgnoreCase),startupConfig:loadedStartupConfig);
         MainWindow=window;
+        StartStartupMaintenance(loadedStartupConfig);
         bool needsSetup=window.NeedsFirstRunSetup;
         if(!args.Contains("--tray",StringComparer.OrdinalIgnoreCase)||needsSetup)window.Show();
         if(needsSetup)Dispatcher.BeginInvoke(window.ShowFirstRunSetup);
         _=Task.Run(()=>ListenForShow(window));
         _=Task.Run(()=>ListenForShutdown(window));
     }
+
+    static void StartStartupMaintenance(AppConfig config)
+    {
+        var macros=config.Macros.Select(x=>new MacroDefinition{Id=x.Id,Name=x.Name}).ToArray();
+        bool startWithWindows=config.StartWithWindows;
+        var thread=new Thread(()=>
+        {
+            try{foreach(var macro in macros)ShortcutService.UpgradeExistingMacroShortcut(macro);}catch{}
+            try{StartupService.EnsureMatchesConfig(startWithWindows);}catch{}
+        })
+        {
+            IsBackground=true,
+            Name="RELYR startup maintenance"
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
+
     internal static bool IsMainUiLaunch(IReadOnlyList<string> args)=>args.All(x=>x.Equals("--tray",StringComparison.OrdinalIgnoreCase)||x.Equals("--skip-setup",StringComparison.OrdinalIgnoreCase));
+    internal static bool ShouldScanForOrphans(IReadOnlyList<string> args)=>!args.Contains("--tray",StringComparer.OrdinalIgnoreCase);
     static bool ShouldExplainDuplicate(IReadOnlyList<string> args)=>!args.Contains("--tray",StringComparer.OrdinalIgnoreCase);
     static bool MainInstanceExists()
     {

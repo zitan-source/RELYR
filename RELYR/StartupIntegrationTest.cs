@@ -20,6 +20,7 @@ public static class StartupIntegrationTest
             Check(!encoded.Any(char.IsWhiteSpace),"scheduled-task argument payload contains no command-line whitespace");
             Check(StartupService.MultipleInstancePolicy(true)==2&&StartupService.MultipleInstancePolicy(false)==0,"logon startup ignores duplicate launches while command launcher remains available for macro actions");
             Check(App.IsMainUiLaunch([])&&App.IsMainUiLaunch(["--tray"])&&!App.IsMainUiLaunch(["--macro-id","abc"]),"single-instance guard applies only to the resident main application");
+            Check(!App.ShouldScanForOrphans(["--tray"])&&App.ShouldScanForOrphans([]),"logon startup skips the blocking orphan-process scan");
             Check(StartupService.SameExecutablePath(executable,executable.ToUpperInvariant())&&!StartupService.SameExecutablePath(executable,@"C:\Temp\RELYR.exe"),"executable path comparison remains case-insensitive");
             Check(StartupService.IsRelyrExecutableIdentity("RELYR.exe","RELYR","RELYR.dll"),
                 "a RELYR process is identified independently of its folder and thread count");

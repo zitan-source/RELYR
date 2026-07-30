@@ -2,6 +2,9 @@ param([string]$Configuration="Release",[switch]$SkipRealHookTest)
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 $project=Join-Path $root "RELYR\RELYR.csproj"
+$nugetConfig=Join-Path $root "NuGet.Config"
+$env:APPDATA=Join-Path $root ".verification\appdata"
+New-Item -ItemType Directory -Force -Path $env:APPDATA|Out-Null
 $buildDirectory=Join-Path $root "RELYR\bin\$Configuration\net10.0-windows\win-x64"
 $dll=Join-Path $buildDirectory "RELYR.dll"
 $output=Join-Path $root "artifacts\production"
@@ -44,7 +47,13 @@ function Remove-OutputDirectoryWithRetry([string]$directory) {
 # executable in this production path before any validation begins.
 Stop-ProductionInstance $productionExecutable
 
-dotnet build $project -c $Configuration -warnaserror
+$assetsFile=Join-Path $root "RELYR\obj\project.assets.json"
+if(-not (Test-Path -LiteralPath $assetsFile)){
+    dotnet restore $project --configfile $nugetConfig
+    if($LASTEXITCODE -ne 0){throw "Restore failed"}
+}
+
+dotnet build $project -c $Configuration -warnaserror --no-restore
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 
 dotnet $dll --self-test

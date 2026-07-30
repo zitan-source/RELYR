@@ -112,13 +112,18 @@ public static class SelfTest
             Check(InputEngine.TryGetDirectDesktopStep("Ctrl+Win+Left",out int leftStep)&&leftStep==-1&&InputEngine.TryGetDirectDesktopStep("Ctrl+Win+Right",out int rightStep)&&rightStep==1,"adjacent desktop actions use the direct API instead of injectable shortcuts");
             Check(new[]{"Left","Right","Up","Down"}.All(d=>ActionCatalog.Items.Any(x=>x.Value=="MoveWindowMonitor"+d)),"move active window to four monitor directions");
             Check(ActionCatalog.Items.Any(x=>x.Value=="SnapWindowLeft"&&x.Name.Contains("左半分"))&&ActionCatalog.Items.Any(x=>x.Value=="SnapWindowRight"&&x.Name.Contains("右半分")),"target-aware window snap actions are available for both halves");
+            Check(ActionCatalog.Items.Any(x=>x.Value==OverlayService.DeckPanelAction&&x.Name.Contains("Deck"))&&InputEngine.IsRecognizedShortcut(OverlayService.DeckPanelAction),"Deck panel overlay is available as an assignable action");
+            var deckConfig=new AppConfig();
+            deckConfig.Profiles[0].Mappings.Add(new Mapping{Input=DeckPanelLayout.InputName(1),Layer=DeckPanelLayout.Layer,Kind=ActionKind.Shortcut,Value="Ctrl+C",Description="コピー"});
+            var deckClone=service.Clone(deckConfig);
+            Check(DeckPanelLayout.SlotCount==45&&DeckPanelLayout.InputName(45)=="Deck+45"&&DeckPanelLayout.FindMapping(deckClone,1) is {Value:"Ctrl+C",Description:"コピー"},"Deck panel keeps 45 stable profile-specific slots and editable names");
             Check(ActionCatalog.Items.Any(x=>x.Value=="ToggleMaximizeWindow"&&x.Name.Contains("元のサイズ")),"target-aware toggle maximize action");
             Check(ActionCatalog.Items.Any(x=>x.Category=="ウィンドウ・基本操作"&&x.Name=="最小化"&&x.Value=="MinimizeActiveWindow")&&ActionCatalog.Items.Any(x=>x.Category=="ウィンドウ・基本操作"&&x.Name=="ウィンドウを閉じる"&&x.Value=="CloseActiveWindow"),"target-aware minimize and close-window actions");
             InputEngine.ResetMinimizeAllToggleForTest();Check(InputEngine.ResolveShortcutAliasForTest("CloseActiveWindow")=="Alt+F4"&&InputEngine.ResolveShortcutAliasForTest("ToggleMinimizeAllWindows")=="Win+M"&&InputEngine.ResolveShortcutAliasForTest("ToggleMinimizeAllWindows")=="Shift+Win+M"&&ActionCatalog.Items.Any(x=>x.Value=="Win+M")&&ActionCatalog.Items.Any(x=>x.Value=="Shift+Win+M"),"close compatibility and minimize-all toggle actions");
             Check(InputEngine.ShortcutMatchesForTest("LeftAlt+F4","Alt","F4")&&InputEngine.ShortcutMatchesForTest("RightAlt+F4","Alt","F4")&&InputEngine.ShortcutMatchesForTest("LWin+Left","Win","Left"),"left and right modifier names match target-aware window shortcuts");
             Check(new[]{"画面キャプチャ","編集・クリップボード","ファイル・文書","文書の書式","ウィンドウ・整列","ブラウザー・タブ操作","エクスプローラー・ファイル操作"}.All(category=>ActionCatalog.Items.Any(x=>x.Category==category)),"common actions are divided into task-focused categories");
             var overlayActions=ActionCatalog.Items.Where(x=>x.MajorCategory=="オーバーレイ").ToArray();
-            Check(overlayActions.Select(x=>x.Value).ToHashSet().SetEquals([OverlayService.NumpadAction,OverlayService.ExtendedKeypadAction,OverlayService.BlankAction,OverlayService.ClockAction]),"overlay category exposes the two input panels, blank screen, and clock");
+            Check(overlayActions.Select(x=>x.Value).ToHashSet().SetEquals([OverlayService.NumpadAction,OverlayService.ExtendedKeypadAction,OverlayService.DeckPanelAction,OverlayService.BlankAction,OverlayService.ClockAction]),"overlay category exposes the keypad panels, Deck, blank screen, and clock");
             Check(!OverlayService.ShouldDismissFullScreenKeyboard(false,true)
                   &&!OverlayService.ShouldDismissFullScreenKeyboard(true,false)
                   &&OverlayService.ShouldDismissFullScreenKeyboard(true,true)
@@ -136,17 +141,33 @@ public static class SelfTest
             {
                 new WindowMonitorService.WindowCandidate((IntPtr)1,"Shell_TrayWnd",true),
                 new WindowMonitorService.WindowCandidate((IntPtr)2,"Windows.UI.Core.CoreWindow",true),
-                new WindowMonitorService.WindowCandidate((IntPtr)3,"ApplicationFrameWindow",false),
-                new WindowMonitorService.WindowCandidate((IntPtr)4,"Chrome_WidgetWin_1",true)
+                new WindowMonitorService.WindowCandidate((IntPtr)3,"XamlExplorerHostIslandWindow",true),
+                new WindowMonitorService.WindowCandidate((IntPtr)4,"ApplicationFrameWindow",false),
+                new WindowMonitorService.WindowCandidate((IntPtr)5,"Chrome_WidgetWin_1",true)
             };
-            Check(WindowMonitorService.SelectShortcutTarget(shortcutCandidates)==(IntPtr)4,"macro shortcut skips taskbar, shell overlays, and hidden windows");
-            Check(ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[3],40,99)
+            Check(WindowMonitorService.SelectShortcutTarget(shortcutCandidates)==(IntPtr)5,"macro shortcut skips taskbar, Windows 11 shell overlays, and hidden windows");
+            Check(ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4],40,99)
                   &&!ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[0],40,99)
-                  &&!ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[3],99,99),
+                  &&!ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4],99,99),
                 "foreground tracker remembers only visible non-shell windows owned by another process");
+            Check(WindowMonitorService.SelectShortcutLaunchTarget(shortcutCandidates[4],(IntPtr)77,handle=>handle is (IntPtr)5 or (IntPtr)77)==(IntPtr)5
+                  &&WindowMonitorService.SelectShortcutLaunchTarget(shortcutCandidates[0],(IntPtr)77,handle=>handle==(IntPtr)77)==(IntPtr)77,
+                "taskbar shortcut launch prefers a live foreground window and falls back to the remembered window for shell focus");
+            string persistedWindowPath=Path.Combine(dir,"last-foreground-window.txt");
+            ForegroundWindowTracker.PersistWindow(persistedWindowPath,(IntPtr)4321);
+            Check(ForegroundWindowTracker.ReadPersistedWindow(persistedWindowPath)==(IntPtr)4321,
+                "taskbar macro target survives the elevation boundary through the persisted fallback");
             Check(WindowMonitorService.SelectRememberedShortcutTarget((IntPtr)4444,handle=>handle==(IntPtr)4444)==(IntPtr)4444
                   &&WindowMonitorService.SelectRememberedShortcutTarget((IntPtr)4444,_=>false)==IntPtr.Zero,
                 "taskbar macro prefers a valid window remembered by the resident process and rejects stale handles");
+            Check(WindowMonitorService.SelectShortcutPreparationTarget((IntPtr)4567,handle=>handle==(IntPtr)4567)==(IntPtr)4567
+                  &&WindowMonitorService.SelectShortcutPreparationTarget((IntPtr)4567,_=>false)==IntPtr.Zero,
+                "taskbar macro reactivates only its captured valid window before replaying raw shortcuts");
+            var leftSecondary=WindowMonitorService.SnapBounds(new System.Drawing.Rectangle(-1920,40,1920,1040),WindowMonitorService.Direction.Left);
+            var rightOddSecondary=WindowMonitorService.SnapBounds(new System.Drawing.Rectangle(1920,-200,1919,1080),WindowMonitorService.Direction.Right);
+            Check(leftSecondary==new System.Drawing.Rectangle(-1920,40,960,1040)
+                  &&rightOddSecondary==new System.Drawing.Rectangle(2879,-200,960,1080),
+                "left and right snap bounds stay on negative, offset, and odd-width secondary monitors");
             string[] targeted=App.AttachMacroShortcutTarget(["--run-macro-id","macro-1"],()=>(IntPtr)4567);
             Check(App.ReadMacroShortcutTarget(targeted)==(IntPtr)4567&&targeted.Length==4,"macro shortcut target survives elevated argument encoding");
             Check(App.AttachMacroShortcutTarget(targeted,()=>throw new InvalidOperationException()).SequenceEqual(targeted),"macro shortcut target is captured only once");

@@ -13,7 +13,15 @@ internal static class WindowMonitorService
         "Shell_SecondaryTrayWnd",
         "Progman",
         "WorkerW",
-        "Windows.UI.Core.CoreWindow"
+        "Windows.UI.Core.CoreWindow",
+        "XamlExplorerHostIslandWindow",
+        "Windows.UI.Composition.DesktopWindowContentBridge",
+        "TopLevelWindowForOverflowXamlIsland",
+        "NotifyIconOverflowWindow",
+        "TaskListThumbnailWnd",
+        "MultitaskingViewFrame",
+        "Xaml_WindowedPopupClass",
+        "Shell_DimWindow"
     };
 
     internal static IntPtr ResolveTarget(WindowActionTarget target,IntPtr? preferredActiveWindow=null)
@@ -45,8 +53,14 @@ internal static class WindowMonitorService
     // タスクバー等を前面ウィンドウの候補から除外し、直前の通常ウィンドウを取得する。
     internal static IntPtr GetActiveWindowForShortcut()
     {
-        IntPtr remembered=SelectRememberedShortcutTarget(ForegroundWindowTracker.ReadLastWindow(),IsUsableWindow);
-        if(remembered!=IntPtr.Zero)return remembered;
+        IntPtr foreground=GetForegroundWindow();
+        var foregroundClass=new System.Text.StringBuilder(256);
+        GetClassName(foreground,foregroundClass,foregroundClass.Capacity);
+        IntPtr selected=SelectShortcutLaunchTarget(
+            new(foreground,foregroundClass.ToString(),IsWindowVisible(foreground)),
+            ForegroundWindowTracker.ReadLastWindow(),
+            IsUsableWindow);
+        if(selected!=IntPtr.Zero)return selected;
         IntPtr current=GetTopWindow(IntPtr.Zero);
         while(current!=IntPtr.Zero)
         {
@@ -56,6 +70,15 @@ internal static class WindowMonitorService
             current=GetWindow(current,2);
         }
         return IntPtr.Zero;
+    }
+
+    internal static IntPtr SelectShortcutLaunchTarget(
+        WindowCandidate foreground,
+        IntPtr remembered,
+        Func<IntPtr,bool> isUsable)
+    {
+        if(IsShortcutTargetCandidate(foreground)&&isUsable(foreground.Handle))return foreground.Handle;
+        return SelectRememberedShortcutTarget(remembered,isUsable);
     }
 
     internal static IntPtr SelectRememberedShortcutTarget(IntPtr remembered,Func<IntPtr,bool> isUsable)
@@ -68,6 +91,15 @@ internal static class WindowMonitorService
         =>candidates.FirstOrDefault(IsShortcutTargetCandidate).Handle;
 
     internal static bool IsUsableWindow(IntPtr window)=>window!=IntPtr.Zero&&IsWindow(window)&&IsWindowVisible(window);
+
+    internal static IntPtr SelectShortcutPreparationTarget(IntPtr? preferred,Func<IntPtr,bool> isUsable)
+        =>preferred is { } window&&isUsable(window)?window:IntPtr.Zero;
+
+    internal static void PrepareShortcutTarget(IntPtr? preferred)
+    {
+        IntPtr window=SelectShortcutPreparationTarget(preferred,IsUsableWindow);
+        if(window!=IntPtr.Zero)VirtualDesktopService.ActivateWindow(window);
+    }
 
     internal static void Minimize(WindowActionTarget target)=>Minimize(ResolveTarget(target));
     internal static void Minimize(IntPtr window)=>ShowWindow(ValidateTarget(window),6);
@@ -119,12 +151,19 @@ internal static class WindowMonitorService
         if(direction is not (Direction.Left or Direction.Right))throw new ArgumentOutOfRangeException(nameof(direction));
         ValidateTarget(window);
         if(IsZoomed(window)||IsIconic(window))ShowWindow(window,9);
-        var area=Screen.FromHandle(window).WorkingArea;
-        int left=direction==Direction.Left?area.Left:area.Left+area.Width/2;
-        int width=direction==Direction.Left?area.Width/2:area.Width-area.Width/2;
-        if(!SetWindowPos(window,IntPtr.Zero,left,area.Top,width,area.Height,0x0004|0x0040))
+        var bounds=SnapBounds(Screen.FromHandle(window).WorkingArea,direction);
+        if(!SetWindowPos(window,IntPtr.Zero,bounds.Left,bounds.Top,bounds.Width,bounds.Height,0x0004|0x0040))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),"ウィンドウを配置できませんでした。");
         VirtualDesktopService.ActivateWindow(window);
+    }
+
+    internal static System.Drawing.Rectangle SnapBounds(System.Drawing.Rectangle workingArea,Direction direction)
+    {
+        if(direction is not (Direction.Left or Direction.Right))throw new ArgumentOutOfRangeException(nameof(direction));
+        int leftWidth=workingArea.Width/2;
+        return direction==Direction.Left
+            ?new(workingArea.Left,workingArea.Top,leftWidth,workingArea.Height)
+            :new(workingArea.Left+leftWidth,workingArea.Top,workingArea.Width-leftWidth,workingArea.Height);
     }
 
     internal static void Move(WindowActionTarget target,Direction direction)=>Move(ResolveTarget(target),direction);
@@ -197,6 +236,7 @@ internal static class WindowMonitorService
     [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr hWnd,uint flags);
     [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")]static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]static extern IntPtr GetTopWindow(IntPtr hWnd);
     [DllImport("user32.dll")]static extern IntPtr GetWindow(IntPtr hWnd,uint command);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr hWnd,System.Text.StringBuilder className,int maxCount);
