@@ -450,8 +450,28 @@ public partial class MainWindow : Window
             CurrentProfile.Mappings.Add(mapping);
         }
         mapping.Description=name;
+        if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)
+        {
+            selected.Description=name;
+            if(DeckNameBox!=null&&!string.Equals(DeckNameBox.Text,name,StringComparison.Ordinal))
+            {
+                loading=true;DeckNameBox.Text=name;loading=false;
+            }
+        }
         if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description))
             CurrentProfile.Mappings.Remove(mapping);
+        MarkDirty();
+        ColorButtons();
+    }
+    void DeckNameBox_TextChanged(object sender,TextChangedEventArgs e)
+    {
+        if(loading||selected==null||!DeckPanelLayout.IsInputName(selected.Input))return;
+        selected.Description=DeckNameBox.Text.Trim();
+        if(MappingHasConfiguredAction(selected)||!string.IsNullOrWhiteSpace(selected.Description))
+        {
+            if(!CurrentProfile.Mappings.Contains(selected))CurrentProfile.Mappings.Add(selected);
+        }
+        else CurrentProfile.Mappings.Remove(selected);
         MarkDirty();
         ColorButtons();
     }
@@ -496,7 +516,10 @@ public partial class MainWindow : Window
     }
     void ClearSelectedInput(FrameworkElement? fallback=null)
     {
-        selected=null;selectedBaseInput="";editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="キーを選択してください";AssignmentEditor.IsEnabled=false;AssignmentEditor.Opacity=.55;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane(false);
+        selected=null;selectedBaseInput="";editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="キーを選択してください";
+        InspectorEmptyState.Visibility=Visibility.Visible;SelectionHeader.Visibility=Visibility.Collapsed;AssignmentEditor.Visibility=Visibility.Collapsed;AssignmentEditor.IsEnabled=false;
+        loading=true;DeckNameBox.Clear();loading=false;
+        ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane(false);
     }
     static bool IsDescendantOf(DependencyObject source,DependencyObject ancestor)
     {
@@ -739,7 +762,7 @@ public partial class MainWindow : Window
         LongPressOnlyButton.Visibility=Visibility.Collapsed;
         KindBox.ItemsSource=ActionOptions(allowGesture:false).Where(x=>x.Kind!=ActionKind.Gesture).ToArray();
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
-        ClearSelectedInput(DeckPanelManagerButton);
+        ClearSelectedInput();
         UpdateLayerButtons();
         ColorButtons();
     }
@@ -755,6 +778,7 @@ public partial class MainWindow : Window
         LongPressOnlyButton.Visibility=Visibility.Visible;
         KindBox.ItemsSource=ActionOptions(allowGesture:true);
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
+        DeckNameEditorPanel.Visibility=Visibility.Collapsed;
     }
     void DeckKeypadInput_Click(object sender,RoutedEventArgs e)
     {
@@ -836,7 +860,9 @@ public partial class MainWindow : Window
         int plus=input.IndexOf('+');if(plus>0){layer=input[..plus];selectedBaseInput=input[(plus+1)..];}
         var visibleAssignment=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
         detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(CurrentProfile.Mappings,visibleAssignment,input);
-        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);AssignmentEditor.IsEnabled=true;AssignmentEditor.Opacity=1;loading = false;UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
+        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
+        InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
+        UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
     internal static Mapping SelectEditorMapping(IReadOnlyList<Mapping> currentMappings,Mapping? visibleAssignment,string input)
     {
@@ -1115,15 +1141,17 @@ public partial class MainWindow : Window
             bool blocked=IsMouseLayerBlockedByDirectGesture(config.Profiles,CurrentProfile.Name,b.Tag?.ToString()??"");
             bool active=Equals(b.Tag,currentLayer);
             b.IsEnabled=!blocked;
-            b.Background=ThemeService.Brush(active?"LayerActiveBackground":"KeyBackground");
-            b.BorderBrush=ThemeService.Brush(active?"AccentBrush":"SubtleBorderBrush");
+            b.Background=active?ThemeService.Brush("LayerActiveBackground"):System.Windows.Media.Brushes.Transparent;
+            b.BorderBrush=System.Windows.Media.Brushes.Transparent;
             b.Foreground=ThemeService.Brush("PrimaryText");
             b.ToolTip=blocked?$"通常レイヤーの{MouseLayerLabel(b.Tag?.ToString()??"")}にジェスチャーが割り当てられているため使用できません。ジェスチャーを削除すると再び使用できます。":null;
         }
         bool deckActive=deckManagementMode;
-        DeckPanelManagerButton.Background=ThemeService.Brush(deckActive?"LayerActiveBackground":"KeyBackground");
-        DeckPanelManagerButton.BorderBrush=ThemeService.Brush(deckActive?"AccentBrush":"SubtleBorderBrush");
+        DeckPanelManagerButton.Background=deckActive?ThemeService.Brush("LayerActiveBackground"):System.Windows.Media.Brushes.Transparent;
+        DeckPanelManagerButton.BorderBrush=System.Windows.Media.Brushes.Transparent;
         DeckPanelManagerButton.Foreground=ThemeService.Brush("PrimaryText");
+        WorkspaceTitle.Text=deckActive?"Deckパネル":"キーボード";
+        WorkspaceSubtitle.Text=deckActive?"45個のボタン":LayerDisplayName(currentLayer);
         if(InputDisplayText!=null)InputDisplayText.Text=selected==null?"キーを選択してください":DisplayInputName(selected.Input);
     }
     internal static bool IsMouseLayerBlockedByDirectGesture(IReadOnlyList<Profile> profiles,string profileName,string layer)
@@ -1203,17 +1231,27 @@ public partial class MainWindow : Window
     void MainContent_SizeChanged(object sender,SizeChangedEventArgs e)
     {
         if(WorkspaceGrid==null||AssignmentPane==null||LowerInputRow==null)return;
-        double gap=e.NewSize.Width<1000?10:e.NewSize.Width<1450?14:18;
-        LayerNavigationColumn.Width=new GridLength(e.NewSize.Width<950?140:e.NewSize.Width<1500?150:165);HeaderBrandColumn.Width=LayerNavigationColumn.Width;
-        AssignmentPaneColumn.Width=new GridLength(e.NewSize.Width<950?280:e.NewSize.Width<1500?300:320);
-        MouseColumn.Width=new GridLength(e.NewSize.Width<1000?190:e.NewSize.Width<1250?230:e.NewSize.Width<1550?270:300);
-        // The mouse diagram may shrink with a compact window, but it must not
-        // grow larger than the navigation, numpad, and cursor-key groups.
-        double mouseScale=Math.Clamp(Math.Min(e.NewSize.Width/1050,e.NewSize.Height/650),.75,1.0);
-        MouseHost.Width=168*mouseScale;MouseHost.Height=260*mouseScale;
-        LowerInputRow.Height=new GridLength(Math.Clamp(e.NewSize.Height*.38,240,370));
-        KeyboardViewbox.MaxWidth=e.NewSize.Width<1100?double.PositiveInfinity:e.NewSize.Width<1500?1120:1220;
+        double gap=e.NewSize.Width<1000?12:e.NewSize.Width<1450?16:20;
+        double navigationWidth=e.NewSize.Width<1000?176:e.NewSize.Width<1500?196:208;
+        double inspectorWidth=e.NewSize.Width<1000?288:e.NewSize.Width<1500?320:340;
+        LayerNavigationColumn.Width=new GridLength(navigationWidth);HeaderBrandColumn.Width=new GridLength(navigationWidth);
+        AssignmentPaneColumn.Width=new GridLength(inspectorWidth);
+        double centerWidth=Math.Max(360,e.NewSize.Width-navigationWidth-inspectorWidth-gap*2);
+        double mouseWidth=Math.Clamp(centerWidth*.23,150,240);
+        MouseColumn.Width=new GridLength(mouseWidth);
+        // Every lower input group follows the same available-space ratio. The
+        // mouse diagram is capped below the adjacent keypad/navigation surface.
+        double lowerHeight=Math.Clamp(e.NewSize.Height*.36,220,340);
+        double mouseScale=Math.Clamp(Math.Min(mouseWidth/220,lowerHeight/300),.62,.9);
+        double secondaryHeight=Math.Min(lowerHeight,Math.Max(80,(centerWidth-mouseWidth-12)/654*312));
+        MouseHost.Width=168*mouseScale;MouseHost.Height=Math.Max(48,secondaryHeight-30);
+        LowerInputRow.Height=new GridLength(lowerHeight);
+        KeyboardViewbox.MaxWidth=e.NewSize.Width<1100?double.PositiveInfinity:e.NewSize.Width<1500?1080:1180;
         WorkspaceGrid.Margin=new Thickness(gap);AssignmentPane.Padding=new Thickness(gap);UpdateLayerButtonWidths();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render,new Action(()=>
+        {
+            if(SecondaryKeyboardViewbox.ActualHeight>0)MouseHost.Height=Math.Max(48,SecondaryKeyboardViewbox.ActualHeight-30);
+        }));
     }
     void LayerButtonsPanel_SizeChanged(object sender,SizeChangedEventArgs e)=>UpdateLayerButtonWidths();
     void UpdateLayerButtonWidths()
@@ -1224,7 +1262,7 @@ public partial class MainWindow : Window
         foreach(var category in new[]{KeyboardLayerCategory,MouseLayerCategory,WindowsLayerCategory})category.Margin=compact?new Thickness(8,2,8,1):new Thickness(8,8,8,3);
         foreach(var button in LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>())
         {
-            button.Width=double.NaN;button.Height=compact?36:50;button.MinHeight=36;button.Padding=compact?new Thickness(6,0,4,0):narrow?new Thickness(7,4,5,4):new Thickness(10,5,10,5);button.FontSize=compact?12:narrow?12:14;button.Margin=compact?new Thickness(3,1,3,1):new Thickness(3);button.HorizontalAlignment=System.Windows.HorizontalAlignment.Stretch;button.HorizontalContentAlignment=System.Windows.HorizontalAlignment.Left;
+            button.Width=double.NaN;button.Height=compact?36:44;button.MinHeight=36;button.Padding=compact?new Thickness(8,0,8,0):new Thickness(10,4,10,4);button.FontSize=compact?12:13;button.Margin=compact?new Thickness(0,1,0,1):new Thickness(0,2,0,2);button.HorizontalAlignment=System.Windows.HorizontalAlignment.Stretch;button.HorizontalContentAlignment=System.Windows.HorizontalAlignment.Left;
             if(button.Content is StackPanel content)
             {
                 content.HorizontalAlignment=System.Windows.HorizontalAlignment.Left;

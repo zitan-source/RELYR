@@ -56,32 +56,32 @@ internal static class ThemeService
 
     static readonly IReadOnlyDictionary<string,string> DarkPalette=new Dictionary<string,string>
     {
-        ["AppBackground"]="#11141B",["HeaderBackground"]="#101720",["FooterBackground"]="#0B1118",
-        ["PaneBackground"]="#111923",["SurfaceBackground"]="#171D27",["CardBackground"]="#1D2330",
-        ["ControlBackground"]="#293142",["ControlHoverBackground"]="#354158",["ControlPressedBackground"]="#176B5D",
-        ["InputBackground"]="#171D27",["BorderBrush"]="#465168",["SubtleBorderBrush"]="#33465A",
-        ["PrimaryText"]="#E8ECF4",["SecondaryText"]="#AAB4C8",["MutedText"]="#8F9CB2",
-        ["AccentBrush"]="#72E0C1",["AccentStrongBrush"]="#1F8F7B",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#244B4A",
-        ["WarningBrush"]="#F6C66A",["DangerBrush"]="#E16A78",["DangerBackground"]="#7D2430",
-        ["DangerHoverBackground"]="#9B3040",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#FFFFFF",
-        ["KeyBackground"]="#1B2733",["ReservedKeyBackground"]="#343B44",
-        ["LayerActiveBackground"]="#146B5C",["EditingKeyBackground"]="#246BC5",["EditingKeyBorderBrush"]="#75B7FF",
+        ["AppBackground"]="#151719",["HeaderBackground"]="#1C1E21",["FooterBackground"]="#17191C",
+        ["PaneBackground"]="#1C1E21",["SurfaceBackground"]="#202225",["CardBackground"]="#25282C",
+        ["ControlBackground"]="#2B2E33",["ControlHoverBackground"]="#363A40",["ControlPressedBackground"]="#253D57",
+        ["InputBackground"]="#202225",["BorderBrush"]="#484B50",["SubtleBorderBrush"]="#35383D",
+        ["PrimaryText"]="#F2F2F3",["SecondaryText"]="#A7ABB1",["MutedText"]="#7F848C",
+        ["AccentBrush"]="#0A84FF",["AccentStrongBrush"]="#0A84FF",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#193B5E",
+        ["WarningBrush"]="#FFD60A",["DangerBrush"]="#FF453A",["DangerBackground"]="#512623",
+        ["DangerHoverBackground"]="#69302C",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#FFFFFF",
+        ["KeyBackground"]="#292C30",["ReservedKeyBackground"]="#35383C",
+        ["LayerActiveBackground"]="#153A5F",["EditingKeyBackground"]="#0A84FF",["EditingKeyBorderBrush"]="#64B5FF",
         ["ActionKeyIconBrush"]="#F09A3E",["ActionDisabledIconBrush"]="#AAB4C2",["ActionProfileIconBrush"]="#68A7FF",["ActionShortcutIconBrush"]="#52D5BE",
         ["ActionTextIconBrush"]="#E4B936",["ActionLaunchIconBrush"]="#AA78DA",["ActionMacroIconBrush"]="#E15A65"
     };
 
     static readonly IReadOnlyDictionary<string,string> LightPalette=new Dictionary<string,string>
     {
-        ["AppBackground"]="#F3F6FA",["HeaderBackground"]="#FFFFFF",["FooterBackground"]="#E8EEF5",
-        ["PaneBackground"]="#EDF2F7",["SurfaceBackground"]="#F8FAFC",["CardBackground"]="#FFFFFF",
-        ["ControlBackground"]="#FFFFFF",["ControlHoverBackground"]="#E7F3F0",["ControlPressedBackground"]="#CFE9E3",
-        ["InputBackground"]="#FFFFFF",["BorderBrush"]="#B8C5D4",["SubtleBorderBrush"]="#D3DCE7",
-        ["PrimaryText"]="#172231",["SecondaryText"]="#526174",["MutedText"]="#6D7C90",
-        ["AccentBrush"]="#087B69",["AccentStrongBrush"]="#0B806D",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#DDF2ED",
-        ["WarningBrush"]="#9A5B00",["DangerBrush"]="#B42332",["DangerBackground"]="#B42332",
-        ["DangerHoverBackground"]="#FFF1F2",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#9F2033",
-        ["KeyBackground"]="#FFFFFF",["ReservedKeyBackground"]="#E5E9EE",
-        ["LayerActiveBackground"]="#D4EEE8",["EditingKeyBackground"]="#1674C8",["EditingKeyBorderBrush"]="#075AA6",
+        ["AppBackground"]="#F5F5F7",["HeaderBackground"]="#FFFFFF",["FooterBackground"]="#F0F0F2",
+        ["PaneBackground"]="#F2F2F4",["SurfaceBackground"]="#FAFAFB",["CardBackground"]="#FFFFFF",
+        ["ControlBackground"]="#FFFFFF",["ControlHoverBackground"]="#E9E9EC",["ControlPressedBackground"]="#DCEBFA",
+        ["InputBackground"]="#FFFFFF",["BorderBrush"]="#C7C7CC",["SubtleBorderBrush"]="#DEDEE2",
+        ["PrimaryText"]="#1D1D1F",["SecondaryText"]="#626268",["MutedText"]="#86868B",
+        ["AccentBrush"]="#007AFF",["AccentStrongBrush"]="#007AFF",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#E1F0FF",
+        ["WarningBrush"]="#9A6700",["DangerBrush"]="#D70015",["DangerBackground"]="#D70015",
+        ["DangerHoverBackground"]="#FFE5E7",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#A50011",
+        ["KeyBackground"]="#FFFFFF",["ReservedKeyBackground"]="#E7E7EA",
+        ["LayerActiveBackground"]="#DDEEFF",["EditingKeyBackground"]="#007AFF",["EditingKeyBorderBrush"]="#005FC7",
         ["ActionKeyIconBrush"]="#B85B00",["ActionDisabledIconBrush"]="#596575",["ActionProfileIconBrush"]="#075EAD",["ActionShortcutIconBrush"]="#087B69",
         ["ActionTextIconBrush"]="#8A6500",["ActionLaunchIconBrush"]="#7040A3",["ActionMacroIconBrush"]="#B42332"
     };

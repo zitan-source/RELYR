@@ -53,6 +53,11 @@ if(-not (Test-Path -LiteralPath $assetsFile)){
     if($LASTEXITCODE -ne 0){throw "Restore failed"}
 }
 
+# WPF incremental markup output can retain or lose individual BAML files after
+# a forced test shutdown. Production validation must always compile every XAML
+# resource from a clean intermediate state.
+dotnet clean $project -c $Configuration
+if($LASTEXITCODE -ne 0){throw "Clean failed"}
 dotnet build $project -c $Configuration -warnaserror --no-restore
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 

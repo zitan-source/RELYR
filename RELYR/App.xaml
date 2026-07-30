@@ -3,36 +3,36 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:RELYR">
     <Application.Resources>
-        <SolidColorBrush x:Key="AppBackground" Color="#11141B"/>
-        <SolidColorBrush x:Key="HeaderBackground" Color="#101720"/>
-        <SolidColorBrush x:Key="FooterBackground" Color="#0B1118"/>
-        <SolidColorBrush x:Key="PaneBackground" Color="#111923"/>
-        <SolidColorBrush x:Key="SurfaceBackground" Color="#171D27"/>
-        <SolidColorBrush x:Key="CardBackground" Color="#1D2330"/>
-        <SolidColorBrush x:Key="ControlBackground" Color="#293142"/>
-        <SolidColorBrush x:Key="ControlHoverBackground" Color="#354158"/>
-        <SolidColorBrush x:Key="ControlPressedBackground" Color="#176B5D"/>
-        <SolidColorBrush x:Key="InputBackground" Color="#171D27"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="#465168"/>
-        <SolidColorBrush x:Key="SubtleBorderBrush" Color="#33465A"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#E8ECF4"/>
-        <SolidColorBrush x:Key="SecondaryText" Color="#AAB4C8"/>
-        <SolidColorBrush x:Key="MutedText" Color="#8F9CB2"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#72E0C1"/>
-        <SolidColorBrush x:Key="AccentStrongBrush" Color="#1F8F7B"/>
+        <SolidColorBrush x:Key="AppBackground" Color="#151719"/>
+        <SolidColorBrush x:Key="HeaderBackground" Color="#1C1E21"/>
+        <SolidColorBrush x:Key="FooterBackground" Color="#17191C"/>
+        <SolidColorBrush x:Key="PaneBackground" Color="#1C1E21"/>
+        <SolidColorBrush x:Key="SurfaceBackground" Color="#202225"/>
+        <SolidColorBrush x:Key="CardBackground" Color="#25282C"/>
+        <SolidColorBrush x:Key="ControlBackground" Color="#2B2E33"/>
+        <SolidColorBrush x:Key="ControlHoverBackground" Color="#363A40"/>
+        <SolidColorBrush x:Key="ControlPressedBackground" Color="#253D57"/>
+        <SolidColorBrush x:Key="InputBackground" Color="#202225"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#484B50"/>
+        <SolidColorBrush x:Key="SubtleBorderBrush" Color="#35383D"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#F2F2F3"/>
+        <SolidColorBrush x:Key="SecondaryText" Color="#A7ABB1"/>
+        <SolidColorBrush x:Key="MutedText" Color="#7F848C"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#0A84FF"/>
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#0A84FF"/>
         <SolidColorBrush x:Key="AccentButtonText" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="AccentSoftBrush" Color="#244B4A"/>
-        <SolidColorBrush x:Key="WarningBrush" Color="#F6C66A"/>
-        <SolidColorBrush x:Key="DangerBrush" Color="#E16A78"/>
-        <SolidColorBrush x:Key="DangerBackground" Color="#7D2430"/>
-        <SolidColorBrush x:Key="DangerHoverBackground" Color="#9B3040"/>
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#193B5E"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#FFD60A"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#FF453A"/>
+        <SolidColorBrush x:Key="DangerBackground" Color="#512623"/>
+        <SolidColorBrush x:Key="DangerHoverBackground" Color="#69302C"/>
         <SolidColorBrush x:Key="DangerForeground" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="DangerHoverForeground" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="KeyBackground" Color="#1B2733"/>
-        <SolidColorBrush x:Key="ReservedKeyBackground" Color="#343B44"/>
-        <SolidColorBrush x:Key="LayerActiveBackground" Color="#146B5C"/>
-        <SolidColorBrush x:Key="EditingKeyBackground" Color="#246BC5"/>
-        <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#75B7FF"/>
+        <SolidColorBrush x:Key="KeyBackground" Color="#292C30"/>
+        <SolidColorBrush x:Key="ReservedKeyBackground" Color="#35383C"/>
+        <SolidColorBrush x:Key="LayerActiveBackground" Color="#153A5F"/>
+        <SolidColorBrush x:Key="EditingKeyBackground" Color="#0A84FF"/>
+        <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#64B5FF"/>
         <SolidColorBrush x:Key="ActionKeyIconBrush" Color="#F09A3E"/>
         <SolidColorBrush x:Key="ActionDisabledIconBrush" Color="#AAB4C2"/>
         <SolidColorBrush x:Key="ActionProfileIconBrush" Color="#68A7FF"/>
@@ -40,25 +40,38 @@
         <SolidColorBrush x:Key="ActionTextIconBrush" Color="#E4B936"/>
         <SolidColorBrush x:Key="ActionLaunchIconBrush" Color="#AA78DA"/>
         <SolidColorBrush x:Key="ActionMacroIconBrush" Color="#E15A65"/>
+        <Style TargetType="{x:Type Window}">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+        </Style>
+        <Style TargetType="{x:Type ToolTip}">
+            <Setter Property="Background" Value="{DynamicResource CardBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
         <Style x:Key="AppButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="MinHeight" Value="36"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.76"/></Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42"/></Trigger>

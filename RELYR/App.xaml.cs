@@ -259,13 +259,23 @@ public partial class App : System.Windows.Application
     }
     internal static void ExitImmediately(int exitCode)
     {
-        // Environment.Exit can wait indefinitely for WPF/WinForms/COM shutdown
-        // handlers and suspend a managed watchdog thread. Release injected input,
-        // then remove the tray icon before the Win32 safety exit.
+        // Release injected input first, then let WPF close normally. A native
+        // process kill is kept only as a silent watchdog so shutdown can never
+        // surface the CLR "unknown software exception" dialog.
         try{if(Current?.MainWindow is RELYR.MainWindow window)window.PrepareVisualsForImmediateExit();}catch{}
         try{InputEngine.ReleaseAll();}catch{}
-        try{TerminateProcess(Process.GetCurrentProcess().Handle,unchecked((uint)exitCode));}catch{}
-        Environment.FailFast($"RELYR could not terminate normally (exit code {exitCode}).");
+        Environment.ExitCode=exitCode;
+        ArmForcedProcessExit(TimeSpan.FromSeconds(3));
+        try
+        {
+            if(Current==null){Process.GetCurrentProcess().Kill(false);return;}
+            if(Current.Dispatcher.CheckAccess())Current.Shutdown(exitCode);
+            else Current.Dispatcher.BeginInvoke(new Action(()=>Current.Shutdown(exitCode)));
+        }
+        catch
+        {
+            try{Process.GetCurrentProcess().Kill(false);}catch{}
+        }
     }
     void ShutdownWithExitCode(int exitCode)=>ExitImmediately(exitCode);
     void ListenForShow(MainWindow window)
@@ -355,6 +365,4 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();foregroundWindowTracker?.Dispose();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);
-    [DllImport("kernel32.dll",SetLastError=true)]
-    static extern bool TerminateProcess(IntPtr process,uint exitCode);
 }
