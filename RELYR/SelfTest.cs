@@ -8,7 +8,7 @@ public static class SelfTest
     {
         var failures=new List<string>();
         void Check(bool value,string name){if(value)output.WriteLine("PASS "+name);else{output.WriteLine("FAIL "+name);failures.Add(name);}}
-        string dir=Path.Combine(Path.GetTempPath(),"RELYR-SelfTest-"+Guid.NewGuid().ToString("N"));
+        string dir=VerificationPaths.CreateRunDirectory("self-test");
         try
         {
             var service=new ConfigService(dir);var config=service.Load();

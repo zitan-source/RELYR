@@ -32,9 +32,9 @@
     <Style TargetType="ListBox"><Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/></Style>
     <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
   </Window.Resources>
-  <Grid Margin="20">
+  <Grid Margin="12">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Margin="0,0,0,16"><TextBlock Text="プロファイル" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="割り当てとアプリごとの自動切替" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0"/><CheckBox x:Name="CursorProfileSwitchBox" Content="カーソル下のアプリに合わせて自動切替" Margin="0,9,0,0" ToolTip="RELYR自身の画面上ではプロファイルを切り替えません"/></StackPanel>
+    <Grid Margin="0,0,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="プロファイル" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/><CheckBox x:Name="CursorProfileSwitchBox" Grid.Column="1" Content="カーソル下のアプリに合わせて自動切替" VerticalAlignment="Center" ToolTip="RELYR自身の画面上ではプロファイルを切り替えません"/></Grid>
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions><ColumnDefinition x:Name="ProfileListColumn" Width="165"/><ColumnDefinition Width="14"/><ColumnDefinition x:Name="ApplicationManagementColumn"/></Grid.ColumnDefinitions>
       <Border Grid.Column="0" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="10">
@@ -48,23 +48,21 @@
           <StackPanel Grid.Row="3" Margin="0,3,0,0"><Button Content="割り当てをコピー" Padding="6,7" Click="CopyAssignments_Click"/><Button Content="割り当てを貼り付け" Padding="6,7" Click="PasteAssignments_Click"/></StackPanel>
         </Grid>
       </Border>
-      <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="16">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <TextBlock x:Name="SelectedProfileTitle" FontSize="21" FontWeight="Bold"/>
-          <TextBlock Grid.Row="1" Text="自動切替" FontSize="17" FontWeight="SemiBold" Margin="0,18,0,4"/>
-          <ToggleButton x:Name="AutoSwitchBox" Grid.Row="2" Style="{StaticResource AutoSwitchToggle}" Content="自動切替 オフ" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="マウスカーソルが対象アプリ上にあるとき、このプロファイルへ切り替えます"/>
-          <Grid Grid.Row="3" Margin="0,14,0,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="現在起動中のアプリ" FontWeight="SemiBold"/></Grid>
-          <Grid Grid.Row="4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="7" Padding="12">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="SelectedProfileTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/><ToggleButton x:Name="AutoSwitchBox" Grid.Column="1" Style="{StaticResource AutoSwitchToggle}" Content="自動切替 オフ" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="マウスカーソルが対象アプリ上にあるとき、このプロファイルへ切り替えます"/></Grid>
+          <Grid Grid.Row="1" Margin="0,10,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="現在起動中のアプリ" FontWeight="SemiBold"/></Grid>
+          <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
             <ListBox x:Name="AssignedApplicationList" MouseDoubleClick="RemoveAutoSwitchApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><TextBlock Text="{Binding}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
             <ListBox x:Name="RunningApplicationList" Grid.Column="2" MouseDoubleClick="AddRunningApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="1" Text="{Binding Value}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
           </Grid>
-          <Grid Grid.Row="5" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal"><Button Content="選択を外す" Click="RemoveAutoSwitchApplication_Click"/></StackPanel>
-            <WrapPanel Grid.Column="2" HorizontalAlignment="Right"><Button Content="一覧を更新" Click="RefreshRunningApplications_Click"/><Button Content="選択を追加" Click="AddRunningApplication_Click"/><Button Content="インストール済みのアプリから選ぶ…" Click="AddInstalledApplication_Click"/></WrapPanel>
+          <Grid Grid.Row="3" Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal"><Button Content="外す" Padding="9,5" FontSize="12" ToolTip="選択した登録を外します" Click="RemoveAutoSwitchApplication_Click"/></StackPanel>
+            <WrapPanel Grid.Column="2" HorizontalAlignment="Right"><Button Content="更新" ToolTip="起動中のアプリ一覧を更新します" Click="RefreshRunningApplications_Click"/><Button Content="追加" ToolTip="選択した起動中のアプリを追加します" Click="AddRunningApplication_Click"/><Button Content="アプリを選ぶ…" ToolTip="インストール済みのアプリから選びます" Click="AddInstalledApplication_Click"/></WrapPanel>
           </Grid>
         </Grid>
       </Border>
     </Grid>
-    <Grid Grid.Row="2" Margin="0,16,0,0"><TextBlock x:Name="StatusText" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="キャンセル" Click="Cancel_Click"/><Button Content="適用" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" Click="Apply_Click"/></StackPanel></Grid>
+    <Grid Grid.Row="2" Margin="0,6,0,0"><TextBlock x:Name="StatusText" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="キャンセル" Click="Cancel_Click"/><Button Content="適用" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" Click="Apply_Click"/></StackPanel></Grid>
   </Grid>
 </Window>

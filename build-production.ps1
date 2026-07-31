@@ -70,6 +70,8 @@ dotnet $dll --ui-test
 if($LASTEXITCODE -ne 0){throw "UI test failed"}
 dotnet $dll --startup-test
 if($LASTEXITCODE -ne 0){throw "Startup test failed"}
+dotnet $dll --shutdown-test
+if($LASTEXITCODE -ne 0){throw "Shutdown test failed"}
 
 Stop-ProductionInstance $productionExecutable
 Remove-OutputDirectoryWithRetry $output

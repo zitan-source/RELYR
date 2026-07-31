@@ -11,8 +11,8 @@ namespace RELYR;
 public partial class App : System.Windows.Application
 {
 #if !PRODUCTION_PUBLISH
-    internal static string EngineTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-engine-test-last.log");
-    internal static string UiTestReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-ui-test-last.log");
+    internal static string EngineTestReportPath=>VerificationPaths.GetFile("engine-test-last.log");
+    internal static string UiTestReportPath=>VerificationPaths.GetFile("ui-test-last.log");
 #endif
     internal const string InstanceMutexName=@"Local\RELYR.SingleInstance.v2";
     const string SignalName=@"Local\RELYR.ShowExisting.v1";
@@ -42,6 +42,20 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         string[] args=e.Args;
 #if !PRODUCTION_PUBLISH
+        if(args.Contains("--shutdown-test-host",StringComparer.OrdinalIgnoreCase))
+        {
+            ShutdownMode=ShutdownMode.OnExplicitShutdown;
+            shutdownSignal=new EventWaitHandle(false,EventResetMode.ManualReset,BuildShutdownSignalName(Environment.ProcessPath));
+            _=Task.Run(ListenForShutdown);
+            string token=args.SkipWhile(x=>!x.Equals("--shutdown-test-host",StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault()??"unknown";
+            Dispatcher.BeginInvoke(()=>
+            {
+                try{using var ready=EventWaitHandle.OpenExisting(ShutdownIntegrationTest.ReadySignalName(token));ready.Set();}
+                catch{}
+                Thread.Sleep(TimeSpan.FromSeconds(30));
+            });
+            return;
+        }
         if(args.Contains("--profile-switch-test-host",StringComparer.OrdinalIgnoreCase))
         {
             string title=args.SkipWhile(x=>!x.Equals("--profile-switch-test-host",StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault()
@@ -136,6 +150,7 @@ public partial class App : System.Windows.Application
             return;
         }
         if(e.Args.Contains("--startup-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(StartupIntegrationTest.Run(Console.Out));return;}
+        if(e.Args.Contains("--shutdown-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(ShutdownIntegrationTest.Run(Console.Out));return;}
         if(e.Args.Contains("--update-test",StringComparer.OrdinalIgnoreCase)){ShutdownMode=ShutdownMode.OnExplicitShutdown;Dispatcher.BeginInvoke(()=>_=RunUpdateTestAndExit());return;}
         if(e.Args.Contains("--desktop-test",StringComparer.OrdinalIgnoreCase)){ShutdownWithExitCode(VirtualDesktopIntegrationTest.Run(Console.Out));return;}
 #endif
@@ -168,7 +183,7 @@ public partial class App : System.Windows.Application
         if(!args.Contains("--tray",StringComparer.OrdinalIgnoreCase)||needsSetup)window.Show();
         if(needsSetup)Dispatcher.BeginInvoke(window.ShowFirstRunSetup);
         _=Task.Run(()=>ListenForShow(window));
-        _=Task.Run(()=>ListenForShutdown(window));
+        _=Task.Run(ListenForShutdown);
     }
 
     static void StartStartupMaintenance(AppConfig config)
@@ -249,11 +264,10 @@ public partial class App : System.Windows.Application
     static void ShowAlreadyRunningMessage()=>AppDialog.Show("RELYRはすでに起動しています。\n通知領域のRELYRアイコンから開くこともできます。","RELYRは起動中です",MessageBoxButton.OK,MessageBoxImage.Information);
     internal static void ArmForcedProcessExit(TimeSpan delay)
     {
-        int processId=Environment.ProcessId;
         var watchdog=new Thread(()=>
         {
             Thread.Sleep(delay);
-            try{Process.GetProcessById(processId).Kill(false);}catch{}
+            try{TerminateProcess(GetCurrentProcess(),unchecked((uint)Environment.ExitCode));}catch{}
         }){IsBackground=true,Name="RELYR exit watchdog"};
         watchdog.Start();
     }
@@ -262,10 +276,10 @@ public partial class App : System.Windows.Application
         // Release injected input first, then let WPF close normally. A native
         // process kill is kept only as a silent watchdog so shutdown can never
         // surface the CLR "unknown software exception" dialog.
+        ArmForcedProcessExit(TimeSpan.FromSeconds(3));
         try{if(Current?.MainWindow is RELYR.MainWindow window)window.PrepareVisualsForImmediateExit();}catch{}
         try{InputEngine.ReleaseAll();}catch{}
         Environment.ExitCode=exitCode;
-        ArmForcedProcessExit(TimeSpan.FromSeconds(3));
         try
         {
             if(Current==null){Process.GetCurrentProcess().Kill(false);return;}
@@ -293,9 +307,11 @@ public partial class App : System.Windows.Application
         }
         catch(ObjectDisposedException){}
     }
-    void ListenForShutdown(MainWindow window)
+    void ListenForShutdown()
     {
-        try{if(WaitHandle.WaitAny([shutdownSignal!,signalStop.Token.WaitHandle])==0)Dispatcher.BeginInvoke(window.RequestApplicationExit);}
+        // Installer/update shutdown must not depend on the WPF dispatcher. If the
+        // editor is hung, begin the process watchdog directly from this listener.
+        try{if(WaitHandle.WaitAny([shutdownSignal!,signalStop.Token.WaitHandle])==0)ExitImmediately(0);}
         catch(ObjectDisposedException){}
     }
     internal static string BuildShutdownSignalName(string? executablePath)
@@ -365,4 +381,8 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();foregroundWindowTracker?.Dispose();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll")]
+    static extern bool TerminateProcess(IntPtr process,uint exitCode);
 }

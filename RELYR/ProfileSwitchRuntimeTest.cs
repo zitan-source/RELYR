@@ -9,7 +9,7 @@ namespace RELYR;
 internal static class ProfileSwitchRuntimeTest
 {
     internal const string HostWindowTitle="RELYR Profile Test Host";
-    internal static string ReportPath=>Path.Combine(Path.GetTempPath(),"RELYR-profile-switch-runtime.log");
+    internal static string ReportPath=>VerificationPaths.GetFile("profile-switch-runtime.log");
 
     internal static async Task<int> RunAsync()
     {

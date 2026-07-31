@@ -16,7 +16,9 @@ public partial class ActionPickerWindow:Window
     public CatalogAction? SelectedAction=>result??ActionList.SelectedItem as CatalogAction;
     internal bool TitleBarUsesDarkMode{get;private set;}
     internal IReadOnlyList<CatalogAction> ActionsForTest=>allActions;
+#if !PRODUCTION_PUBLISH
     internal Action<Window>? OpenClockSettingsForTest;
+#endif
 
     public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS",IEnumerable<GestureDefinition>? gestures=null,bool includeGestures=false,string? initialMajorCategory=null)
     {
@@ -80,7 +82,9 @@ public partial class ActionPickerWindow:Window
 
     void ClockSettings_Click(object sender,RoutedEventArgs e)
     {
+#if !PRODUCTION_PUBLISH
         if(OpenClockSettingsForTest is { } test){test(this);return;}
+#endif
         for(Window? owner=Owner;owner!=null;owner=owner.Owner)
             if(owner is MainWindow main){main.OpenSettingsFrom(this,"Overlay");return;}
     }

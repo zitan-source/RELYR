@@ -40,7 +40,9 @@ internal static class OverlayService
     static int fullScreenClosing;
     static int fullScreenDismissArmed;
     static System.Drawing.Point fullScreenStartCursor;
+#if !PRODUCTION_PUBLISH
     internal static Action<string>? ActionRequestedForTest;
+#endif
     internal static bool FullScreenVisible=>Volatile.Read(ref fullScreenActive)!=0;
 
     internal static void Configure(Func<AppConfig>? provider,Func<bool>? inputDownProvider=null,Action<Mapping>? deckAction=null)
@@ -64,7 +66,9 @@ internal static class OverlayService
     {
         if(!IsOverlayAction(value))return false;
         string action=value!;
+#if !PRODUCTION_PUBLISH
         if(ActionRequestedForTest is { } test){test(action);return true;}
+#endif
         var dispatcher=WpfApplication.Current?.Dispatcher;
         if(dispatcher==null)return false;
         _=dispatcher.BeginInvoke(()=>ShowOnUiThread(action));
@@ -104,13 +108,11 @@ internal static class OverlayService
         deckPanel=null;
         if(FullScreenVisible){CloseScreenOverlays();return;}
         AppConfig config=configProvider?.Invoke()??new AppConfig();
-        var screens=action==BlankAction||config.ClockShowOnAllMonitors
-            ?System.Windows.Forms.Screen.AllScreens
-            :[System.Windows.Forms.Screen.PrimaryScreen??System.Windows.Forms.Screen.AllScreens[0]];
-        bool clock=action==ClockAction;
-        foreach(var screen in screens)
+        bool clockAction=action==ClockAction;
+        foreach(var screen in System.Windows.Forms.Screen.AllScreens)
         {
-            var overlay=new ScreenOverlayWindow(screen,clock,config);
+            bool showClock=clockAction&&(config.ClockShowOnAllMonitors||screen.Primary);
+            var overlay=new ScreenOverlayWindow(screen,showClock,config,clockAction);
             screenOverlays.Add(overlay);
         }
         fullScreenStartCursor=System.Windows.Forms.Cursor.Position;
@@ -681,6 +683,11 @@ internal sealed class ScreenOverlayWindow:Window
     internal bool IsClock=>timeText!=null;
 
     internal ScreenOverlayWindow(System.Windows.Forms.Screen screen,bool clock,AppConfig config)
+        :this(screen,clock,config,clock)
+    {
+    }
+
+    internal ScreenOverlayWindow(System.Windows.Forms.Screen screen,bool clock,AppConfig config,bool useConfiguredBackground)
     {
         screenBounds=screen.Bounds;
         displayMode=config.ClockDisplayMode;
@@ -700,11 +707,13 @@ internal sealed class ScreenOverlayWindow:Window
 
         var root=new Grid{ClipToBounds=true,Background=WpfBrushes.Black,Cursor=WpfCursors.None,ForceCursor=true};
         Content=root;
-        if(clock)
+        if(useConfiguredBackground)
         {
             AddClockBackground(root,screen,config);
-            var shade=new Border{Background=new SolidColorBrush(WpfColor.FromArgb(92,0,0,0))};
-            root.Children.Add(shade);
+            root.Children.Add(new Border{Background=new SolidColorBrush(WpfColor.FromArgb(92,0,0,0))});
+        }
+        if(clock)
+        {
             var clockPanel=new StackPanel{HorizontalAlignment=System.Windows.HorizontalAlignment.Center,VerticalAlignment=System.Windows.VerticalAlignment.Center};
             timeText=new TextBlock
             {
