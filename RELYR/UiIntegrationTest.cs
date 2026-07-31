@@ -39,6 +39,18 @@ internal static class UiIntegrationTest
             standardProfile.Mappings.RemoveAll(x=>x.Input=="MouseForward+MouseLeft");
             window.ProfilesForTest.Remove(switchedProfile);
             window.SaveAndApplyForTest();
+            var managedStandard=new Profile{Name="標準"};
+            var managedAutomatic=new Profile{Name="自動切替テスト",AutoSwitchEnabled=true,AutoSwitchApplications=["relyr-profile-test.exe"]};
+            window.ApplyProfileManagerResultForTest([managedStandard,managedAutomatic],managedStandard.Name,true);
+            var persistedProfiles=new ConfigService().Load();
+            Check(!persistedProfiles.AutoSave&&persistedProfiles.AutoSwitchProfilesByCursor&&persistedProfiles.Profiles.Any(x=>x.Name==managedAutomatic.Name&&x.AutoSwitchEnabled&&x.AutoSwitchApplications.Contains("relyr-profile-test.exe"))&&window.AppliedProfileNameForTest==managedStandard.Name,"Profile Manager Apply immediately saves and activates profile routing even when assignment auto-save is off");
+            bool automaticProfileApplied=window.ApplyAutomaticProfileForTest(["relyr-profile-test"]);
+            Check(automaticProfileApplied&&window.AppliedProfileNameForTest==managedAutomatic.Name&&window.ProfileOverlayForTest is {IsVisible:true} appliedOverlay&&appliedOverlay.ProfileNameText.Text==managedAutomatic.Name,"an applied target application switches the live profile and shows the enabled profile overlay end to end");
+            PumpFor(TimeSpan.FromMilliseconds(1250));
+            bool automaticProfileReturned=window.ApplyAutomaticProfileForTest([]);
+            Check(automaticProfileReturned&&window.AppliedProfileNameForTest==managedStandard.Name&&window.ProfileOverlayForTest is {IsVisible:true} returnOverlay&&returnOverlay.ProfileNameText.Text==managedStandard.Name,"leaving the target application returns to the standard profile and shows its overlay");
+            PumpFor(TimeSpan.FromMilliseconds(1250));
+            window.ApplyProfileManagerResultForTest([new Profile{Name="標準"}],"標準",true);
             window.Width=800;window.Height=620;window.UpdateLayout();Pump(window);double compactMouseWidth=RenderedWidth(window.MousePanel,window);
             window.Width=1500;window.Height=900;window.UpdateLayout();Pump(window);double expandedMouseWidth=RenderedWidth(window.MousePanel,window);
             output.WriteLine($"INFO main mouse rendered width compact={compactMouseWidth:F1} expanded={expandedMouseWidth:F1}");

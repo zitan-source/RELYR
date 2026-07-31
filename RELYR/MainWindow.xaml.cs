@@ -94,6 +94,10 @@ public partial class MainWindow : Window
     internal void EndLayerMappingScopeForTest(string layer)=>ReleaseLayerMappings(layer);
     internal bool ExecuteMappingForTest(Mapping mapping,string input)=>executor.Execute(mapping,input,out _);
     internal void SwitchProfileForTest(string name)=>SwitchProfile(name,true,false);
+    internal void ApplyProfileManagerResultForTest(IReadOnlyList<Profile> profiles,string activeProfile,bool autoSwitch)
+        =>ApplyProfileManagerResult(profiles,activeProfile,autoSwitch);
+    internal bool ApplyAutomaticProfileForTest(IReadOnlyCollection<string> processes)
+        =>TryApplyAutomaticProfileForProcesses(processes,false,out _);
     internal bool IsProfileOverlayVisibleForTest=>profileOverlay?.IsVisible==true;
     internal ProfileSwitchOverlay? ProfileOverlayForTest=>profileOverlay;
     internal void ShowProfileOverlayForTest(string name)=>ShowProfileOverlay(name);
@@ -712,10 +716,20 @@ public partial class MainWindow : Window
     void OpenProfileManager_Click(object sender,RoutedEventArgs e)
     {
         var window=new ProfileManagerWindow(config.Profiles,config.ActiveProfile,config.AutoSwitchProfilesByCursor){Owner=this};if(window.ShowDialog()!=true)return;
-        config.Profiles=window.ResultProfiles.ToList();
-        config.ActiveProfile=window.ResultActiveProfile;
-        config.AutoSwitchProfilesByCursor=window.ResultAutoSwitchProfilesByCursor;
-        ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();RebuildTrayMenu();
+        ApplyProfileManagerResult(window.ResultProfiles,window.ResultActiveProfile,window.ResultAutoSwitchProfilesByCursor);
+    }
+    void ApplyProfileManagerResult(IReadOnlyList<Profile> profiles,string activeProfile,bool autoSwitch)
+    {
+        config.Profiles=profiles.ToList();
+        config.ActiveProfile=activeProfile;
+        config.AutoSwitchProfilesByCursor=autoSwitch;
+        automaticProfileReturnName="";
+        explicitProfileSwitchProcess="";
+        ResetAutomaticProfileCandidate();
+        ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();
+        // The dialog's primary action is Apply. Profile routing must become live
+        // immediately even when assignment auto-save is disabled.
+        SaveAndApply("プロファイル設定を保存し、反映しました");
     }
     void OpenGestureManager_Click(object sender,RoutedEventArgs e)
     {
@@ -1348,11 +1362,15 @@ public partial class MainWindow : Window
     void ShowProfileOverlay(string profileName)
     {
         if(!appliedConfig.ShowProfileSwitchOverlay)return;
-        if(lastProfileOverlayName.Equals(profileName,StringComparison.OrdinalIgnoreCase))return;
-        lastProfileOverlayName=profileName;
+        if(profileOverlay?.IsVisible==true&&lastProfileOverlayName.Equals(profileName,StringComparison.OrdinalIgnoreCase))return;
         profileOverlay?.Close();
+        lastProfileOverlayName=profileName;
         var overlay=new ProfileSwitchOverlay(profileName);profileOverlay=overlay;
-        overlay.Closed+=(_,_)=>{if(ReferenceEquals(profileOverlay,overlay))profileOverlay=null;};
+        overlay.Closed+=(_,_)=>
+        {
+            if(ReferenceEquals(profileOverlay,overlay))profileOverlay=null;
+            if(lastProfileOverlayName.Equals(profileName,StringComparison.OrdinalIgnoreCase))lastProfileOverlayName="";
+        };
         overlay.Show();
     }
     void AutoSwitchProfile()
@@ -1402,13 +1420,19 @@ public partial class MainWindow : Window
         if(ShouldKeepExplicitProfile(explicitProfileSwitchProcess,process,cursorOverTaskbar)){LogAutomaticProfileSwitch($"manual-hold original={explicitProfileSwitchProcess} current={process}");return;}
         explicitProfileSwitchProcess="";
         string before=appliedConfig.ActiveProfile;
-        if(TryResolveAndApplyAutomaticProfile(config,appliedConfig,processes,cursorOverTaskbar,engine.TryPrepareForProfileChange,ref automaticProfileReturnName,out string target))
+        if(TryApplyAutomaticProfileForProcesses(processes,cursorOverTaskbar,out string target))
         {
             LogAutomaticProfileSwitch($"applied before={before} target={target} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
-            RebuildTrayMenu();
-            ShowProfileOverlay(target);
         }
         else LogAutomaticProfileSwitch($"not-applied before={before} target={target} runtime={appliedConfig.ActiveProfile} captured={engine.HasCapturedPhysicalInput}");
+    }
+    bool TryApplyAutomaticProfileForProcesses(IReadOnlyCollection<string> processes,bool cursorOverTaskbar,out string target)
+    {
+        if(!TryResolveAndApplyAutomaticProfile(config,appliedConfig,processes,cursorOverTaskbar,engine.TryPrepareForProfileChange,ref automaticProfileReturnName,out target))
+            return false;
+        RebuildTrayMenu();
+        ShowProfileOverlay(target);
+        return true;
     }
     void LogAutomaticProfileSwitch(string message)
     {
