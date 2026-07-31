@@ -59,6 +59,7 @@ internal static class ProfileSwitchRuntimeTest
                 {
                     MoveCursorTo(item.Process.MainWindowHandle);
                     string[] candidates=ConditionMatcher.ProcessesUnderCursor().ToArray();
+                    log.AppendLine("cursor="+DescribeCursorWindow());
                     bool enteredThisCycle=await WaitForProfile(mainWindow,item.Profile.Name,2500);
                     totalChecks++;
                     if(enteredThisCycle){entered++;passedChecks++;}
@@ -136,12 +137,30 @@ internal static class ProfileSwitchRuntimeTest
         if(window==IntPtr.Zero||!GetWindowRect(window,out var rect))
             throw new InvalidOperationException("テストウィンドウの位置を取得できません。");
         SetForegroundWindow(window);
-        SetCursorPos((rect.Left+rect.Right)/2,(rect.Top+rect.Bottom)/2);
+        if(!SetCursorPos((rect.Left+rect.Right)/2,(rect.Top+rect.Bottom)/2))
+            throw new InvalidOperationException("テスト位置へカーソルを移動できません。");
+    }
+
+    static string DescribeCursorWindow()
+    {
+        if(!GetCursorPos(out var point))return "GetCursorPos failed";
+        IntPtr leaf=WindowFromPoint(point);
+        IntPtr root=leaf==IntPtr.Zero?IntPtr.Zero:GetAncestor(leaf,2);
+        IntPtr selected=root==IntPtr.Zero?leaf:root;
+        GetWindowThreadProcessId(selected,out uint pid);
+        var className=new StringBuilder(128);
+        GetClassName(selected,className,className.Capacity);
+        string process="";
+        try{using var value=Process.GetProcessById((int)pid);process=value.ProcessName;}
+        catch(Exception ex){process=ex.GetType().Name;}
+        return $"point={point.X},{point.Y} leaf=0x{leaf.ToInt64():X} root=0x{root.ToInt64():X} class={className} pid={pid} process={process}";
     }
 
     static void PositionHost(IntPtr window,int left,int top)
     {
-        if(window==IntPtr.Zero||!SetWindowPos(window,IntPtr.Zero,left,top,420,260,0x0004|0x0010))
+        // Keep test hosts above the user's existing windows so WindowFromPoint
+        // resolves the registered application name instead of an obscuring app.
+        if(window==IntPtr.Zero||!SetWindowPos(window,new IntPtr(-1),left,top,420,260,0x0010|0x0040))
             throw new InvalidOperationException("テストウィンドウを配置できません。");
     }
 
@@ -160,6 +179,10 @@ internal static class ProfileSwitchRuntimeTest
     [StructLayout(LayoutKind.Sequential)]struct RECT{public int Left,Top,Right,Bottom;}
     [DllImport("user32.dll")]static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")]static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")]static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr window,uint flags);
+    [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint processId);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr window,StringBuilder text,int maxCount);
     [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr window,out RECT rect);
     [DllImport("user32.dll")]static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")]static extern bool SetWindowPos(IntPtr window,IntPtr insertAfter,int x,int y,int width,int height,uint flags);

@@ -1138,12 +1138,18 @@ public sealed class InputEngine : IDisposable
             // Presses keep the mapping captured on Down, so a profile can change while
             // a layer or gesture is held without making its eventual Up use another map.
             bool captured=deferredLayer!=null||held.Count>0||presses.Values.Any(x=>x.IsDown);
-            if(captured&&CapturedPhysicalInputIsDown(isKeyDown))return true;
+            // A swallowed mouse Down is not reflected by GetAsyncKeyState on every
+            // driver. Keep RELYR's captured mouse state until its real Up or safety
+            // timeout instead of dropping the layer during a profile switch.
+            if(captured&&(CapturedMouseInputIsDown()||CapturedPhysicalInputIsDown(isKeyDown)))return true;
             ResetCapturedState(false);
             lastSpaceTapTick=0;
             return true;
         }
     }
+    bool CapturedMouseInputIsDown()
+        =>deferredLayer!=null&&PhysicalInputToken(deferredLayer).StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)
+          ||presses.Any(x=>x.Value.IsDown&&PhysicalInputToken(x.Key).StartsWith("Mouse",StringComparison.OrdinalIgnoreCase));
     bool CapturedPhysicalInputIsDown(Func<int,bool> isKeyDown)
     {
         if(held.Any(isKeyDown))return true;
