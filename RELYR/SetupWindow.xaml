@@ -11,8 +11,8 @@
     <SolidColorBrush x:Key="TutorialBorder" Color="#334154"/>
     <SolidColorBrush x:Key="PrimaryText" Color="#F2F6FC"/>
     <SolidColorBrush x:Key="SecondaryText" Color="#AAB7C9"/>
-    <SolidColorBrush x:Key="TutorialAccent" Color="#55A6FF"/>
-    <SolidColorBrush x:Key="TutorialAccentSoft" Color="#172C44"/>
+    <SolidColorBrush x:Key="TutorialAccent" Color="#1DA78C"/>
+    <SolidColorBrush x:Key="TutorialAccentSoft" Color="#183F38"/>
     <SolidColorBrush x:Key="TutorialGreen" Color="#6CD48A"/>
     <SolidColorBrush x:Key="TutorialOrange" Color="#F5B24B"/>
     <SolidColorBrush x:Key="TutorialRed" Color="#FF7580"/>

@@ -26,11 +26,27 @@ internal static class DeckPanelLayout
 
     internal static Mapping? FindMapping(AppConfig config,int slot)
     {
+        string input=InputName(slot);
+        if(config.UseSharedDeckPanel)
+            return config.SharedDeckMappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
         if(config.Profiles.Count==0)return null;
         var profile=config.Profiles.FirstOrDefault(x=>x.Name==config.ActiveProfile)??config.Profiles[0];
-        string input=InputName(slot);
         return profile.Mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
     }
+
+    internal static IReadOnlyList<Profile> ProfilesWithDeckMappings(IEnumerable<Profile> profiles)=>profiles
+        .Where(profile=>profile.Mappings.Any(map=>IsInputName(map.Input)))
+        .ToList();
+
+    internal static int DistinctDeckCount(IEnumerable<Profile> profiles)=>profiles
+        .Select(profile=>DeckSignature(profile.Mappings))
+        .Distinct(StringComparer.Ordinal)
+        .Count();
+
+    static string DeckSignature(IEnumerable<Mapping> mappings)=>string.Join("\n",mappings
+        .Where(map=>IsInputName(map.Input))
+        .OrderBy(map=>SlotNumber(map.Input))
+        .Select(map=>$"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}"));
 
     internal static string ActionLabel(string input,Mapping? mapping)
     {

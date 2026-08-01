@@ -1178,6 +1178,7 @@ public sealed class InputEngine : IDisposable
     internal bool IsDisposedForTest=>disposed;
     internal void CancelLongPressTimerForTest(string input){lock(stateLock)if(presses.TryGetValue(input,out var state)){state.Timer?.Dispose();state.Timer=null;}}
     public void ResetStateForTest(){ResetCapturedState(false,true);held.Clear();lastSpaceTapTick=0;}
+    public void ResetForSessionTransition(){ResetCapturedState(true,true);lastSpaceTapTick=0;}
     public void Dispose()
     {
         if(disposed)return;disposed=true;

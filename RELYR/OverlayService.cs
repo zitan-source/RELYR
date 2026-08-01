@@ -36,6 +36,7 @@ internal static class OverlayService
     static Func<AppConfig>? configProvider;
     static Func<bool>? physicalInputDownProvider;
     static Action<Mapping>? deckActionRequested;
+    static Action<double,double>? deckPositionChanged;
     static int fullScreenActive;
     static int fullScreenClosing;
     static int fullScreenDismissArmed;
@@ -45,17 +46,18 @@ internal static class OverlayService
 #endif
     internal static bool FullScreenVisible=>Volatile.Read(ref fullScreenActive)!=0;
 
-    internal static void Configure(Func<AppConfig>? provider,Func<bool>? inputDownProvider=null,Action<Mapping>? deckAction=null)
+    internal static void Configure(Func<AppConfig>? provider,Func<bool>? inputDownProvider=null,Action<Mapping>? deckAction=null,Action<double,double>? positionChanged=null)
     {
         configProvider=provider;
         physicalInputDownProvider=inputDownProvider;
         deckActionRequested=deckAction;
+        deckPositionChanged=positionChanged;
     }
     internal static void Shutdown()
     {
         if(WpfApplication.Current?.Dispatcher.CheckAccess()==true)
         {
-            inputPanel?.Close();inputPanel=null;deckPanel?.Close();deckPanel=null;CloseScreenOverlays();configProvider=null;physicalInputDownProvider=null;deckActionRequested=null;
+            inputPanel?.Close();inputPanel=null;deckPanel?.Close();deckPanel=null;CloseScreenOverlays();configProvider=null;physicalInputDownProvider=null;deckActionRequested=null;deckPositionChanged=null;
         }
         else if(WpfApplication.Current is { } app)_=app.Dispatcher.BeginInvoke(Shutdown);
     }
@@ -82,7 +84,7 @@ internal static class OverlayService
             inputPanel?.Close();inputPanel=null;
             if(deckPanel is {IsVisible:true} existing){existing.Close();deckPanel=null;return;}
             AppConfig deckConfig=configProvider?.Invoke()??new AppConfig();
-            deckPanel=new DeckPanelOverlayWindow(deckConfig,deckActionRequested,deckConfig.InputPanelOpacityPercent);
+            deckPanel=new DeckPanelOverlayWindow(deckConfig,deckActionRequested,deckConfig.InputPanelOpacityPercent,deckPositionChanged);
             deckPanel.Closed+=(_,_)=>deckPanel=null;
             deckPanel.Show();
             return;
@@ -485,7 +487,9 @@ internal sealed class DeckPanelOverlayWindow:Window
 
     readonly Border dragArea;
     readonly Action<Mapping>? execute;
+    readonly Action<double,double>? savePosition;
     bool dragging;
+    bool positionDirty;
     Point dragStart;
     double windowStartLeft,windowStartTop;
     DpiScale dragDpi;
@@ -497,9 +501,10 @@ internal sealed class DeckPanelOverlayWindow:Window
     readonly List<Button> deckButtons=[];
     readonly Border panelCard;
 
-    internal DeckPanelOverlayWindow(AppConfig config,Action<Mapping>? executeAction,int opacityPercent=96)
+    internal DeckPanelOverlayWindow(AppConfig config,Action<Mapping>? executeAction,int opacityPercent=96,Action<double,double>? positionChanged=null)
     {
         execute=executeAction;
+        savePosition=positionChanged;
         Title="RELYR Deck";
         Width=DeckPanelLayout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap)+24;
         Height=DeckPanelLayout.Rows*70+84;
@@ -512,8 +517,7 @@ internal sealed class DeckPanelOverlayWindow:Window
         ShowActivated=false;
         Topmost=true;
         WindowStartupLocation=WindowStartupLocation.Manual;
-        Left=Math.Max(SystemParameters.WorkArea.Left,SystemParameters.WorkArea.Right-Width-24);
-        Top=Math.Max(SystemParameters.WorkArea.Top,SystemParameters.WorkArea.Bottom-Height-24);
+        Point initial=InitialPosition(config,Width,Height);Left=initial.X;Top=initial.Y;
 
         panelCard=new Border
         {
@@ -577,7 +581,7 @@ internal sealed class DeckPanelOverlayWindow:Window
         root.Children.Add(deckGrid);
 
         SourceInitialized+=WindowSourceInitialized;
-        Closed+=(_,_)=>dragging=false;
+        Closed+=(_,_)=>{dragging=false;PersistPosition();};
     }
 
     Border BuildHeader()
@@ -645,11 +649,23 @@ internal sealed class DeckPanelOverlayWindow:Window
         if(!dragging||e.LeftButton!=MouseButtonState.Pressed)return;
         Point current=PointToScreen(e.GetPosition(this));
         Point delta=InputPanelOverlayWindow.PhysicalDragDeltaToDip(current-dragStart,dragDpi);
-        Left=windowStartLeft+delta.X;Top=windowStartTop+delta.Y;e.Handled=true;
+        Left=windowStartLeft+delta.X;Top=windowStartTop+delta.Y;positionDirty=true;e.Handled=true;
     }
     void DragEnded(object sender,MouseButtonEventArgs e)
     {
-        if(!dragging)return;dragging=false;dragArea.ReleaseMouseCapture();e.Handled=true;
+        if(!dragging)return;dragging=false;dragArea.ReleaseMouseCapture();PersistPosition();e.Handled=true;
+    }
+    void PersistPosition(){if(!positionDirty)return;positionDirty=false;savePosition?.Invoke(Left,Top);}
+    internal void MoveAndPersistForTest(double left,double top){Left=left;Top=top;positionDirty=false;savePosition?.Invoke(left,top);}
+    internal static Point InitialPosition(AppConfig config,double width,double height)
+    {
+        double defaultLeft=Math.Max(SystemParameters.WorkArea.Left,SystemParameters.WorkArea.Right-width-24);
+        double defaultTop=Math.Max(SystemParameters.WorkArea.Top,SystemParameters.WorkArea.Bottom-height-24);
+        if(config.DeckPanelLeft is not double savedLeft||config.DeckPanelTop is not double savedTop||!double.IsFinite(savedLeft)||!double.IsFinite(savedTop))return new Point(defaultLeft,defaultTop);
+        const double visibleEdge=48;
+        double minLeft=SystemParameters.VirtualScreenLeft-width+visibleEdge,maxLeft=SystemParameters.VirtualScreenLeft+SystemParameters.VirtualScreenWidth-visibleEdge;
+        double minTop=SystemParameters.VirtualScreenTop-height+visibleEdge,maxTop=SystemParameters.VirtualScreenTop+SystemParameters.VirtualScreenHeight-visibleEdge;
+        return new Point(Math.Clamp(savedLeft,minLeft,maxLeft),Math.Clamp(savedTop,minTop,maxTop));
     }
     void WindowSourceInitialized(object? sender,EventArgs e)
     {

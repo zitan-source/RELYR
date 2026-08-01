@@ -18,10 +18,10 @@
         <SolidColorBrush x:Key="PrimaryText" Color="#F2F2F3"/>
         <SolidColorBrush x:Key="SecondaryText" Color="#A7ABB1"/>
         <SolidColorBrush x:Key="MutedText" Color="#7F848C"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#0A84FF"/>
-        <SolidColorBrush x:Key="AccentStrongBrush" Color="#0A84FF"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#1DA78C"/>
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#1DA78C"/>
         <SolidColorBrush x:Key="AccentButtonText" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="AccentSoftBrush" Color="#193B5E"/>
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#183F38"/>
         <SolidColorBrush x:Key="WarningBrush" Color="#FFD60A"/>
         <SolidColorBrush x:Key="DangerBrush" Color="#FF453A"/>
         <SolidColorBrush x:Key="DangerBackground" Color="#512623"/>
@@ -30,9 +30,9 @@
         <SolidColorBrush x:Key="DangerHoverForeground" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="KeyBackground" Color="#292C30"/>
         <SolidColorBrush x:Key="ReservedKeyBackground" Color="#35383C"/>
-        <SolidColorBrush x:Key="LayerActiveBackground" Color="#153A5F"/>
-        <SolidColorBrush x:Key="EditingKeyBackground" Color="#0A84FF"/>
-        <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#64B5FF"/>
+        <SolidColorBrush x:Key="LayerActiveBackground" Color="#164B42"/>
+        <SolidColorBrush x:Key="EditingKeyBackground" Color="#1DA78C"/>
+        <SolidColorBrush x:Key="EditingKeyBorderBrush" Color="#6BD7C0"/>
         <SolidColorBrush x:Key="ActionKeyIconBrush" Color="#F09A3E"/>
         <SolidColorBrush x:Key="ActionDisabledIconBrush" Color="#AAB4C2"/>
         <SolidColorBrush x:Key="ActionProfileIconBrush" Color="#68A7FF"/>

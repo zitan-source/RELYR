@@ -43,22 +43,27 @@ public static class ConfigValidator
         }
         foreach (var profile in config.Profiles)
         {
-            foreach (var group in profile.Mappings.GroupBy(x => (x.Input.ToUpperInvariant(), x.Application.ToUpperInvariant(), x.Layer.ToUpperInvariant())).Where(x => x.Count() > 1))
-                errors.Add($"{profile.Name}: {group.Key.Item1} の割り当てが競合しています。");
-            foreach (var map in profile.Mappings)
-            {
-                if (string.IsNullOrWhiteSpace(map.Input)) errors.Add($"{profile.Name}: 入力元が空の設定があります。");
-                if (map.LongPressMs < 50 || map.LongPressMs > 10000) errors.Add($"{profile.Name}/{map.Input}: 長押し時間が範囲外です。");
-                if(map.Kind==ActionKind.Macro&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Macros.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: マクロ「{map.Value}」が見つかりません。");
-                if(map.LongPressKind==ActionKind.Macro&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Macros.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: 長押しマクロ「{map.LongPressValue}」が見つかりません。");
-                if(map.Kind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Profiles.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: プロファイル「{map.Value}」が見つかりません。");
-                if(map.LongPressKind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Profiles.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: 長押しプロファイル「{map.LongPressValue}」が見つかりません。");
-                if(map.Kind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Gestures.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: ジェスチャー「{map.Value}」が見つかりません。");
-                if(map.Kind==ActionKind.Gesture&&map.LongPressKind!=ActionKind.None)errors.Add($"{profile.Name}/{map.Input}: ジェスチャーと長押し動作は同時に設定できません。");
-                if(map.LongPressKind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Gestures.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{profile.Name}/{map.Input}: ジェスチャー「{map.LongPressValue}」が見つかりません。");
-            }
+            ValidateMappings(config,profile.Name,profile.Mappings,errors);
         }
+        ValidateMappings(config,"共通Deck",config.SharedDeckMappings,errors);
         return errors;
+    }
+
+    static void ValidateMappings(AppConfig config,string scope,IReadOnlyList<Mapping> mappings,List<string> errors)
+    {
+        foreach(var group in mappings.GroupBy(x=>(x.Input.ToUpperInvariant(),x.Application.ToUpperInvariant(),x.Layer.ToUpperInvariant())).Where(x=>x.Count()>1))errors.Add($"{scope}: {group.Key.Item1} の割り当てが競合しています。");
+        foreach(var map in mappings)
+        {
+            if(string.IsNullOrWhiteSpace(map.Input))errors.Add($"{scope}: 入力元が空の設定があります。");
+            if(map.LongPressMs<50||map.LongPressMs>10000)errors.Add($"{scope}/{map.Input}: 長押し時間が範囲外です。");
+            if(map.Kind==ActionKind.Macro&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Macros.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: マクロ「{map.Value}」が見つかりません。");
+            if(map.LongPressKind==ActionKind.Macro&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Macros.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: 長押しマクロ「{map.LongPressValue}」が見つかりません。");
+            if(map.Kind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Profiles.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: プロファイル「{map.Value}」が見つかりません。");
+            if(map.LongPressKind==ActionKind.Profile&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Profiles.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: 長押しプロファイル「{map.LongPressValue}」が見つかりません。");
+            if(map.Kind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Gestures.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.Value}」が見つかりません。");
+            if(map.Kind==ActionKind.Gesture&&map.LongPressKind!=ActionKind.None)errors.Add($"{scope}/{map.Input}: ジェスチャーと長押し動作は同時に設定できません。");
+            if(map.LongPressKind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Gestures.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.LongPressValue}」が見つかりません。");
+        }
     }
 
     static void ValidateGestureAction(AppConfig config,GestureDefinition gesture,string direction,ActionKind kind,string value,List<string> errors)

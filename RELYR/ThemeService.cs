@@ -61,11 +61,11 @@ internal static class ThemeService
         ["ControlBackground"]="#2B2E33",["ControlHoverBackground"]="#363A40",["ControlPressedBackground"]="#253D57",
         ["InputBackground"]="#202225",["BorderBrush"]="#484B50",["SubtleBorderBrush"]="#35383D",
         ["PrimaryText"]="#F2F2F3",["SecondaryText"]="#A7ABB1",["MutedText"]="#7F848C",
-        ["AccentBrush"]="#0A84FF",["AccentStrongBrush"]="#0A84FF",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#193B5E",
+        ["AccentBrush"]="#1DA78C",["AccentStrongBrush"]="#1DA78C",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#183F38",
         ["WarningBrush"]="#FFD60A",["DangerBrush"]="#FF453A",["DangerBackground"]="#512623",
         ["DangerHoverBackground"]="#69302C",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#FFFFFF",
         ["KeyBackground"]="#292C30",["ReservedKeyBackground"]="#35383C",
-        ["LayerActiveBackground"]="#153A5F",["EditingKeyBackground"]="#0A84FF",["EditingKeyBorderBrush"]="#64B5FF",
+        ["LayerActiveBackground"]="#164B42",["EditingKeyBackground"]="#1DA78C",["EditingKeyBorderBrush"]="#6BD7C0",
         ["ActionKeyIconBrush"]="#F09A3E",["ActionDisabledIconBrush"]="#AAB4C2",["ActionProfileIconBrush"]="#68A7FF",["ActionShortcutIconBrush"]="#52D5BE",
         ["ActionTextIconBrush"]="#E4B936",["ActionLaunchIconBrush"]="#AA78DA",["ActionMacroIconBrush"]="#E15A65"
     };
@@ -77,11 +77,11 @@ internal static class ThemeService
         ["ControlBackground"]="#FFFFFF",["ControlHoverBackground"]="#E9E9EC",["ControlPressedBackground"]="#DCEBFA",
         ["InputBackground"]="#FFFFFF",["BorderBrush"]="#C7C7CC",["SubtleBorderBrush"]="#DEDEE2",
         ["PrimaryText"]="#1D1D1F",["SecondaryText"]="#626268",["MutedText"]="#86868B",
-        ["AccentBrush"]="#007AFF",["AccentStrongBrush"]="#007AFF",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#E1F0FF",
+        ["AccentBrush"]="#1DA78C",["AccentStrongBrush"]="#1DA78C",["AccentButtonText"]="#FFFFFF",["AccentSoftBrush"]="#DDF4EF",
         ["WarningBrush"]="#9A6700",["DangerBrush"]="#D70015",["DangerBackground"]="#D70015",
         ["DangerHoverBackground"]="#FFE5E7",["DangerForeground"]="#FFFFFF",["DangerHoverForeground"]="#A50011",
         ["KeyBackground"]="#FFFFFF",["ReservedKeyBackground"]="#E7E7EA",
-        ["LayerActiveBackground"]="#DDEEFF",["EditingKeyBackground"]="#007AFF",["EditingKeyBorderBrush"]="#005FC7",
+        ["LayerActiveBackground"]="#D6F0EA",["EditingKeyBackground"]="#1DA78C",["EditingKeyBorderBrush"]="#147562",
         ["ActionKeyIconBrush"]="#B85B00",["ActionDisabledIconBrush"]="#596575",["ActionProfileIconBrush"]="#075EAD",["ActionShortcutIconBrush"]="#087B69",
         ["ActionTextIconBrush"]="#8A6500",["ActionLaunchIconBrush"]="#7040A3",["ActionMacroIconBrush"]="#B42332"
     };

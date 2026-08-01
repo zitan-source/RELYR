@@ -376,8 +376,16 @@ public partial class App : System.Windows.Application
         finally{ExitImmediately(exitCode);}
     }
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e){if(MainWindow is RELYR.MainWindow window)window.PrepareForSystemShutdown();base.OnSessionEnding(e);}
-    void SystemPowerModeChanged(object sender,PowerModeChangedEventArgs e){if(e.Mode==PowerModes.Suspend)InputEngine.ReleaseAll();}
-    void SystemSessionSwitch(object sender,SessionSwitchEventArgs e){if(e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.RemoteDisconnect)InputEngine.ReleaseAll();}
+    void SystemPowerModeChanged(object sender,PowerModeChangedEventArgs e){if(e.Mode is PowerModes.Suspend or PowerModes.Resume)ResetInputStateForSessionTransition();}
+    void SystemSessionSwitch(object sender,SessionSwitchEventArgs e)
+    {
+        if(e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionUnlock or SessionSwitchReason.ConsoleDisconnect or SessionSwitchReason.ConsoleConnect or SessionSwitchReason.RemoteDisconnect or SessionSwitchReason.RemoteConnect)ResetInputStateForSessionTransition();
+    }
+    void ResetInputStateForSessionTransition()
+    {
+        if(MainWindow is RELYR.MainWindow window)window.ResetInputStateForSessionTransition();
+        else InputEngine.ReleaseAll();
+    }
     protected override void OnExit(ExitEventArgs e){SystemEvents.PowerModeChanged-=SystemPowerModeChanged;SystemEvents.SessionSwitch-=SystemSessionSwitch;InputEngine.ReleaseAll();signalStop.Cancel();showSignal?.Set();shutdownSignal?.Set();foregroundWindowTracker?.Dispose();showSignal?.Dispose();showAcknowledgement?.Dispose();shutdownSignal?.Dispose();if(ownsMutex){try{instanceMutex?.ReleaseMutex();}catch{}}instanceMutex?.Dispose();signalStop.Dispose();base.OnExit(e);}
     [DllImport("kernel32.dll")]
     static extern bool SetProcessShutdownParameters(uint level,uint flags);

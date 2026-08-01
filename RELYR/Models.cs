@@ -66,7 +66,7 @@ public sealed class GestureDefinition
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 23;
+    public int Version { get; set; } = 24;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool ShowProfileSwitchOverlay { get; set; } = true;
@@ -111,6 +111,10 @@ public sealed class AppConfig
     public string ClockSolidColor { get; set; } = "#101F2E";
     public bool ClockShowOnAllMonitors { get; set; } = true;
     public int InputPanelOpacityPercent { get; set; } = 96;
+    public bool UseSharedDeckPanel { get; set; }
+    public List<Mapping> SharedDeckMappings { get; set; } = [];
+    public double? DeckPanelLeft { get; set; }
+    public double? DeckPanelTop { get; set; }
     public List<MacroDefinition> Macros { get; set; } = [];
     public List<GestureDefinition> Gestures { get; set; } = [];
     public List<Profile> Profiles { get; set; } = [new()];
