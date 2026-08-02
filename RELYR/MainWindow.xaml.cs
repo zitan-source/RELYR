@@ -702,9 +702,7 @@ public partial class MainWindow : Window
         if(IsDescendantOf(source,KeyboardPanel)||IsDescendantOf(source,SecondaryKeyboardPanel)||IsDescendantOf(source,MousePanel)||IsInteractiveClick(source))return;
         if(MultiSelectToggle.IsChecked==true&&multiSelectedInputs.Count>0)
         {
-            multiSelectedInputs.Clear();
-            UpdateMultiSelectControls();
-            ColorButtons();
+            MultiSelectToggle.IsChecked=false;
             return;
         }
         if(destinationInputTarget!=null||editingSelectedInput)CompleteDestinationInput();
