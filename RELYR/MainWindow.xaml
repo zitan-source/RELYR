@@ -382,7 +382,6 @@
               <StackPanel>
                 <TextBlock Text="実行する操作" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
-                <Button x:Name="DeckKeypadInputButton" Content="キーパッドから入力" Click="DeckKeypadInput_Click" HorizontalAlignment="Left" Margin="0,0,0,8" Padding="12,8" Visibility="Collapsed"/>
                 <TextBlock Text="内容" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" PreviewKeyDown="ExecutionValue_PreviewKeyDown" ToolTip="Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます"/>
                 <Button Content="入力完了" HorizontalAlignment="Right" Click="DestinationInputDone_Click" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"/>
                 <Button x:Name="LongPressOnlyButton" Content="短押しを元の入力にする" Click="LongPressOnly_Click" Margin="0,4,0,2"/>

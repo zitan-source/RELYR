@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using WpfColor = System.Windows.Media.Color;
+using WpfColors = System.Windows.Media.Colors;
 
 namespace RELYR;
 
@@ -54,6 +56,28 @@ internal static class DeckPanelLayout
 
     internal static Mapping? FindMapping(AppConfig config,int slot)=>FindMapping(DefaultLayout(config),slot);
 
+    internal static bool TryParseButtonColor(string? value,out WpfColor color)
+    {
+        color=default;
+        if(string.IsNullOrWhiteSpace(value))return false;
+        try
+        {
+            if(System.Windows.Media.ColorConverter.ConvertFromString(value) is WpfColor parsed)
+            {
+                color=parsed;
+                return true;
+            }
+        }
+        catch{}
+        return false;
+    }
+
+    internal static bool TryGetButtonColor(Mapping? mapping,out WpfColor color)
+        =>TryParseButtonColor(mapping?.DeckColor,out color);
+
+    internal static WpfColor TextColorFor(WpfColor background)
+        =>(.2126*background.R+.7152*background.G+.0722*background.B)>150?WpfColors.Black:WpfColors.White;
+
     internal static int VisibleSlotCount(DeckLayoutDefinition layout)=>Math.Clamp(layout.Rows,1,MaximumRows)*Math.Clamp(layout.Columns,1,MaximumColumns);
 
     internal static IReadOnlyList<Profile> ProfilesWithDeckMappings(IEnumerable<Profile> profiles)=>profiles
@@ -68,7 +92,7 @@ internal static class DeckPanelLayout
     static string DeckSignature(IEnumerable<Mapping> mappings)=>string.Join("\n",mappings
         .Where(map=>IsInputName(map.Input))
         .OrderBy(map=>SlotNumber(map.Input))
-        .Select(map=>$"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}"));
+        .Select(map=>$"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}"));
 
     internal static string ActionLabel(string input,Mapping? mapping)
     {
@@ -93,7 +117,8 @@ internal static class DeckPanelLayout
             VerticalAlignment=VerticalAlignment.Top,
             IsHitTestVisible=false
         };
-        label.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");
+        if(TryGetButtonColor(mapping,out var color))label.Foreground=new System.Windows.Media.SolidColorBrush(TextColorFor(color));
+        else label.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");
         return label;
     }
 

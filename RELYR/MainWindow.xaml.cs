@@ -469,7 +469,7 @@ public partial class MainWindow : Window
         e.Handled=true;
         if(DeckPanelLayout.IsInputName(key))
         {
-            RenameDeckButton(key);
+            var deckMenu=CreateDeckInputContextMenu(key);deckMenu.PlacementTarget=(System.Windows.Controls.Button)sender;deckMenu.IsOpen=true;
             return;
         }
         if(key=="Space"&&currentLayer is "通常" or "Space"){ShowInlineNotice("Spaceキーはレイヤー専用のため変更できません");return;}
@@ -501,7 +501,7 @@ public partial class MainWindow : Window
                 loading=true;DeckNameBox.Text=name;loading=false;
             }
         }
-        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description))
+        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description)&&string.IsNullOrWhiteSpace(mapping.DeckColor))
             mappings.Remove(mapping);
         MarkDirty();
         RefreshSelectedInputVisual(input);
@@ -510,7 +510,7 @@ public partial class MainWindow : Window
     {
         if(loading||selected==null||!DeckPanelLayout.IsInputName(selected.Input))return;
         selected.Description=DeckNameBox.Text.Trim();
-        if(MappingHasConfiguredAction(selected)||!string.IsNullOrWhiteSpace(selected.Description))
+        if(MappingHasConfiguredAction(selected)||!string.IsNullOrWhiteSpace(selected.Description)||!string.IsNullOrWhiteSpace(selected.DeckColor))
         {
             var mappings=MappingCollectionForInput(selected.Input);
             if(!mappings.Contains(selected))mappings.Add(selected);
@@ -520,6 +520,53 @@ public partial class MainWindow : Window
         RefreshSelectedInputVisual(selected.Input);
     }
     internal void SetDeckButtonNameForTest(string input,string name)=>SetDeckButtonName(input,name);
+    internal ContextMenu CreateDeckInputContextMenu(string input)
+    {
+        var mappings=MappingCollectionForInput(input);
+        Mapping? existing=mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        var menu=new ContextMenu();
+        var copy=new MenuItem{Header="この割り当てをコピー",IsEnabled=existing!=null};
+        copy.Click+=(_,_)=>{copiedMapping=existing==null?null:CloneMapping(existing);ShowInlineNotice("Deckボタンの設定をコピーしました");};
+        var paste=new MenuItem{Header="コピーした割り当てを貼り付け",IsEnabled=copiedMapping!=null};
+        paste.Click+=(_,_)=>
+        {
+            if(copiedMapping==null)return;
+            var map=CloneMapping(copiedMapping);map.Input=input;map.Layer=DeckPanelLayout.Layer;
+            mappings.RemoveAll(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));mappings.Add(map);
+            SelectInput(input,false);MarkDirty();RefreshSelectedInputVisual(input);ShowInlineNotice("Deckボタンへ設定を貼り付けました");
+        };
+        var delete=new MenuItem{Header="この割り当てを削除",IsEnabled=existing!=null&&MappingHasConfiguredAction(existing),Foreground=ThemeService.Brush("DangerBrush")};
+        delete.Click+=(_,_)=>
+        {
+            if(existing==null)return;
+            existing.Kind=ActionKind.None;existing.Value="";existing.LongPressKind=ActionKind.None;existing.LongPressValue="";existing.DragValue="";existing.DragEndValue="";existing.Application="";
+            if(string.IsNullOrWhiteSpace(existing.Description)&&string.IsNullOrWhiteSpace(existing.DeckColor))mappings.Remove(existing);
+            SelectInput(input,false);MarkDirty();RefreshSelectedInputVisual(input);ShowInlineNotice("Deckボタンの割り当てを削除しました");
+        };
+        var rename=new MenuItem{Header="名前を変更..."};rename.Click+=(_,_)=>RenameDeckButton(input);
+        var color=new MenuItem{Header="色を変更..."};color.Click+=(_,_)=>ChooseDeckButtonColor(input);
+        var resetColor=new MenuItem{Header="色を標準に戻す",IsEnabled=DeckPanelLayout.TryGetButtonColor(existing,out _)};resetColor.Click+=(_,_)=>SetDeckButtonColor(input,"");
+        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);menu.Items.Add(new Separator());menu.Items.Add(rename);menu.Items.Add(new Separator());menu.Items.Add(color);menu.Items.Add(resetColor);
+        return menu;
+    }
+    void ChooseDeckButtonColor(string input)
+    {
+        var existing=MappingCollectionForInput(input).LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        var picker=new System.Windows.Forms.ColorDialog{FullOpen=true,AnyColor=true};
+        if(DeckPanelLayout.TryGetButtonColor(existing,out var current))picker.Color=System.Drawing.Color.FromArgb(current.R,current.G,current.B);
+        if(picker.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;
+        SetDeckButtonColor(input,$"#{picker.Color.R:X2}{picker.Color.G:X2}{picker.Color.B:X2}");
+    }
+    void SetDeckButtonColor(string input,string color)
+    {
+        var mappings=MappingCollectionForInput(input);
+        var mapping=mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        if(mapping==null){mapping=new Mapping{Input=input,Layer=DeckPanelLayout.Layer};mappings.Add(mapping);}
+        mapping.DeckColor=color;
+        if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected.DeckColor=color;
+        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description)&&string.IsNullOrWhiteSpace(mapping.DeckColor))mappings.Remove(mapping);
+        MarkDirty();RefreshSelectedInputVisual(input);
+    }
     internal ContextMenu CreateInputContextMenu(string key)
     {
         string input=currentLayer=="通常"?key:currentLayer+"+"+key;
@@ -602,6 +649,12 @@ public partial class MainWindow : Window
     void ActionKind_PreviewMouseLeftButtonDown(object sender,MouseButtonEventArgs e)
     {
         if(sender is not ListBox list||ItemsControl.ContainerFromElement(list,e.OriginalSource as DependencyObject) is not ListBoxItem item||item.DataContext is not ActionOption option||!option.IsEnabled)return;
+        if(option.IsKeypad)
+        {
+            e.Handled=true;
+            DeckKeypadInput_Click(list,e);
+            return;
+        }
         bool longPress=ReferenceEquals(list,LongKindBox);
         switch(option.Kind)
         {
@@ -716,7 +769,7 @@ public partial class MainWindow : Window
         var menu=new ContextMenu{PlacementTarget=placementTarget,Placement=System.Windows.Controls.Primitives.PlacementMode.MousePoint};
         foreach(var profile in config.Profiles)
         {
-            var item=new MenuItem{Header=profile.Name};
+            var item=new MenuItem{Header=new TextBlock{Text=profile.Name,Margin=new Thickness(-18,0,0,0)}};
             string name=profile.Name;
             item.Click+=(_,_)=>ApplyProfileAction(name,longPress);
             menu.Items.Add(item);
@@ -819,10 +872,9 @@ public partial class MainWindow : Window
         KeyboardWorkspace.Visibility=Visibility.Collapsed;
         DeckWorkspace.Visibility=Visibility.Visible;
         DetectInputButton.Visibility=Visibility.Collapsed;
-        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
         LongPressExpander.Visibility=Visibility.Collapsed;
         LongPressOnlyButton.Visibility=Visibility.Collapsed;
-        KindBox.ItemsSource=ActionOptions(allowGesture:false).Where(x=>x.Kind!=ActionKind.Gesture).ToArray();
+        KindBox.ItemsSource=DeckActionOptions();
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
         ShowDeckLayoutList();
         UpdateDeckScopeUi();
@@ -841,7 +893,6 @@ public partial class MainWindow : Window
         DeckEditorWorkspace.Visibility=Visibility.Collapsed;
         ToolbarSaveButton.Visibility=Visibility.Visible;
         DetectInputButton.Visibility=Visibility.Visible;
-        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
         LongPressExpander.Visibility=Visibility.Visible;
         LongPressOnlyButton.Visibility=Visibility.Visible;
         KindBox.ItemsSource=ActionOptions(allowGesture:true);
@@ -861,7 +912,6 @@ public partial class MainWindow : Window
         DeckLayoutListWorkspace.Visibility=Visibility.Visible;
         DeckEditorWorkspace.Visibility=Visibility.Collapsed;
         ToolbarSaveButton.Visibility=Visibility.Visible;
-        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
         WorkspaceSubtitle.Text=$"{config.DeckLayouts.Count}個のレイアウト";
         RefreshDeckLayoutCards();
         UpdateDeckScopeUi();
@@ -957,7 +1007,7 @@ public partial class MainWindow : Window
     }
     void EditDeckLayout(DeckLayoutDefinition layout)
     {
-        selectedDeckLayout=layout;DeckLayoutListWorkspace.Visibility=Visibility.Collapsed;DeckEditorWorkspace.Visibility=Visibility.Visible;ToolbarSaveButton.Visibility=Visibility.Collapsed;DeckKeypadInputButton.Visibility=Visibility.Visible;
+        selectedDeckLayout=layout;DeckLayoutListWorkspace.Visibility=Visibility.Collapsed;DeckEditorWorkspace.Visibility=Visibility.Visible;ToolbarSaveButton.Visibility=Visibility.Collapsed;
         updatingDeckEditor=true;
         DeckLayoutNameBox.Text=layout.Name;DeckColumnsBox.Text=layout.Columns.ToString();DeckRowsBox.Text=layout.Rows.ToString();DeckOpacitySlider.Value=config.InputPanelOpacityPercent;DeckOpacityValueText.Text=config.InputPanelOpacityPercent+"%";
         string preset=layout.Columns==3&&layout.Rows==3?"3x3":layout.Columns==9&&layout.Rows==5?"9x5":layout.Columns==8&&layout.Rows==2?"8x2":"custom";
@@ -1118,7 +1168,7 @@ public partial class MainWindow : Window
         var visibleAssignment=DeckPanelLayout.IsInputName(input)?mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase)&&MappingInterceptsInput(x)):FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
         detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(mappings,visibleAssignment,input);
         currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayConfiguredActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayConfiguredActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
-        InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;DeckKeypadInputButton.Visibility=deckManagementMode&&DeckPanelLayout.IsInputName(selected.Input)?Visibility.Visible:Visibility.Collapsed;
+        InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
         UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
     internal static Mapping SelectEditorMapping(IReadOnlyList<Mapping> currentMappings,Mapping? visibleAssignment,string input)
@@ -1154,7 +1204,7 @@ public partial class MainWindow : Window
         {
             var mappings=MappingCollectionForInput(selected.Input);if(!mappings.Contains(selected))mappings.Add(selected);
         }
-        else if(deckManagementMode&&!string.IsNullOrWhiteSpace(selected.Description))
+        else if(deckManagementMode&&(!string.IsNullOrWhiteSpace(selected.Description)||!string.IsNullOrWhiteSpace(selected.DeckColor)))
         {
             var mappings=MappingCollectionForInput(selected.Input);if(!mappings.Contains(selected))mappings.Add(selected);
         }
@@ -1385,12 +1435,13 @@ public partial class MainWindow : Window
         var mapping=DeckPanelLayout.FindMapping(selectedDeckLayout??DeckPanelLayout.DefaultLayout(config),DeckPanelLayout.SlotNumber(input));
         var assigned=MappingInterceptsInput(mapping)?mapping:null;
         bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
-        button.Background=editing?ThemeService.Brush("EditingKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+        bool hasCustomColor=DeckPanelLayout.TryGetButtonColor(mapping,out var customColor);
+        button.Background=editing?ThemeService.Brush("EditingKeyBackground"):hasCustomColor?new SolidColorBrush(customColor):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
         button.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
-        button.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+        button.Foreground=editing?WpfBrushes.White:hasCustomColor?new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)):assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
         if(button.Content is TextBlock actionLabel)actionLabel.Text=DeckPanelLayout.ActionLabel(input,mapping);
         else button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
-        if(deckManagementNameLabels.TryGetValue(button,out var nameLabel))nameLabel.Text=mapping?.Description??"";
+        if(deckManagementNameLabels.TryGetValue(button,out var nameLabel)){nameLabel.Text=mapping?.Description??"";if(hasCustomColor)nameLabel.Foreground=new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));else nameLabel.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");}
         button.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):null;
         ToolTipService.SetInitialShowDelay(button,250);
         ToolTipService.SetShowDuration(button,20000);
@@ -1782,7 +1833,7 @@ public partial class MainWindow : Window
     void CopyProfile_Click(object s,RoutedEventArgs e){var source=SelectProfile("割り当てのコピー元を選択",false);if(source==null||source==CurrentProfile)return;if(WpfMessageBox.Show($"「{source.Name}」の割り当てで「{CurrentProfile.Name}」を置き換えますか？","割り当てコピー",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;CurrentProfile.Mappings=source.Mappings.Select(CloneMapping).ToList();MarkDirty();ColorButtons();}
     void ConfigureProfileAutoSwitch_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは自動切替の戻り先です");return;}if(CurrentProfile.AutoSwitchEnabled){var choice=WpfMessageBox.Show($"「{CurrentProfile.Name}」の自動切替はオンです。\n\nはい：対象アプリを追加\nいいえ：自動切替をオフ\nキャンセル：変更しない","プロファイル自動切替",MessageBoxButton.YesNoCancel);if(choice==MessageBoxResult.Cancel)return;if(choice==MessageBoxResult.No){CurrentProfile.AutoSwitchEnabled=false;MarkDirty();ShowInlineNotice("自動切替をオフにしました");return;}}var app=SelectRunningApplication();if(string.IsNullOrWhiteSpace(app))return;CurrentProfile.AutoSwitchEnabled=true;if(!CurrentProfile.AutoSwitchApplications.Contains(app,StringComparer.OrdinalIgnoreCase))CurrentProfile.AutoSwitchApplications.Add(app);MarkDirty();ShowInlineNotice($"カーソルが {app} 上にある時、自動的に「{CurrentProfile.Name}」へ切り替えます");}
     void DeleteProfile_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは削除できません");return;}if(WpfMessageBox.Show($"「{CurrentProfile.Name}」を削除しますか？","確認",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;config.Profiles.Remove(CurrentProfile);config.ActiveProfile=config.Profiles[0].Name;RefreshProfiles();MarkDirty();UpdateStatus();RebuildTrayMenu();}
-    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description};
+    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description,DeckColor=x.DeckColor};
     static GestureDefinition CloneGesture(GestureDefinition x)=>new(){Name=x.Name,UpKind=x.UpKind,UpValue=x.UpValue,DownKind=x.DownKind,DownValue=x.DownValue,LeftKind=x.LeftKind,LeftValue=x.LeftValue,RightKind=x.RightKind,RightValue=x.RightValue,CenterKind=x.CenterKind,CenterValue=x.CenterValue};
     void Save_Click(object s, RoutedEventArgs e)=>SaveAndApply("設定を保存し、エンジンへ反映しました");
     void SaveAndApply(string message){EnsureProfileDeckDefaults();var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.GestureThresholdPixels=config.GestureThresholdPixels;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");}
@@ -2216,7 +2267,9 @@ public partial class MainWindow : Window
         options.Add(new(ActionKind.Disabled,"⊘","無効化"));
         return [.. options];
     }
-    sealed record ActionOption(ActionKind Kind,string Icon,string Label,bool IsEnabled=true);
+    static ActionOption[] DeckActionOptions()=>[..ActionOptions(false).Where(x=>x.Kind!=ActionKind.Gesture),new(ActionKind.None,"⌨","キーパッド入力",true,true)];
+    internal FrameworkElement DeckKeypadInputButton=>KindBox;
+    sealed record ActionOption(ActionKind Kind,string Icon,string Label,bool IsEnabled=true,bool IsKeypad=false);
     sealed record InputMappingSnapshot(Mapping Mapping,GestureDefinition? Gesture);
     sealed record LayerMappingSnapshot(IReadOnlyList<Mapping> Mappings);
     sealed record RunningApplicationOption(string Label,string Value);

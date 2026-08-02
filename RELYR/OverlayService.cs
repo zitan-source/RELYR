@@ -602,7 +602,12 @@ internal sealed class DeckPanelOverlayWindow:Window
                 VerticalContentAlignment=System.Windows.VerticalAlignment.Center
             };
             if(WpfApplication.Current?.Resources["AppButtonStyle"] is Style style)button.Style=style;
-            if(MainWindow.MappingInterceptsInput(mapping))
+            if(DeckPanelLayout.TryGetButtonColor(mapping,out var customColor))
+            {
+                button.Background=new SolidColorBrush(customColor);
+                button.Foreground=new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));
+            }
+            else if(MainWindow.MappingInterceptsInput(mapping))
             {
                 button.Background=new SolidColorBrush(MainWindow.AssignmentColorFor(mapping!));
                 button.Foreground=WpfBrushes.White;

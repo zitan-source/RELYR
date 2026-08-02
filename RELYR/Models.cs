@@ -39,6 +39,7 @@ public sealed class Mapping
     public string Application { get; set; } = "";
     public string Layer { get; set; } = "通常";
     public string Description { get; set; } = "";
+    public string DeckColor { get; set; } = "";
 }
 
 public sealed class Profile
