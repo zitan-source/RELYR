@@ -1587,11 +1587,17 @@ public partial class MainWindow : Window
         DeckVisualUpdateCountForTest++;
         var mapping=DeckPanelLayout.FindMapping(selectedDeckLayout??DeckPanelLayout.DefaultLayout(config),DeckPanelLayout.SlotNumber(input));
         var assigned=MappingInterceptsInput(mapping)?mapping:null;
-        bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
         bool hasCustomColor=DeckPanelLayout.TryGetButtonColor(mapping,out var customColor);
-        button.Background=editing?ThemeService.Brush("EditingKeyBackground"):hasCustomColor?new SolidColorBrush(customColor):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
-        button.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
-        button.Foreground=editing?WpfBrushes.White:hasCustomColor?new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)):assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+        bool currentSelected=selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
+        WpfColor actionColor=hasCustomColor?customColor:assigned!=null?AssignmentColorFor(assigned):ThemeService.Color("AccentBrush");
+        System.Windows.Media.Brush pulseBrush=new SolidColorBrush(SelectionPulseColor(actionColor));
+        button.Background=currentSelected&&assigned==null&&!hasCustomColor?ThemeService.Brush("EditingKeyBackground"):hasCustomColor?new SolidColorBrush(customColor):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+        button.BorderBrush=currentSelected?pulseBrush:ThemeService.Brush("SubtleBorderBrush");
+        button.BorderThickness=currentSelected?new Thickness(2):new Thickness(1);
+        button.Foreground=currentSelected&&assigned==null&&!hasCustomColor?WpfBrushes.White:hasCustomColor?new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)):assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+        SetIsSelectionPulseActive(button,currentSelected);
+        SetSelectionPulseBrush(button,pulseBrush);
+        SetSelectionPulseVisual(button,currentSelected,pulseBrush);
         if(button.Content is TextBlock actionLabel)actionLabel.Text=DeckPanelLayout.ActionLabel(input,mapping);
         else button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
         if(deckManagementNameLabels.TryGetValue(button,out var nameLabel)){nameLabel.Text=mapping?.Description??"";if(hasCustomColor)nameLabel.Foreground=new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));else nameLabel.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");}
