@@ -1513,32 +1513,44 @@ public partial class MainWindow : Window
             bool currentSelected=selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
             bool multiSelected=MultiSelectToggle.IsChecked==true&&keyboardButtons.Contains(b)&&multiSelectedInputs.Contains((string)b.Tag);
             bool pulsing=currentSelected||multiSelected;
-            System.Windows.Media.Brush actionBrush=assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("AccentBrush");
+            WpfColor actionColor=assigned!=null?AssignmentColorFor(assigned):ThemeService.Color("AccentBrush");
+            System.Windows.Media.Brush pulseBrush=new SolidColorBrush(SelectionPulseColor(actionColor));
             b.Background=currentSelected&&assigned==null?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
-            b.BorderBrush=currentSelected?ThemeService.Brush("EditingKeyBorderBrush"):multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
+            b.BorderBrush=currentSelected?pulseBrush:multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
             b.BorderThickness=pulsing?new Thickness(2):new Thickness(1);
             b.Foreground=currentSelected&&assigned==null?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;
             SetIsMultiSelected(b,multiSelected);
             SetIsSelectionPulseActive(b,pulsing);
-            SetSelectionPulseBrush(b,actionBrush);
-            SetSelectionPulseVisual(b,pulsing);
+            SetSelectionPulseBrush(b,pulseBrush);
+            SetSelectionPulseVisual(b,pulsing,pulseBrush);
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b,250);ToolTipService.SetBetweenShowDelay(b,80);ToolTipService.SetShowDuration(b,20000);
         }
         ColorDeckManagementButtons();
     }
-    static void SetSelectionPulseVisual(System.Windows.Controls.Button button,bool active)
+    static WpfColor SelectionPulseColor(WpfColor color)=>WpfColor.FromRgb(
+        (byte)(color.R+(255-color.R)*.58),
+        (byte)(color.G+(255-color.G)*.58),
+        (byte)(color.B+(255-color.B)*.58));
+    static void SetSelectionPulseVisual(System.Windows.Controls.Button button,bool active,System.Windows.Media.Brush pulseBrush)
     {
         button.ApplyTemplate();
         if(button.Template.FindName("SelectionPulse",button) is not UIElement pulse)return;
+        if(pulse is Border border)border.Background=pulseBrush;
+        else if(pulse is System.Windows.Shapes.Path path)path.Fill=pulseBrush;
         if(!active)
         {
             pulse.BeginAnimation(UIElement.OpacityProperty,null);
             pulse.Opacity=0;
             return;
         }
-        pulse.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(.24,.78,TimeSpan.FromMilliseconds(760)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever},HandoffBehavior.SnapshotAndReplace);
+        pulse.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(.18,.88,TimeSpan.FromMilliseconds(680)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever},HandoffBehavior.SnapshotAndReplace);
+    }
+    internal static bool HasSelectionPulseAnimationForTest(System.Windows.Controls.Button button)
+    {
+        button.ApplyTemplate();
+        return button.Template.FindName("SelectionPulse",button) is UIElement pulse&&pulse.HasAnimatedProperties&&pulse.Opacity>0;
     }
     void ColorDeckManagementButtons()
     {
