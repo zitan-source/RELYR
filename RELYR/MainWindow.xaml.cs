@@ -435,6 +435,14 @@ public partial class MainWindow : Window
         OpenActionPicker(false);
     }
     void InputButton_Click(object sender,RoutedEventArgs e){if(sender is System.Windows.Controls.Button{Tag:string key})SelectVisualInput(key);}
+    void InputButton_DoubleClick(object sender,MouseButtonEventArgs e)
+    {
+        if(sender is System.Windows.Controls.Button{Tag:string key})
+        {
+            e.Handled=true;
+            OpenShortcutForVisualInput(key);
+        }
+    }
     void DestinationButton_PreviewMouseDown(object sender,MouseButtonEventArgs e)
     {
         var target=ValueBox.IsKeyboardFocusWithin?ValueBox:LongValueBox.IsKeyboardFocusWithin?LongValueBox:destinationInputTarget;
