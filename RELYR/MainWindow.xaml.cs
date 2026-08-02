@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using WpfMessageBox = RELYR.AppDialog;
 using WpfColor = System.Windows.Media.Color;
 using WpfColors = System.Windows.Media.Colors;
@@ -410,7 +411,7 @@ public partial class MainWindow : Window
         Canvas.SetLeft(button,782);Canvas.SetTop(button,100);KeyboardPanel.Children.Add(button);
     }
     readonly record struct KeySpec(string Key,string Label,double Width);
-    System.Windows.Controls.Button MakeInputButton(string key) { var b = new System.Windows.Controls.Button { Content = key=="CapsLock"?"CapsLock\n(F13設定時)":key, Tag = key, Style = (Style)FindResource("KeyButton") };if(key=="Space")b.Width=210;else if(key=="CapsLock"){b.MinWidth=94;b.FontSize=10;}else if(key is "LeftShift" or "RightShift" or "Enter" or "Back")b.MinWidth=82;else if(key is "Tab" or "LeftCtrl" or "RightCtrl")b.MinWidth=70;b.Click += (_, _) => SelectVisualInput(key); return b; }
+    System.Windows.Controls.Button MakeInputButton(string key) { var b = new System.Windows.Controls.Button { Content = key=="CapsLock"?"CapsLock\n(F13設定時)":key, Tag = key, Style = (Style)FindResource("KeyButton") };if(key=="Space")b.Width=210;else if(key=="CapsLock"){b.MinWidth=94;b.FontSize=10;}else if(key is "LeftShift" or "RightShift" or "Enter" or "Back")b.MinWidth=82;else if(key is "Tab" or "LeftCtrl" or "RightCtrl")b.MinWidth=70;b.Click += (_, _) => SelectVisualInput(key);b.MouseDoubleClick+=(_,_)=>OpenShortcutForVisualInput(key); return b; }
     void SelectVisualInput(string key)
     {
         if(key=="Space"&&currentLayer is "通常" or "Space"){ShowInlineNotice("SpaceキーはSpaceレイヤー専用のため、このレイヤーでは変更できません");return;}
@@ -422,7 +423,16 @@ public partial class MainWindow : Window
             UpdateMultiSelectControls();ColorButtons();
             return;
         }
-        SelectInput(currentLayer=="通常"?key:currentLayer+"+"+key);
+        ClearExecutionFocus();
+        SelectInput(currentLayer=="通常"?key:currentLayer+"+"+key,false);
+    }
+    void OpenShortcutForVisualInput(string key)
+    {
+        if(MultiSelectToggle.IsChecked==true)return;
+        if(key=="Space"&&currentLayer is "通常" or "Space")return;
+        if(key=="CapsLock"&&!editingSelectedInput&&destinationInputTarget==null)return;
+        SelectInput(InputForCurrentLayer(key),false);
+        OpenActionPicker(false);
     }
     void InputButton_Click(object sender,RoutedEventArgs e){if(sender is System.Windows.Controls.Button{Tag:string key})SelectVisualInput(key);}
     void DestinationButton_PreviewMouseDown(object sender,MouseButtonEventArgs e)
@@ -1500,22 +1510,35 @@ public partial class MainWindow : Window
                           ((string)b.Tag=="CapsLock"&&!editingSelectedInput&&destinationInputTarget==null);
             string input=currentLayer=="通常"?(string)b.Tag:currentLayer+"+"+(string)b.Tag;
             var assigned=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
-            bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
+            bool currentSelected=selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
             bool multiSelected=MultiSelectToggle.IsChecked==true&&keyboardButtons.Contains(b)&&multiSelectedInputs.Contains((string)b.Tag);
-            bool pulsing=editing||multiSelected;
+            bool pulsing=currentSelected||multiSelected;
             System.Windows.Media.Brush actionBrush=assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("AccentBrush");
-            b.Background=editing&&assigned==null?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
-            b.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
+            b.Background=currentSelected&&assigned==null?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+            b.BorderBrush=currentSelected?ThemeService.Brush("EditingKeyBorderBrush"):multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
             b.BorderThickness=pulsing?new Thickness(2):new Thickness(1);
-            b.Foreground=editing&&assigned==null?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+            b.Foreground=currentSelected&&assigned==null?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;
             SetIsMultiSelected(b,multiSelected);
             SetIsSelectionPulseActive(b,pulsing);
             SetSelectionPulseBrush(b,actionBrush);
+            SetSelectionPulseVisual(b,pulsing);
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b,250);ToolTipService.SetBetweenShowDelay(b,80);ToolTipService.SetShowDuration(b,20000);
         }
         ColorDeckManagementButtons();
+    }
+    static void SetSelectionPulseVisual(System.Windows.Controls.Button button,bool active)
+    {
+        button.ApplyTemplate();
+        if(button.Template.FindName("SelectionPulse",button) is not UIElement pulse)return;
+        if(!active)
+        {
+            pulse.BeginAnimation(UIElement.OpacityProperty,null);
+            pulse.Opacity=0;
+            return;
+        }
+        pulse.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(.24,.78,TimeSpan.FromMilliseconds(760)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever},HandoffBehavior.SnapshotAndReplace);
     }
     void ColorDeckManagementButtons()
     {
