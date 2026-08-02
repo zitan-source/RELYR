@@ -4,8 +4,6 @@ using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using WpfMessageBox = RELYR.AppDialog;
 using WpfColor = System.Windows.Media.Color;
 using WpfColors = System.Windows.Media.Colors;
@@ -26,6 +24,9 @@ namespace RELYR;
 
 public partial class MainWindow : Window
 {
+    public static readonly DependencyProperty IsMultiSelectedProperty=DependencyProperty.RegisterAttached("IsMultiSelected",typeof(bool),typeof(MainWindow),new PropertyMetadata(false));
+    public static bool GetIsMultiSelected(DependencyObject element)=>(bool)element.GetValue(IsMultiSelectedProperty);
+    public static void SetIsMultiSelected(DependencyObject element,bool value)=>element.SetValue(IsMultiSelectedProperty,value);
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
@@ -1500,20 +1501,11 @@ public partial class MainWindow : Window
             b.BorderThickness=multiSelected?new Thickness(2):new Thickness(1);
             b.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;
-            SetMultiSelectionGlow(b,multiSelected);
+            SetIsMultiSelected(b,multiSelected);
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b,250);ToolTipService.SetBetweenShowDelay(b,80);ToolTipService.SetShowDuration(b,20000);
         }
         ColorDeckManagementButtons();
-    }
-    static void SetMultiSelectionGlow(System.Windows.Controls.Button button,bool selected)
-    {
-        if(!selected){button.Effect=null;return;}
-        var accent=ThemeService.Color("AccentBrush");
-        if(button.Effect is DropShadowEffect{Color:var color} existing&&color==accent)return;
-        var glow=new DropShadowEffect{Color=accent,BlurRadius=13,ShadowDepth=0,Opacity=.25};
-        glow.BeginAnimation(DropShadowEffect.OpacityProperty,new DoubleAnimation(.22,.76,TimeSpan.FromMilliseconds(850)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever});
-        button.Effect=glow;
     }
     void ColorDeckManagementButtons()
     {
