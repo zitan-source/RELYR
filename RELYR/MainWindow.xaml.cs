@@ -27,6 +27,12 @@ public partial class MainWindow : Window
     public static readonly DependencyProperty IsMultiSelectedProperty=DependencyProperty.RegisterAttached("IsMultiSelected",typeof(bool),typeof(MainWindow),new PropertyMetadata(false));
     public static bool GetIsMultiSelected(DependencyObject element)=>(bool)element.GetValue(IsMultiSelectedProperty);
     public static void SetIsMultiSelected(DependencyObject element,bool value)=>element.SetValue(IsMultiSelectedProperty,value);
+    public static readonly DependencyProperty IsSelectionPulseActiveProperty=DependencyProperty.RegisterAttached("IsSelectionPulseActive",typeof(bool),typeof(MainWindow),new PropertyMetadata(false));
+    public static bool GetIsSelectionPulseActive(DependencyObject element)=>(bool)element.GetValue(IsSelectionPulseActiveProperty);
+    public static void SetIsSelectionPulseActive(DependencyObject element,bool value)=>element.SetValue(IsSelectionPulseActiveProperty,value);
+    public static readonly DependencyProperty SelectionPulseBrushProperty=DependencyProperty.RegisterAttached("SelectionPulseBrush",typeof(System.Windows.Media.Brush),typeof(MainWindow),new PropertyMetadata(null));
+    public static System.Windows.Media.Brush? GetSelectionPulseBrush(DependencyObject element)=>(System.Windows.Media.Brush?)element.GetValue(SelectionPulseBrushProperty);
+    public static void SetSelectionPulseBrush(DependencyObject element,System.Windows.Media.Brush value)=>element.SetValue(SelectionPulseBrushProperty,value);
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
@@ -1496,12 +1502,16 @@ public partial class MainWindow : Window
             var assigned=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
             bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
             bool multiSelected=MultiSelectToggle.IsChecked==true&&keyboardButtons.Contains(b)&&multiSelectedInputs.Contains((string)b.Tag);
-            b.Background=editing?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+            bool pulsing=editing||multiSelected;
+            System.Windows.Media.Brush actionBrush=assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("AccentBrush");
+            b.Background=editing&&assigned==null?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
             b.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
-            b.BorderThickness=multiSelected?new Thickness(2):new Thickness(1);
-            b.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+            b.BorderThickness=pulsing?new Thickness(2):new Thickness(1);
+            b.Foreground=editing&&assigned==null?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;
             SetIsMultiSelected(b,multiSelected);
+            SetIsSelectionPulseActive(b,pulsing);
+            SetSelectionPulseBrush(b,actionBrush);
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b,250);ToolTipService.SetBetweenShowDelay(b,80);ToolTipService.SetShowDuration(b,20000);
         }
