@@ -692,6 +692,13 @@ public partial class MainWindow : Window
     {
         if(e.ChangedButton!=MouseButton.Left||e.OriginalSource is not DependencyObject source)return;
         if(IsDescendantOf(source,KeyboardPanel)||IsDescendantOf(source,SecondaryKeyboardPanel)||IsDescendantOf(source,MousePanel)||IsInteractiveClick(source))return;
+        if(MultiSelectToggle.IsChecked==true&&multiSelectedInputs.Count>0)
+        {
+            multiSelectedInputs.Clear();
+            UpdateMultiSelectControls();
+            ColorButtons();
+            return;
+        }
         if(destinationInputTarget!=null||editingSelectedInput)CompleteDestinationInput();
         else if(selected!=null)ClearSelectedInput();
     }
