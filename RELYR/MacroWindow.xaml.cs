@@ -285,7 +285,7 @@ public partial class MacroWindow:Window
     internal bool CoordinateCaptureActiveForTest=>coordinateCaptureActive;
     void AddCatalogAction_Click(object sender,RoutedEventArgs e)
     {
-        if(current==null)return;var picker=new ActionPickerWindow{Owner=this};if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;InsertStep(new MacroStep{Event=$"割り当て: {action.Value}",RecordedActionKind=action.Kind,RecordedActionValue=action.Value});MarkChanged($"「{action.Name}」を追加しました。");
+        if(current==null)return;var picker=new ActionPickerWindow(deckLayouts:config.DeckLayouts){Owner=this};if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;InsertStep(new MacroStep{Event=$"割り当て: {action.Value}",RecordedActionKind=action.Kind,RecordedActionValue=action.Value});MarkChanged($"「{action.Name}」を追加しました。");
     }
     void AddApplicationAction_Click(object sender,RoutedEventArgs e)
     {
@@ -389,7 +389,7 @@ public partial class MacroWindow:Window
     }
     void ReplaceStepAction_Click(object sender,RoutedEventArgs e)
     {
-        var selected=SelectedSteps();if(selected.Count!=1)return;var picker=new ActionPickerWindow{Owner=this};if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;PushUndo();var step=selected[0];step.Event=$"割り当て: {action.Value}";step.RecordedActionKind=action.Kind;step.RecordedActionValue=action.Value;MarkChanged("アクションを変更しました。");RefreshSteps([step]);SetEditorState();
+        var selected=SelectedSteps();if(selected.Count!=1)return;var picker=new ActionPickerWindow(deckLayouts:config.DeckLayouts){Owner=this};if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;PushUndo();var step=selected[0];step.Event=$"割り当て: {action.Value}";step.RecordedActionKind=action.Kind;step.RecordedActionValue=action.Value;MarkChanged("アクションを変更しました。");RefreshSteps([step]);SetEditorState();
     }
     void RefreshSteps(IEnumerable<MacroStep>? selected=null)
     {

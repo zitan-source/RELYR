@@ -11,6 +11,7 @@ public partial class GestureManagerWindow:Window
     readonly List<GestureDefinition> gestures;
     readonly List<Profile> profiles;
     readonly List<MacroDefinition> macros;
+    readonly IReadOnlyList<DeckLayoutDefinition> deckLayouts;
     readonly string keyboardLayout;
     bool loading;
 
@@ -22,11 +23,12 @@ public partial class GestureManagerWindow:Window
     internal GestureManagerWindow(IReadOnlyList<GestureDefinition> source,IReadOnlyList<Profile> sourceProfiles,string keyboardLayout)
         :this(source,sourceProfiles,[],keyboardLayout){}
 
-    internal GestureManagerWindow(IReadOnlyList<GestureDefinition> source,IReadOnlyList<Profile> sourceProfiles,IReadOnlyList<MacroDefinition> sourceMacros,string keyboardLayout)
+    internal GestureManagerWindow(IReadOnlyList<GestureDefinition> source,IReadOnlyList<Profile> sourceProfiles,IReadOnlyList<MacroDefinition> sourceMacros,string keyboardLayout,IReadOnlyList<DeckLayoutDefinition>? sourceDeckLayouts=null)
     {
         gestures=source.Select(CloneGesture).ToList();
         profiles=sourceProfiles.Select(CloneProfile).ToList();
         macros=sourceMacros.Select(CloneMacro).ToList();
+        deckLayouts=sourceDeckLayouts??[];
         this.keyboardLayout=keyboardLayout;
         InitializeComponent();
         MainWindow.FollowWindowsTitleBarTheme(this,value=>TitleBarUsesDarkMode=value);
@@ -123,7 +125,7 @@ public partial class GestureManagerWindow:Window
     string? PickShortcut(out ActionKind kind)
     {
         kind=ActionKind.Shortcut;
-        var picker=new ActionPickerWindow(profiles,keyboardLayout,null,false){Owner=this};
+        var picker=new ActionPickerWindow(profiles,keyboardLayout,null,false,deckLayouts:deckLayouts){Owner=this};
         if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action||action.Kind==ActionKind.Gesture)return null;
         kind=action.Kind;
         return action.Value;
@@ -220,6 +222,6 @@ public partial class GestureManagerWindow:Window
 
     static GestureDefinition CloneGesture(GestureDefinition x)=>new(){Name=x.Name,UpKind=x.UpKind,UpValue=x.UpValue,DownKind=x.DownKind,DownValue=x.DownValue,LeftKind=x.LeftKind,LeftValue=x.LeftValue,RightKind=x.RightKind,RightValue=x.RightValue,CenterKind=x.CenterKind,CenterValue=x.CenterValue};
     static MacroDefinition CloneMacro(MacroDefinition x)=>new(){Id=x.Id,Name=x.Name,Steps=x.Steps.Select(step=>new MacroStep{Event=step.Event,DelayMs=step.DelayMs,RecordedActionKind=step.RecordedActionKind,RecordedActionValue=step.RecordedActionValue}).ToList()};
-    static Profile CloneProfile(Profile profile)=>new(){Name=profile.Name,AutoSwitchEnabled=profile.AutoSwitchEnabled,AutoSwitchApplications=[..profile.AutoSwitchApplications],Mappings=profile.Mappings.Select(CloneMapping).ToList()};
+    static Profile CloneProfile(Profile profile)=>new(){Name=profile.Name,DefaultDeckLayoutId=profile.DefaultDeckLayoutId,AutoSwitchEnabled=profile.AutoSwitchEnabled,AutoSwitchApplications=[..profile.AutoSwitchApplications],Mappings=profile.Mappings.Select(CloneMapping).ToList()};
     static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description};
 }

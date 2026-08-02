@@ -20,13 +20,18 @@ public partial class ActionPickerWindow:Window
     internal Action<Window>? OpenClockSettingsForTest;
 #endif
 
-    public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS",IEnumerable<GestureDefinition>? gestures=null,bool includeGestures=false,string? initialMajorCategory=null)
+    public ActionPickerWindow(IEnumerable<Profile>? profiles=null,string keyboardLayout="JIS",IEnumerable<GestureDefinition>? gestures=null,bool includeGestures=false,string? initialMajorCategory=null,IEnumerable<DeckLayoutDefinition>? deckLayouts=null)
     {
         InitializeComponent();
         this.keyboardLayout=keyboardLayout;
         // 無効化とジェスチャーはメイン編集画面の専用ボタンから選ぶ。
         // ショートカット一覧には通常のアクションだけを表示する。
         allActions=[..ActionCatalog.Items];
+        if(deckLayouts is { } layouts)
+        {
+            allActions.RemoveAll(x=>x.Value==OverlayService.DeckPanelAction);
+            allActions.AddRange(layouts.Select(x=>new CatalogAction("Deckパネル",x.Name,$"{x.Columns}×{x.Rows}のDeckレイアウトを表示します",ActionKind.Shortcut,DeckPanelLayout.ActionValue(x.Id))));
+        }
         MainWindow.FollowWindowsTitleBarTheme(this,value=>TitleBarUsesDarkMode=value);
         RefreshSearch();
         if(initialMajorCategory!=null&&MajorCategoryList.Items.Contains(initialMajorCategory))MajorCategoryList.SelectedItem=initialMajorCategory;
@@ -45,7 +50,11 @@ public partial class ActionPickerWindow:Window
     }
 
     internal static List<string> OrderMajorCategories(IEnumerable<string> categories)
-        =>categories.Where(x=>x!="その他").Distinct().ToList();
+    {
+        var ordered=categories.Distinct().ToList();
+        if(ordered.Remove("その他"))ordered.Add("その他");
+        return ordered;
+    }
 
     void MajorCategoryChanged(object sender,SelectionChangedEventArgs e)
     {
@@ -67,7 +76,7 @@ public partial class ActionPickerWindow:Window
     }
 
     internal static List<string> CategoriesForMajor(IEnumerable<CatalogAction> actions,string major)
-        =>[AllCategories,..actions.Where(x=>x.MajorCategory==major).Select(x=>x.Category).Distinct()];
+        =>major=="Deckパネル"?[AllCategories]:[AllCategories,..actions.Where(x=>x.MajorCategory==major).Select(x=>x.Category).Distinct()];
 
     internal static List<CatalogAction> ActionsForCategory(IEnumerable<CatalogAction> actions,string major,string category)
         =>actions.Where(x=>x.MajorCategory==major&&(category==AllCategories||x.Category==category)).ToList();

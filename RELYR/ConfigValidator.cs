@@ -10,6 +10,15 @@ public static class ConfigValidator
             errors.Add("同名のプロファイルがあります。");
         if(config.Macros.Select(x=>x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=config.Macros.Count)errors.Add("同名のマクロがあります。");
         if(config.Gestures.Select(x=>x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=config.Gestures.Count)errors.Add("同名のジェスチャーがあります。");
+        if(config.DeckLayouts.Count==0)errors.Add("Deckレイアウトがありません。");
+        if(config.DeckLayouts.Select(x=>x.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=config.DeckLayouts.Count)errors.Add("Deckレイアウトの識別子が重複しています。");
+        foreach(var layout in config.DeckLayouts)
+        {
+            if(string.IsNullOrWhiteSpace(layout.Name))errors.Add("名前が空のDeckレイアウトがあります。");
+            if(layout.Rows is <1 or >DeckPanelLayout.MaximumRows||layout.Columns is <1 or >DeckPanelLayout.MaximumColumns)errors.Add($"{layout.Name}: グリッドサイズは1～18の範囲で指定してください。");
+            ValidateMappings(config,"Deck/"+layout.Name,layout.Mappings,errors);
+        }
+        if(!config.DeckLayouts.Any(x=>x.Id.Equals(config.DefaultDeckLayoutId,StringComparison.OrdinalIgnoreCase)))errors.Add("既定のDeckレイアウトが見つかりません。");
         foreach(var gesture in config.Gestures)
         {
             if(string.IsNullOrWhiteSpace(gesture.Name))errors.Add("名前が空のジェスチャーがあります。");
@@ -31,6 +40,7 @@ public static class ConfigValidator
                     if(recordedKind is ActionKind.None or ActionKind.Disabled||string.IsNullOrWhiteSpace(step.RecordedActionValue))errors.Add($"{macro.Name}: 記録された割り当てアクションが空です。");
                     if(recordedKind==ActionKind.Macro&&!config.Macros.Any(x=>x.Name.Equals(step.RecordedActionValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{macro.Name}: 記録されたマクロ「{step.RecordedActionValue}」が見つかりません。");
                     if(recordedKind==ActionKind.Profile&&!config.Profiles.Any(x=>x.Name.Equals(step.RecordedActionValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{macro.Name}: 記録されたプロファイル「{step.RecordedActionValue}」が見つかりません。");
+                    ValidateDeckAction(config,macro.Name,recordedKind,step.RecordedActionValue,errors);
                 }
                 else if(step.Event!="Wait"&&!InputEngine.IsValidRecordedEvent(step.Event))errors.Add($"{macro.Name}: 認識できない手順「{step.Event}」があります。");
             }
@@ -45,7 +55,6 @@ public static class ConfigValidator
         {
             ValidateMappings(config,profile.Name,profile.Mappings,errors);
         }
-        ValidateMappings(config,"共通Deck",config.SharedDeckMappings,errors);
         return errors;
     }
 
@@ -63,6 +72,8 @@ public static class ConfigValidator
             if(map.Kind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.Value)&&!config.Gestures.Any(x=>x.Name.Equals(map.Value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.Value}」が見つかりません。");
             if(map.Kind==ActionKind.Gesture&&map.LongPressKind!=ActionKind.None)errors.Add($"{scope}/{map.Input}: ジェスチャーと長押し動作は同時に設定できません。");
             if(map.LongPressKind==ActionKind.Gesture&&!string.IsNullOrWhiteSpace(map.LongPressValue)&&!config.Gestures.Any(x=>x.Name.Equals(map.LongPressValue,StringComparison.OrdinalIgnoreCase)))errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.LongPressValue}」が見つかりません。");
+            ValidateDeckAction(config,$"{scope}/{map.Input}",map.Kind,map.Value,errors);
+            ValidateDeckAction(config,$"{scope}/{map.Input}/長押し",map.LongPressKind,map.LongPressValue,errors);
         }
     }
 
@@ -72,6 +83,13 @@ public static class ConfigValidator
         if(kind is not ActionKind.None and not ActionKind.Disabled&&string.IsNullOrWhiteSpace(value))errors.Add($"{gesture.Name}/{direction}: 実行内容が空です。");
         if(kind==ActionKind.Macro&&!config.Macros.Any(x=>x.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{gesture.Name}/{direction}: マクロ「{value}」が見つかりません。");
         if(kind==ActionKind.Profile&&!config.Profiles.Any(x=>x.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))errors.Add($"{gesture.Name}/{direction}: プロファイル「{value}」が見つかりません。");
+        ValidateDeckAction(config,$"{gesture.Name}/{direction}",kind,value,errors);
+    }
+
+    static void ValidateDeckAction(AppConfig config,string scope,ActionKind kind,string value,List<string> errors)
+    {
+        if(kind==ActionKind.Shortcut&&value.StartsWith(DeckPanelLayout.ActionPrefix,StringComparison.OrdinalIgnoreCase)&&DeckPanelLayout.ResolveActionLayout(config,value)==null)
+            errors.Add($"{scope}: 参照先のDeckレイアウトが見つかりません。");
     }
 
     static IReadOnlyList<string>? FindMacroCycle(MacroDefinition macro,IReadOnlyDictionary<string,MacroDefinition> macros,HashSet<string> visiting,List<string> path)

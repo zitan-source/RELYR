@@ -9,30 +9,52 @@ internal static class DeckPanelLayout
     internal const int Rows=5;
     internal const int Columns=9;
     internal const int SlotCount=Rows*Columns;
+    internal const int MaximumRows=18;
+    internal const int MaximumColumns=18;
+    internal const int MaximumSlotCount=MaximumRows*MaximumColumns;
     internal const double KeyWidth=54;
     internal const double KeyHeight=52;
     internal const double Gap=4;
+    internal const double CellHeight=70;
+    internal const string ActionPrefix="ShowDeckPanelOverlay:";
 
     internal static string InputName(int slot)=>$"{Layer}+{slot:00}";
 
     internal static bool IsInputName(string? input)
     {
         if(string.IsNullOrWhiteSpace(input)||!input.StartsWith(Layer+"+",StringComparison.OrdinalIgnoreCase))return false;
-        return int.TryParse(input[(Layer.Length+1)..],out int slot)&&slot is >=1 and <=SlotCount;
+        return int.TryParse(input[(Layer.Length+1)..],out int slot)&&slot is >=1 and <=MaximumSlotCount;
     }
 
     internal static int SlotNumber(string input)=>
         IsInputName(input)&&int.TryParse(input[(Layer.Length+1)..],out int slot)?slot:0;
 
-    internal static Mapping? FindMapping(AppConfig config,int slot)
+    internal static DeckLayoutDefinition? FindLayout(AppConfig config,string? id)
+        =>string.IsNullOrWhiteSpace(id)?null:config.DeckLayouts.FirstOrDefault(x=>x.Id.Equals(id,StringComparison.OrdinalIgnoreCase));
+
+    internal static DeckLayoutDefinition? DefaultLayout(AppConfig config)
+        =>FindLayout(config,config.DefaultDeckLayoutId)??config.DeckLayouts.FirstOrDefault();
+
+    internal static DeckLayoutDefinition? ResolveActionLayout(AppConfig config,string? action)
+    {
+        if(action?.StartsWith(ActionPrefix,StringComparison.OrdinalIgnoreCase)==true)
+            return FindLayout(config,action[ActionPrefix.Length..]);
+        return action?.Equals(OverlayService.DeckPanelAction,StringComparison.OrdinalIgnoreCase)==true?DefaultLayout(config):null;
+    }
+
+    internal static string ActionValue(string layoutId)=>ActionPrefix+layoutId;
+    internal static bool IsDeckAction(string? value)=>value?.Equals(OverlayService.DeckPanelAction,StringComparison.OrdinalIgnoreCase)==true
+        ||value?.StartsWith(ActionPrefix,StringComparison.OrdinalIgnoreCase)==true;
+
+    internal static Mapping? FindMapping(DeckLayoutDefinition? layout,int slot)
     {
         string input=InputName(slot);
-        if(config.UseSharedDeckPanel)
-            return config.SharedDeckMappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
-        if(config.Profiles.Count==0)return null;
-        var profile=config.Profiles.FirstOrDefault(x=>x.Name==config.ActiveProfile)??config.Profiles[0];
-        return profile.Mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        return layout?.Mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
     }
+
+    internal static Mapping? FindMapping(AppConfig config,int slot)=>FindMapping(DefaultLayout(config),slot);
+
+    internal static int VisibleSlotCount(DeckLayoutDefinition layout)=>Math.Clamp(layout.Rows,1,MaximumRows)*Math.Clamp(layout.Columns,1,MaximumColumns);
 
     internal static IReadOnlyList<Profile> ProfilesWithDeckMappings(IEnumerable<Profile> profiles)=>profiles
         .Where(profile=>profile.Mappings.Any(map=>IsInputName(map.Input)))

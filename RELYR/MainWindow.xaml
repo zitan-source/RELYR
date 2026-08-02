@@ -48,6 +48,19 @@
       <EventSetter Event="PreviewMouseRightButtonDown" Handler="InputButton_RightClick"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="KeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"><Grid><Border Height="1" Margin="3,1,3,0" VerticalAlignment="Top" Background="#24FFFFFF" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="KeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="KeyBorder" Property="Opacity" Value="0.94"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="KeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="JisEnterButton" TargetType="Button" BasedOn="{StaticResource KeyButton}">
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Grid SnapsToDevicePixels="True">
+          <Path x:Name="EnterShape" Data="M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" StrokeLineJoin="Round"/>
+          <Path Data="M 5,1.5 L 155,1.5" Stroke="#24FFFFFF" StrokeThickness="1" IsHitTestVisible="False"/>
+          <ContentPresenter Margin="18,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="EnterShape" Property="Stroke" Value="{DynamicResource AccentBrush}"/><Setter TargetName="EnterShape" Property="Opacity" Value="0.94"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="EnterShape" Property="Fill" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="DeckButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="FontSize" Value="11"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DeckKeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"><Grid><Border Height="1" Margin="3,1,3,0" VerticalAlignment="Top" Background="#24FFFFFF" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="Opacity" Value="0.94"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DeckKeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
@@ -175,7 +188,7 @@
           <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="200" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
           <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="36" MinWidth="36" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
           <TextBlock Text="配列" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/><ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="76" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
-          <Button Style="{StaticResource ToolbarButtonStyle}" Content="保存" Click="Save_Click" Margin="14,3,3,3" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
+          <Button x:Name="ToolbarSaveButton" Style="{StaticResource ToolbarButtonStyle}" Content="保存" Click="Save_Click" Margin="14,3,3,3" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
         </WrapPanel>
       </Grid>
     </Border>
@@ -227,11 +240,11 @@
               <Border Canvas.Left="6" Canvas.Top="8" Width="156" Height="238" CornerRadius="74" BorderBrush="{DynamicResource BorderBrush}" Background="{DynamicResource CardBackground}" BorderThickness="2"/>
               <Line X1="84" Y1="10" X2="84" Y2="82" Stroke="{DynamicResource BorderBrush}" StrokeThickness="2"/>
               <Line X1="8" Y1="82" X2="160" Y2="82" Stroke="{DynamicResource BorderBrush}" StrokeThickness="2"/>
-              <Button Style="{StaticResource MouseHotspot}" Tag="MouseLeft" Content="左" ToolTip="左クリック" Click="InputButton_Click" Canvas.Left="14" Canvas.Top="16" Width="56" Height="54" FontSize="11"/>
-              <Button Style="{StaticResource MouseHotspot}" Tag="MouseRight" Content="右" ToolTip="右クリック／右クリックレイヤー" Click="InputButton_Click" Canvas.Left="98" Canvas.Top="16" Width="56" Height="54" FontSize="11"/>
-              <Button Style="{StaticResource MouseHotspot}" Tag="WheelUp" Content="▲" ToolTip="ホイール上回転" Click="InputButton_Click" Canvas.Left="72" Canvas.Top="18" Width="24" Height="20" FontSize="9"/>
-              <Button Style="{StaticResource MouseHotspot}" Tag="MouseMiddle" Content="●" ToolTip="ホイールクリック（中央ボタン）" Click="InputButton_Click" Canvas.Left="72" Canvas.Top="40" Width="24" Height="16" FontSize="8"/>
-              <Button Style="{StaticResource MouseHotspot}" Tag="WheelDown" Content="▼" ToolTip="ホイール下回転" Click="InputButton_Click" Canvas.Left="72" Canvas.Top="58" Width="24" Height="20" FontSize="9"/>
+              <Button Style="{StaticResource MouseHotspot}" Tag="MouseLeft" Content="左" ToolTip="左クリック" Click="InputButton_Click" Canvas.Left="13" Canvas.Top="16" Width="56" Height="54" FontSize="11"/>
+              <Button Style="{StaticResource MouseHotspot}" Tag="MouseRight" Content="右" ToolTip="右クリック／右クリックレイヤー" Click="InputButton_Click" Canvas.Left="99" Canvas.Top="16" Width="56" Height="54" FontSize="11"/>
+              <Button Style="{StaticResource MouseHotspot}" Tag="WheelUp" Content="▲" ToolTip="ホイール上回転" Click="InputButton_Click" Canvas.Left="70" Canvas.Top="10" Width="28" Height="24" FontSize="10"/>
+              <Button Style="{StaticResource MouseHotspot}" Tag="MouseMiddle" Content="●" ToolTip="ホイールクリック（中央ボタン）" Click="InputButton_Click" Canvas.Left="70" Canvas.Top="36" Width="28" Height="22" FontSize="9"/>
+              <Button Style="{StaticResource MouseHotspot}" Tag="WheelDown" Content="▼" ToolTip="ホイール下回転" Click="InputButton_Click" Canvas.Left="70" Canvas.Top="60" Width="28" Height="24" FontSize="10"/>
               <TextBlock Canvas.Left="0" Canvas.Top="96" Width="168" Text="TILT" TextAlignment="Center" Foreground="{DynamicResource MutedText}" FontSize="8" FontWeight="Bold"/>
               <Button Style="{StaticResource MouseHotspot}" Tag="TiltLeft" Content="◀" ToolTip="チルトホイール左" Click="InputButton_Click" Canvas.Left="44" Canvas.Top="108" Width="38" Height="28" FontSize="11"/>
               <Button Style="{StaticResource MouseHotspot}" Tag="TiltRight" Content="▶" ToolTip="チルトホイール右" Click="InputButton_Click" Canvas.Left="86" Canvas.Top="108" Width="38" Height="28" FontSize="11"/>
@@ -265,69 +278,96 @@
 
       <Grid x:Name="WorkspaceGrid" Grid.Column="1" MinWidth="0" Margin="20">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <Grid Margin="2,0,0,18">
+        <Grid x:Name="WorkspaceHeader" Margin="2,0,0,18" Visibility="Collapsed">
           <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel>
             <TextBlock x:Name="WorkspaceTitle" Text="キーボード" FontSize="20" FontWeight="SemiBold"/>
             <TextBlock x:Name="WorkspaceSubtitle" Text="通常レイヤー" Margin="0,3,0,0" FontSize="12" Foreground="{DynamicResource SecondaryText}"/>
           </StackPanel>
-          <CheckBox x:Name="SharedDeckPanelBox" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center"
-                    Content="すべてのプロファイルで共通のDeckを使用" FontSize="13" Margin="20,0,2,0"
-                    Checked="SharedDeckPanelChanged" Unchecked="SharedDeckPanelChanged"/>
         </Grid>
         <StackPanel x:Name="WorkspaceIntroPanel" Visibility="Collapsed">
           <StackPanel Margin="0,0,0,16">
            <StackPanel x:Name="LayerButtonsPanel" HorizontalAlignment="Stretch" SizeChanged="LayerButtonsPanel_SizeChanged">
-             <TextBlock x:Name="KeyboardLayerCategory" Text="キーボード" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="8,5,8,3"/>
+             <TextBlock x:Name="KeyboardLayerCategory" Text="キーボードレイヤー" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="8,5,8,3"/>
             <Button x:Name="NormalLayerButton" Style="{StaticResource LayerButton}" Tag="通常" Click="LayerButton_Click">
-               <StackPanel><TextBlock Text="通常レイヤー"/><TextBlock Text="そのまま押す" FontSize="11" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
+               <StackPanel><TextBlock Text="デフォルト"/><TextBlock Text="そのまま押す" FontSize="11" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
             </Button>
             <Button x:Name="SpaceLayerButton" Style="{StaticResource LayerButton}" Tag="Space" Click="LayerButton_Click">
-               <StackPanel><TextBlock Text="Space レイヤー"/><TextBlock Text="Spaceを押しながら" FontSize="11" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
+               <StackPanel><TextBlock Text="Space"/><TextBlock Text="Spaceを押しながら" FontSize="11" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
             </Button>
             <Button x:Name="CapsLockLayerButton" Style="{StaticResource LayerButton}" Tag="CapsLock" Click="LayerButton_Click">
-               <StackPanel><TextBlock Text="CapsLock レイヤー"/><TextBlock Text="F13リマップ設定が必要" FontSize="9" Foreground="{DynamicResource WarningBrush}"/></StackPanel>
+               <StackPanel><TextBlock Text="CapsLock"/><TextBlock Text="F13リマップ設定が必要" FontSize="9" Foreground="{DynamicResource WarningBrush}"/></StackPanel>
             </Button>
-             <TextBlock x:Name="MouseLayerCategory" Text="マウス" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="8,8,8,3"/>
-             <Button x:Name="RightMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseRight" Click="LayerButton_Click"><StackPanel><TextBlock Text="右クリック レイヤー"/><TextBlock Text="右クリックを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
-             <Button x:Name="ForwardMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseForward" Click="LayerButton_Click"><StackPanel><TextBlock Text="進む レイヤー"/><TextBlock Text="進むを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
-             <Button x:Name="BackMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseBack" Click="LayerButton_Click"><StackPanel><TextBlock Text="戻る レイヤー"/><TextBlock Text="戻るを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
+            <Separator x:Name="KeyboardLayerDivider" Margin="4,8,4,4"/>
+             <TextBlock x:Name="MouseLayerCategory" Text="マウスレイヤー" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="8,8,8,3"/>
+             <Button x:Name="RightMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseRight" Click="LayerButton_Click"><StackPanel><TextBlock Text="右クリック"/><TextBlock Text="右クリックを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
+             <Button x:Name="ForwardMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseForward" Click="LayerButton_Click"><StackPanel><TextBlock Text="進む"/><TextBlock Text="進むを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
+             <Button x:Name="BackMouseLayerButton" Style="{StaticResource LayerButton}" Tag="MouseBack" Click="LayerButton_Click"><StackPanel><TextBlock Text="戻る"/><TextBlock Text="戻るを押しながら" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel></Button>
+             <Separator x:Name="MouseLayerDivider" Margin="4,8,4,4"/>
              <TextBlock x:Name="WindowsLayerCategory" Text="Windows" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="8,8,8,3"/>
             <Button x:Name="TaskbarLayerButton" Style="{StaticResource LayerButton}" Tag="Taskbar" Click="LayerButton_Click">
-               <StackPanel><TextBlock Text="タスクバー上"/><TextBlock Text="カーソルがタスクバーにある時" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
+               <StackPanel><TextBlock Text="タスクバー"/><TextBlock Text="カーソルがタスクバーにある時" FontSize="10" Foreground="{DynamicResource SecondaryText}"/></StackPanel>
             </Button>
            </StackPanel>
           </StackPanel>
 
         </StackPanel>
-        <Grid x:Name="KeyboardWorkspace" Grid.Row="1"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition x:Name="LowerInputRow" Height="320"/></Grid.RowDefinitions>
-          <Viewbox x:Name="KeyboardViewbox" MaxWidth="1220" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Top">
-            <Canvas x:Name="KeyboardPanel" Width="960" Height="364"/>
+        <Grid x:Name="KeyboardWorkspace" Grid.Row="1" VerticalAlignment="Top"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition x:Name="LowerInputRow" Height="Auto"/></Grid.RowDefinitions>
+          <Viewbox x:Name="KeyboardViewbox" MaxWidth="1220" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <Canvas x:Name="KeyboardPanel" Width="960" Height="364" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
           </Viewbox>
-          <Grid x:Name="LowerInputGrid" Grid.Row="1" Width="{Binding ActualWidth,ElementName=KeyboardViewbox}" HorizontalAlignment="Left" Margin="0,10,0,0">
+          <Grid x:Name="LowerInputGrid" Grid.Row="1" Width="{Binding ActualWidth,ElementName=KeyboardViewbox}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,36,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="MouseColumn" Width="300"/></Grid.ColumnDefinitions>
-            <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="0,0,12,0" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Stretch"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312"/></Viewbox>
-            <Border x:Name="MouseFrame" Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Height="{Binding ActualHeight,ElementName=SecondaryKeyboardViewbox}" VerticalAlignment="Top" Margin="0,0,0,2" Panel.ZIndex="0"/>
+            <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="0,0,12,0" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Top"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312"/></Viewbox>
+            <Border x:Name="MouseFrame" Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Height="{Binding ActualHeight,ElementName=SecondaryKeyboardViewbox}" VerticalAlignment="Top" Margin="0" Panel.ZIndex="0"/>
             <TextBlock Grid.Column="1" Text="マウス" Style="{StaticResource LowerGroupTitle}" Panel.ZIndex="2" HorizontalAlignment="Left" VerticalAlignment="Top"/>
             <Viewbox x:Name="MouseHost" Grid.Column="1" Margin="8,22,8,8" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Top" Panel.ZIndex="1"/>
           </Grid>
         </Grid>
-        <Viewbox x:Name="DeckWorkspace" Grid.Row="1" Visibility="Collapsed" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" VerticalAlignment="Top">
-          <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
-        </Viewbox>
+        <Grid x:Name="DeckWorkspace" Grid.Row="1" Visibility="Collapsed" MinWidth="0">
+          <ScrollViewer x:Name="DeckLayoutListWorkspace" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden">
+            <WrapPanel x:Name="DeckLayoutCardsPanel" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+          </ScrollViewer>
+          <Grid x:Name="DeckEditorWorkspace" Visibility="Collapsed" MinWidth="0">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <Button x:Name="DeckBackButton" Click="DeckBack_Click" Width="40" Height="40" MinWidth="40" MinHeight="40" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
+                <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Button>
+              <TextBox x:Name="DeckLayoutNameBox" Grid.Column="1" Height="40" Margin="0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged"/>
+              <Button x:Name="DeckSaveButton" Grid.Column="2" Content="保存" Click="DeckSave_Click" Height="40" MinHeight="40" VerticalAlignment="Center" Margin="12,0,0,0" Padding="18,0" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
+            </Grid>
+            <WrapPanel Grid.Row="1" Margin="0,0,0,14" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Margin="0,0,24,6">
+                <TextBlock Text="サイズ" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0"/>
+                <ComboBox x:Name="DeckSizePresetBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="148" Height="36" SelectionChanged="DeckSizePresetChanged">
+                  <ComboBoxItem Content="コンパクト  3×3" Tag="3x3"/><ComboBoxItem Content="標準  9×5" Tag="9x5"/><ComboBoxItem Content="ワイド  8×2" Tag="8x2"/><ComboBoxItem Content="カスタム" Tag="custom"/>
+                </ComboBox>
+                <StackPanel x:Name="DeckCustomSizePanel" Orientation="Horizontal" Margin="10,0,0,0" Visibility="Collapsed">
+                  <TextBox x:Name="DeckColumnsBox" Width="38" MaxLength="2" VerticalContentAlignment="Center" TextChanged="DeckCustomSizeChanged"/><TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="DeckRowsBox" Width="38" MaxLength="2" VerticalContentAlignment="Center" TextChanged="DeckCustomSizeChanged"/><TextBlock Text="  最大18×18" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="透過率" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0"/>
+                <Slider x:Name="DeckOpacitySlider" Width="104" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged"/>
+                <TextBlock x:Name="DeckOpacityValueText" Width="42" Text="96%" Margin="8,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+              </StackPanel>
+            </WrapPanel>
+            <Viewbox x:Name="DeckGridViewbox" Grid.Row="2" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Top">
+              <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
+            </Viewbox>
+          </Grid>
+        </Grid>
       </Grid>
 
       <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource PaneBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1,0,0,0" Padding="20">
         <Border.RenderTransform><TranslateTransform x:Name="AssignmentPaneTransform" X="0"/></Border.RenderTransform>
+        <Grid>
         <ScrollViewer x:Name="AssignmentScrollViewer" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" IsDeferredScrollingEnabled="False" PreviewMouseWheel="AssignmentPane_PreviewMouseWheel">
           <StackPanel>
             <TextBlock Text="インスペクター" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
             <Button x:Name="DetectInputButton" Content="入力を検出" Click="Detect_Click" Margin="0,0,0,12" ToolTip="押したキーまたはマウス入力を検出"/>
-            <Button x:Name="DeckKeypadInputButton" Content="キーパッドから入力" Click="DeckKeypadInput_Click" Margin="0,0,0,12" Visibility="Collapsed"/>
-            <StackPanel x:Name="InspectorEmptyState" Margin="0,42,0,0">
-              <TextBlock Text="キーを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="編集するキーまたはDeckボタンを選択してください" Margin="8,6,8,0" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap"/>
-            </StackPanel>
             <StackPanel x:Name="SelectionHeader" Visibility="Collapsed" Margin="0,0,0,14">
               <TextBlock Text="入力元" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
               <TextBlock x:Name="InputDisplayText" Text="キーを選択してください" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" TextWrapping="Wrap" Margin="0,3,0,0"/>
@@ -342,6 +382,7 @@
               <StackPanel>
                 <TextBlock Text="実行する操作" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
+                <Button x:Name="DeckKeypadInputButton" Content="キーパッドから入力" Click="DeckKeypadInput_Click" HorizontalAlignment="Left" Margin="0,0,0,8" Padding="12,8" Visibility="Collapsed"/>
                 <TextBlock Text="内容" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" PreviewKeyDown="ExecutionValue_PreviewKeyDown" ToolTip="Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます"/>
                 <Button Content="入力完了" HorizontalAlignment="Right" Click="DestinationInputDone_Click" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}"/>
                 <Button x:Name="LongPressOnlyButton" Content="短押しを元の入力にする" Click="LongPressOnly_Click" Margin="0,4,0,2"/>
@@ -361,6 +402,11 @@
             </StackPanel>
           </StackPanel>
         </ScrollViewer>
+        <StackPanel x:Name="InspectorEmptyState" Margin="0,28,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+          <TextBlock Text="キーを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+          <TextBlock Text="編集するキーまたはDeckボタンを選択してください" Margin="8,6,8,0" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
+        </Grid>
       </Border>
     </Grid>
   </DockPanel>

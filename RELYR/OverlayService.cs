@@ -37,6 +37,7 @@ internal static class OverlayService
     static Func<bool>? physicalInputDownProvider;
     static Action<Mapping>? deckActionRequested;
     static Action<double,double>? deckPositionChanged;
+    static Action<bool,double,double>? inputPanelPositionChanged;
     static int fullScreenActive;
     static int fullScreenClosing;
     static int fullScreenDismissArmed;
@@ -46,23 +47,24 @@ internal static class OverlayService
 #endif
     internal static bool FullScreenVisible=>Volatile.Read(ref fullScreenActive)!=0;
 
-    internal static void Configure(Func<AppConfig>? provider,Func<bool>? inputDownProvider=null,Action<Mapping>? deckAction=null,Action<double,double>? positionChanged=null)
+    internal static void Configure(Func<AppConfig>? provider,Func<bool>? inputDownProvider=null,Action<Mapping>? deckAction=null,Action<double,double>? positionChanged=null,Action<bool,double,double>? inputPositionChanged=null)
     {
         configProvider=provider;
         physicalInputDownProvider=inputDownProvider;
         deckActionRequested=deckAction;
         deckPositionChanged=positionChanged;
+        inputPanelPositionChanged=inputPositionChanged;
     }
     internal static void Shutdown()
     {
         if(WpfApplication.Current?.Dispatcher.CheckAccess()==true)
         {
-            inputPanel?.Close();inputPanel=null;deckPanel?.Close();deckPanel=null;CloseScreenOverlays();configProvider=null;physicalInputDownProvider=null;deckActionRequested=null;deckPositionChanged=null;
+            inputPanel?.Close();inputPanel=null;deckPanel?.Close();deckPanel=null;CloseScreenOverlays();configProvider=null;physicalInputDownProvider=null;deckActionRequested=null;deckPositionChanged=null;inputPanelPositionChanged=null;
         }
         else if(WpfApplication.Current is { } app)_=app.Dispatcher.BeginInvoke(Shutdown);
     }
 
-    internal static bool IsOverlayAction(string? value)=>value is NumpadAction or ExtendedKeypadAction or DeckPanelAction or BlankAction or ClockAction;
+    internal static bool IsOverlayAction(string? value)=>value is NumpadAction or ExtendedKeypadAction or BlankAction or ClockAction||DeckPanelLayout.IsDeckAction(value);
 
     internal static bool TryShow(string? value)
     {
@@ -79,12 +81,19 @@ internal static class OverlayService
 
     static void ShowOnUiThread(string action)
     {
-        if(action==DeckPanelAction)
+        if(DeckPanelLayout.IsDeckAction(action))
         {
             inputPanel?.Close();inputPanel=null;
-            if(deckPanel is {IsVisible:true} existing){existing.Close();deckPanel=null;return;}
             AppConfig deckConfig=configProvider?.Invoke()??new AppConfig();
-            deckPanel=new DeckPanelOverlayWindow(deckConfig,deckActionRequested,deckConfig.InputPanelOpacityPercent,deckPositionChanged);
+            var layout=DeckPanelLayout.ResolveActionLayout(deckConfig,action);
+            if(deckPanel is {IsVisible:true} existing)
+            {
+                bool same=layout?.Id.Equals(existing.LayoutId,StringComparison.OrdinalIgnoreCase)==true;
+                existing.Close();deckPanel=null;
+                if(same)return;
+            }
+            if(layout==null)return;
+            deckPanel=new DeckPanelOverlayWindow(deckConfig,deckActionRequested,deckConfig.InputPanelOpacityPercent,deckPositionChanged,layout);
             deckPanel.Closed+=(_,_)=>deckPanel=null;
             deckPanel.Show();
             return;
@@ -98,7 +107,7 @@ internal static class OverlayService
             AppConfig? panelConfig=configProvider?.Invoke();
             int opacity=panelConfig?.InputPanelOpacityPercent??96;
             bool useUsLayout=panelConfig?.KeyboardLayout=="US";
-            inputPanel=new InputPanelOverlayWindow(extended,opacity,useUsLayout);
+            inputPanel=new InputPanelOverlayWindow(extended,opacity,useUsLayout,panelConfig,inputPanelPositionChanged);
             inputPanel.Closed+=(_,_)=>inputPanel=null;
             inputPanel.Show();
             return;
@@ -196,7 +205,9 @@ internal sealed class InputPanelOverlayWindow:Window
     const int MaNoActivate=3;
 
     readonly Border dragArea;
+    readonly Action<double,double>? savePosition;
     bool dragging;
+    bool positionDirty;
     Point dragStart;
     double windowStartLeft,windowStartTop;
     DpiScale dragDpi;
@@ -211,9 +222,10 @@ internal sealed class InputPanelOverlayWindow:Window
     readonly List<Button> inputButtons=[];
     readonly Border panelCard;
 
-    internal InputPanelOverlayWindow(bool extended,int opacityPercent=96,bool useUsLayout=false)
+    internal InputPanelOverlayWindow(bool extended,int opacityPercent=96,bool useUsLayout=false,AppConfig? config=null,Action<bool,double,double>? positionChanged=null)
     {
         IsExtended=extended;
+        savePosition=positionChanged==null?null:(left,top)=>positionChanged(extended,left,top);
         keyWidth=useUsLayout?56:54;
         Title=extended?"ナビゲーション・テンキー":"テンキー";
         Width=extended?KeyCellWidth*7+16+24:KeyCellWidth*4+24;
@@ -231,8 +243,9 @@ internal sealed class InputPanelOverlayWindow:Window
         Topmost=true;
         SizeToContent=SizeToContent.Manual;
         WindowStartupLocation=WindowStartupLocation.Manual;
-        Left=Math.Max(SystemParameters.WorkArea.Left,SystemParameters.WorkArea.Right-Width-24);
-        Top=Math.Max(SystemParameters.WorkArea.Top,SystemParameters.WorkArea.Bottom-Height-24);
+        Point initial=InitialPosition(config,extended,Width,Height);
+        Left=initial.X;
+        Top=initial.Y;
 
         panelCard=new Border
         {
@@ -258,7 +271,7 @@ internal sealed class InputPanelOverlayWindow:Window
         root.Children.Add(body);
 
         SourceInitialized+=WindowSourceInitialized;
-        Closed+=(_,_)=>dragging=false;
+        Closed+=(_,_)=>{dragging=false;PersistPosition();};
     }
 
     Border BuildHeader()
@@ -330,10 +343,10 @@ internal sealed class InputPanelOverlayWindow:Window
         grid.Width=KeyCellWidth*3;grid.Height=KeyCellHeight*3;
         AddUniformKey(grid,"Insert","Insert");
         AddUniformKey(grid,"Home","Home");
-        AddUniformKey(grid,"PageUp","PageUp");
+        AddUniformKey(grid,"Page\nUp","PageUp");
         AddUniformKey(grid,"Delete","Delete");
         AddUniformKey(grid,"End","End");
-        AddUniformKey(grid,"PageDown","PageDown");
+        AddUniformKey(grid,"Page\nDown","PageDown");
         AddUniformKey(grid,"Print","PrintScreen");
         AddUniformKey(grid,"Scroll","ScrollLock");
         AddUniformKey(grid,"Pause","Pause");
@@ -403,7 +416,7 @@ internal sealed class InputPanelOverlayWindow:Window
     {
         var button=new Button
         {
-            Content=label,Tag=action,Margin=new Thickness(KeyGap/2),Padding=new Thickness(4,5,4,5),
+            Content=KeyLabel(label),Tag=action,Margin=new Thickness(KeyGap/2),Padding=new Thickness(4,5,4,5),
             FontSize=14,FontWeight=FontWeights.Medium,
             HorizontalContentAlignment=System.Windows.HorizontalAlignment.Center,VerticalContentAlignment=System.Windows.VerticalAlignment.Center
         };
@@ -412,6 +425,9 @@ internal sealed class InputPanelOverlayWindow:Window
         if(WpfApplication.Current?.Resources["AppButtonStyle"] is Style style)button.Style=style;
         return button;
     }
+    static object KeyLabel(string label)=>label.Contains('\n')
+        ?new TextBlock{Text=label,TextAlignment=TextAlignment.Center,HorizontalAlignment=System.Windows.HorizontalAlignment.Center,VerticalAlignment=System.Windows.VerticalAlignment.Center}
+        :label;
 
     void InputButtonClicked(object sender,RoutedEventArgs e)
     {
@@ -442,7 +458,7 @@ internal sealed class InputPanelOverlayWindow:Window
         if(!dragging||e.LeftButton!=MouseButtonState.Pressed)return;
         Point current=PointToScreen(e.GetPosition(this));
         Point delta=PhysicalDragDeltaToDip(current-dragStart,dragDpi);
-        Left=windowStartLeft+delta.X;Top=windowStartTop+delta.Y;
+        Left=windowStartLeft+delta.X;Top=windowStartTop+delta.Y;positionDirty=true;
         e.Handled=true;
     }
 
@@ -452,7 +468,23 @@ internal sealed class InputPanelOverlayWindow:Window
     void DragEnded(object sender,MouseButtonEventArgs e)
     {
         if(!dragging)return;
-        dragging=false;dragArea.ReleaseMouseCapture();e.Handled=true;
+        dragging=false;dragArea.ReleaseMouseCapture();PersistPosition();e.Handled=true;
+    }
+
+    void PersistPosition(){if(!positionDirty)return;positionDirty=false;savePosition?.Invoke(Left,Top);}
+    internal void MoveAndPersistForTest(double left,double top){Left=left;Top=top;positionDirty=false;savePosition?.Invoke(left,top);}
+    internal static Point InitialPosition(AppConfig? config,bool extended,double width,double height)
+    {
+        double defaultLeft=Math.Max(SystemParameters.WorkArea.Left,SystemParameters.WorkArea.Right-width-24);
+        double defaultTop=Math.Max(SystemParameters.WorkArea.Top,SystemParameters.WorkArea.Bottom-height-24);
+        if(config==null)return new Point(defaultLeft,defaultTop);
+        double? configuredLeft=extended?config.ExtendedKeypadPanelLeft:config.NumpadPanelLeft;
+        double? configuredTop=extended?config.ExtendedKeypadPanelTop:config.NumpadPanelTop;
+        if(configuredLeft is not double savedLeft||configuredTop is not double savedTop||!double.IsFinite(savedLeft)||!double.IsFinite(savedTop))return new Point(defaultLeft,defaultTop);
+        const double visibleEdge=48;
+        double minLeft=SystemParameters.VirtualScreenLeft-width+visibleEdge,maxLeft=SystemParameters.VirtualScreenLeft+SystemParameters.VirtualScreenWidth-visibleEdge;
+        double minTop=SystemParameters.VirtualScreenTop-height+visibleEdge,maxTop=SystemParameters.VirtualScreenTop+SystemParameters.VirtualScreenHeight-visibleEdge;
+        return new Point(Math.Clamp(savedLeft,minLeft,maxLeft),Math.Clamp(savedTop,minTop,maxTop));
     }
 
     void WindowSourceInitialized(object? sender,EventArgs e)
@@ -497,17 +529,23 @@ internal sealed class DeckPanelOverlayWindow:Window
     internal IReadOnlyList<Button> DeckButtons=>deckButtons;
     internal Button CloseButton{get;private set;}=null!;
     internal double PanelOpacity=>panelCard.Opacity;
+    internal string LayoutId=>layout.Id;
     internal bool UsesNoActivateStyle{get;private set;}
     readonly List<Button> deckButtons=[];
     readonly Border panelCard;
+    readonly DeckLayoutDefinition layout;
 
-    internal DeckPanelOverlayWindow(AppConfig config,Action<Mapping>? executeAction,int opacityPercent=96,Action<double,double>? positionChanged=null)
+    internal DeckPanelOverlayWindow(AppConfig config,Action<Mapping>? executeAction,int opacityPercent=96,Action<double,double>? positionChanged=null,DeckLayoutDefinition? selectedLayout=null)
     {
         execute=executeAction;
         savePosition=positionChanged;
-        Title="RELYR Deck";
-        Width=DeckPanelLayout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap)+24;
-        Height=DeckPanelLayout.Rows*70+84;
+        layout=selectedLayout??DeckPanelLayout.DefaultLayout(config)??new DeckLayoutDefinition();
+        Title="RELYR Deck - "+layout.Name;
+        double naturalGridWidth=layout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap);
+        double naturalGridHeight=layout.Rows*DeckPanelLayout.CellHeight;
+        double scale=Math.Min(1,Math.Min((SystemParameters.WorkArea.Width-48)/Math.Max(1,naturalGridWidth),(SystemParameters.WorkArea.Height-76)/Math.Max(1,naturalGridHeight)));
+        Width=naturalGridWidth*scale+24;
+        Height=naturalGridHeight*scale+52;
         MinWidth=Width;MaxWidth=Width;MinHeight=Height;MaxHeight=Height;
         WindowStyle=WindowStyle.None;
         ResizeMode=ResizeMode.NoResize;
@@ -523,7 +561,7 @@ internal sealed class DeckPanelOverlayWindow:Window
         {
             CornerRadius=new CornerRadius(14),
             BorderThickness=new Thickness(1),
-            Padding=new Thickness(12),
+            Padding=new Thickness(12,8,12,8),
             Opacity=Math.Clamp(opacityPercent,40,100)/100d,
             Effect=new DropShadowEffect{BlurRadius=24,ShadowDepth=5,Opacity=.4,Color=Colors.Black}
         };
@@ -532,7 +570,7 @@ internal sealed class DeckPanelOverlayWindow:Window
         Content=panelCard;
 
         var root=new Grid();
-        root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(48)});
+        root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(30)});
         root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
         panelCard.Child=root;
         dragArea=BuildHeader();
@@ -540,15 +578,14 @@ internal sealed class DeckPanelOverlayWindow:Window
 
         var deckGrid=new UniformGrid
         {
-            Rows=DeckPanelLayout.Rows,
-            Columns=DeckPanelLayout.Columns,
-            Width=DeckPanelLayout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap),
-            Height=DeckPanelLayout.Rows*70,
-            Margin=new Thickness(0,12,0,0)
+            Rows=layout.Rows,
+            Columns=layout.Columns,
+            Width=naturalGridWidth,
+            Height=naturalGridHeight
         };
-        for(int slot=1;slot<=DeckPanelLayout.SlotCount;slot++)
+        for(int slot=1;slot<=DeckPanelLayout.VisibleSlotCount(layout);slot++)
         {
-            var mapping=DeckPanelLayout.FindMapping(config,slot);
+            var mapping=DeckPanelLayout.FindMapping(layout,slot);
             var button=new Button
             {
                 Tag=mapping,
@@ -572,13 +609,14 @@ internal sealed class DeckPanelOverlayWindow:Window
             }
             button.Click+=DeckButtonClicked;
             deckButtons.Add(button);
-            var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=70};
+            var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=DeckPanelLayout.CellHeight};
             cell.Children.Add(button);
             cell.Children.Add(DeckPanelLayout.CreateNameLabel(mapping));
             deckGrid.Children.Add(cell);
         }
-        Grid.SetRow(deckGrid,1);
-        root.Children.Add(deckGrid);
+        var deckView=new Viewbox{Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=System.Windows.HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,6,0,0),Child=deckGrid};
+        Grid.SetRow(deckView,1);
+        root.Children.Add(deckView);
 
         SourceInitialized+=WindowSourceInitialized;
         Closed+=(_,_)=>{dragging=false;PersistPosition();};
@@ -586,27 +624,27 @@ internal sealed class DeckPanelOverlayWindow:Window
 
     Border BuildHeader()
     {
-        var border=new Border{CornerRadius=new CornerRadius(8),Padding=new Thickness(8,4,8,4),Cursor=WpfCursors.SizeAll};
+        var border=new Border{CornerRadius=new CornerRadius(6),Padding=new Thickness(6,2,4,2),Cursor=WpfCursors.SizeAll};
         border.SetResourceReference(Border.BackgroundProperty,"SurfaceBackground");
         var grid=new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
         grid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
         grid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-        var grip=new TextBlock{Text="⋮⋮",FontSize=18,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,9,0)};
+        var grip=new TextBlock{Text="⋮⋮",FontSize=14,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,7,0)};
         grip.SetResourceReference(TextBlock.ForegroundProperty,"AccentBrush");
-        var title=new TextBlock{Text="Deck",FontSize=16,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center};
+        var title=new TextBlock{Text=layout.Name,FontSize=14,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,TextTrimming=TextTrimming.CharacterEllipsis};
         title.SetResourceReference(TextBlock.ForegroundProperty,"PrimaryText");
         var close=new Button
         {
-            Width=34,Height=34,MinWidth=34,MaxWidth=34,MinHeight=34,MaxHeight=34,
+            Width=26,Height=26,MinWidth=26,MaxWidth=26,MinHeight=26,MaxHeight=26,
             Margin=new Thickness(0),Padding=new Thickness(0),Focusable=false,
             HorizontalContentAlignment=System.Windows.HorizontalAlignment.Center,
             VerticalContentAlignment=System.Windows.VerticalAlignment.Center,
             Content=new System.Windows.Shapes.Path
             {
-                Data=Geometry.Parse("M 1,1 L 11,11 M 11,1 L 1,11"),
-                Width=12,Height=12,Stretch=Stretch.Uniform,
-                StrokeThickness=1.6,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round
+                Data=Geometry.Parse("M 1,1 L 9,9 M 9,1 L 1,9"),
+                Width=10,Height=10,Stretch=Stretch.Uniform,
+                StrokeThickness=1.5,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round
             }
         };
         ((System.Windows.Shapes.Path)close.Content).SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,"PrimaryText");

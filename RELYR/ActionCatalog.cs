@@ -7,6 +7,7 @@ public sealed record CatalogAction(string Category,string Name,string Descriptio
 
 public static class ActionCatalog
 {
+    public const string ShowRelyrMainWindowAction="ShowRelyrMainWindow";
     static readonly IReadOnlyDictionary<string,string> MouseActionLabels=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
     {
         ["MouseLeft"]="左クリック",["ShiftDrag"]="Shift + 左クリック",["CtrlDrag"]="Ctrl + 左クリック",["AltDrag"]="Alt + 左クリック",
@@ -221,7 +222,9 @@ public static class ActionCatalog
         new("Windowsアプリ・管理ツール","レジストリエディター","Windowsレジストリを編集します",ActionKind.Launch,"regedit.exe"),
         new("Windowsアプリ・診断","システム情報","PCのハードウェアとWindows情報を表示します",ActionKind.Launch,"msinfo32.exe"),
         new("Windowsアプリ・診断","リソースモニター","CPU・メモリ・ディスク・ネットワークの詳細を表示します",ActionKind.Launch,"resmon.exe"),
-        new("Windowsアプリ・診断","DirectX 診断ツール","DirectXとグラフィックス環境を確認します",ActionKind.Launch,"dxdiag.exe")
+        new("Windowsアプリ・診断","DirectX 診断ツール","DirectXとグラフィックス環境を確認します",ActionKind.Launch,"dxdiag.exe"),
+
+        new("RELYR","RELYRを表示","RELYRのメイン画面を表示して前面へ移動します",ActionKind.Shortcut,ShowRelyrMainWindowAction)
     ];
 
     public static string GetMajorCategory(string category)=>category switch
@@ -237,9 +240,11 @@ public static class ActionCatalog
         _ when category.StartsWith("エクスプローラー・",StringComparison.Ordinal)=>"エクスプローラー",
         "マウス・ホイール"=>"マウス",
         _ when category.StartsWith("オーバーレイ・",StringComparison.Ordinal)=>"オーバーレイ",
+        "Deckパネル"=>"Deckパネル",
         _ when category.StartsWith("Windowsアプリ・",StringComparison.Ordinal)=>"Windowsアプリ",
         "プロファイル切替"=>"プロファイル",
         "任意のショートカット"=>"入力・編集",
+        "RELYR"=>"その他",
         _=>"その他"
     };
 

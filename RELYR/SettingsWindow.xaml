@@ -204,7 +204,7 @@
 
         <StackPanel x:Name="OverlayPanel" Visibility="Collapsed">
           <TextBlock Text="オーバーレイ" FontSize="27" FontWeight="Bold"/>
-          <TextBlock Text="テンキー画面の透過率と、クロック画面の表示を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,14"/>
+          <TextBlock Text="入力パネルの透過率と、クロック画面の表示を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,14"/>
           <Border Style="{StaticResource Card}" Padding="4" Margin="0,0,0,12">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -213,7 +213,7 @@
                 <ColumnDefinition Width="64"/>
               </Grid.ColumnDefinitions>
               <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="テンキー画面の透過率" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="入力パネルの透過率" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="数字が大きいほど濃く表示します" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
               </StackPanel>
               <Slider x:Name="InputPanelOpacitySlider" Grid.Column="1" Minimum="40" Maximum="100"

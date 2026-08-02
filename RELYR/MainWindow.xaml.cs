@@ -71,6 +71,8 @@ public partial class MainWindow : Window
     readonly List<System.Windows.Controls.Button> deckManagementButtons=[];
     readonly Dictionary<System.Windows.Controls.Button,TextBlock> deckManagementNameLabels=[];
     bool deckManagementMode;
+    bool updatingDeckEditor;
+    DeckLayoutDefinition? selectedDeckLayout;
     int destinationFocusRequest;
     UpdateInfo? availableUpdate;
     UpdateCheckResult? lastUpdateCheck;
@@ -80,7 +82,7 @@ public partial class MainWindow : Window
     int trayDisposed;
     Profile CurrentProfile => config.Profiles.First(x => x.Name == config.ActiveProfile);
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x=>x.Name==appliedConfig.ActiveProfile)??appliedConfig.Profiles[0];
-    List<Mapping> MappingCollectionForInput(string input)=>DeckPanelLayout.IsInputName(input)&&config.UseSharedDeckPanel?config.SharedDeckMappings:CurrentProfile.Mappings;
+    List<Mapping> MappingCollectionForInput(string input)=>DeckPanelLayout.IsInputName(input)&&selectedDeckLayout!=null?selectedDeckLayout.Mappings:CurrentProfile.Mappings;
     public bool NeedsFirstRunSetup=>!config.FirstRunCompleted;
     internal bool IsInputHookDisposedForTest=>engine.IsDisposedForTest;
     internal bool IsInputEngineReadyForTest=>engineStarted&&engine.Enabled;
@@ -105,6 +107,18 @@ public partial class MainWindow : Window
     internal void ShowProfileOverlayForTest(string name)=>ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest=>VisualInputButtons().ToList();
     internal IReadOnlyList<System.Windows.Controls.Button> DeckManagementButtonsForTest=>deckManagementButtons;
+    internal int DeckVisualUpdateCountForTest{get;private set;}
+    internal void ResetDeckVisualUpdateCountForTest()=>DeckVisualUpdateCountForTest=0;
+    internal DeckLayoutDefinition? SelectedDeckLayoutForTest=>selectedDeckLayout;
+    internal Action<Window>? NewDeckDialogLoadedForTest{get;set;}
+    internal DeckLayoutDefinition AddDeckLayoutForTest(string name,int columns,int rows)
+    {
+        var layout=new DeckLayoutDefinition{Name=name,Columns=columns,Rows=rows};config.DeckLayouts.Add(layout);RefreshDeckLayoutCards();return layout;
+    }
+    internal void EditDeckLayoutForTest(DeckLayoutDefinition layout)=>EditDeckLayout(layout);
+    internal void ApplyDeckSizeForTest(int columns,int rows)=>ApplyDeckSize(columns,rows);
+    internal void ShowDeckLayoutListForTest()=>ShowDeckLayoutList();
+    internal void ShowNewDeckDialogForTest()=>PromptNewDeckLayout();
     internal WindowActionTarget DeckWindowActionTargetForTest=>DeckExecutionConfig().WindowActionTarget;
     internal bool TitleBarUsesDarkMode { get; private set; }
     internal static string DisplayVersion
@@ -143,7 +157,8 @@ public partial class MainWindow : Window
             ()=>appliedConfig,
             ()=>engine.HasCapturedPhysicalInput,
             mapping=>{try{if(!actionQueue.IsAddingCompleted)actionQueue.TryAdd((mapping,mapping.Input,true));}catch(InvalidOperationException){}},
-            PersistDeckPanelPosition);
+            PersistDeckPanelPosition,
+            PersistInputPanelPosition);
         executor=new MappingExecutor(new SystemInputOutput(name=>appliedConfig.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),name=>Dispatcher.BeginInvoke(()=>SwitchProfile(name,true)),()=>appliedConfig.KeyboardLayout=="US",()=>appliedConfig));
         deckExecutor=new MappingExecutor(new SystemInputOutput(name=>appliedConfig.Macros.FirstOrDefault(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)),name=>Dispatcher.BeginInvoke(()=>SwitchProfile(name,true)),()=>appliedConfig.KeyboardLayout=="US",DeckExecutionConfig));
         actionWorker=Task.Run(ProcessActions);dragActionWorker=Task.Factory.StartNew(ProcessDragActions,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
@@ -274,9 +289,9 @@ public partial class MainWindow : Window
         AddKey("PrintScreen","Print",970,0,72);AddKey("ScrollLock","Scroll",1046,0,72);AddKey("Pause","Pause",1122,0,72);
 
         AddRow(44,[new("半角/全角","半角/全角",88),new("1","1",54),new("2","2",54),new("3","3",54),new("4","4",54),new("5","5",54),new("6","6",54),new("7","7",54),new("8","8",54),new("9","9",54),new("0","0",54),new("-","-",54),new("^","^",54),new("¥","¥",54),new("Back","Backspace",96)]);
-        AddKey("Insert","Insert",970,70,72);AddKey("Home","Home",1046,70,72);AddKey("PageUp","PageUp",1122,70,72);
+        AddKey("Insert","Insert",970,70,72);AddKey("Home","Home",1046,70,72);AddKey("PageUp","Page\nUp",1122,70,72);
         AddRow(100,[new("Tab","Tab",82),new("Q","Q",54),new("W","W",54),new("E","E",54),new("R","R",54),new("T","T",54),new("Y","Y",54),new("U","U",54),new("I","I",54),new("O","O",54),new("P","P",54),new("@","@",54),new("[","[",54)]);
-        AddKey("Delete","Delete",970,128,72);AddKey("End","End",1046,128,72);AddKey("PageDown","PageDown",1122,128,72);
+        AddKey("Delete","Delete",970,128,72);AddKey("End","End",1046,128,72);AddKey("PageDown","Page\nDown",1122,128,72);
         AddRow(156,[new("CapsLock","CapsLock\n(F13設定時)",104),new("A","A",54),new("S","S",54),new("D","D",54),new("F","F",54),new("G","G",54),new("H","H",54),new("J","J",54),new("K","K",54),new("L","L",54),new(";",";",54),new(":",":",54),new("]","]",54)]);
         AddJisEnter();
         AddRow(212,[new("LeftShift","Shift",126),new("Z","Z",54),new("X","X",54),new("C","C",54),new("V","V",54),new("B","B",54),new("N","N",54),new("M","M",54),new(",",",",54),new(".",".",54),new("/","/",54),new("_","＼  _",54),new("RightShift","Shift",174)]);
@@ -295,8 +310,8 @@ public partial class MainWindow : Window
     void BuildUsKeyboard()
     {
         AddTopFunctionRow(900);AddKey("PrintScreen","Print",970,0,72);AddKey("ScrollLock","Scroll",1046,0,72);AddKey("Pause","Pause",1122,0,72);
-        AddRow(44,[new("`","`",56),new("1","1",56),new("2","2",56),new("3","3",56),new("4","4",56),new("5","5",56),new("6","6",56),new("7","7",56),new("8","8",56),new("9","9",56),new("0","0",56),new("-","-",56),new("=","=",56),new("Back","Backspace",120)]);AddKey("Insert","Insert",970,70,72);AddKey("Home","Home",1046,70,72);AddKey("PageUp","PageUp",1122,70,72);
-        AddRow(100,[new("Tab","Tab",88),new("Q","Q",56),new("W","W",56),new("E","E",56),new("R","R",56),new("T","T",56),new("Y","Y",56),new("U","U",56),new("I","I",56),new("O","O",56),new("P","P",56),new("[","[",56),new("]","]",56),new("\\","＼",88)]);AddKey("Delete","Delete",970,128,72);AddKey("End","End",1046,128,72);AddKey("PageDown","PageDown",1122,128,72);
+        AddRow(44,[new("`","`",56),new("1","1",56),new("2","2",56),new("3","3",56),new("4","4",56),new("5","5",56),new("6","6",56),new("7","7",56),new("8","8",56),new("9","9",56),new("0","0",56),new("-","-",56),new("=","=",56),new("Back","Backspace",120)]);AddKey("Insert","Insert",970,70,72);AddKey("Home","Home",1046,70,72);AddKey("PageUp","Page\nUp",1122,70,72);
+        AddRow(100,[new("Tab","Tab",88),new("Q","Q",56),new("W","W",56),new("E","E",56),new("R","R",56),new("T","T",56),new("Y","Y",56),new("U","U",56),new("I","I",56),new("O","O",56),new("P","P",56),new("[","[",56),new("]","]",56),new("\\","＼",88)]);AddKey("Delete","Delete",970,128,72);AddKey("End","End",1046,128,72);AddKey("PageDown","Page\nDown",1122,128,72);
         AddRow(156,[new("CapsLock","CapsLock\n(F13設定時)",102),new("A","A",56),new("S","S",56),new("D","D",56),new("F","F",56),new("G","G",56),new("H","H",56),new("J","J",56),new("K","K",56),new("L","L",56),new(";",";",56),new("'","'",56),new("Enter","Enter",134)]);
         AddRow(212,[new("LeftShift","Shift",136),new("Z","Z",56),new("X","X",56),new("C","C",56),new("V","V",56),new("B","B",56),new("N","N",56),new("M","M",56),new(",",",",56),new(".",".",56),new("/","/",56),new("RightShift","Shift",160)]);AddKey("Up","↑",1046,244,56);
         AddRow(268,[new("LeftCtrl","Ctrl",72),new("LWin","Win",72),new("LeftAlt","Alt",72),new("Space","Space",368),new("RightAlt","Alt",72),new("RWin","Win",72),new("Menu","Menu",72),new("RightCtrl","Ctrl",72)]);AddKey("Left","←",970,302,56);AddKey("Down","↓",1046,302,56);AddKey("Right","→",1122,302,56);AddNumpad();AddFunctionExtension();
@@ -304,7 +319,7 @@ public partial class MainWindow : Window
     void AddTopFunctionRow(double rightEdge){const int keyCount=14;const double gap=4;double keyWidth=(rightEdge-gap*(keyCount-1))/keyCount;double x=0;AddMainKey("Esc","Esc",x,0,keyWidth,26);x+=keyWidth+gap;for(int i=1;i<=12;i++){AddMainKey($"F{i}",$"F{i}",x,0,keyWidth,26);x+=keyWidth+gap;}AddMainKey("Delete","Delete",x,0,keyWidth,26);}
     void AddMainKey(string key,string label,double x,double y,double width,double height){var b=MakeInputButton(key);b.Content=label;b.Width=width;b.Height=height;b.MinWidth=0;b.Margin=new Thickness(0);Canvas.SetLeft(b,x);Canvas.SetTop(b,y);KeyboardPanel.Children.Add(b);}
     void AddNumpad(){AddKey("NumLock","Num",1210,70,62);AddKey("Divide","÷",1276,70,62);AddKey("Multiply","×",1342,70,62);AddKey("Subtract","−",1408,70,62);AddKey("NumPad7","7",1210,128,62);AddKey("NumPad8","8",1276,128,62);AddKey("NumPad9","9",1342,128,62);AddKey("Add","＋",1408,128,62,108);AddKey("NumPad4","4",1210,186,62);AddKey("NumPad5","5",1276,186,62);AddKey("NumPad6","6",1342,186,62);AddKey("NumPad1","1",1210,244,62);AddKey("NumPad2","2",1276,244,62);AddKey("NumPad3","3",1342,244,62);AddKey("NumPadEnter","Enter",1408,244,62,108);AddKey("NumPad0","0",1210,302,128);AddKey("Decimal",".",1342,302,62);}
-    void AddFunctionExtension(){const double gap=4;double rightEdge=config.KeyboardLayout=="US"?900:942;double width=(rightEdge-gap*13)/14;double x=0;for(int i=14;i<=24;i++){AddKey($"F{i}",$"F{i}",x,338,width,26);x+=width+gap;}}
+    void AddFunctionExtension(){const double gap=4;double rightEdge=config.KeyboardLayout=="US"?900:942;double width=(rightEdge-gap*13)/14;double x=0;for(int i=14;i<=24;i++){AddKey($"F{i}",$"F{i}",x,328,width,26);x+=width+gap;}}
     void AddRow(double y,IEnumerable<KeySpec> keys){double x=0;foreach(var key in keys){AddKey(key.Key,key.Label,x,y,key.Width);x+=key.Width+4;}}
     void AddKey(string key,string label,double x,double y,double width,double height=52)
     {
@@ -315,8 +330,11 @@ public partial class MainWindow : Window
             if(key=="NumPad0")width=SecondaryKeyWidth*2+SecondaryKeyGap;
             else if(key is "Add" or "NumPadEnter")height=SecondaryKeyHeight*2+SecondaryKeyGap;
         }
-        var b=MakeInputButton(key);b.Content=label;b.Width=width;b.Height=height;b.MinWidth=0;b.Margin=new Thickness(0);Canvas.SetLeft(b,x);Canvas.SetTop(b,y);panel.Children.Add(b);
+        var b=MakeInputButton(key);b.Content=KeyLabel(label);b.Width=width;b.Height=height;b.MinWidth=0;b.Margin=new Thickness(0);Canvas.SetLeft(b,x);Canvas.SetTop(b,y);panel.Children.Add(b);
     }
+    static object KeyLabel(string label)=>label.Contains('\n')
+        ?new TextBlock{Text=label,TextAlignment=TextAlignment.Center,HorizontalAlignment=System.Windows.HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center}
+        :label;
     const double SecondaryKeyHeight=52,SecondaryKeyGap=4,SecondaryFramePadding=10,SecondaryKeyTop=26,SecondaryGroupGap=12;
     double SecondaryKeyWidth=>config.KeyboardLayout=="US"?56:54;
     void AddSecondaryGroupFrames()
@@ -371,7 +389,14 @@ public partial class MainWindow : Window
         };
         return !double.IsNaN(x);
     }
-    void AddJisEnter(){var shape=Geometry.Parse("M 0,0 L 160,0 L 160,108 L 22,108 L 22,56 L 0,56 Z");var b=MakeInputButton("Enter");b.Content="Enter";b.Width=160;b.Height=108;b.MinWidth=0;b.Margin=new Thickness(0);b.Clip=shape;Canvas.SetLeft(b,782);Canvas.SetTop(b,100);KeyboardPanel.Children.Add(b);var outline=new System.Windows.Shapes.Path{Data=shape,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=1,Fill=WpfBrushes.Transparent,IsHitTestVisible=false};Canvas.SetLeft(outline,782);Canvas.SetTop(outline,100);KeyboardPanel.Children.Add(outline);}
+    void AddJisEnter()
+    {
+        // Keep the inner step centered in the row gutter. A straight inner edge
+        // prevents the visual gap next to ] from narrowing at the transition.
+        var roundedShape=Geometry.Parse("M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z");
+        var button=MakeInputButton("Enter");button.Style=(Style)FindResource("JisEnterButton");button.Content="Enter";button.Width=160;button.Height=108;button.MinWidth=0;button.Margin=new Thickness(0);button.Clip=roundedShape;
+        Canvas.SetLeft(button,782);Canvas.SetTop(button,100);KeyboardPanel.Children.Add(button);
+    }
     readonly record struct KeySpec(string Key,string Label,double Width);
     System.Windows.Controls.Button MakeInputButton(string key) { var b = new System.Windows.Controls.Button { Content = key=="CapsLock"?"CapsLock\n(F13設定時)":key, Tag = key, Style = (Style)FindResource("KeyButton") };if(key=="Space")b.Width=210;else if(key=="CapsLock"){b.MinWidth=94;b.FontSize=10;}else if(key is "LeftShift" or "RightShift" or "Enter" or "Back")b.MinWidth=82;else if(key is "Tab" or "LeftCtrl" or "RightCtrl")b.MinWidth=70;b.Click += (_, _) => SelectVisualInput(key); return b; }
     void SelectVisualInput(string key)
@@ -479,7 +504,7 @@ public partial class MainWindow : Window
         if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description))
             mappings.Remove(mapping);
         MarkDirty();
-        ColorButtons();
+        RefreshSelectedInputVisual(input);
     }
     void DeckNameBox_TextChanged(object sender,TextChangedEventArgs e)
     {
@@ -492,7 +517,7 @@ public partial class MainWindow : Window
         }
         else MappingCollectionForInput(selected.Input).Remove(selected);
         MarkDirty();
-        ColorButtons();
+        RefreshSelectedInputVisual(selected.Input);
     }
     internal void SetDeckButtonNameForTest(string input,string name)=>SetDeckButtonName(input,name);
     internal ContextMenu CreateInputContextMenu(string key)
@@ -633,7 +658,7 @@ public partial class MainWindow : Window
     }
     void OpenActionPicker(bool longPress,string? initialMajorCategory=null)
     {
-        var picker=new ActionPickerWindow(config.Profiles,config.KeyboardLayout,null,false,initialMajorCategory){Owner=this};
+        var picker=new ActionPickerWindow(config.Profiles,config.KeyboardLayout,null,false,initialMajorCategory,config.DeckLayouts){Owner=this};
         if(picker.ShowDialog()!=true||picker.SelectedAction is not { } action)return;
         ApplyCatalogAction(action,longPress);
     }
@@ -666,12 +691,12 @@ public partial class MainWindow : Window
         if(longPress)
         {
             selected.LongPressKind=action.Kind;selected.LongPressValue=action.Value;
-            LongKindBox.SelectedValue=editorKind;LongValueBox.Text=DisplayActionValue(action.Kind,action.Value);
+            LongKindBox.SelectedValue=editorKind;LongValueBox.Text=DisplayConfiguredActionValue(action.Kind,action.Value);
         }
         else
         {
             selected.Kind=action.Kind;selected.Value=action.Value;
-            KindBox.SelectedValue=action.Kind==ActionKind.Gesture?ActionKind.Gesture:editorKind;ValueBox.Text=DisplayActionValue(action.Kind,action.Value);
+            KindBox.SelectedValue=action.Kind==ActionKind.Gesture?ActionKind.Gesture:editorKind;ValueBox.Text=DisplayConfiguredActionValue(action.Kind,action.Value);
             if(action.Kind==ActionKind.Gesture)
             {
                 selected.LongPressKind=ActionKind.None;selected.LongPressValue="";
@@ -728,6 +753,7 @@ public partial class MainWindow : Window
     void ApplyProfileManagerResult(IReadOnlyList<Profile> profiles,string activeProfile,bool autoSwitch)
     {
         config.Profiles=profiles.ToList();
+        EnsureProfileDeckDefaults();
         config.ActiveProfile=activeProfile;
         config.AutoSwitchProfilesByCursor=autoSwitch;
         automaticProfileReturnName="";
@@ -740,7 +766,7 @@ public partial class MainWindow : Window
     }
     void OpenGestureManager_Click(object sender,RoutedEventArgs e)
     {
-        var window=new GestureManagerWindow(config.Gestures,config.Profiles,config.Macros,config.KeyboardLayout){Owner=this};if(window.ShowDialog()!=true)return;
+        var window=new GestureManagerWindow(config.Gestures,config.Profiles,config.Macros,config.KeyboardLayout,config.DeckLayouts){Owner=this};if(window.ShowDialog()!=true)return;
         config.Gestures=window.ResultGestures.ToList();
         config.Profiles=window.ResultProfiles.ToList();
         ClearSelectedInput();RefreshProfiles();UpdateLayerButtons();MarkDirty();
@@ -750,7 +776,13 @@ public partial class MainWindow : Window
         DeckManagementGrid.Children.Clear();
         deckManagementButtons.Clear();
         deckManagementNameLabels.Clear();
-        for(int slot=1;slot<=DeckPanelLayout.SlotCount;slot++)
+        var layout=selectedDeckLayout??DeckPanelLayout.DefaultLayout(config);
+        if(layout==null)return;
+        DeckManagementGrid.Rows=layout.Rows;
+        DeckManagementGrid.Columns=layout.Columns;
+        DeckManagementGrid.Width=layout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap);
+        DeckManagementGrid.Height=layout.Rows*DeckPanelLayout.CellHeight;
+        for(int slot=1;slot<=DeckPanelLayout.VisibleSlotCount(layout);slot++)
         {
             int capturedSlot=slot;
             var button=new System.Windows.Controls.Button
@@ -771,7 +803,7 @@ public partial class MainWindow : Window
             button.Height=DeckPanelLayout.KeyHeight;
             button.Margin=new Thickness(2,0,2,0);
             var nameLabel=DeckPanelLayout.CreateNameLabel(null);
-            var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=70};
+            var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=DeckPanelLayout.CellHeight};
             cell.Children.Add(button);
             cell.Children.Add(nameLabel);
             DeckManagementGrid.Children.Add(cell);
@@ -787,11 +819,12 @@ public partial class MainWindow : Window
         KeyboardWorkspace.Visibility=Visibility.Collapsed;
         DeckWorkspace.Visibility=Visibility.Visible;
         DetectInputButton.Visibility=Visibility.Collapsed;
-        DeckKeypadInputButton.Visibility=Visibility.Visible;
+        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
         LongPressExpander.Visibility=Visibility.Collapsed;
         LongPressOnlyButton.Visibility=Visibility.Collapsed;
         KindBox.ItemsSource=ActionOptions(allowGesture:false).Where(x=>x.Kind!=ActionKind.Gesture).ToArray();
         KindBox.SelectedValuePath=nameof(ActionOption.Kind);
+        ShowDeckLayoutList();
         UpdateDeckScopeUi();
         ClearSelectedInput();
         UpdateLayerButtons();
@@ -801,8 +834,12 @@ public partial class MainWindow : Window
     {
         if(!deckManagementMode)return;
         deckManagementMode=false;
+        selectedDeckLayout=null;
         KeyboardWorkspace.Visibility=Visibility.Visible;
         DeckWorkspace.Visibility=Visibility.Collapsed;
+        DeckLayoutListWorkspace.Visibility=Visibility.Visible;
+        DeckEditorWorkspace.Visibility=Visibility.Collapsed;
+        ToolbarSaveButton.Visibility=Visibility.Visible;
         DetectInputButton.Visibility=Visibility.Visible;
         DeckKeypadInputButton.Visibility=Visibility.Collapsed;
         LongPressExpander.Visibility=Visibility.Visible;
@@ -812,59 +849,192 @@ public partial class MainWindow : Window
         DeckNameEditorPanel.Visibility=Visibility.Collapsed;
         UpdateDeckScopeUi();
     }
-    void SharedDeckPanelChanged(object sender,RoutedEventArgs e)
-    {
-        if(loading||config==null)return;
-        bool enable=SharedDeckPanelBox.IsChecked==true;
-        if(enable)
-        {
-            var candidates=DeckPanelLayout.ProfilesWithDeckMappings(config.Profiles);
-            Profile? source=candidates.FirstOrDefault(x=>x.Name.Equals(config.ActiveProfile,StringComparison.OrdinalIgnoreCase))??candidates.FirstOrDefault();
-            if(candidates.Count>1&&DeckPanelLayout.DistinctDeckCount(candidates)>1)
-            {
-                source=SelectSharedDeckSource(candidates);
-                if(source==null)
-                {
-                    loading=true;SharedDeckPanelBox.IsChecked=false;loading=false;
-                    UpdateDeckScopeUi();
-                    return;
-                }
-            }
-            EnableSharedDeck(source);
-        }
-        else config.UseSharedDeckPanel=false;
-        ClearSelectedInput(SharedDeckPanelBox);UpdateDeckScopeUi();UpdateLayerButtons();ColorButtons();MarkDirty();
-    }
-    void EnableSharedDeck(Profile? source)
-    {
-        config.SharedDeckMappings=source?.Mappings.Where(x=>DeckPanelLayout.IsInputName(x.Input)).Select(CloneMapping).ToList()??[];
-        config.UseSharedDeckPanel=true;
-    }
-    internal void EnableSharedDeckForTest(string? profileName)
-        =>EnableSharedDeck(config.Profiles.FirstOrDefault(x=>x.Name.Equals(profileName??"",StringComparison.OrdinalIgnoreCase)));
-    Profile? SelectSharedDeckSource(IReadOnlyList<Profile> candidates)
-    {
-        var dialog=new Window{Title="共通Deckの選択",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=460,Height=390,ResizeMode=ResizeMode.NoResize,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText"),ShowInTaskbar=false};
-        var grid=new Grid{Margin=new Thickness(22)};grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});grid.RowDefinitions.Add(new RowDefinition());grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-        grid.Children.Add(new TextBlock{Text="共通Deckの元にするプロファイルを選択してください。各プロファイルの元のDeckは残ります。",Foreground=ThemeService.Brush("SecondaryText"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)});
-        var list=new ListBox{ItemsSource=candidates,DisplayMemberPath="Name",SelectedItem=candidates.FirstOrDefault(x=>x.Name.Equals(config.ActiveProfile,StringComparison.OrdinalIgnoreCase))??candidates[0],Background=ThemeService.Brush("CardBackground"),Foreground=ThemeService.Brush("PrimaryText"),BorderBrush=ThemeService.Brush("BorderBrush"),Padding=new Thickness(6)};Grid.SetRow(list,1);grid.Children.Add(list);
-        var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Margin=new Thickness(0,16,0,0)};var cancel=new System.Windows.Controls.Button{Content="キャンセル",Height=40,Margin=new Thickness(6,0,0,0),Style=(Style)System.Windows.Application.Current.FindResource("AppButtonStyle"),IsCancel=true};var ok=new System.Windows.Controls.Button{Content="このDeckを使用",Height=40,Margin=new Thickness(6,0,0,0),Style=(Style)System.Windows.Application.Current.FindResource("AccentAppButtonStyle"),IsDefault=true};cancel.Click+=(_,_)=>dialog.DialogResult=false;ok.Click+=(_,_)=>{if(list.SelectedItem!=null)dialog.DialogResult=true;};buttons.Children.Add(cancel);buttons.Children.Add(ok);Grid.SetRow(buttons,2);grid.Children.Add(buttons);dialog.Content=grid;FollowWindowsTitleBarTheme(dialog);
-        return dialog.ShowDialog()==true?list.SelectedItem as Profile:null;
-    }
     void UpdateDeckScopeUi()
     {
-        if(SharedDeckPanelBox==null||ProfileBox==null)return;
-        bool shared=config?.UseSharedDeckPanel==true;
-        loading=true;SharedDeckPanelBox.IsChecked=shared;loading=false;
-        SharedDeckPanelBox.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
-        ProfileBox.IsEnabled=!(deckManagementMode&&shared);
-        ProfileBox.Opacity=ProfileBox.IsEnabled?1:.45;
+        if(ProfileBox==null)return;
+        ProfileBox.IsEnabled=true;
+        ProfileBox.Opacity=1;
+    }
+    void ShowDeckLayoutList()
+    {
+        selectedDeckLayout=null;
+        DeckLayoutListWorkspace.Visibility=Visibility.Visible;
+        DeckEditorWorkspace.Visibility=Visibility.Collapsed;
+        ToolbarSaveButton.Visibility=Visibility.Visible;
+        DeckKeypadInputButton.Visibility=Visibility.Collapsed;
+        WorkspaceSubtitle.Text=$"{config.DeckLayouts.Count}個のレイアウト";
+        RefreshDeckLayoutCards();
+        UpdateDeckScopeUi();
+    }
+    void RefreshDeckLayoutCards()
+    {
+        if(DeckLayoutCardsPanel==null)return;
+        DeckLayoutCardsPanel.Children.Clear();
+        foreach(var layout in config.DeckLayouts)DeckLayoutCardsPanel.Children.Add(CreateDeckLayoutCard(layout));
+        var add=new System.Windows.Controls.Button
+        {
+            Width=236,Height=190,Margin=new Thickness(0,0,14,14),Padding=new Thickness(16),
+            Content=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Children={new TextBlock{Text="＋",FontSize=28,HorizontalAlignment=System.Windows.HorizontalAlignment.Center,Foreground=ThemeService.Brush("SecondaryText")},new TextBlock{Text="新規レイアウト",FontSize=14,Margin=new Thickness(0,10,0,0),HorizontalAlignment=System.Windows.HorizontalAlignment.Center}}},
+            Background=WpfBrushes.Transparent,BorderBrush=ThemeService.Brush("BorderBrush"),BorderThickness=new Thickness(1)
+        };
+        add.Click+=NewDeckLayout_Click;DeckLayoutCardsPanel.Children.Add(add);
+    }
+    System.Windows.Controls.Button CreateDeckLayoutCard(DeckLayoutDefinition layout)
+    {
+        var preview=new System.Windows.Controls.Primitives.UniformGrid{Rows=layout.Rows,Columns=layout.Columns,Width=190,Height=88,Margin=new Thickness(0,0,0,12)};
+        for(int index=0;index<DeckPanelLayout.VisibleSlotCount(layout);index++)
+        {
+            var cell=new Border{Margin=new Thickness(1),CornerRadius=new CornerRadius(2)};
+            cell.SetResourceReference(Border.BackgroundProperty,"ControlBackground");preview.Children.Add(cell);
+        }
+        bool isDefault=config.DefaultDeckLayoutId.Equals(layout.Id,StringComparison.OrdinalIgnoreCase);
+        var content=new StackPanel();content.Children.Add(preview);
+        content.Children.Add(new TextBlock{Text=layout.Name,FontSize=15,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.CharacterEllipsis});
+        content.Children.Add(new TextBlock{Text=$"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン"+(isDefault?"  ・  既定":""),FontSize=11,Margin=new Thickness(0,5,0,0),Foreground=ThemeService.Brush(isDefault?"AccentBrush":"SecondaryText")});
+        var card=new System.Windows.Controls.Button{Tag=layout,Content=content,Width=236,Height=190,Margin=new Thickness(0,0,14,14),Padding=new Thickness(16),HorizontalContentAlignment=System.Windows.HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch,Background=ThemeService.Brush("CardBackground"),BorderBrush=ThemeService.Brush(isDefault?"AccentBrush":"BorderBrush"),BorderThickness=new Thickness(1)};
+        card.Click+=(_,_)=>EditDeckLayout(layout);
+        var menu=new ContextMenu();
+        var makeDefault=new MenuItem{Header="既定のDeckにする",IsEnabled=!isDefault};makeDefault.Click+=(_,_)=>SetDefaultDeckLayout(layout);
+        var duplicate=new MenuItem{Header="複製"};duplicate.Click+=(_,_)=>DuplicateDeckLayout(layout);
+        var delete=new MenuItem{Header="削除"};delete.Click+=(_,_)=>DeleteDeckLayout(layout);
+        menu.Items.Add(makeDefault);menu.Items.Add(new Separator());menu.Items.Add(duplicate);menu.Items.Add(delete);card.ContextMenu=menu;
+        return card;
+    }
+    void NewDeckLayout_Click(object sender,RoutedEventArgs e)
+    {
+        if(PromptNewDeckLayout() is not { } choice)return;
+        var layout=new DeckLayoutDefinition{Name=choice.Name,Columns=choice.Columns,Rows=choice.Rows};
+        config.DeckLayouts.Add(layout);SetDefaultDeckLayout(layout,false);MarkDirty();EditDeckLayout(layout);
+    }
+    (string Name,int Columns,int Rows)? PromptNewDeckLayout()
+    {
+        var dialog=new Window{Title="新規Deckレイアウト",Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,Width=460,Height=348,ResizeMode=ResizeMode.NoResize,ShowInTaskbar=false,Background=ThemeService.Brush("SurfaceBackground"),Foreground=ThemeService.Brush("PrimaryText")};
+        var root=new Grid{Margin=new Thickness(24,20,24,20)};
+        foreach(var height in new[]{GridLength.Auto,GridLength.Auto,GridLength.Auto,GridLength.Auto,new GridLength(1,GridUnitType.Star),GridLength.Auto})root.RowDefinitions.Add(new RowDefinition{Height=height});
+        root.Children.Add(new TextBlock{Text="レイアウト名",FontSize=12,Foreground=ThemeService.Brush("SecondaryText")});
+        var name=new TextBox{Style=(Style)FindResource(typeof(TextBox)),Text="新しいDeck",Height=38,Margin=new Thickness(0,6,0,18),VerticalContentAlignment=VerticalAlignment.Center};Grid.SetRow(name,1);root.Children.Add(name);
+
+        var sizeRow=new Grid{Margin=new Thickness(0,0,0,10)};sizeRow.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(70)});sizeRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+        sizeRow.Children.Add(new TextBlock{Text="サイズ",VerticalAlignment=VerticalAlignment.Center,Foreground=ThemeService.Brush("SecondaryText")});
+        var sizes=new System.Windows.Controls.ComboBox{Name="NewDeckSizeBox",Style=(Style)FindResource("ToolbarComboBoxStyle"),Width=220,Height=36,Margin=new Thickness(0),SelectedIndex=1};
+        sizes.Items.Add(new ComboBoxItem{Content="コンパクト  3×3",Tag="3x3"});sizes.Items.Add(new ComboBoxItem{Content="標準  9×5",Tag="9x5"});sizes.Items.Add(new ComboBoxItem{Content="ワイド  8×2",Tag="8x2"});sizes.Items.Add(new ComboBoxItem{Content="カスタム",Tag="custom"});
+        Grid.SetColumn(sizes,1);sizeRow.Children.Add(sizes);Grid.SetRow(sizeRow,2);root.Children.Add(sizeRow);
+
+        var customRow=new Grid{Name="NewDeckCustomSizeRow",Visibility=Visibility.Collapsed,Margin=new Thickness(70,0,0,0)};customRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});customRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});customRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});customRow.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+        var columnsBox=new TextBox{Style=(Style)FindResource(typeof(TextBox)),Text="9",Width=48,Height=36,MaxLength=2,Margin=new Thickness(0),VerticalContentAlignment=VerticalAlignment.Center,TextAlignment=TextAlignment.Center};
+        var times=new TextBlock{Text="×",Margin=new Thickness(10,0,10,0),VerticalAlignment=VerticalAlignment.Center,Foreground=ThemeService.Brush("SecondaryText")};Grid.SetColumn(times,1);
+        var rowsBox=new TextBox{Style=(Style)FindResource(typeof(TextBox)),Text="5",Width=48,Height=36,MaxLength=2,Margin=new Thickness(0),VerticalContentAlignment=VerticalAlignment.Center,TextAlignment=TextAlignment.Center};Grid.SetColumn(rowsBox,2);
+        var limit=new TextBlock{Text="1～18",Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Center,Foreground=ThemeService.Brush("MutedText"),FontSize=11};Grid.SetColumn(limit,3);
+        customRow.Children.Add(columnsBox);customRow.Children.Add(times);customRow.Children.Add(rowsBox);customRow.Children.Add(limit);Grid.SetRow(customRow,3);root.Children.Add(customRow);
+
+        var validation=new TextBlock{Foreground=ThemeService.Brush("WarningBrush"),FontSize=11,VerticalAlignment=VerticalAlignment.Bottom};Grid.SetRow(validation,4);root.Children.Add(validation);
+        var buttons=new StackPanel{Orientation=System.Windows.Controls.Orientation.Horizontal,HorizontalAlignment=System.Windows.HorizontalAlignment.Right,Margin=new Thickness(0,16,0,0)};
+        var cancel=new System.Windows.Controls.Button{Content="キャンセル",IsCancel=true,Height=38,MinWidth=92,Margin=new Thickness(0,0,8,0)};
+        var create=new System.Windows.Controls.Button{Content="作成",IsDefault=true,Height=38,MinWidth=84,Background=ThemeService.Brush("AccentStrongBrush"),Foreground=ThemeService.Brush("AccentButtonText"),BorderBrush=ThemeService.Brush("AccentBrush")};
+        if(System.Windows.Application.Current?.Resources["AppButtonStyle"] is Style buttonStyle){cancel.Style=buttonStyle;create.Style=buttonStyle;}
+        void UpdateCustomVisibility(object? _,SelectionChangedEventArgs __){customRow.Visibility=(sizes.SelectedItem as ComboBoxItem)?.Tag?.ToString()=="custom"?Visibility.Visible:Visibility.Collapsed;validation.Text="";}
+        sizes.SelectionChanged+=UpdateCustomVisibility;
+        cancel.Click+=(_,_)=>dialog.DialogResult=false;
+        create.Click+=(_,_)=>
+        {
+            string tag=(sizes.SelectedItem as ComboBoxItem)?.Tag?.ToString()??"9x5";
+            if(string.IsNullOrWhiteSpace(name.Text)){validation.Text="レイアウト名を入力してください。";name.Focus();return;}
+            if(!TryResolveDeckLayoutSize(tag,columnsBox.Text,rowsBox.Text,out _,out _)){validation.Text="列数と行数は1～18で入力してください。";columnsBox.Focus();return;}
+            dialog.DialogResult=true;
+        };
+        buttons.Children.Add(cancel);buttons.Children.Add(create);Grid.SetRow(buttons,5);root.Children.Add(buttons);dialog.Content=root;FollowWindowsTitleBarTheme(dialog);
+        if(NewDeckDialogLoadedForTest!=null)dialog.Loaded+=(_,_)=>NewDeckDialogLoadedForTest(dialog);
+        if(dialog.ShowDialog()!=true)return null;
+        string selectedTag=(sizes.SelectedItem as ComboBoxItem)?.Tag?.ToString()??"9x5";
+        return TryResolveDeckLayoutSize(selectedTag,columnsBox.Text,rowsBox.Text,out int columns,out int rows)?(name.Text.Trim(),columns,rows):null;
+    }
+
+    internal static bool TryResolveDeckLayoutSize(string preset,string columnsText,string rowsText,out int columns,out int rows)
+    {
+        (columns,rows)=preset switch{"3x3"=>(3,3),"9x5"=>(9,5),"8x2"=>(8,2),_=>(0,0)};
+        if(!preset.Equals("custom",StringComparison.OrdinalIgnoreCase))return columns>0&&rows>0;
+        return int.TryParse(columnsText,out columns)&&int.TryParse(rowsText,out rows)&&columns is >=1 and <=DeckPanelLayout.MaximumColumns&&rows is >=1 and <=DeckPanelLayout.MaximumRows;
+    }
+    void EditDeckLayout(DeckLayoutDefinition layout)
+    {
+        selectedDeckLayout=layout;DeckLayoutListWorkspace.Visibility=Visibility.Collapsed;DeckEditorWorkspace.Visibility=Visibility.Visible;ToolbarSaveButton.Visibility=Visibility.Collapsed;DeckKeypadInputButton.Visibility=Visibility.Visible;
+        updatingDeckEditor=true;
+        DeckLayoutNameBox.Text=layout.Name;DeckColumnsBox.Text=layout.Columns.ToString();DeckRowsBox.Text=layout.Rows.ToString();DeckOpacitySlider.Value=config.InputPanelOpacityPercent;DeckOpacityValueText.Text=config.InputPanelOpacityPercent+"%";
+        string preset=layout.Columns==3&&layout.Rows==3?"3x3":layout.Columns==9&&layout.Rows==5?"9x5":layout.Columns==8&&layout.Rows==2?"8x2":"custom";
+        DeckSizePresetBox.SelectedItem=DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x=>Equals(x.Tag,preset));DeckCustomSizePanel.Visibility=preset=="custom"?Visibility.Visible:Visibility.Collapsed;
+        updatingDeckEditor=false;BuildDeckManagementPanel();ClearSelectedInput();WorkspaceSubtitle.Text=$"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン";ColorButtons();
+    }
+    void DeckBack_Click(object sender,RoutedEventArgs e){ClearSelectedInput();ShowDeckLayoutList();UpdateLayerButtons();}
+    void DeckSave_Click(object sender,RoutedEventArgs e){SaveAndApply("Deckレイアウトを保存し、反映しました");RefreshDeckLayoutCards();}
+    void DeckLayoutNameChanged(object sender,TextChangedEventArgs e)
+    {
+        if(updatingDeckEditor||selectedDeckLayout==null)return;string name=DeckLayoutNameBox.Text.Trim();if(name.Length==0)return;selectedDeckLayout.Name=name;MarkDirty();
+    }
+    void DeckSizePresetChanged(object sender,SelectionChangedEventArgs e)
+    {
+        if(updatingDeckEditor||selectedDeckLayout==null||DeckSizePresetBox.SelectedItem is not ComboBoxItem item)return;
+        string tag=item.Tag?.ToString()??"custom";DeckCustomSizePanel.Visibility=tag=="custom"?Visibility.Visible:Visibility.Collapsed;
+        if(tag=="custom")return;var size=tag switch{"3x3"=>(3,3),"8x2"=>(8,2),_=>(9,5)};ApplyDeckSize(size.Item1,size.Item2);
+    }
+    void DeckCustomSizeChanged(object sender,TextChangedEventArgs e)
+    {
+        if(updatingDeckEditor||selectedDeckLayout==null||DeckCustomSizePanel.Visibility!=Visibility.Visible)return;
+        if(int.TryParse(DeckColumnsBox.Text,out int columns)&&int.TryParse(DeckRowsBox.Text,out int rows)&&columns is >=1 and <=DeckPanelLayout.MaximumColumns&&rows is >=1 and <=DeckPanelLayout.MaximumRows)ApplyDeckSize(columns,rows,false);
+    }
+    void ApplyDeckSize(int columns,int rows,bool updateBoxes=true)
+    {
+        if(selectedDeckLayout==null)return;selectedDeckLayout.Columns=columns;selectedDeckLayout.Rows=rows;
+        if(updateBoxes){updatingDeckEditor=true;DeckColumnsBox.Text=columns.ToString();DeckRowsBox.Text=rows.ToString();updatingDeckEditor=false;}
+        BuildDeckManagementPanel();ClearSelectedInput();WorkspaceSubtitle.Text=$"{columns}×{rows}・{columns*rows}ボタン";MarkDirty();
+    }
+    void DeckOpacityChanged(object sender,RoutedPropertyChangedEventArgs<double> e)
+    {
+        if(DeckOpacityValueText==null)return;int value=(int)Math.Round(e.NewValue);DeckOpacityValueText.Text=value+"%";if(updatingDeckEditor||config==null)return;config.InputPanelOpacityPercent=value;MarkDirty();
+    }
+    void SetDefaultDeckLayout(DeckLayoutDefinition layout,bool refresh=true)
+    {
+        config.DefaultDeckLayoutId=layout.Id;MarkDirty();if(refresh)RefreshDeckLayoutCards();
+    }
+    void DuplicateDeckLayout(DeckLayoutDefinition source)
+    {
+        string name=source.Name+" のコピー";int suffix=2;while(config.DeckLayouts.Any(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)))name=source.Name+$" のコピー {suffix++}";
+        var copy=new DeckLayoutDefinition{Name=name,Columns=source.Columns,Rows=source.Rows,Mappings=source.Mappings.Select(CloneMapping).ToList()};config.DeckLayouts.Add(copy);MarkDirty();RefreshDeckLayoutCards();
+    }
+    void DeleteDeckLayout(DeckLayoutDefinition layout)
+    {
+        if(config.DeckLayouts.Count<=1){ShowInlineNotice("最後のDeckレイアウトは削除できません");return;}
+        if(IsDeckLayoutReferenced(layout)){WpfMessageBox.Show(this,"このレイアウトは既定設定またはアクションから参照されています。先に参照先を別のレイアウトへ変更してください。","Deckレイアウトを削除できません",MessageBoxButton.OK,MessageBoxImage.Information);return;}
+        if(WpfMessageBox.Show(this,$"「{layout.Name}」を削除しますか？\n割り当てたボタンも削除されます。","Deckレイアウトの削除",MessageBoxButton.YesNo,MessageBoxImage.Warning)!=MessageBoxResult.Yes)return;
+        config.DeckLayouts.Remove(layout);MarkDirty();RefreshDeckLayoutCards();
+    }
+    bool IsDeckLayoutReferenced(DeckLayoutDefinition layout)
+    {
+        if(config.DefaultDeckLayoutId.Equals(layout.Id,StringComparison.OrdinalIgnoreCase))return true;
+        string action=DeckPanelLayout.ActionValue(layout.Id);
+        IEnumerable<Mapping> mappings=config.Profiles.SelectMany(x=>x.Mappings).Concat(config.SharedDeckMappings).Concat(config.DeckLayouts.SelectMany(x=>x.Mappings));
+        if(mappings.Any(x=>x.Value.Equals(action,StringComparison.OrdinalIgnoreCase)||x.LongPressValue.Equals(action,StringComparison.OrdinalIgnoreCase)))return true;
+        if(config.Macros.SelectMany(x=>x.Steps).Any(x=>x.RecordedActionValue.Equals(action,StringComparison.OrdinalIgnoreCase)))return true;
+        return config.Gestures.Any(x=>new[]{x.UpValue,x.DownValue,x.LeftValue,x.RightValue,x.CenterValue}.Any(v=>v.Equals(action,StringComparison.OrdinalIgnoreCase)));
     }
     void PersistDeckPanelPosition(double left,double top)
     {
         if(!double.IsFinite(left)||!double.IsFinite(top))return;
         config.DeckPanelLeft=left;config.DeckPanelTop=top;appliedConfig.DeckPanelLeft=left;appliedConfig.DeckPanelTop=top;
         try{var persisted=store.Load();persisted.DeckPanelLeft=left;persisted.DeckPanelTop=top;store.Save(persisted);}catch{}
+    }
+    void PersistInputPanelPosition(bool extended,double left,double top)
+    {
+        if(!double.IsFinite(left)||!double.IsFinite(top))return;
+        if(extended){config.ExtendedKeypadPanelLeft=left;config.ExtendedKeypadPanelTop=top;appliedConfig.ExtendedKeypadPanelLeft=left;appliedConfig.ExtendedKeypadPanelTop=top;}
+        else{config.NumpadPanelLeft=left;config.NumpadPanelTop=top;appliedConfig.NumpadPanelLeft=left;appliedConfig.NumpadPanelTop=top;}
+        try
+        {
+            var persisted=store.Load();
+            if(extended){persisted.ExtendedKeypadPanelLeft=left;persisted.ExtendedKeypadPanelTop=top;}
+            else{persisted.NumpadPanelLeft=left;persisted.NumpadPanelTop=top;}
+            store.Save(persisted);
+        }
+        catch{}
     }
     void DeckKeypadInput_Click(object sender,RoutedEventArgs e)
     {
@@ -947,8 +1117,8 @@ public partial class MainWindow : Window
         var mappings=MappingCollectionForInput(input);
         var visibleAssignment=DeckPanelLayout.IsInputName(input)?mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase)&&MappingInterceptsInput(x)):FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
         detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(mappings,visibleAssignment,input);
-        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
-        InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
+        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayConfiguredActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayConfiguredActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
+        InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;DeckKeypadInputButton.Visibility=deckManagementMode&&DeckPanelLayout.IsInputName(selected.Input)?Visibility.Visible:Visibility.Collapsed;
         UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
     internal static Mapping SelectEditorMapping(IReadOnlyList<Mapping> currentMappings,Mapping? visibleAssignment,string input)
@@ -966,7 +1136,7 @@ public partial class MainWindow : Window
     }
     static string DisplayInputPart(string value)=>value switch
     {
-        "通常"=>"通常","Space"=>"Space","CapsLock"=>"CapsLock","MouseRight"=>"右クリック","MouseBack"=>"戻る","MouseForward"=>"進む","Taskbar"=>"タスクバー上",DeckPanelLayout.Layer=>"Deck",
+        "通常"=>"デフォルト","Space"=>"Space","CapsLock"=>"CapsLock","MouseRight"=>"右クリック","MouseBack"=>"戻る","MouseForward"=>"進む","Taskbar"=>"タスクバー",DeckPanelLayout.Layer=>"Deck",
         "MouseLeft"=>"左クリック","MouseMiddle"=>"ホイールクリック","MouseX"=>"追加ボタン","WheelUp"=>"ホイール上","WheelDown"=>"ホイール下","TiltLeft"=>"チルト左","TiltRight"=>"チルト右",_=>value
     };
     void EditorChanged(object sender, EventArgs e)
@@ -990,13 +1160,23 @@ public partial class MainWindow : Window
         }
         else MappingCollectionForInput(selected.Input).Remove(selected);
         UpdateBrowseButtons();
-        UpdateLayerButtons();MarkDirty();ColorButtons();
+        UpdateLayerButtons();MarkDirty();RefreshSelectedInputVisual(selected.Input);
         if(ReferenceEquals(sender,KindBox))FocusExecutionValue(ValueBox);
         else if(ReferenceEquals(sender,LongKindBox))FocusExecutionValue(LongValueBox,true);
     }
     static string ProfileDisplayValue(string profileName)=>"プロファイル："+profileName;
     static string GestureDisplayValue(string gestureName)=>"ジェスチャー："+gestureName;
     internal static string DisplayActionValue(ActionKind kind,string value)=>kind switch{ActionKind.Profile=>ProfileDisplayValue(value),ActionKind.Gesture=>GestureDisplayValue(value),ActionKind.Mouse=>ActionCatalog.DisplayMouseAction(value),_=>value};
+    string DisplayConfiguredActionValue(ActionKind kind,string value)
+    {
+        if(kind==ActionKind.Shortcut&&DeckPanelLayout.IsDeckAction(value))
+        {
+            var layout=DeckPanelLayout.ResolveActionLayout(config,value);
+            return "Deckパネル："+(layout?.Name??"既定");
+        }
+        if(kind==ActionKind.Shortcut&&value.Equals(ActionCatalog.ShowRelyrMainWindowAction,StringComparison.OrdinalIgnoreCase))return "RELYRを表示";
+        return DisplayActionValue(kind,value);
+    }
     static ActionKind EditorActionKind(ActionKind kind)=>kind switch{ActionKind.Mouse=>ActionKind.Shortcut,_=>kind};
     internal static (ActionKind Kind,string Value) NormalizeEditorAction(ActionKind editorKind,string? value,ActionKind existingKind=ActionKind.None,string? existingValue=null)
     {
@@ -1014,6 +1194,8 @@ public partial class MainWindow : Window
         }
         if(editorKind==ActionKind.Disabled)return (ActionKind.Disabled,"");
         if(editorKind!=ActionKind.Shortcut)return (editorKind,original);
+        if(DeckPanelLayout.IsDeckAction(existingValue)&&original.StartsWith("Deckパネル：",StringComparison.Ordinal))return (ActionKind.Shortcut,existingValue!);
+        if(existingValue?.Equals(ActionCatalog.ShowRelyrMainWindowAction,StringComparison.OrdinalIgnoreCase)==true&&original.Equals("RELYRを表示",StringComparison.Ordinal))return (ActionKind.Shortcut,existingValue);
         return ActionCatalog.TryNormalizeMouseAction(original,out string mouseAction)?(ActionKind.Mouse,mouseAction):(editorKind,original.Trim());
     }
     void UpdateBrowseButtons()
@@ -1184,21 +1366,34 @@ public partial class MainWindow : Window
     }
     void ColorDeckManagementButtons()
     {
-        foreach(var button in deckManagementButtons)
+        foreach(var button in deckManagementButtons)UpdateDeckManagementButtonVisual(button);
+    }
+    void RefreshSelectedInputVisual(string input)
+    {
+        if(deckManagementMode&&DeckPanelLayout.IsInputName(input))
         {
-            if(button.Tag is not string input)continue;
-            var mapping=DeckPanelLayout.FindMapping(config,DeckPanelLayout.SlotNumber(input));
-            var assigned=MappingInterceptsInput(mapping)?mapping:null;
-            bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
-            button.Background=editing?ThemeService.Brush("EditingKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
-            button.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
-            button.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
-            button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
-            if(deckManagementNameLabels.TryGetValue(button,out var nameLabel))nameLabel.Text=mapping?.Description??"";
-            button.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):null;
-            ToolTipService.SetInitialShowDelay(button,250);
-            ToolTipService.SetShowDuration(button,20000);
+            var button=deckManagementButtons.FirstOrDefault(x=>x.Tag is string tag&&tag.Equals(input,StringComparison.OrdinalIgnoreCase));
+            if(button!=null)UpdateDeckManagementButtonVisual(button);
+            return;
         }
+        ColorButtons();
+    }
+    void UpdateDeckManagementButtonVisual(System.Windows.Controls.Button button)
+    {
+        if(button.Tag is not string input)return;
+        DeckVisualUpdateCountForTest++;
+        var mapping=DeckPanelLayout.FindMapping(selectedDeckLayout??DeckPanelLayout.DefaultLayout(config),DeckPanelLayout.SlotNumber(input));
+        var assigned=MappingInterceptsInput(mapping)?mapping:null;
+        bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
+        button.Background=editing?ThemeService.Brush("EditingKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
+        button.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
+        button.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
+        if(button.Content is TextBlock actionLabel)actionLabel.Text=DeckPanelLayout.ActionLabel(input,mapping);
+        else button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
+        if(deckManagementNameLabels.TryGetValue(button,out var nameLabel))nameLabel.Text=mapping?.Description??"";
+        button.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):null;
+        ToolTipService.SetInitialShowDelay(button,250);
+        ToolTipService.SetShowDuration(button,20000);
     }
     internal static WpfColor AssignmentColorFor(Mapping mapping)
     {
@@ -1236,6 +1431,8 @@ public partial class MainWindow : Window
         if(kind==ActionKind.Profile)return ProfileDisplayValue(value);
         if(kind==ActionKind.Gesture)return GestureDisplayValue(value);
         if(kind==ActionKind.Mouse)return ActionCatalog.DisplayMouseAction(value);
+        if(kind==ActionKind.Shortcut&&DeckPanelLayout.IsDeckAction(value))return "Deckパネル";
+        if(kind==ActionKind.Shortcut&&value.Equals(ActionCatalog.ShowRelyrMainWindowAction,StringComparison.OrdinalIgnoreCase))return "RELYRを表示";
         var catalog=ActionCatalog.Items.FirstOrDefault(x=>x.Kind==kind&&x.Value.Equals(value,StringComparison.OrdinalIgnoreCase));string display=catalog?.Name??(kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse?DisplayInputName(value):value);
         if(string.IsNullOrWhiteSpace(display))display="未設定";return display.Length<=180?display:display[..180]+"…";
     }
@@ -1251,7 +1448,7 @@ public partial class MainWindow : Window
     };
     IEnumerable<System.Windows.Controls.Button> VisualInputButtons()=>InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).Concat(InputButtons(MousePanel));
     static IEnumerable<System.Windows.Controls.Button> InputButtons(System.Windows.Controls.Panel panel){foreach(UIElement child in panel.Children){if(child is System.Windows.Controls.Button b&&b.Tag is string)yield return b;if(child is System.Windows.Controls.Panel nested)foreach(var b2 in InputButtons(nested))yield return b2;}}
-    static string LayerDisplayName(string layer)=>layer switch{"通常"=>"通常レイヤー","Taskbar"=>"タスクバー上で有効",DeckPanelLayout.Layer=>"Deckパネル",_=>layer+" レイヤー"};
+    static string LayerDisplayName(string layer)=>layer switch{"通常"=>"デフォルト","Space"=>"Space","CapsLock"=>"CapsLock","MouseRight"=>"右クリック","MouseForward"=>"進む","MouseBack"=>"戻る","Taskbar"=>"タスクバー",DeckPanelLayout.Layer=>"Deckパネル",_=>layer};
     void MarkDirty()
     {
         if(config.AutoSave)
@@ -1290,8 +1487,11 @@ public partial class MainWindow : Window
         DeckPanelManagerButton.Background=deckActive?ThemeService.Brush("LayerActiveBackground"):System.Windows.Media.Brushes.Transparent;
         DeckPanelManagerButton.BorderBrush=System.Windows.Media.Brushes.Transparent;
         DeckPanelManagerButton.Foreground=ThemeService.Brush("PrimaryText");
-        WorkspaceTitle.Text=deckActive?"Deckパネル":"キーボード";
-        WorkspaceSubtitle.Text=deckActive?(config.UseSharedDeckPanel?"すべてのプロファイルで共通":"プロファイルごとに45個のボタン"):LayerDisplayName(currentLayer);
+        WorkspaceHeader.Visibility=deckActive?Visibility.Visible:Visibility.Collapsed;
+        WorkspaceTitle.Text="Deckパネル";
+        if(!deckActive)WorkspaceSubtitle.Text=LayerDisplayName(currentLayer);
+        else if(DeckEditorWorkspace.Visibility==Visibility.Visible&&selectedDeckLayout!=null)WorkspaceSubtitle.Text=$"{selectedDeckLayout.Columns}×{selectedDeckLayout.Rows}・{DeckPanelLayout.VisibleSlotCount(selectedDeckLayout)}ボタン";
+        else WorkspaceSubtitle.Text=$"{config.DeckLayouts.Count}個のレイアウト";
         if(InputDisplayText!=null)InputDisplayText.Text=selected==null?"キーを選択してください":DisplayInputName(selected.Input);
     }
     internal static bool IsMouseLayerBlockedByDirectGesture(IReadOnlyList<Profile> profiles,string profileName,string layer)
@@ -1383,9 +1583,10 @@ public partial class MainWindow : Window
         // mouse diagram is capped below the adjacent keypad/navigation surface.
         double lowerHeight=Math.Clamp(e.NewSize.Height*.36,220,340);
         double mouseScale=Math.Clamp(Math.Min(mouseWidth/220,lowerHeight/300),.62,.9);
-        double secondaryHeight=Math.Min(lowerHeight,Math.Max(80,(centerWidth-mouseWidth-12)/654*312));
-        MouseHost.Width=168*mouseScale;MouseHost.Height=Math.Max(48,secondaryHeight-30);
-        LowerInputRow.Height=new GridLength(lowerHeight);
+        double secondaryHeight=Math.Min(lowerHeight-12,Math.Max(80,(centerWidth-mouseWidth-12)/654*312));
+        SecondaryKeyboardViewbox.Height=secondaryHeight;
+        MouseHost.Width=190*mouseScale;MouseHost.Height=Math.Max(48,secondaryHeight-30);
+        LowerInputRow.Height=new GridLength(secondaryHeight+36);
         KeyboardViewbox.MaxWidth=e.NewSize.Width<1100?double.PositiveInfinity:e.NewSize.Width<1500?1080:1180;
         WorkspaceGrid.Margin=new Thickness(gap);AssignmentPane.Padding=new Thickness(gap);UpdateLayerButtonWidths();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render,new Action(()=>
@@ -1400,6 +1601,7 @@ public partial class MainWindow : Window
         bool compact=MainContentGrid.ActualHeight>0&&MainContentGrid.ActualHeight<720;
         bool narrow=LayerNavigationColumn.Width.IsAbsolute&&LayerNavigationColumn.Width.Value<155;
         foreach(var category in new[]{KeyboardLayerCategory,MouseLayerCategory,WindowsLayerCategory})category.Margin=compact?new Thickness(8,2,8,1):new Thickness(8,8,8,3);
+        foreach(var divider in new[]{KeyboardLayerDivider,MouseLayerDivider})divider.Margin=compact?new Thickness(4,3,4,2):new Thickness(4,8,4,4);
         foreach(var button in LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>())
         {
             button.Width=double.NaN;button.Height=compact?36:44;button.MinHeight=36;button.Padding=compact?new Thickness(8,0,8,0):new Thickness(10,4,10,4);button.FontSize=compact?12:13;button.Margin=compact?new Thickness(0,1,0,1):new Thickness(0,2,0,2);button.HorizontalAlignment=System.Windows.HorizontalAlignment.Stretch;button.HorizontalContentAlignment=System.Windows.HorizontalAlignment.Left;
@@ -1574,8 +1776,8 @@ public partial class MainWindow : Window
         =>profiles.FirstOrDefault(x=>x.Name.Equals(profileName,StringComparison.OrdinalIgnoreCase)&&!x.AutoSwitchEnabled)?.Name;
     internal static bool ShouldKeepExplicitProfile(string originalProcess,string currentProcess,bool cursorOverTaskbar)=>cursorOverTaskbar||(!string.IsNullOrWhiteSpace(originalProcess)&&ConditionMatcher.Matches(originalProcess,currentProcess));
     internal static bool IsOwnProcess(string process,string? executablePath=null)=>!string.IsNullOrWhiteSpace(process)&&ConditionMatcher.Matches(System.IO.Path.GetFileNameWithoutExtension(executablePath??Environment.ProcessPath??"RELYR"),process);
-    void NewProfile_Click(object s, RoutedEventArgs e) { var name=PromptText("新しいプロファイル","新しいプロファイル名",$"プロファイル {config.Profiles.Count+1}");if(string.IsNullOrWhiteSpace(name)||config.Profiles.Any(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase))){if(!string.IsNullOrWhiteSpace(name))ShowInlineNotice("同じ名前のプロファイルがあります");return;}var source=SelectProfile("割り当てのコピー元",true,out bool cancelled);if(cancelled)return;config.Profiles.Add(new Profile{Name=name,Mappings=source?.Mappings.Select(CloneMapping).ToList()??[]});config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus(); }
-    void DuplicateProfile_Click(object s,RoutedEventArgs e){var source=CurrentProfile;var name=source.Name+" のコピー";int i=2;while(config.Profiles.Any(x=>x.Name==name))name=source.Name+$" のコピー {i++}";var copy=new Profile{Name=name,Mappings=source.Mappings.Select(CloneMapping).ToList()};config.Profiles.Add(copy);config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus();}
+    void NewProfile_Click(object s, RoutedEventArgs e) { var name=PromptText("新しいプロファイル","新しいプロファイル名",$"プロファイル {config.Profiles.Count+1}");if(string.IsNullOrWhiteSpace(name)||config.Profiles.Any(x=>x.Name.Equals(name,StringComparison.OrdinalIgnoreCase))){if(!string.IsNullOrWhiteSpace(name))ShowInlineNotice("同じ名前のプロファイルがあります");return;}var source=SelectProfile("割り当てのコピー元",true,out bool cancelled);if(cancelled)return;config.Profiles.Add(new Profile{Name=name,Mappings=source?.Mappings.Select(CloneMapping).ToList()??[],DefaultDeckLayoutId=source?.DefaultDeckLayoutId??DeckPanelLayout.DefaultLayout(config)?.Id??config.DeckLayouts[0].Id});config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus(); }
+    void DuplicateProfile_Click(object s,RoutedEventArgs e){var source=CurrentProfile;var name=source.Name+" のコピー";int i=2;while(config.Profiles.Any(x=>x.Name==name))name=source.Name+$" のコピー {i++}";var copy=new Profile{Name=name,Mappings=source.Mappings.Select(CloneMapping).ToList(),DefaultDeckLayoutId=source.DefaultDeckLayoutId};config.Profiles.Add(copy);config.ActiveProfile=name;RefreshProfiles();MarkDirty();UpdateStatus();}
     void RenameProfile_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルの名前は変更できません");return;}var old=CurrentProfile.Name;var name=PromptText("プロファイル名を変更","新しい名前",old);if(string.IsNullOrWhiteSpace(name)||config.Profiles.Any(x=>x!=CurrentProfile&&x.Name.Equals(name,StringComparison.OrdinalIgnoreCase)))return;CurrentProfile.Name=name;if(config.ActiveProfile==old)config.ActiveProfile=name;foreach(var map in config.Profiles.SelectMany(x=>x.Mappings)){if(map.Kind==ActionKind.Profile&&map.Value==old)map.Value=name;if(map.LongPressKind==ActionKind.Profile&&map.LongPressValue==old)map.LongPressValue=name;}RefreshProfiles();MarkDirty();}
     void CopyProfile_Click(object s,RoutedEventArgs e){var source=SelectProfile("割り当てのコピー元を選択",false);if(source==null||source==CurrentProfile)return;if(WpfMessageBox.Show($"「{source.Name}」の割り当てで「{CurrentProfile.Name}」を置き換えますか？","割り当てコピー",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;CurrentProfile.Mappings=source.Mappings.Select(CloneMapping).ToList();MarkDirty();ColorButtons();}
     void ConfigureProfileAutoSwitch_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは自動切替の戻り先です");return;}if(CurrentProfile.AutoSwitchEnabled){var choice=WpfMessageBox.Show($"「{CurrentProfile.Name}」の自動切替はオンです。\n\nはい：対象アプリを追加\nいいえ：自動切替をオフ\nキャンセル：変更しない","プロファイル自動切替",MessageBoxButton.YesNoCancel);if(choice==MessageBoxResult.Cancel)return;if(choice==MessageBoxResult.No){CurrentProfile.AutoSwitchEnabled=false;MarkDirty();ShowInlineNotice("自動切替をオフにしました");return;}}var app=SelectRunningApplication();if(string.IsNullOrWhiteSpace(app))return;CurrentProfile.AutoSwitchEnabled=true;if(!CurrentProfile.AutoSwitchApplications.Contains(app,StringComparer.OrdinalIgnoreCase))CurrentProfile.AutoSwitchApplications.Add(app);MarkDirty();ShowInlineNotice($"カーソルが {app} 上にある時、自動的に「{CurrentProfile.Name}」へ切り替えます");}
@@ -1583,7 +1785,16 @@ public partial class MainWindow : Window
     static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description};
     static GestureDefinition CloneGesture(GestureDefinition x)=>new(){Name=x.Name,UpKind=x.UpKind,UpValue=x.UpValue,DownKind=x.DownKind,DownValue=x.DownValue,LeftKind=x.LeftKind,LeftValue=x.LeftValue,RightKind=x.RightKind,RightValue=x.RightValue,CenterKind=x.CenterKind,CenterValue=x.CenterValue};
     void Save_Click(object s, RoutedEventArgs e)=>SaveAndApply("設定を保存し、エンジンへ反映しました");
-    void SaveAndApply(string message){var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.GestureThresholdPixels=config.GestureThresholdPixels;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");}
+    void SaveAndApply(string message){EnsureProfileDeckDefaults();var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.GestureThresholdPixels=config.GestureThresholdPixels;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");}
+    void EnsureProfileDeckDefaults()
+    {
+        if(config.DeckLayouts.Count==0)config.DeckLayouts.Add(new DeckLayoutDefinition());
+        string fallback=DeckPanelLayout.DefaultLayout(config)?.Id??config.DeckLayouts[0].Id;
+        config.DefaultDeckLayoutId=fallback;
+        foreach(var profile in config.Profiles)profile.DefaultDeckLayoutId=fallback;
+        config.SharedDefaultDeckLayoutId=fallback;
+        config.UseSharedDeckPanel=false;
+    }
     void Detect_Click(object s, RoutedEventArgs e) { detectMode = true;pendingDetectedLayer=null;ClearExecutionFocus(DetectInputButton);LastInput.Text = "入力を待っています… レイヤーボタンは押したまま次のキーを押してください";LastInput.Foreground=ThemeService.Brush("WarningBrush"); }
     void HandleDetectedInput(string text)
     {

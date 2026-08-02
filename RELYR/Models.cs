@@ -45,8 +45,18 @@ public sealed class Profile
 {
     public string Name { get; set; } = "標準";
     public List<Mapping> Mappings { get; set; } = [];
+    public string DefaultDeckLayoutId { get; set; } = "";
     public bool AutoSwitchEnabled { get; set; }
     public List<string> AutoSwitchApplications { get; set; } = [];
+}
+
+public sealed class DeckLayoutDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "標準Deck";
+    public int Columns { get; set; } = 9;
+    public int Rows { get; set; } = 5;
+    public List<Mapping> Mappings { get; set; } = [];
 }
 
 public sealed class GestureDefinition
@@ -66,7 +76,16 @@ public sealed class GestureDefinition
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 24;
+    public AppConfig()
+    {
+        var layout=new DeckLayoutDefinition();
+        DeckLayouts=[layout];
+        DefaultDeckLayoutId=layout.Id;
+        SharedDefaultDeckLayoutId=layout.Id;
+        Profiles=[new Profile{DefaultDeckLayoutId=layout.Id}];
+    }
+
+    public int Version { get; set; } = 26;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool ShowProfileSwitchOverlay { get; set; } = true;
@@ -113,8 +132,15 @@ public sealed class AppConfig
     public int InputPanelOpacityPercent { get; set; } = 96;
     public bool UseSharedDeckPanel { get; set; }
     public List<Mapping> SharedDeckMappings { get; set; } = [];
+    public string DefaultDeckLayoutId { get; set; } = "";
+    public string SharedDefaultDeckLayoutId { get; set; } = "";
+    public List<DeckLayoutDefinition> DeckLayouts { get; set; } = [];
     public double? DeckPanelLeft { get; set; }
     public double? DeckPanelTop { get; set; }
+    public double? NumpadPanelLeft { get; set; }
+    public double? NumpadPanelTop { get; set; }
+    public double? ExtendedKeypadPanelLeft { get; set; }
+    public double? ExtendedKeypadPanelTop { get; set; }
     public List<MacroDefinition> Macros { get; set; } = [];
     public List<GestureDefinition> Gestures { get; set; } = [];
     public List<Profile> Profiles { get; set; } = [new()];

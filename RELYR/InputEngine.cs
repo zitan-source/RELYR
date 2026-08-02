@@ -32,6 +32,7 @@ public sealed class InputEngine : IDisposable
     internal static Action<int>? ImeActionOutputForTest=null;
     internal static Action<Action>? DesktopActionOutputForTest=null;
     internal static Func<bool>? LockWorkStationOutputForTest=null;
+    internal static Action? ShowRelyrMainWindowOutputForTest=null;
     internal Func<int,IntPtr,IntPtr,IntPtr>? NextHookForTest { get; set; }
     static long lastWheelOutput;
     public static Action<string>? DesktopActionFailed;
@@ -663,6 +664,7 @@ public sealed class InputEngine : IDisposable
 
     public static void SendShortcut(string value,bool useUsLayout=false,WindowActionTarget windowTarget=WindowActionTarget.ActiveWindow,IntPtr? preferredActiveWindow=null)
     {
+        if(TryDispatchApplicationAction(value))return;
         if(OverlayService.TryShow(value))return;
         if(TryDispatchWindowAction(value,windowTarget,preferredActiveWindow))return;
         value=ResolveShortcutAlias(value);
@@ -802,6 +804,7 @@ public sealed class InputEngine : IDisposable
     internal static bool TryResolveShiftedSymbolForTest(string value,bool useUsLayout,out ushort key)=>TryResolveShiftedSymbol(value,useUsLayout,out key);
     internal static bool IsRecognizedShortcut(string value)
     {
+        if(value.Equals(ActionCatalog.ShowRelyrMainWindowAction,StringComparison.OrdinalIgnoreCase))return true;
         if(OverlayService.IsOverlayAction(value))return true;
         if(TryGetImeAction(value,out _))return true;
         if(value.Equals("MoveWindowDesktopRight",StringComparison.OrdinalIgnoreCase)||value.Equals("MoveWindowDesktopLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeUnderCursor",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MaximizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("RestoreOrMinimizeWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("MinimizeActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("CloseActiveWindow",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowLeft",StringComparison.OrdinalIgnoreCase)||value.Equals("SnapWindowRight",StringComparison.OrdinalIgnoreCase)||value.Equals("ToggleMinimizeAllWindows",StringComparison.OrdinalIgnoreCase))return true;
@@ -1146,6 +1149,16 @@ public sealed class InputEngine : IDisposable
             lastSpaceTapTick=0;
             return true;
         }
+    }
+    static bool TryDispatchApplicationAction(string value)
+    {
+        if(!value.Equals(ActionCatalog.ShowRelyrMainWindowAction,StringComparison.OrdinalIgnoreCase))return false;
+#if !PRODUCTION_PUBLISH
+        if(ShowRelyrMainWindowOutputForTest is { } test){test();return true;}
+#endif
+        if(System.Windows.Application.Current is { } app)
+            _=app.Dispatcher.BeginInvoke(()=>{if(app.MainWindow is MainWindow window)window.ShowFromExternalLaunch();});
+        return true;
     }
     bool CapturedMouseInputIsDown()
         =>deferredLayer!=null&&PhysicalInputToken(deferredLayer).StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)

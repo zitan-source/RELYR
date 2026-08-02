@@ -29,7 +29,7 @@ public partial class ApplicationPickerWindow:Window
     }
     internal ApplicationPickerWindow(bool forAutoSwitch):this()
     {
-        if(!forAutoSwitch)return;Title="自動切替するインストール済みアプリを選択";PickerHeading.Text="自動切替するアプリを選択";PickerDescription.Text="インストール済みアプリから、プロファイルを自動切替する対象を選びます。";SelectButton.Content="自動切替の対象に追加";
+        if(!forAutoSwitch)return;Title="自動切替するインストール済みアプリを選択";SelectButton.Content="自動切替の対象に追加";
     }
 
     async void ApplicationPickerWindow_Loaded(object sender,RoutedEventArgs e)

@@ -4,7 +4,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using Button=System.Windows.Controls.Button;
-using WpfBrushes=System.Windows.Media.Brushes;
 
 namespace RELYR;
 
@@ -94,8 +93,8 @@ public partial class MacroInputPickerWindow:Window
         AddFrame("マウス",mouseX,top,mouseWidth,numpadHeight);
 
         double navLeft=padding,firstY=top+titleHeight,step=unit+Gap;
-        AddButton("Insert","Insert",navLeft,firstY,unit,keyHeight);AddButton("Home","Home",navLeft+step,firstY,unit,keyHeight);AddButton("PageUp","PageUp",navLeft+step*2,firstY,unit,keyHeight);
-        AddButton("Delete","Delete",navLeft,firstY+56,unit,keyHeight);AddButton("End","End",navLeft+step,firstY+56,unit,keyHeight);AddButton("PageDown","PageDown",navLeft+step*2,firstY+56,unit,keyHeight);
+        AddButton("Insert","Insert",navLeft,firstY,unit,keyHeight);AddButton("Home","Home",navLeft+step,firstY,unit,keyHeight);AddButton("PageUp","Page\nUp",navLeft+step*2,firstY,unit,keyHeight);
+        AddButton("Delete","Delete",navLeft,firstY+56,unit,keyHeight);AddButton("End","End",navLeft+step,firstY+56,unit,keyHeight);AddButton("PageDown","Page\nDown",navLeft+step*2,firstY+56,unit,keyHeight);
         AddButton("PrintScreen","Print",navLeft,firstY+112,unit,keyHeight);AddButton("ScrollLock","Scroll",navLeft+step,firstY+112,unit,keyHeight);AddButton("Pause","Pause",navLeft+step*2,firstY+112,unit,keyHeight);
 
         double numLeft=numpadX+padding;
@@ -140,7 +139,7 @@ public partial class MacroInputPickerWindow:Window
 
     void AddFrame(string title,double x,double y,double width,double height)
     {
-        var frame=new Border{Tag=title,Width=width,Height=height,CornerRadius=new CornerRadius(7),BorderThickness=new Thickness(1),BorderBrush=ThemeService.Brush("SubtleBorderBrush"),Background=ThemeService.Brush("CardBackground"),IsHitTestVisible=false};
+        var frame=new Border{Tag=title,Width=width,Height=height,CornerRadius=new CornerRadius(7),BorderThickness=new Thickness(1),BorderBrush=ThemeService.Brush("SubtleBorderBrush"),Background=ThemeService.Brush("AppBackground"),IsHitTestVisible=false};
         Canvas.SetLeft(frame,x);Canvas.SetTop(frame,y);InputCanvas.Children.Add(frame);
         var heading=new TextBlock{Text=title,Foreground=ThemeService.Brush("MutedText"),FontSize=11,FontWeight=FontWeights.SemiBold,IsHitTestVisible=false};
         Canvas.SetLeft(heading,x+10);Canvas.SetTop(heading,y+4);InputCanvas.Children.Add(heading);
@@ -153,11 +152,9 @@ public partial class MacroInputPickerWindow:Window
 
     void AddJisEnter()
     {
-        var geometry=Geometry.Parse("M 0,0 L 160,0 L 160,108 L 22,108 L 22,56 L 0,56 Z");
-        var button=CreateButton("Enter","Enter",160,108);button.Clip=geometry;
+        var geometry=Geometry.Parse("M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z");
+        var button=CreateButton("Enter","Enter",160,108);button.Style=(Style)FindResource("JisEnterButton");button.Clip=geometry;
         Canvas.SetLeft(button,782);Canvas.SetTop(button,100);InputCanvas.Children.Add(button);
-        var outline=new Path{Data=geometry,Stroke=ThemeService.Brush("BorderBrush"),StrokeThickness=1,Fill=WpfBrushes.Transparent,IsHitTestVisible=false};
-        Canvas.SetLeft(outline,782);Canvas.SetTop(outline,100);InputCanvas.Children.Add(outline);
     }
 
     void AddButton(string key,string label,double x,double y,double width,double height)
@@ -168,9 +165,12 @@ public partial class MacroInputPickerWindow:Window
 
     Button CreateButton(string key,string label,double width,double height)
     {
-        var button=new Button{Tag=key,Content=label,Width=width,Height=height,MinWidth=0,MinHeight=0,ToolTip=MainWindow.DisplayInputName(key)};
+        var button=new Button{Tag=key,Content=KeyLabel(label),Width=width,Height=height,MinWidth=0,MinHeight=0,ToolTip=MainWindow.DisplayInputName(key)};
         button.Click+=Input_Click;inputButtons.Add(button);return button;
     }
+    static object KeyLabel(string label)=>label.Contains('\n')
+        ?new TextBlock{Text=label,TextAlignment=TextAlignment.Center,HorizontalAlignment=System.Windows.HorizontalAlignment.Center,VerticalAlignment=System.Windows.VerticalAlignment.Center}
+        :label;
 
     void Input_Click(object sender,RoutedEventArgs e)
     {

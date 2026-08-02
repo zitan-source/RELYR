@@ -44,6 +44,28 @@
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
+    <Style x:Key="JisEnterButton" TargetType="Button">
+      <Setter Property="Padding" Value="5,3"/>
+      <Setter Property="Background" Value="{DynamicResource KeyBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Grid SnapsToDevicePixels="True">
+            <Path x:Name="EnterShape" Data="M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" StrokeLineJoin="Round"/>
+            <Path Data="M 5,1.5 L 155,1.5" Stroke="#24FFFFFF" StrokeThickness="1" IsHitTestVisible="False"/>
+            <ContentPresenter Margin="18,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="EnterShape" Property="Stroke" Value="{DynamicResource AccentBrush}"/><Setter TargetName="EnterShape" Property="Opacity" Value="0.94"/></Trigger>
+            <Trigger Property="IsPressed" Value="True"><Setter TargetName="EnterShape" Property="Fill" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
   </Window.Resources>
 
   <Grid Margin="18">
@@ -56,18 +78,17 @@
     <Grid Margin="2,0,2,12">
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel>
-        <TextBlock Text="キーパッドから入力" FontSize="25" FontWeight="Bold"/>
-        <TextBlock x:Name="KeyboardHeading" Text="キーボード" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
+        <TextBlock x:Name="KeyboardHeading" Text="キーボード" Foreground="{DynamicResource SecondaryText}"/>
       </StackPanel>
       <TextBlock Grid.Column="1" Text="選んだ入力はマクロへすぐ追加されます。続けて複数選択できます。"
                  Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
     </Grid>
 
-    <Border Grid.Row="1" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
+    <Border x:Name="InputSurfaceBorder" Grid.Row="1" Background="{DynamicResource AppBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
             BorderThickness="1" CornerRadius="8" Padding="12" ClipToBounds="True">
-      <Viewbox x:Name="InputViewbox" Stretch="Uniform" StretchDirection="Both"
+      <Viewbox x:Name="InputViewbox" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True"
                HorizontalAlignment="Center" VerticalAlignment="Center">
-        <Canvas x:Name="InputCanvas" Width="1200" Height="700"/>
+        <Canvas x:Name="InputCanvas" Width="1200" Height="700" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
       </Viewbox>
     </Border>
 
