@@ -27,6 +27,24 @@
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="FontWeight" Value="Normal"/>
     </Style>
+    <Style x:Key="ToolbarToggleStyle" TargetType="ToggleButton">
+      <Setter Property="Height" Value="36"/><Setter Property="MinWidth" Value="36"/>
+      <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
+      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+        <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.45"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="SidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
       <Setter Property="Height" Value="42"/><Setter Property="Margin" Value="0,2"/>
       <Setter Property="Padding" Value="10,0"/><Setter Property="Background" Value="Transparent"/>
@@ -191,7 +209,7 @@
             <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="36" MinWidth="36" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
             <TextBlock Text="配列" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/>
             <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="76" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
-            <ToggleButton x:Name="MultiSelectToggle" Content="選択" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数のキーを選択して、割り当てをまとめてコピー・貼り付けします" Margin="14,3,3,3" Height="36" MinHeight="36" Padding="12,0"/>
+            <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Content="選択" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数のキーを選択して、割り当てをまとめてコピー・貼り付けします" Margin="14,3,3,3"/>
             <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="36" MinWidth="36" Padding="0" IsEnabled="False" ToolTip="選択した割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE8C8;"/></Button>
             <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="36" MinWidth="36" Padding="0" IsEnabled="False" ToolTip="コピーした割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE77F;"/></Button>
           </WrapPanel>
