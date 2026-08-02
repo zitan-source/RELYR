@@ -140,12 +140,14 @@
               <TextBlock Text="{Binding Steps.Count, StringFormat={}{0} 手順}" Foreground="{DynamicResource SecondaryText}" FontSize="10"/>
             </StackPanel></DataTemplate></ListBox.ItemTemplate>
           </ListBox>
-          <UniformGrid Grid.Row="3" Columns="2" Margin="0,7,0,0">
-            <Button x:Name="NewMacroButton" Content="＋ 新規" Click="New_Click"/>
-            <Button x:Name="DuplicateMacroButton" Content="複製" Click="DuplicateMacro_Click" IsEnabled="False"/>
-            <Button x:Name="EditMacroButton" Content="名前変更" Click="EditMacro_Click" IsEnabled="False"/>
-            <Button x:Name="DeleteMacroButton" Content="削除" Click="DeleteMacro_Click" IsEnabled="False" Style="{StaticResource DangerButton}"/>
-          </UniformGrid>
+          <Grid Grid.Row="3" Margin="0,7,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+            <Button x:Name="NewMacroButton" Grid.RowSpan="2" Content="＋" Click="New_Click" ToolTip="新規マクロを追加" Padding="0"/>
+            <Button x:Name="DuplicateMacroButton" Grid.Column="1" Content="複製" Click="DuplicateMacro_Click" IsEnabled="False"/>
+            <Button x:Name="EditMacroButton" Grid.Column="2" Content="名前変更" Click="EditMacro_Click" IsEnabled="False" Padding="3,7"/>
+            <Button x:Name="DeleteMacroButton" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Content="削除" Click="DeleteMacro_Click" IsEnabled="False" Style="{StaticResource DangerButton}"/>
+          </Grid>
         </Grid>
       </Border>
 
@@ -217,16 +219,15 @@
           <TabItem Header="手動追加">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,10,4,4">
               <TextBlock Text="キーを追加" FontSize="16" FontWeight="Bold"/>
-              <TextBlock Text="画面上のキーボード・マウスから選ぶか、実際のキー入力を記録できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,7"/>
-              <Button x:Name="KeypadInputButton" Content="キーパッドから入力…" Click="KeypadInput_Click" HorizontalContentAlignment="Left" Padding="12,10"/>
-              <Button x:Name="ManualCaptureButton" Content="手動追加を開始" PreviewKeyDown="ManualCapture_KeyDown" PreviewKeyUp="ManualCapture_KeyUp" Click="ManualCapture_Click" LostKeyboardFocus="ManualCapture_LostKeyboardFocus" Padding="12,10" Background="{DynamicResource AccentSoftBrush}"/>
+              <Button x:Name="KeypadInputButton" Content="キーパッドから入力…" Click="KeypadInput_Click" HorizontalContentAlignment="Center" Padding="12,10"/>
+              <Button x:Name="ManualCaptureButton" Content="手動追加を開始" PreviewKeyDown="ManualCapture_KeyDown" PreviewKeyUp="ManualCapture_KeyUp" Click="ManualCapture_Click" LostKeyboardFocus="ManualCapture_LostKeyboardFocus" HorizontalContentAlignment="Center" Padding="12,10" Background="{DynamicResource AccentSoftBrush}"/>
               <TextBlock x:Name="ManualStatus" Text="停止中" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="3,3,3,12"/>
-              <TextBlock Text="自動記録は Ctrl + Shift + F12 でも停止できます。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,0,2,10"/>
+              <TextBlock Text="停止: Ctrl + Shift + F12" Foreground="{DynamicResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="2,0,2,10"/>
 
               <Separator Margin="0,2,0,10" Background="{DynamicResource SubtleBorderBrush}"/>
-              <Button Content="定番アクションを追加…" Click="AddCatalogAction_Click" HorizontalContentAlignment="Left"/>
-              <Button Content="アプリ・ファイル・URLを追加…" Click="AddApplicationAction_Click" HorizontalContentAlignment="Left"/>
-              <Button x:Name="CoordinateCaptureButton" Content="座標を記録" Click="CoordinateCapture_Click" HorizontalContentAlignment="Left"/>
+              <Button Content="定番アクションを追加…" Click="AddCatalogAction_Click" HorizontalContentAlignment="Center"/>
+              <Button Content="アプリ・ファイル・URLを追加…" Click="AddApplicationAction_Click" HorizontalContentAlignment="Center"/>
+              <Button x:Name="CoordinateCaptureButton" Content="座標を記録" Click="CoordinateCapture_Click" HorizontalContentAlignment="Center"/>
               <TextBlock Text="文字列を追加" FontWeight="SemiBold" Margin="3,10,3,3"/>
               <TextBox x:Name="ManualTextBox" AcceptsReturn="True" MinHeight="58" TextWrapping="Wrap"/>
               <Button Content="文字列を手順へ追加" Click="AddTextAction_Click"/>
@@ -238,15 +239,17 @@
           </TabItem>
 
           <TabItem Header="自動記録">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,10,4,4">
-              <TextBlock Text="自動で記録" FontSize="16" FontWeight="Bold"/>
-              <TextBlock Text="現在の手順の末尾へ追記します。終了は Ctrl + Shift + F12 です。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8"/>
-              <CheckBox x:Name="RecordKeyboardBox" Content="キーボード操作を記録する" Foreground="{DynamicResource PrimaryText}" Margin="2,3,2,7" Checked="RecordKeyboardChanged" Unchecked="RecordKeyboardChanged"/>
-              <TextBlock Text="キー割り当ての記録方法" Foreground="{DynamicResource SecondaryText}"/>
-              <RadioButton x:Name="RecordMappedActionsBox" GroupName="KeyRecordingMode" Content="割り当て済みのアクションを記録" Foreground="{DynamicResource PrimaryText}" Margin="2,5,2,2" Checked="KeyRecordingModeChanged"/>
-              <RadioButton x:Name="RecordPhysicalInputBox" GroupName="KeyRecordingMode" Content="押した物理キーを記録" Foreground="{DynamicResource PrimaryText}" Margin="2" Checked="KeyRecordingModeChanged"/>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,12,4,8">
+              <TextBlock Text="自動記録" FontSize="16" FontWeight="Bold"/>
+              <TextBlock Text="現在の手順の末尾へ追加します。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,18"/>
+              <CheckBox x:Name="RecordKeyboardBox" Content="キーボード操作を記録する" Foreground="{DynamicResource PrimaryText}" Margin="2,0,2,0" Checked="RecordKeyboardChanged" Unchecked="RecordKeyboardChanged"/>
+              <TextBlock Text="キー操作の記録方法" Foreground="{DynamicResource SecondaryText}" Margin="0,20,0,6"/>
+              <StackPanel Margin="4,0,2,0">
+                <RadioButton x:Name="RecordMappedActionsBox" GroupName="KeyRecordingMode" Content="割り当て済みの操作を記録" Foreground="{DynamicResource PrimaryText}" Margin="0,3" Checked="KeyRecordingModeChanged"/>
+                <RadioButton x:Name="RecordPhysicalInputBox" GroupName="KeyRecordingMode" Content="押した物理キーを記録" Foreground="{DynamicResource PrimaryText}" Margin="0,3" Checked="KeyRecordingModeChanged"/>
+              </StackPanel>
 
-              <Expander Header="マウス記録の詳細" Margin="0,10,0,7">
+              <Expander Header="マウスの記録" Margin="0,20,0,0">
                 <StackPanel Margin="8,6,2,2">
                   <CheckBox x:Name="RecordMouseMovesBox" Content="カーソルの移動軌跡も記録" Foreground="{DynamicResource PrimaryText}" Margin="2,3,2,7" Checked="RecordMouseMovesChanged" Unchecked="RecordMouseMovesChanged"/>
                   <StackPanel x:Name="MouseMovementModePanel" Margin="18,0,0,3">
@@ -255,22 +258,23 @@
                   </StackPanel>
                 </StackPanel>
               </Expander>
-              <TextBlock Text="※ ここで選ぶ記録方法は、すべてのマクロで共通です。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="10" Margin="2,0,2,8"/>
-              <Button x:Name="RecordButton" Content="● 記録を開始（末尾へ追記）" Click="Record_Click"
-                      Style="{StaticResource DangerButton}" Padding="12,10"/>
-              <TextBlock x:Name="RecordStatus" Text="停止中" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,5"/>
+              <TextBlock Text="すべてのマクロに共通の設定です。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="10" Margin="2,8,2,0"/>
+              <Button x:Name="RecordButton" Content="● 記録を開始" Click="Record_Click"
+                      Style="{StaticResource DangerButton}" Padding="12,10" Margin="0,22,0,0"/>
+              <TextBlock x:Name="RecordStatus" Text="停止中" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,8,2,0"/>
             </StackPanel></ScrollViewer>
           </TabItem>
 
           <TabItem Header="手順編集">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,10,4,4">
-              <TextBlock Text="選択した手順" FontSize="16" FontWeight="Bold"/>
-              <TextBlock x:Name="SelectedStepTitle" Text="中央から手順を選択してください。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,12"/>
-              <TextBlock Text="実行前の待機時間" FontWeight="SemiBold"/>
-              <Grid Margin="0,4,0,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="SelectedStepDelayBox" Text="0" IsEnabled="False"/><TextBlock Grid.Column="1" Text="ms" VerticalAlignment="Center" Margin="7,0,0,0"/></Grid>
-              <Button x:Name="ApplyStepEditButton" Content="変更を反映" Click="ApplyStepEdit_Click" IsEnabled="False" Background="{DynamicResource AccentSoftBrush}"/>
-              <Button x:Name="ReplaceStepActionButton" Content="別の定番アクションへ変更…" Click="ReplaceStepAction_Click" IsEnabled="False"/>
-              <TextBlock Text="手順をダブルクリックすると、ここへ移動します。複数の手順は Shift または Ctrl を押しながら選択できます。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="2,12,2,0"/>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,12,4,8">
+              <TextBlock Text="手順編集" FontSize="16" FontWeight="Bold"/>
+              <TextBlock x:Name="SelectedStepTitle" Text="中央の一覧から手順を選択してください。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,20"/>
+              <Separator Margin="0,0,0,16" Background="{DynamicResource SubtleBorderBrush}"/>
+              <TextBlock Text="開始前の待機" FontWeight="SemiBold"/>
+              <Grid Margin="0,7,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="SelectedStepDelayBox" Text="0" IsEnabled="False"/><TextBlock Grid.Column="1" Text="ms" VerticalAlignment="Center" Margin="9,0,0,0"/></Grid>
+              <Button x:Name="ApplyStepEditButton" Content="変更を反映" Click="ApplyStepEdit_Click" IsEnabled="False" Background="{DynamicResource AccentSoftBrush}" Margin="0,16,0,0"/>
+              <Button x:Name="ReplaceStepActionButton" Content="定番アクションに変更…" Click="ReplaceStepAction_Click" IsEnabled="False" Margin="0,7,0,0"/>
+              <TextBlock Text="手順をダブルクリックすると、ここで編集できます。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="2,20,2,0"/>
             </StackPanel></ScrollViewer>
           </TabItem>
         </TabControl>

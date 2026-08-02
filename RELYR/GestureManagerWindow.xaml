@@ -4,6 +4,12 @@
         Title="ジェスチャー" Width="900" Height="650" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" ShowInTaskbar="False">
   <Window.Resources>
+    <DataTemplate x:Key="GestureActionChoiceHeaderTemplate">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="{Binding Icon}" Foreground="{Binding IconBrush}" FontFamily="Segoe UI Symbol" FontSize="15" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+        <TextBlock Text="{Binding Label}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+      </StackPanel>
+    </DataTemplate>
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
       <Setter Property="Background" Value="{DynamicResource DangerBackground}"/>
       <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>

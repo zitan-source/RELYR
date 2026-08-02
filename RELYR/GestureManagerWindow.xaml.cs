@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Button = System.Windows.Controls.Button;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using MenuItem = System.Windows.Controls.MenuItem;
@@ -89,7 +90,8 @@ public partial class GestureManagerWindow:Window
         var menu=new ContextMenu{PlacementTarget=button,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom};
         foreach(var choice in SupportedActionChoices)
         {
-            var item=new MenuItem{Header=choice.Label,Tag=choice.Kind};
+            var header=new GestureActionChoiceHeader(choice.Icon,choice.Label,ThemeService.Brush(choice.IconBrush));
+            var item=new MenuItem{Header=header,HeaderTemplate=(DataTemplate)FindResource("GestureActionChoiceHeaderTemplate"),Tag=choice.Kind};
             item.Click+=(_,_)=>ChooseAction(slot,choice.Kind);
             menu.Items.Add(item);
         }
@@ -178,15 +180,18 @@ public partial class GestureManagerWindow:Window
         }
     }
 
-    internal static readonly (ActionKind Kind,string Label)[] SupportedActionChoices=
+    internal static readonly GestureActionChoice[] SupportedActionChoices=
     [
-        (ActionKind.Key,"別のキー"),
-        (ActionKind.Profile,"プロファイル"),
-        (ActionKind.Shortcut,"ショートカット"),
-        (ActionKind.Text,"文字列"),
-        (ActionKind.Launch,"アプリ・パス"),
-        (ActionKind.Macro,"マクロ")
+        new(ActionKind.Key,"⌨","別のキー","ActionKeyIconBrush"),
+        new(ActionKind.Profile,"⇄","プロファイル","ActionProfileIconBrush"),
+        new(ActionKind.Shortcut,"↗","ショートカット","ActionShortcutIconBrush"),
+        new(ActionKind.Text,"T","文字列","ActionTextIconBrush"),
+        new(ActionKind.Launch,"▱","アプリ・パス","ActionLaunchIconBrush"),
+        new(ActionKind.Macro,"⌘","マクロ","ActionMacroIconBrush")
     ];
+
+    internal sealed record GestureActionChoice(ActionKind Kind,string Icon,string Label,string IconBrush);
+    sealed record GestureActionChoiceHeader(string Icon,string Label,System.Windows.Media.Brush IconBrush){public override string ToString()=>Label;}
 
     internal static void RenameReferences(IEnumerable<Profile> profiles,string oldName,string newName)
     {

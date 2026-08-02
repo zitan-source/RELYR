@@ -67,6 +67,8 @@ public partial class MainWindow : Window
     ProfileSwitchOverlay? profileOverlay;
     string lastProfileOverlayName="";
     Mapping? copiedMapping;
+    Dictionary<string,Mapping?>? copiedMultiMappings;
+    readonly HashSet<string> multiSelectedInputs=new(StringComparer.OrdinalIgnoreCase);
     TextBox? destinationInputTarget;
     readonly List<System.Windows.Controls.Button> deckManagementButtons=[];
     readonly Dictionary<System.Windows.Controls.Button,TextBlock> deckManagementNameLabels=[];
@@ -88,6 +90,7 @@ public partial class MainWindow : Window
     internal bool IsInputEngineReadyForTest=>engineStarted&&engine.Enabled;
     internal bool HasDestinationInputTargetForTest=>destinationInputTarget!=null;
     internal bool IsEditingSelectedInputForTest=>editingSelectedInput;
+    internal void ColorButtonsForTest()=>ColorButtons();
     internal Profile CurrentProfileForTest=>CurrentProfile;
     internal AppConfig ConfigForTest=>config;
     internal IList<Profile> ProfilesForTest=>config.Profiles;
@@ -403,6 +406,13 @@ public partial class MainWindow : Window
     {
         if(key=="Space"&&currentLayer is "通常" or "Space"){ShowInlineNotice("SpaceキーはSpaceレイヤー専用のため、このレイヤーでは変更できません");return;}
         if(key=="CapsLock"&&!editingSelectedInput&&destinationInputTarget==null){ShowInlineNotice("CapsLockは割り当て元にはできません。別のキーを選んだ後、割り当て先として使用できます");return;}
+        if(MultiSelectToggle.IsChecked==true)
+        {
+            if(!IsKeyboardInput(key)){ShowInlineNotice("複数選択ではキーボードのキーを選択できます");return;}
+            if(!multiSelectedInputs.Add(key))multiSelectedInputs.Remove(key);
+            UpdateMultiSelectControls();ColorButtons();
+            return;
+        }
         SelectInput(currentLayer=="通常"?key:currentLayer+"+"+key);
     }
     void InputButton_Click(object sender,RoutedEventArgs e){if(sender is System.Windows.Controls.Button{Tag:string key})SelectVisualInput(key);}
@@ -467,6 +477,11 @@ public partial class MainWindow : Window
     {
         if(sender is not System.Windows.Controls.Button{Tag:string key})return;
         e.Handled=true;
+        if(MultiSelectToggle.IsChecked==true&&IsKeyboardInput(key)&&multiSelectedInputs.Count>0)
+        {
+            var multiMenu=CreateMultiSelectionContextMenu();multiMenu.PlacementTarget=(System.Windows.Controls.Button)sender;multiMenu.IsOpen=true;
+            return;
+        }
         if(DeckPanelLayout.IsInputName(key))
         {
             var deckMenu=CreateDeckInputContextMenu(key);deckMenu.PlacementTarget=(System.Windows.Controls.Button)sender;deckMenu.IsOpen=true;
@@ -580,6 +595,77 @@ public partial class MainWindow : Window
         delete.Click+=(_,_)=>{if(existing==null)return;CurrentProfile.Mappings.Remove(existing);if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected=null;MarkDirty();SelectInput(input,false);UpdateLayerButtons();ClearExecutionFocus();ShowInlineNotice(DisplayInputName(input)+" の割り当てを削除しました");};
         menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);
         return menu;
+    }
+    internal ContextMenu CreateMultiSelectionContextMenu()
+    {
+        var menu=new ContextMenu();
+        var copy=new MenuItem{Header="選択した割り当てをコピー",IsEnabled=multiSelectedInputs.Count>0};
+        copy.Click+=(_,_)=>CopyMultiSelection();
+        var paste=new MenuItem{Header="コピーした割り当てを貼り付け",IsEnabled=copiedMultiMappings is {Count:>0}};
+        paste.Click+=(_,_)=>PasteMultiSelection();
+        var delete=new MenuItem{Header="選択した割り当てを削除",IsEnabled=multiSelectedInputs.Count>0,Foreground=ThemeService.Brush("DangerBrush")};
+        delete.Click+=(_,_)=>DeleteMultiSelection();
+        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);
+        return menu;
+    }
+    void MultiCopy_Click(object sender,RoutedEventArgs e)=>CopyMultiSelection();
+    void MultiPaste_Click(object sender,RoutedEventArgs e)=>PasteMultiSelection();
+    void CopyMultiSelection()
+    {
+        if(multiSelectedInputs.Count==0)return;
+        copiedMultiMappings=multiSelectedInputs.ToDictionary(key=>key,key=>
+        {
+            var mapping=CurrentProfile.Mappings.LastOrDefault(x=>x.Input.Equals(InputForCurrentLayer(key),StringComparison.OrdinalIgnoreCase));
+            return mapping==null?null:CloneMapping(mapping);
+        },StringComparer.OrdinalIgnoreCase);
+        UpdateMultiSelectControls();ShowInlineNotice($"{copiedMultiMappings.Count}キーの割り当てをコピーしました");
+    }
+    void PasteMultiSelection()
+    {
+        if(copiedMultiMappings is not {Count:>0}||multiSelectedInputs.Count==0)return;
+        var targets=multiSelectedInputs.Where(copiedMultiMappings.ContainsKey).Select(key=>(Input:InputForCurrentLayer(key),Source:copiedMultiMappings[key])).ToList();
+        if(targets.Count==0)return;
+        foreach(var target in targets)
+            if(target.Source?.Kind==ActionKind.Gesture&&!ConfirmDirectMouseGestureConflict(target.Input))return;
+        foreach(var target in targets)
+        {
+            CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(target.Input,StringComparison.OrdinalIgnoreCase));
+            if(target.Source==null)continue;
+            var mapping=CloneMapping(target.Source);mapping.Input=target.Input;mapping.Layer=currentLayer;CurrentProfile.Mappings.Add(mapping);
+        }
+        MarkDirty();UpdateLayerButtons();ColorButtons();ShowInlineNotice($"{targets.Count}キーへ割り当てを貼り付けました");
+    }
+    void DeleteMultiSelection()
+    {
+        int removed=0;
+        foreach(var key in multiSelectedInputs)removed+=CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(InputForCurrentLayer(key),StringComparison.OrdinalIgnoreCase));
+        if(removed==0){ShowInlineNotice("削除する割り当てはありません");return;}
+        MarkDirty();UpdateLayerButtons();ColorButtons();ShowInlineNotice($"{removed}件の割り当てを削除しました");
+    }
+    static bool IsKeyboardInput(string key)=>!key.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)&&!key.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)&&!key.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase);
+    string InputForCurrentLayer(string key)=>currentLayer=="通常"?key:currentLayer+"+"+key;
+    void MultiSelectChanged(object sender,RoutedEventArgs e)
+    {
+        if(MultiSelectToggle.IsChecked==true)
+        {
+            if(destinationInputTarget!=null||editingSelectedInput)CompleteDestinationInput(MultiSelectToggle);
+            multiSelectedInputs.Clear();ShowInlineNotice("複数選択: キーボードのキーをクリックして選択します");
+        }
+        else
+        {
+            multiSelectedInputs.Clear();ShowInlineNotice("複数選択を終了しました");
+        }
+        UpdateMultiSelectControls();ColorButtons();
+    }
+    void UpdateMultiSelectControls()
+    {
+        if(MultiCopyButton==null||MultiPasteButton==null)return;
+        bool active=MultiSelectToggle.IsChecked==true;
+        MultiCopyButton.IsEnabled=active&&multiSelectedInputs.Count>0;
+        MultiPasteButton.IsEnabled=active&&multiSelectedInputs.Count>0&&copiedMultiMappings is {Count:>0};
+        if(!active)return;
+        LastInput.Text=multiSelectedInputs.Count==0?"複数選択: キーをクリックして選択します":$"複数選択: {multiSelectedInputs.Count}キーを選択中";
+        LastInput.Foreground=ThemeService.Brush("AccentBrush");
     }
     void LongPressOnly_Click(object sender,RoutedEventArgs e){ValueBox.Clear();if(selected!=null)selected.Kind=ActionKind.None;loading=true;KindBox.SelectedValue=ActionKind.None;loading=false;LongPressExpander.IsExpanded=true;FocusExecutionValue(LongValueBox,true);MarkDirty();LastInput.Text="長押しのみ：短押しは元のキーを入力します";}
     void DestinationInputDone_Click(object sender,RoutedEventArgs e)=>CompleteDestinationInput(sender as FrameworkElement);
@@ -1187,7 +1273,12 @@ public partial class MainWindow : Window
     void EditorChanged(object sender, EventArgs e)
     {
         if (loading || selected == null) return;
-        if(ReferenceEquals(sender,ValueBox)&&KindBox.SelectedValue is not ActionKind&&!string.IsNullOrWhiteSpace(ValueBox.Text)){loading=true;KindBox.SelectedValue=ActionKind.Key;loading=false;}
+        if(ReferenceEquals(sender,ValueBox)&&!string.IsNullOrWhiteSpace(ValueBox.Text))
+        {
+            loading=true;
+            KindBox.SelectedValue=ContainsJapaneseText(ValueBox.Text)?ActionKind.Text:KindBox.SelectedValue is ActionKind?KindBox.SelectedValue:ActionKind.Key;
+            loading=false;
+        }
         var longEditorKind=LongKindBox.SelectedValue is ActionKind lk?lk:EditorActionKind(selected.LongPressKind);if(ReferenceEquals(sender,LongKindBox)&&longEditorKind==ActionKind.None&&!string.IsNullOrEmpty(LongValueBox.Text)){loading=true;LongValueBox.Clear();loading=false;}
         var shortAction=NormalizeEditorAction(KindBox.SelectedValue is ActionKind k?k:EditorActionKind(selected.Kind),ValueBox.Text,selected.Kind,selected.Value);
         var longAction=NormalizeEditorAction(longEditorKind,LongValueBox.Text,selected.LongPressKind,selected.LongPressValue);
@@ -1210,6 +1301,7 @@ public partial class MainWindow : Window
         else if(ReferenceEquals(sender,LongKindBox))FocusExecutionValue(LongValueBox,true);
     }
     static string ProfileDisplayValue(string profileName)=>"プロファイル："+profileName;
+    internal static bool ContainsJapaneseText(string? value)=>!string.IsNullOrEmpty(value)&&value.Any(character=>character is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u9FFF' or >= '\uF900' and <= '\uFAFF');
     static string GestureDisplayValue(string gestureName)=>"ジェスチャー："+gestureName;
     internal static string DisplayActionValue(ActionKind kind,string value)=>kind switch{ActionKind.Profile=>ProfileDisplayValue(value),ActionKind.Gesture=>GestureDisplayValue(value),ActionKind.Mouse=>ActionCatalog.DisplayMouseAction(value),_=>value};
     string DisplayConfiguredActionValue(ActionKind kind,string value)
@@ -1400,8 +1492,10 @@ public partial class MainWindow : Window
             string input=currentLayer=="通常"?(string)b.Tag:currentLayer+"+"+(string)b.Tag;
             var assigned=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
             bool editing=editingSelectedInput&&selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
+            bool multiSelected=MultiSelectToggle.IsChecked==true&&keyboardButtons.Contains(b)&&multiSelectedInputs.Contains((string)b.Tag);
             b.Background=editing?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
-            b.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):ThemeService.Brush("SubtleBorderBrush");
+            b.BorderBrush=editing?ThemeService.Brush("EditingKeyBorderBrush"):multiSelected?ThemeService.Brush("AccentBrush"):ThemeService.Brush("SubtleBorderBrush");
+            b.BorderThickness=multiSelected?new Thickness(2):new Thickness(1);
             b.Foreground=editing?WpfBrushes.White:assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity=reserved ? 0.48 : 1;
             b.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):keyboardButtons.Contains(b)?null:DefaultMouseToolTip((string)b.Tag);
