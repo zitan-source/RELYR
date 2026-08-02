@@ -65,7 +65,7 @@ public partial class MainWindow : Window
     AppConfig appliedConfig=null!;
     Mapping? selected;
     string selectedBaseInput="";
-    bool loading, detectMode, allowClose, engineStarted, editingSelectedInput;
+    bool loading, detectMode, allowClose, engineStarted, editingSelectedInput, selectionPulseSuppressed;
     int exitRequested;
     string? pendingDetectedLayer;
     bool updateInProgress;
@@ -583,7 +583,7 @@ public partial class MainWindow : Window
             if(existing==null)return;
             existing.Kind=ActionKind.None;existing.Value="";existing.LongPressKind=ActionKind.None;existing.LongPressValue="";existing.DragValue="";existing.DragEndValue="";existing.Application="";
             if(string.IsNullOrWhiteSpace(existing.Description)&&string.IsNullOrWhiteSpace(existing.DeckColor))mappings.Remove(existing);
-            SelectInput(input,false);MarkDirty();RefreshSelectedInputVisual(input);ShowInlineNotice("Deckボタンの割り当てを削除しました");
+            ClearSelectedInput();MarkDirty();RefreshSelectedInputVisual(input);ShowInlineNotice("Deckボタンの割り当てを削除しました");
         };
         var rename=new MenuItem{Header="名前を変更..."};rename.Click+=(_,_)=>RenameDeckButton(input);
         var color=new MenuItem{Header="色を変更..."};color.Click+=(_,_)=>ChooseDeckButtonColor(input);
@@ -619,7 +619,7 @@ public partial class MainWindow : Window
         var paste=new MenuItem{Header="コピーした割り当てを貼り付け",IsEnabled=copiedMapping!=null};
         paste.Click+=(_,_)=>{if(copiedMapping==null)return;var map=CloneMapping(copiedMapping);map.Input=input;map.Layer=currentLayer;if(map.Kind==ActionKind.Gesture&&!ConfirmDirectMouseGestureConflict(input))return;CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));CurrentProfile.Mappings.Add(map);SelectInput(input);UpdateLayerButtons();MarkDirty();ColorButtons();};
         var delete=new MenuItem{Header="この割り当てを削除",IsEnabled=existing!=null,Foreground=ThemeService.Brush("DangerBrush")};
-        delete.Click+=(_,_)=>{if(existing==null)return;CurrentProfile.Mappings.Remove(existing);if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected=null;MarkDirty();SelectInput(input,false);UpdateLayerButtons();ClearExecutionFocus();ShowInlineNotice(DisplayInputName(input)+" の割り当てを削除しました");};
+        delete.Click+=(_,_)=>{if(existing==null)return;CurrentProfile.Mappings.Remove(existing);MarkDirty();UpdateLayerButtons();ClearSelectedInput();ShowInlineNotice(DisplayInputName(input)+" の割り当てを削除しました");};
         menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);
         return menu;
     }
@@ -667,7 +667,7 @@ public partial class MainWindow : Window
         int removed=0;
         foreach(var key in multiSelectedInputs)removed+=CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(InputForCurrentLayer(key),StringComparison.OrdinalIgnoreCase));
         if(removed==0){ShowInlineNotice("削除する割り当てはありません");return;}
-        MarkDirty();UpdateLayerButtons();ColorButtons();ShowInlineNotice($"{removed}件の割り当てを削除しました");
+        MarkDirty();UpdateLayerButtons();MultiSelectToggle.IsChecked=false;ShowInlineNotice($"{removed}件の割り当てを削除しました");
     }
     static bool IsKeyboardInput(string key)=>!key.StartsWith("Mouse",StringComparison.OrdinalIgnoreCase)&&!key.StartsWith("Wheel",StringComparison.OrdinalIgnoreCase)&&!key.StartsWith("Tilt",StringComparison.OrdinalIgnoreCase);
     string InputForCurrentLayer(string key)=>currentLayer=="通常"?key:currentLayer+"+"+key;
@@ -721,13 +721,13 @@ public partial class MainWindow : Window
                 LastInput.Foreground=ThemeService.Brush("WarningBrush");
             }
         }
-        editingSelectedInput=false;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane();
+        editingSelectedInput=false;selectionPulseSuppressed=true;ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane();
     }
     void ClearSelectedInput(FrameworkElement? fallback=null)
     {
-        selected=null;selectedBaseInput="";editingSelectedInput=false;InputName.Clear();InputDisplayText.Text="キーを選択してください";
+        selected=null;selectedBaseInput="";editingSelectedInput=false;selectionPulseSuppressed=true;InputName.Clear();InputDisplayText.Text="キーを選択してください";
         InspectorEmptyState.Visibility=Visibility.Visible;SelectionHeader.Visibility=Visibility.Collapsed;AssignmentEditor.Visibility=Visibility.Collapsed;AssignmentEditor.IsEnabled=false;
-        loading=true;DeckNameBox.Clear();loading=false;
+        loading=true;KindBox.SelectedIndex=-1;ValueBox.Clear();LongKindBox.SelectedIndex=-1;LongValueBox.Clear();LongPressBox.Clear();LongPressExpander.IsExpanded=false;DeckNameBox.Clear();loading=false;
         ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane(false);
     }
     static bool IsDescendantOf(DependencyObject source,DependencyObject ancestor)
@@ -1279,7 +1279,7 @@ public partial class MainWindow : Window
         int plus=input.IndexOf('+');if(plus>0){layer=input[..plus];selectedBaseInput=input[(plus+1)..];}
         var mappings=MappingCollectionForInput(input);
         var visibleAssignment=DeckPanelLayout.IsInputName(input)?mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase)&&MappingInterceptsInput(x)):FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
-        detectMode=false;editingSelectedInput=focusExecution;selected=SelectEditorMapping(mappings,visibleAssignment,input);
+        detectMode=false;editingSelectedInput=focusExecution;selectionPulseSuppressed=false;selected=SelectEditorMapping(mappings,visibleAssignment,input);
         currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayConfiguredActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayConfiguredActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
         InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
         UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
@@ -1525,7 +1525,7 @@ public partial class MainWindow : Window
             var assigned=FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
             bool currentSelected=selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true;
             bool multiSelected=MultiSelectToggle.IsChecked==true&&keyboardButtons.Contains(b)&&multiSelectedInputs.Contains((string)b.Tag);
-            bool pulsing=currentSelected||multiSelected;
+            bool pulsing=multiSelected||(currentSelected&&!selectionPulseSuppressed);
             WpfColor actionColor=assigned!=null?AssignmentColorFor(assigned):ThemeService.Color("AccentBrush");
             System.Windows.Media.Brush pulseBrush=new SolidColorBrush(SelectionPulseColor(actionColor));
             b.Background=currentSelected&&assigned==null?ThemeService.Brush("EditingKeyBackground"):reserved?ThemeService.Brush("ReservedKeyBackground"):assigned!=null?new SolidColorBrush(AssignmentColorFor(assigned)):ThemeService.Brush("KeyBackground");
@@ -1593,9 +1593,10 @@ public partial class MainWindow : Window
         button.BorderBrush=currentSelected?pulseBrush:ThemeService.Brush("SubtleBorderBrush");
         button.BorderThickness=currentSelected?new Thickness(2):new Thickness(1);
         button.Foreground=currentSelected&&assigned==null&&!hasCustomColor?WpfBrushes.White:hasCustomColor?new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)):assigned==null?ThemeService.Brush("PrimaryText"):new SolidColorBrush(AssignmentTextColorFor(assigned));
-        SetIsSelectionPulseActive(button,currentSelected);
+        bool pulsing=currentSelected&&!selectionPulseSuppressed;
+        SetIsSelectionPulseActive(button,pulsing);
         SetSelectionPulseBrush(button,pulseBrush);
-        SetSelectionPulseVisual(button,currentSelected,pulseBrush);
+        SetSelectionPulseVisual(button,pulsing,pulseBrush);
         if(button.Content is TextBlock actionLabel)actionLabel.Text=DeckPanelLayout.ActionLabel(input,mapping);
         else button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
         if(deckManagementNameLabels.TryGetValue(button,out var nameLabel)){nameLabel.Text=mapping?.Description??"";if(hasCustomColor)nameLabel.Foreground=new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));else nameLabel.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");}
@@ -2316,7 +2317,7 @@ public partial class MainWindow : Window
         UpdateBannerProgress.Visibility=Visibility.Collapsed;
         UpdateBannerProgress.Value=0;
     }
-    void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; var input=selected.Input;MappingCollectionForInput(input).Remove(selected);selected=null;SelectInput(input,false);UpdateLayerButtons();ClearExecutionFocus(s as FrameworkElement);MarkDirty();ColorButtons();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush"); }
+    void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; var input=selected.Input;MappingCollectionForInput(input).Remove(selected);UpdateLayerButtons();ClearSelectedInput(s as FrameworkElement);MarkDirty();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush"); }
     void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;MacroPlayer.PlaybackFinished-=MacroPlaybackFinished;engine.PointerMoved-=QueueAutomaticProfileCheck;updateCancellation.Cancel();profileOverlay?.Close();OverlayService.Shutdown();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();RemoveTrayIconForImmediateExit();archiveWatcher.Dispose();updateCancellation.Dispose(); }
     internal void RemoveTrayIconForImmediateExit()
     {
