@@ -114,21 +114,9 @@
                     <ControlTemplate TargetType="{x:Type MenuItem}">
                         <Border x:Name="MenuItemBorder" Background="{TemplateBinding Background}"
                                 CornerRadius="5" Padding="{TemplateBinding Padding}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="18"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="CheckMark" Text="✓" Foreground="{DynamicResource AccentBrush}"
-                                           FontWeight="Bold" Visibility="Collapsed" VerticalAlignment="Center"/>
-                                <ContentPresenter Grid.Column="1" ContentSource="Header"
-                                                  RecognizesAccessKey="True" VerticalAlignment="Center"/>
-                            </Grid>
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
-                            </Trigger>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="MenuItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
                             </Trigger>

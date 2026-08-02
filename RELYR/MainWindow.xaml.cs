@@ -546,7 +546,7 @@ public partial class MainWindow : Window
         var rename=new MenuItem{Header="名前を変更..."};rename.Click+=(_,_)=>RenameDeckButton(input);
         var color=new MenuItem{Header="色を変更..."};color.Click+=(_,_)=>ChooseDeckButtonColor(input);
         var resetColor=new MenuItem{Header="色を標準に戻す",IsEnabled=DeckPanelLayout.TryGetButtonColor(existing,out _)};resetColor.Click+=(_,_)=>SetDeckButtonColor(input,"");
-        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);menu.Items.Add(new Separator());menu.Items.Add(rename);menu.Items.Add(new Separator());menu.Items.Add(color);menu.Items.Add(resetColor);
+        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);menu.Items.Add(rename);menu.Items.Add(color);menu.Items.Add(resetColor);
         return menu;
     }
     void ChooseDeckButtonColor(string input)
@@ -578,7 +578,7 @@ public partial class MainWindow : Window
         paste.Click+=(_,_)=>{if(copiedMapping==null)return;var map=CloneMapping(copiedMapping);map.Input=input;map.Layer=currentLayer;if(map.Kind==ActionKind.Gesture&&!ConfirmDirectMouseGestureConflict(input))return;CurrentProfile.Mappings.RemoveAll(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));CurrentProfile.Mappings.Add(map);SelectInput(input);UpdateLayerButtons();MarkDirty();ColorButtons();};
         var delete=new MenuItem{Header="この割り当てを削除",IsEnabled=existing!=null,Foreground=ThemeService.Brush("DangerBrush")};
         delete.Click+=(_,_)=>{if(existing==null)return;CurrentProfile.Mappings.Remove(existing);if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected=null;MarkDirty();SelectInput(input,false);UpdateLayerButtons();ClearExecutionFocus();ShowInlineNotice(DisplayInputName(input)+" の割り当てを削除しました");};
-        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(new Separator());menu.Items.Add(delete);
+        menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);
         return menu;
     }
     void LongPressOnly_Click(object sender,RoutedEventArgs e){ValueBox.Clear();if(selected!=null)selected.Kind=ActionKind.None;loading=true;KindBox.SelectedValue=ActionKind.None;loading=false;LongPressExpander.IsExpanded=true;FocusExecutionValue(LongValueBox,true);MarkDirty();LastInput.Text="長押しのみ：短押しは元のキーを入力します";}
@@ -769,7 +769,7 @@ public partial class MainWindow : Window
         var menu=new ContextMenu{PlacementTarget=placementTarget,Placement=System.Windows.Controls.Primitives.PlacementMode.MousePoint};
         foreach(var profile in config.Profiles)
         {
-            var item=new MenuItem{Header=new TextBlock{Text=profile.Name,Margin=new Thickness(-18,0,0,0)}};
+            var item=new MenuItem{Header=profile.Name};
             string name=profile.Name;
             item.Click+=(_,_)=>ApplyProfileAction(name,longPress);
             menu.Items.Add(item);
@@ -931,7 +931,8 @@ public partial class MainWindow : Window
     }
     System.Windows.Controls.Button CreateDeckLayoutCard(DeckLayoutDefinition layout)
     {
-        var preview=new System.Windows.Controls.Primitives.UniformGrid{Rows=layout.Rows,Columns=layout.Columns,Width=190,Height=88,Margin=new Thickness(0,0,0,12)};
+        var previewSize=DeckPreviewSize(layout.Columns,layout.Rows);
+        var preview=new System.Windows.Controls.Primitives.UniformGrid{Rows=layout.Rows,Columns=layout.Columns,Width=previewSize.Width,Height=previewSize.Height,Margin=new Thickness(0,0,0,12)};
         for(int index=0;index<DeckPanelLayout.VisibleSlotCount(layout);index++)
         {
             var cell=new Border{Margin=new Thickness(1),CornerRadius=new CornerRadius(2)};
@@ -949,6 +950,12 @@ public partial class MainWindow : Window
         var delete=new MenuItem{Header="削除"};delete.Click+=(_,_)=>DeleteDeckLayout(layout);
         menu.Items.Add(makeDefault);menu.Items.Add(new Separator());menu.Items.Add(duplicate);menu.Items.Add(delete);card.ContextMenu=menu;
         return card;
+    }
+    internal static (double Width,double Height) DeckPreviewSize(int columns,int rows)
+    {
+        const double previewMaxWidth=190,previewMaxHeight=88;
+        double cellSize=Math.Min(previewMaxWidth/Math.Max(1,columns),previewMaxHeight/Math.Max(1,rows));
+        return (Math.Max(1,columns)*cellSize,Math.Max(1,rows)*cellSize);
     }
     void NewDeckLayout_Click(object sender,RoutedEventArgs e)
     {
@@ -1094,24 +1101,12 @@ public partial class MainWindow : Window
             return;
         }
         var picker=new MacroInputPickerWindow(config.KeyboardLayout){Owner=this};
-        bool shortcut=(KindBox.SelectedValue is ActionKind kind?kind:EditorActionKind(selected.Kind))==ActionKind.Shortcut;
-        if(shortcut)
+        picker.ConfigureShortcutEditing(ValueBox.Text);
+        picker.ShortcutChanged+=value=>
         {
-            picker.ConfigureShortcutEditing(ValueBox.Text);
-            picker.ShortcutChanged+=value=>
-            {
-                KindBox.SelectedValue=ActionKind.Shortcut;
-                ValueBox.Text=value;
-            };
-        }
-        else
-        {
-            picker.InputChosen+=input=>
-            {
-                KindBox.SelectedValue=ActionKind.Key;
-                ValueBox.Text=input;
-            };
-        }
+            KindBox.SelectedValue=ActionKind.Shortcut;
+            ValueBox.Text=value;
+        };
         picker.ShowDialog();
     }
     void ApplyProfileAction(string profileName,bool longPress)
