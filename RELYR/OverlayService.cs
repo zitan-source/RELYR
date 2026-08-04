@@ -520,8 +520,12 @@ internal sealed class DeckPanelOverlayWindow:Window
     readonly Border dragArea;
     readonly Action<Mapping>? execute;
     readonly Action<double,double>? savePosition;
+    readonly bool hoverPreviewsEnabled;
     bool dragging;
     bool positionDirty;
+    Button? fileDragButton;
+    Point fileDragStart;
+    MediaPlayer? hoverAudioPlayer;
     Point dragStart;
     double windowStartLeft,windowStartTop;
     DpiScale dragDpi;
@@ -539,6 +543,7 @@ internal sealed class DeckPanelOverlayWindow:Window
     {
         execute=executeAction;
         savePosition=positionChanged;
+        hoverPreviewsEnabled=config.DeckHoverPreviewsEnabled;
         layout=selectedLayout??DeckPanelLayout.DefaultLayout(config)??new DeckLayoutDefinition();
         Title="RELYR Deck - "+layout.Name;
         double naturalGridWidth=layout.Columns*(DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap);
@@ -597,7 +602,7 @@ internal sealed class DeckPanelOverlayWindow:Window
                 Margin=new Thickness(DeckPanelLayout.Gap/2,0,DeckPanelLayout.Gap/2,0),
                 Padding=new Thickness(3),
                 Focusable=false,
-                IsEnabled=MainWindow.MappingInterceptsInput(mapping)&&mapping!.Kind!=ActionKind.Gesture,
+                IsEnabled=(MainWindow.MappingInterceptsInput(mapping)&&mapping!.Kind!=ActionKind.Gesture)||DeckPanelLayout.HasRegisteredFile(mapping),
                 HorizontalContentAlignment=System.Windows.HorizontalAlignment.Stretch,
                 VerticalContentAlignment=System.Windows.VerticalAlignment.Center
             };
@@ -613,6 +618,13 @@ internal sealed class DeckPanelOverlayWindow:Window
                 button.Foreground=WpfBrushes.White;
             }
             button.Click+=DeckButtonClicked;
+            if(DeckPanelLayout.HasRegisteredFile(mapping))
+            {
+                button.PreviewMouseLeftButtonDown+=DeckFileDragStarted;
+                button.PreviewMouseMove+=DeckFileDragMoved;
+                button.PreviewMouseLeftButtonUp+=DeckFileDragEnded;
+            }
+            if(hoverPreviewsEnabled)ConfigureHoverPreview(button,mapping);
             deckButtons.Add(button);
             var cell=new StackPanel{Width=DeckPanelLayout.KeyWidth+DeckPanelLayout.Gap,Height=DeckPanelLayout.CellHeight};
             cell.Children.Add(button);
@@ -624,7 +636,7 @@ internal sealed class DeckPanelOverlayWindow:Window
         root.Children.Add(deckView);
 
         SourceInitialized+=WindowSourceInitialized;
-        Closed+=(_,_)=>{dragging=false;PersistPosition();};
+        Closed+=(_,_)=>{dragging=false;fileDragButton=null;StopHoverAudio();PersistPosition();};
     }
 
     Border BuildHeader()
@@ -669,8 +681,77 @@ internal sealed class DeckPanelOverlayWindow:Window
     void DeckButtonClicked(object sender,RoutedEventArgs e)
     {
         if(sender is not Button{Tag:Mapping mapping}||mapping.Kind==ActionKind.Gesture)return;
-        execute?.Invoke(mapping);
+        if(MainWindow.MappingInterceptsInput(mapping))execute?.Invoke(mapping);
+        else if(DeckPanelLayout.IsAudioFile(mapping.DeckFilePath))PlayHoverAudio(mapping.DeckFilePath);
     }
+    void ConfigureHoverPreview(Button button,Mapping? mapping)
+    {
+        if(mapping==null)return;
+        object? content=CreateHoverContent(mapping);
+        if(content!=null)
+        {
+            button.ToolTip=content;
+            ToolTipService.SetInitialShowDelay(button,220);
+            ToolTipService.SetShowDuration(button,20000);
+        }
+        if(DeckPanelLayout.IsAudioFile(mapping.DeckFilePath))button.MouseEnter+=(_,_)=>PlayHoverAudio(mapping.DeckFilePath);
+    }
+    object? CreateHoverContent(Mapping mapping)
+    {
+        if(DeckPanelLayout.IsImageFile(mapping.DeckFilePath))
+        {
+            var image=DeckPanelLayout.LoadImageThumbnail(mapping.DeckFilePath,360);
+            if(image!=null)
+            {
+                var preview=new WpfImage{Source=image,MaxWidth=240,MaxHeight=180,Stretch=Stretch.Uniform};
+                var border=new Border{Padding=new Thickness(6),CornerRadius=new CornerRadius(5),Child=preview};
+                border.SetResourceReference(Border.BackgroundProperty,"CardBackground");
+                border.SetResourceReference(Border.BorderBrushProperty,"BorderBrush");border.BorderThickness=new Thickness(1);
+                return border;
+            }
+        }
+        if(DeckPanelLayout.HasRegisteredFile(mapping))return DeckPanelLayout.FileDisplayName(mapping)+(File.Exists(mapping.DeckFilePath)?"":"\nファイルが見つかりません");
+        return MainWindow.AssignmentToolTipText(mapping);
+    }
+    void PlayHoverAudio(string path)
+    {
+        if(!hoverPreviewsEnabled||!DeckPanelLayout.IsAudioFile(path)||!File.Exists(path))return;
+        try
+        {
+            StopHoverAudio();
+            var player=new MediaPlayer();hoverAudioPlayer=player;
+            player.MediaEnded+=(_,_)=>{if(ReferenceEquals(hoverAudioPlayer,player))StopHoverAudio();};
+            player.MediaFailed+=(_,_)=>{if(ReferenceEquals(hoverAudioPlayer,player))StopHoverAudio();};
+            player.Open(new Uri(path,UriKind.Absolute));player.Volume=.8;player.Play();
+        }
+        catch{StopHoverAudio();}
+    }
+    void StopHoverAudio()
+    {
+        var player=hoverAudioPlayer;hoverAudioPlayer=null;
+        if(player==null)return;
+        try{player.Stop();player.Close();}catch{}
+    }
+    void DeckFileDragStarted(object sender,MouseButtonEventArgs e)
+    {
+        if(sender is not Button{Tag:Mapping mapping}||!DeckPanelLayout.IsAvailableFile(mapping))return;
+        fileDragButton=(Button)sender;fileDragStart=e.GetPosition(fileDragButton);
+    }
+    void DeckFileDragMoved(object sender,MouseEventArgs e)
+    {
+        if(sender is not Button button||!ReferenceEquals(fileDragButton,button)||e.LeftButton!=MouseButtonState.Pressed||button.Tag is not Mapping mapping||!DeckPanelLayout.IsAvailableFile(mapping))return;
+        Point current=e.GetPosition(button);
+        if(Math.Abs(current.X-fileDragStart.X)<SystemParameters.MinimumHorizontalDragDistance&&Math.Abs(current.Y-fileDragStart.Y)<SystemParameters.MinimumVerticalDragDistance)return;
+        fileDragButton=null;
+        try
+        {
+            var data=new System.Windows.DataObject();data.SetData(System.Windows.DataFormats.FileDrop,new[]{mapping.DeckFilePath});
+            System.Windows.DragDrop.DoDragDrop(button,data,System.Windows.DragDropEffects.Copy);
+        }
+        catch(COMException){}
+        e.Handled=true;
+    }
+    void DeckFileDragEnded(object sender,MouseButtonEventArgs e)=>fileDragButton=null;
 
     void DragStarted(object sender,MouseButtonEventArgs e)
     {

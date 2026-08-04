@@ -229,7 +229,7 @@ public sealed class ConfigService
     static bool DeckMappingsEqual(IEnumerable<Mapping> left,IEnumerable<Mapping> right)
         =>DeckMappingSignature(left)==DeckMappingSignature(right);
 
-    static string DeckMappingSignature(IEnumerable<Mapping> mappings)=>string.Join("\n",mappings.Where(x=>DeckPanelLayout.IsInputName(x.Input)).OrderBy(x=>DeckPanelLayout.SlotNumber(x.Input)).Select(x=>$"{x.Input}\u001f{x.Kind}\u001f{x.Value}\u001f{x.LongPressKind}\u001f{x.LongPressValue}\u001f{x.LongPressMs}\u001f{x.Application}\u001f{x.Description}\u001f{x.DeckColor}"));
+    static string DeckMappingSignature(IEnumerable<Mapping> mappings)=>string.Join("\n",mappings.Where(x=>DeckPanelLayout.IsInputName(x.Input)).OrderBy(x=>DeckPanelLayout.SlotNumber(x.Input)).Select(x=>$"{x.Input}\u001f{x.Kind}\u001f{x.Value}\u001f{x.LongPressKind}\u001f{x.LongPressValue}\u001f{x.LongPressMs}\u001f{x.Application}\u001f{x.Description}\u001f{x.DeckColor}\u001f{x.DeckFilePath}"));
 
     static DeckLayoutDefinition CreateMigratedLayout(string name,IEnumerable<Mapping> mappings)=>new()
     {
@@ -239,13 +239,13 @@ public sealed class ConfigService
         Mappings=mappings.Where(x=>DeckPanelLayout.IsInputName(x.Input)).Select(CloneMapping).ToList()
     };
 
-    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressMs=x.LongPressMs,LongPressValue=x.LongPressValue,LongPressKind=x.LongPressKind,DragValue=x.DragValue,DragEndValue=x.DragEndValue,Application=x.Application,Layer=x.Layer,Description=x.Description,DeckColor=x.DeckColor};
+    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressMs=x.LongPressMs,LongPressValue=x.LongPressValue,LongPressKind=x.LongPressKind,DragValue=x.DragValue,DragEndValue=x.DragEndValue,Application=x.Application,Layer=x.Layer,Description=x.Description,DeckColor=x.DeckColor,DeckFilePath=x.DeckFilePath};
 
     static void NormalizeMappings(IEnumerable<Mapping> mappings,int originalVersion)
     {
         foreach(var map in mappings)
         {
-            map.Input??="";map.Value??="";map.LongPressValue??="";map.DragValue??="";map.DragEndValue??="";map.Application??="";map.Layer??="通常";map.Description??="";map.DeckColor??="";
+            map.Input??="";map.Value??="";map.LongPressValue??="";map.DragValue??="";map.DragEndValue??="";map.Application??="";map.Layer??="通常";map.Description??="";map.DeckColor??="";map.DeckFilePath??="";
             if(!DeckPanelLayout.TryParseButtonColor(map.DeckColor,out _))map.DeckColor="";
             if(map.Input.Equals("F13",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock";
             else if(map.Input.StartsWith("F13+",StringComparison.OrdinalIgnoreCase))map.Input="CapsLock"+map.Input[3..];

@@ -380,6 +380,7 @@
                 <Slider x:Name="DeckOpacitySlider" Width="104" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged"/>
                 <TextBlock x:Name="DeckOpacityValueText" Width="42" Text="96%" Margin="8,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
               </StackPanel>
+              <CheckBox x:Name="DeckHoverPreviewBox" Content="ホバー表示" Margin="24,0,0,6" VerticalAlignment="Center" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged"/>
             </WrapPanel>
             <Viewbox x:Name="DeckGridViewbox" Grid.Row="2" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Top">
               <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
@@ -404,6 +405,8 @@
             <StackPanel x:Name="DeckNameEditorPanel" Visibility="Collapsed" Margin="0,0,0,16">
               <TextBlock Text="名前" Foreground="{DynamicResource SecondaryText}"/>
               <TextBox x:Name="DeckNameBox" TextChanged="DeckNameBox_TextChanged" ToolTip="Deckボタンの下に表示する名前"/>
+              <TextBlock Text="ファイル" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,4"/>
+              <Button x:Name="DeckFileDropTarget" Height="72" MinHeight="72" Margin="0,0,0,4" Padding="10" AllowDrop="True" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Click="DeckFileSelect_Click" DragOver="DeckFileDropTarget_DragOver" DragLeave="DeckFileDropTarget_DragLeave" Drop="DeckFileDropTarget_Drop" ToolTip="クリックしてファイルを選択、またはエクスプローラーからファイルをドロップ"/>
             </StackPanel>
             <StackPanel Margin="0,0,0,12">
               <StackPanel>

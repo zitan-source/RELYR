@@ -543,7 +543,7 @@ public partial class MainWindow : Window
                 loading=true;DeckNameBox.Text=name;loading=false;
             }
         }
-        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description)&&string.IsNullOrWhiteSpace(mapping.DeckColor))
+        if(!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
         MarkDirty();
         RefreshSelectedInputVisual(input);
@@ -552,7 +552,7 @@ public partial class MainWindow : Window
     {
         if(loading||selected==null||!DeckPanelLayout.IsInputName(selected.Input))return;
         selected.Description=DeckNameBox.Text.Trim();
-        if(MappingHasConfiguredAction(selected)||!string.IsNullOrWhiteSpace(selected.Description)||!string.IsNullOrWhiteSpace(selected.DeckColor))
+        if(HasDeckButtonContent(selected))
         {
             var mappings=MappingCollectionForInput(selected.Input);
             if(!mappings.Contains(selected))mappings.Add(selected);
@@ -560,6 +560,66 @@ public partial class MainWindow : Window
         else MappingCollectionForInput(selected.Input).Remove(selected);
         MarkDirty();
         RefreshSelectedInputVisual(selected.Input);
+    }
+    static bool HasDeckButtonContent(Mapping? mapping)=>MappingHasConfiguredAction(mapping)||!string.IsNullOrWhiteSpace(mapping?.Description)||!string.IsNullOrWhiteSpace(mapping?.DeckColor)||DeckPanelLayout.HasRegisteredFile(mapping);
+    void SetDeckButtonFile(string input,string path)
+    {
+        if(!DeckPanelLayout.IsInputName(input))return;
+        string normalized="";
+        if(!string.IsNullOrWhiteSpace(path))
+        {
+            try{normalized=Path.GetFullPath(path.Trim());}
+            catch{ShowInlineNotice("ファイルの場所を読み取れません");return;}
+        }
+        var mappings=MappingCollectionForInput(input);
+        var mapping=mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+        if(mapping==null&&normalized.Length>0){mapping=new Mapping{Input=input,Layer=DeckPanelLayout.Layer};mappings.Add(mapping);}
+        if(mapping==null)return;
+        mapping.DeckFilePath=normalized;
+        if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected.DeckFilePath=normalized;
+        if(!HasDeckButtonContent(mapping))mappings.Remove(mapping);
+        UpdateDeckFileDropTarget();MarkDirty();RefreshSelectedInputVisual(input);
+    }
+    void DeckFileSelect_Click(object sender,RoutedEventArgs e)
+    {
+        if(selected==null||!DeckPanelLayout.IsInputName(selected.Input))return;
+        var dialog=new Microsoft.Win32.OpenFileDialog{Title="Deckに登録するファイルを選択",CheckFileExists=true,Multiselect=false,Filter="すべてのファイル|*.*"};
+        if(dialog.ShowDialog(this)==true)SetDeckButtonFile(selected.Input,dialog.FileName);
+    }
+    void DeckFileDropTarget_DragOver(object sender,System.Windows.DragEventArgs e)
+    {
+        bool valid=e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)&&e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] paths&&paths.Any(File.Exists);
+        e.Effects=valid?System.Windows.DragDropEffects.Copy:System.Windows.DragDropEffects.None;
+        DeckFileDropTarget.Background=valid?ThemeService.Brush("AccentSoftBrush"):ThemeService.Brush("ControlBackground");e.Handled=true;
+    }
+    void DeckFileDropTarget_DragLeave(object sender,System.Windows.DragEventArgs e)=>DeckFileDropTarget.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+    void DeckFileDropTarget_Drop(object sender,System.Windows.DragEventArgs e)
+    {
+        DeckFileDropTarget.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+        if(selected==null||!DeckPanelLayout.IsInputName(selected.Input)||e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths)return;
+        string? file=paths.FirstOrDefault(File.Exists);if(file==null){ShowInlineNotice("登録できるファイルがありません");return;}
+        SetDeckButtonFile(selected.Input,file);e.Handled=true;
+    }
+    void UpdateDeckFileDropTarget()
+    {
+        if(DeckFileDropTarget==null)return;
+        string path=selected?.DeckFilePath??"";
+        var content=new Grid();content.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});content.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+        FrameworkElement icon;
+        var thumbnail=DeckPanelLayout.LoadImageThumbnail(path,120);
+        if(thumbnail!=null)icon=new System.Windows.Controls.Image{Source=thumbnail,Width=58,Height=48,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,10,0)};
+        else icon=new TextBlock{Text=DeckPanelLayout.IsAudioFile(path)?"▶":DeckPanelLayout.IsTextFile(path)?"\uE8A5":"\uE8B7",FontFamily=new System.Windows.Media.FontFamily("Segoe Fluent Icons"),FontSize=DeckPanelLayout.IsAudioFile(path)?22:19,Width=58,TextAlignment=TextAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};
+        content.Children.Add(icon);
+        string name=DeckPanelLayout.FileDisplayName(selected);
+        var labels=new StackPanel{VerticalAlignment=VerticalAlignment.Center};
+        labels.Children.Add(new TextBlock{Text=string.IsNullOrWhiteSpace(name)?"ファイルを選択":name,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.CharacterEllipsis});
+        labels.Children.Add(new TextBlock{Text=string.IsNullOrWhiteSpace(path)?"クリックまたはドロップして登録":File.Exists(path)?"ドラッグして利用": "ファイルが見つかりません",FontSize=11,Foreground=ThemeService.Brush(File.Exists(path)||string.IsNullOrWhiteSpace(path)?"SecondaryText":"DangerBrush"),TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,3,0,0)});
+        Grid.SetColumn(labels,1);content.Children.Add(labels);DeckFileDropTarget.Content=content;
+    }
+    void DeckHoverPreviewChanged(object sender,RoutedEventArgs e)
+    {
+        if(updatingDeckEditor||config==null)return;
+        config.DeckHoverPreviewsEnabled=DeckHoverPreviewBox.IsChecked==true;MarkDirty();
     }
     internal void SetDeckButtonNameForTest(string input,string name)=>SetDeckButtonName(input,name);
     internal ContextMenu CreateDeckInputContextMenu(string input)
@@ -582,14 +642,33 @@ public partial class MainWindow : Window
         {
             if(existing==null)return;
             existing.Kind=ActionKind.None;existing.Value="";existing.LongPressKind=ActionKind.None;existing.LongPressValue="";existing.DragValue="";existing.DragEndValue="";existing.Application="";
-            if(string.IsNullOrWhiteSpace(existing.Description)&&string.IsNullOrWhiteSpace(existing.DeckColor))mappings.Remove(existing);
+            if(!HasDeckButtonContent(existing))mappings.Remove(existing);
             ClearSelectedInput();MarkDirty();RefreshSelectedInputVisual(input);ShowInlineNotice("Deckボタンの割り当てを削除しました");
         };
         var rename=new MenuItem{Header="名前を変更..."};rename.Click+=(_,_)=>RenameDeckButton(input);
+        if(DeckPanelLayout.HasRegisteredFile(existing))
+        {
+            var copyFile=new MenuItem{Header="ファイルをコピー",IsEnabled=DeckPanelLayout.IsAvailableFile(existing)};
+            copyFile.Click+=(_,_)=>CopyDeckFileToClipboard(existing!);
+            menu.Items.Add(copyFile);
+            var removeFile=new MenuItem{Header="ファイルを登録解除"};
+            removeFile.Click+=(_,_)=>SetDeckButtonFile(input,"");
+            menu.Items.Add(removeFile);
+        }
         var color=new MenuItem{Header="色を変更..."};color.Click+=(_,_)=>ChooseDeckButtonColor(input);
         var resetColor=new MenuItem{Header="色を標準に戻す",IsEnabled=DeckPanelLayout.TryGetButtonColor(existing,out _)};resetColor.Click+=(_,_)=>SetDeckButtonColor(input,"");
         menu.Items.Add(copy);menu.Items.Add(paste);menu.Items.Add(delete);menu.Items.Add(rename);menu.Items.Add(color);menu.Items.Add(resetColor);
         return menu;
+    }
+    void CopyDeckFileToClipboard(Mapping mapping)
+    {
+        if(!DeckPanelLayout.IsAvailableFile(mapping)){ShowInlineNotice("登録ファイルが見つかりません");return;}
+        try
+        {
+            var data=new System.Windows.DataObject();data.SetData(System.Windows.DataFormats.FileDrop,new[]{mapping.DeckFilePath});System.Windows.Clipboard.SetDataObject(data,true);
+            ShowInlineNotice("ファイルをコピーしました");
+        }
+        catch(COMException){ShowInlineNotice("ファイルをクリップボードへコピーできませんでした");}
     }
     void ChooseDeckButtonColor(string input)
     {
@@ -606,7 +685,7 @@ public partial class MainWindow : Window
         if(mapping==null){mapping=new Mapping{Input=input,Layer=DeckPanelLayout.Layer};mappings.Add(mapping);}
         mapping.DeckColor=color;
         if(selected?.Input.Equals(input,StringComparison.OrdinalIgnoreCase)==true)selected.DeckColor=color;
-        if(!MappingHasConfiguredAction(mapping)&&string.IsNullOrWhiteSpace(mapping.Description)&&string.IsNullOrWhiteSpace(mapping.DeckColor))mappings.Remove(mapping);
+        if(!HasDeckButtonContent(mapping))mappings.Remove(mapping);
         MarkDirty();RefreshSelectedInputVisual(input);
     }
     internal ContextMenu CreateInputContextMenu(string key)
@@ -727,7 +806,7 @@ public partial class MainWindow : Window
     {
         selected=null;selectedBaseInput="";editingSelectedInput=false;selectionPulseSuppressed=true;InputName.Clear();InputDisplayText.Text="キーを選択してください";
         InspectorEmptyState.Visibility=Visibility.Visible;SelectionHeader.Visibility=Visibility.Collapsed;AssignmentEditor.Visibility=Visibility.Collapsed;AssignmentEditor.IsEnabled=false;
-        loading=true;KindBox.SelectedIndex=-1;ValueBox.Clear();LongKindBox.SelectedIndex=-1;LongValueBox.Clear();LongPressBox.Clear();LongPressExpander.IsExpanded=false;DeckNameBox.Clear();loading=false;
+        loading=true;KindBox.SelectedIndex=-1;ValueBox.Clear();LongKindBox.SelectedIndex=-1;LongValueBox.Clear();LongPressBox.Clear();LongPressExpander.IsExpanded=false;DeckNameBox.Clear();loading=false;UpdateDeckFileDropTarget();
         ClearExecutionFocus(fallback);ColorButtons();CloseAssignmentPane(false);
     }
     static bool IsDescendantOf(DependencyObject source,DependencyObject ancestor)
@@ -1134,7 +1213,7 @@ public partial class MainWindow : Window
     {
         selectedDeckLayout=layout;DeckLayoutListWorkspace.Visibility=Visibility.Collapsed;DeckEditorWorkspace.Visibility=Visibility.Visible;ToolbarSaveButton.Visibility=Visibility.Collapsed;
         updatingDeckEditor=true;
-        DeckLayoutNameBox.Text=layout.Name;DeckColumnsBox.Text=layout.Columns.ToString();DeckRowsBox.Text=layout.Rows.ToString();DeckOpacitySlider.Value=config.InputPanelOpacityPercent;DeckOpacityValueText.Text=config.InputPanelOpacityPercent+"%";
+        DeckLayoutNameBox.Text=layout.Name;DeckColumnsBox.Text=layout.Columns.ToString();DeckRowsBox.Text=layout.Rows.ToString();DeckOpacitySlider.Value=config.InputPanelOpacityPercent;DeckOpacityValueText.Text=config.InputPanelOpacityPercent+"%";DeckHoverPreviewBox.IsChecked=config.DeckHoverPreviewsEnabled;
         string preset=layout.Columns==3&&layout.Rows==3?"3x3":layout.Columns==9&&layout.Rows==5?"9x5":layout.Columns==8&&layout.Rows==2?"8x2":"custom";
         DeckSizePresetBox.SelectedItem=DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x=>Equals(x.Tag,preset));DeckCustomSizePanel.Visibility=preset=="custom"?Visibility.Visible:Visibility.Collapsed;
         updatingDeckEditor=false;BuildDeckManagementPanel();ClearSelectedInput();WorkspaceSubtitle.Text=$"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン";ColorButtons();
@@ -1280,7 +1359,7 @@ public partial class MainWindow : Window
         var mappings=MappingCollectionForInput(input);
         var visibleAssignment=DeckPanelLayout.IsInputName(input)?mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase)&&MappingInterceptsInput(x)):FindProfileMapping(config.Profiles,CurrentProfile.Name,input,MappingInterceptsInput);
         detectMode=false;editingSelectedInput=focusExecution;selectionPulseSuppressed=false;selected=SelectEditorMapping(mappings,visibleAssignment,input);
-        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayConfiguredActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayConfiguredActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;
+        currentLayer=layer;loading = true; InputName.Text = selected.Input;InputDisplayText.Text=DisplayInputName(selected.Input);KindBox.SelectedValue = selected.Kind==ActionKind.Gesture?ActionKind.Gesture:EditorActionKind(selected.Kind); ValueBox.Text = DisplayConfiguredActionValue(selected.Kind,selected.Value); LongKindBox.SelectedValue=EditorActionKind(selected.LongPressKind); LongValueBox.Text=DisplayConfiguredActionValue(selected.LongPressKind,selected.LongPressValue); LongPressBox.Text = selected.LongPressMs.ToString(); LongPressExpander.IsExpanded=HasConfiguredLongPress(selected);DeckNameBox.Text=selected.Description??"";loading = false;UpdateDeckFileDropTarget();
         InspectorEmptyState.Visibility=Visibility.Collapsed;SelectionHeader.Visibility=Visibility.Visible;AssignmentEditor.Visibility=Visibility.Visible;AssignmentEditor.IsEnabled=true;DeckNameEditorPanel.Visibility=deckManagementMode?Visibility.Visible:Visibility.Collapsed;
         UpdateBrowseButtons();UpdateLayerButtons();ColorButtons();ShowAssignmentPane();if(focusExecution&&ShouldFocusExecutionForSelectedInput(visibleAssignment))FocusExecutionValue(ValueBox);
     }
@@ -1322,7 +1401,7 @@ public partial class MainWindow : Window
         {
             var mappings=MappingCollectionForInput(selected.Input);if(!mappings.Contains(selected))mappings.Add(selected);
         }
-        else if(deckManagementMode&&(!string.IsNullOrWhiteSpace(selected.Description)||!string.IsNullOrWhiteSpace(selected.DeckColor)))
+        else if(deckManagementMode&&HasDeckButtonContent(selected))
         {
             var mappings=MappingCollectionForInput(selected.Input);if(!mappings.Contains(selected))mappings.Add(selected);
         }
@@ -1597,8 +1676,8 @@ public partial class MainWindow : Window
         SetIsSelectionPulseActive(button,pulsing);
         SetSelectionPulseBrush(button,pulseBrush);
         SetSelectionPulseVisual(button,pulsing,pulseBrush);
-        if(button.Content is TextBlock actionLabel)actionLabel.Text=DeckPanelLayout.ActionLabel(input,mapping);
-        else button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
+        if(DeckPanelLayout.HasRegisteredFile(mapping)||button.Content is not TextBlock)button.Content=DeckPanelLayout.CreateButtonContent(input,mapping);
+        else ((TextBlock)button.Content).Text=DeckPanelLayout.ActionLabel(input,mapping);
         if(deckManagementNameLabels.TryGetValue(button,out var nameLabel)){nameLabel.Text=mapping?.Description??"";if(hasCustomColor)nameLabel.Foreground=new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));else nameLabel.SetResourceReference(TextBlock.ForegroundProperty,"SecondaryText");}
         button.ToolTip=assigned!=null?CreateAssignmentToolTip(assigned):null;
         ToolTipService.SetInitialShowDelay(button,250);
@@ -1991,7 +2070,7 @@ public partial class MainWindow : Window
     void CopyProfile_Click(object s,RoutedEventArgs e){var source=SelectProfile("割り当てのコピー元を選択",false);if(source==null||source==CurrentProfile)return;if(WpfMessageBox.Show($"「{source.Name}」の割り当てで「{CurrentProfile.Name}」を置き換えますか？","割り当てコピー",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;CurrentProfile.Mappings=source.Mappings.Select(CloneMapping).ToList();MarkDirty();ColorButtons();}
     void ConfigureProfileAutoSwitch_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは自動切替の戻り先です");return;}if(CurrentProfile.AutoSwitchEnabled){var choice=WpfMessageBox.Show($"「{CurrentProfile.Name}」の自動切替はオンです。\n\nはい：対象アプリを追加\nいいえ：自動切替をオフ\nキャンセル：変更しない","プロファイル自動切替",MessageBoxButton.YesNoCancel);if(choice==MessageBoxResult.Cancel)return;if(choice==MessageBoxResult.No){CurrentProfile.AutoSwitchEnabled=false;MarkDirty();ShowInlineNotice("自動切替をオフにしました");return;}}var app=SelectRunningApplication();if(string.IsNullOrWhiteSpace(app))return;CurrentProfile.AutoSwitchEnabled=true;if(!CurrentProfile.AutoSwitchApplications.Contains(app,StringComparer.OrdinalIgnoreCase))CurrentProfile.AutoSwitchApplications.Add(app);MarkDirty();ShowInlineNotice($"カーソルが {app} 上にある時、自動的に「{CurrentProfile.Name}」へ切り替えます");}
     void DeleteProfile_Click(object s,RoutedEventArgs e){if(CurrentProfile==config.Profiles[0]){ShowInlineNotice("標準プロファイルは削除できません");return;}if(WpfMessageBox.Show($"「{CurrentProfile.Name}」を削除しますか？","確認",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;config.Profiles.Remove(CurrentProfile);config.ActiveProfile=config.Profiles[0].Name;RefreshProfiles();MarkDirty();UpdateStatus();RebuildTrayMenu();}
-    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description,DeckColor=x.DeckColor};
+    static Mapping CloneMapping(Mapping x)=>new(){Input=x.Input,Kind=x.Kind,Value=x.Value,LongPressKind=x.LongPressKind,LongPressValue=x.LongPressValue,DragValue=x.DragValue,DragEndValue=x.DragEndValue,LongPressMs=x.LongPressMs,Application=x.Application,Layer=x.Layer,Description=x.Description,DeckColor=x.DeckColor,DeckFilePath=x.DeckFilePath};
     static GestureDefinition CloneGesture(GestureDefinition x)=>new(){Name=x.Name,UpKind=x.UpKind,UpValue=x.UpValue,DownKind=x.DownKind,DownValue=x.DownValue,LeftKind=x.LeftKind,LeftValue=x.LeftValue,RightKind=x.RightKind,RightValue=x.RightValue,CenterKind=x.CenterKind,CenterValue=x.CenterValue};
     void Save_Click(object s, RoutedEventArgs e)=>SaveAndApply("設定を保存し、エンジンへ反映しました");
     void SaveAndApply(string message){EnsureProfileDeckDefaults();var errors=ConfigValidator.Validate(config);if(errors.Count>0){WpfMessageBox.Show(string.Join("\n",errors),"設定の確認",MessageBoxButton.OK,MessageBoxImage.Warning);return;}store.Save(config);appliedConfig=store.Clone(config);engine.SpaceHoldRepeatEnabled=config.SpaceHoldRepeatEnabled;engine.SpaceHoldRepeatDelayMs=config.SpaceHoldRepeatDelayMs;engine.GestureThresholdPixels=config.GestureThresholdPixels;engine.LockCursorDuringGesture=config.LockCursorDuringGesture;UpdateStatus();RebuildTrayMenu();LastInput.Text=message;LastInput.Foreground=ThemeService.Brush("AccentBrush");}
@@ -2317,7 +2396,23 @@ public partial class MainWindow : Window
         UpdateBannerProgress.Visibility=Visibility.Collapsed;
         UpdateBannerProgress.Value=0;
     }
-    void Delete_Click(object s, RoutedEventArgs e) { if (selected == null) return; var input=selected.Input;MappingCollectionForInput(input).Remove(selected);UpdateLayerButtons();ClearSelectedInput(s as FrameworkElement);MarkDirty();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush"); }
+    void Delete_Click(object s, RoutedEventArgs e)
+    {
+        if(selected==null)return;
+        string input=selected.Input;
+        var mappings=MappingCollectionForInput(input);
+        if(DeckPanelLayout.IsInputName(input))
+        {
+            var mapping=mappings.LastOrDefault(x=>x.Input.Equals(input,StringComparison.OrdinalIgnoreCase));
+            if(mapping!=null)
+            {
+                mapping.Kind=ActionKind.None;mapping.Value="";mapping.LongPressKind=ActionKind.None;mapping.LongPressValue="";mapping.DragValue="";mapping.DragEndValue="";mapping.Application="";
+                if(!HasDeckButtonContent(mapping))mappings.Remove(mapping);
+            }
+        }
+        else mappings.Remove(selected);
+        UpdateLayerButtons();ClearSelectedInput(s as FrameworkElement);MarkDirty();LastInput.Text=DisplayInputName(input)+" の割り当てを削除しました";LastInput.Foreground=ThemeService.Brush("DangerBrush");
+    }
     void Window_Closing(object? s, CancelEventArgs e) { if(!allowClose){e.Cancel=true;Hide();return;}SystemEvents.UserPreferenceChanged-=WindowsThemeChanged;ThemeService.ThemeChanged-=AppThemeChanged;MacroPlayer.PlaybackFinished-=MacroPlaybackFinished;engine.PointerMoved-=QueueAutomaticProfileCheck;updateCancellation.Cancel();profileOverlay?.Close();OverlayService.Shutdown();trayNumberTimer.Stop();profileSwitchTimer.Stop();autoSaveTimer.Stop();engine.Enabled=false;ClearPendingActions();actionQueue.CompleteAdding();dragActionQueue.CompleteAdding();try{Task.WaitAll([actionWorker,dragActionWorker],2000);}catch{}InputEngine.ReleaseAll();engine.Dispose();RemoveTrayIconForImmediateExit();archiveWatcher.Dispose();updateCancellation.Dispose(); }
     internal void RemoveTrayIconForImmediateExit()
     {

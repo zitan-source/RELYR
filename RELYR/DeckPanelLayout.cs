@@ -1,5 +1,7 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using WpfColor = System.Windows.Media.Color;
 using WpfColors = System.Windows.Media.Colors;
 
@@ -75,6 +77,31 @@ internal static class DeckPanelLayout
     internal static bool TryGetButtonColor(Mapping? mapping,out WpfColor color)
         =>TryParseButtonColor(mapping?.DeckColor,out color);
 
+    internal static bool HasRegisteredFile(Mapping? mapping)=>!string.IsNullOrWhiteSpace(mapping?.DeckFilePath);
+    internal static bool IsAvailableFile(Mapping? mapping)=>HasRegisteredFile(mapping)&&File.Exists(mapping!.DeckFilePath);
+    internal static bool IsImageFile(string? path)=>Path.GetExtension(path??"").ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff" or ".webp";
+    internal static bool IsAudioFile(string? path)=>Path.GetExtension(path??"").ToLowerInvariant() is ".mp3" or ".wav" or ".m4a" or ".aac" or ".wma" or ".flac" or ".ogg";
+    internal static bool IsTextFile(string? path)=>Path.GetExtension(path??"").ToLowerInvariant() is ".txt" or ".md" or ".csv" or ".json" or ".xml" or ".log" or ".srt" or ".ass" or ".vtt";
+
+    internal static string FileDisplayName(Mapping? mapping)
+    {
+        if(!HasRegisteredFile(mapping))return "";
+        string name=Path.GetFileName(mapping!.DeckFilePath);
+        return string.IsNullOrWhiteSpace(name)?mapping.DeckFilePath:name;
+    }
+
+    internal static System.Windows.Media.ImageSource? LoadImageThumbnail(string? path,int decodePixels=160)
+    {
+        if(!IsImageFile(path)||!File.Exists(path))return null;
+        try
+        {
+            var image=new BitmapImage();
+            image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;image.DecodePixelWidth=decodePixels;image.UriSource=new Uri(path!,UriKind.Absolute);image.EndInit();image.Freeze();
+            return image;
+        }
+        catch{return null;}
+    }
+
     internal static WpfColor TextColorFor(WpfColor background)
         =>(.2126*background.R+.7152*background.G+.0722*background.B)>150?WpfColors.Black:WpfColors.White;
 
@@ -92,7 +119,7 @@ internal static class DeckPanelLayout
     static string DeckSignature(IEnumerable<Mapping> mappings)=>string.Join("\n",mappings
         .Where(map=>IsInputName(map.Input))
         .OrderBy(map=>SlotNumber(map.Input))
-        .Select(map=>$"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}"));
+        .Select(map=>$"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}"));
 
     internal static string ActionLabel(string input,Mapping? mapping)
     {
@@ -122,7 +149,16 @@ internal static class DeckPanelLayout
         return label;
     }
 
-    internal static FrameworkElement CreateButtonContent(string input,Mapping? mapping)=>new TextBlock
+    internal static FrameworkElement CreateButtonContent(string input,Mapping? mapping)
+    {
+        if(HasRegisteredFile(mapping))
+        {
+            var thumbnail=LoadImageThumbnail(mapping!.DeckFilePath,96);
+            if(thumbnail!=null)return new System.Windows.Controls.Image{Source=thumbnail,Stretch=System.Windows.Media.Stretch.Uniform,Margin=new Thickness(3),IsHitTestVisible=false};
+            string icon=IsAudioFile(mapping.DeckFilePath)?"▶":IsTextFile(mapping.DeckFilePath)?"\uE8A5":"\uE8B7";
+            return new TextBlock{Text=icon,FontFamily=new System.Windows.Media.FontFamily("Segoe Fluent Icons"),FontSize=IsAudioFile(mapping.DeckFilePath)?17:15,TextAlignment=TextAlignment.Center,VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
+        }
+        return new TextBlock
         {
             Text=ActionLabel(input,mapping),
             FontSize=11,
@@ -130,4 +166,5 @@ internal static class DeckPanelLayout
             TextAlignment=TextAlignment.Center,
             TextTrimming=TextTrimming.CharacterEllipsis
         };
+    }
 }

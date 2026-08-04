@@ -40,6 +40,7 @@ public sealed class Mapping
     public string Layer { get; set; } = "通常";
     public string Description { get; set; } = "";
     public string DeckColor { get; set; } = "";
+    public string DeckFilePath { get; set; } = "";
 }
 
 public sealed class Profile
@@ -131,6 +132,7 @@ public sealed class AppConfig
     public string ClockSolidColor { get; set; } = "#101F2E";
     public bool ClockShowOnAllMonitors { get; set; } = true;
     public int InputPanelOpacityPercent { get; set; } = 96;
+    public bool DeckHoverPreviewsEnabled { get; set; } = true;
     public bool UseSharedDeckPanel { get; set; }
     public List<Mapping> SharedDeckMappings { get; set; } = [];
     public string DefaultDeckLayoutId { get; set; } = "";
