@@ -16,6 +16,10 @@ RELYRを使用するときは、AutoHotkey、PowerToys Keyboard Manager、メー
 `RELYR-Setup-<version>.exe`をダウンロードしてください。
 同じReleaseにある`.sha256`ファイルで、ダウンロードしたファイルが壊れていないか確認できます。
 
+初回用のSetup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しているため、利用者が
+ランタイムを別途入手する必要はありません。インストール済みのRELYRは、アプリ内の
+更新機能から軽量な`RELYR-Update-<version>.exe`を自動取得して更新します。
+
 現在のインストーラーはコード署名を行っていないため、初回実行時にWindowsの
 SmartScreenが「不明な発行元」と表示する場合があります。ソースコードとビルド手順はこのリポジトリで公開しています。
 
@@ -55,8 +59,8 @@ CapsLockレイヤーを有効にすると、Windowsのキー割り当て変更�
 
 - 64bit Windowsへ管理者権限でインストールします。
 - インストール時に管理者モードの起動タスクを登録し、以後の手動起動・自動起動ではUAC確認を表示しません。
-- .NET 10 Desktop Runtime (x64) が必要です。未導入の場合、セットアップがMicrosoft公式の入手先を案内します。
-- Runtimeの自動ダウンロードや実行は行わず、インストーラー本体にも同梱しないため、配布内容を小さく明瞭に保っています。
+- 初回用Setup版はMicrosoft公式署名付き.NET 10 Desktop Runtime (x64)を内包し、未導入の場合だけ自動でインストールします。インストール中に外部EXEをダウンロードしません。
+- 更新版にはRuntimeを同梱しません。RELYRがGitHub Releasesから更新版とチェックサムを取得し、SHA-256検証後に上書き更新します。
 - アンインストール時は自動起動を解除し、CapsLockのF13割り当てを標準へ戻します。反映に再起動が必要な場合は、完了画面で「今すぐ再起動」または「後で再起動」を選べます。
 - ユーザー設定は `%AppData%\RELYR` に保存します。旧版の設定は初回起動時に自動移行されます。
 - アンインストール時に、ユーザー設定を残すか完全に削除するか選択できます。
@@ -99,7 +103,7 @@ dotnet $dll --startup-test
 1回実行するだけでビルド、全テスト、成果物生成まで完了します。実入力テストを
 意図的に省く場合だけ `-SkipRealHookTest` を指定します。
 
-本番成果物は `artifacts\production` のみに生成します。ZIP、ポータブル版、自己完結ランタイム同梱版は作成しません。
+本番成果物は `artifacts\production` のみに生成します。初回用Setup版と軽量なUpdate版を生成し、ZIPやポータブル版は作成しません。
 
 ## ライセンス
 
@@ -109,5 +113,5 @@ RELYR本体は[MIT License](LICENSE)で公開します。
 
 GitHubのソースリポジトリには`bin/`、`obj/`、`artifacts/`、ユーザー設定を含めません。
 インストーラーはソースへコミットせず、必要に応じてGitHub Releasesへ掲載します。
-一般配布では`RELYR-Setup-<version>.exe`と、同時に生成される
-`RELYR-Setup-<version>.exe.sha256`をGitHub Releasesへ掲載します。
+一般配布では`RELYR-Setup-<version>.exe`、`RELYR-Update-<version>.exe`と、
+同時に生成される各`.sha256`をGitHub Releasesへ掲載します。

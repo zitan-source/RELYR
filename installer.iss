@@ -4,6 +4,11 @@
 #endif
 #define AppExe "RELYR.exe"
 #define LegacyAppExe "InputCustomizer.exe"
+#ifdef IncludeRuntime
+#define DistributionName "Setup"
+#else
+#define DistributionName "Update"
+#endif
 
 [Setup]
 AppId={{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}
@@ -13,7 +18,7 @@ AppPublisher=RELYR
 DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
 OutputDir=artifacts\production
-OutputBaseFilename=RELYR-Setup-{#AppVersion}
+OutputBaseFilename=RELYR-{#DistributionName}-{#AppVersion}
 ; Keep installer payloads uncompressed. RELYR legitimately uses global input
 ; hooks and an elevated helper; avoiding a packed payload gives scanners the
 ; clearest possible view without changing any application behavior.
@@ -52,7 +57,10 @@ YesRadio=今すぐ再起動する(&Y)
 NoRadio=後で再起動する(&N)
 
 [Files]
-Source: "artifacts\production\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "artifacts\production\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef IncludeRuntime
+Source: "{#RuntimeInstallerPath}"; DestDir: "{tmp}"; DestName: "windowsdesktop-runtime-10.0.10-win-x64.exe"; Flags: deleteafterinstall; Check: not IsDotNetDesktopRuntimeInstalled
+#endif
 
 [InstallDelete]
 Type: files; Name: "{app}\{#LegacyAppExe}"
@@ -75,6 +83,9 @@ Name: "desktopicon"; Description: "デスクトップにショートカットを
 Name: "autostart"; Description: "Windowsへのサインイン時に自動起動する"; GroupDescription: "自動起動:"; Flags: unchecked
 
 [Run]
+#ifdef IncludeRuntime
+Filename: "{tmp}\windowsdesktop-runtime-10.0.10-win-x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Microsoft .NET Desktop Runtimeをインストールしています…"; Flags: runhidden waituntilterminated; Check: not IsDotNetDesktopRuntimeInstalled; AfterInstall: VerifyDotNetDesktopRuntimeInstalled
+#endif
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-elevated-launcher"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
@@ -128,6 +139,7 @@ end;
 
 function InitializeSetup(): Boolean;
 begin
+#ifndef IncludeRuntime
   if not IsDotNetDesktopRuntimeInstalled then
   begin
     MsgBox(
@@ -138,6 +150,7 @@ begin
     Result := False;
     Exit;
   end;
+#endif
   UpgradeInstall := RegQueryStringValue(HKLM64,
     'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
     'DisplayVersion', PreviousVersion);
@@ -146,6 +159,12 @@ begin
       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
       'DisplayVersion', PreviousVersion);
   Result := True;
+end;
+
+procedure VerifyDotNetDesktopRuntimeInstalled;
+begin
+  if not IsDotNetDesktopRuntimeInstalled then
+    RaiseException('Microsoft .NET 10 Desktop Runtime (x64) のインストールを確認できませんでした。RELYRのセットアップを中止します。');
 end;
 
 procedure InitializeWizard;

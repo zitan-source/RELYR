@@ -149,7 +149,7 @@ public partial class MainWindow
     {
         if (updateInProgress || availableUpdate is not { } update)
             return;
-        if (WpfMessageBox.Show(this, $"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？", "RELYRをアップデート", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+        if (WpfMessageBox.Show(this, $"RELYR v{update.VersionText} をダウンロードして更新します。\n\nSHA-256で検証後、RELYRを終了して更新し、自動で再起動します。続行しますか？", "RELYRをアップデート", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
             return;
         await InstallUpdateAsync(this, update);
     }
@@ -179,15 +179,6 @@ public partial class MainWindow
             UpdateBannerProgress.Value = 100;
             UpdateAvailableButton.Content = "更新準備完了";
             reportProgress?.Invoke("ダウンロードと安全性の検証が完了しました。");
-            var confirm = AppDialog.Show(owner,
-                $"RELYR v{update.VersionText} の準備ができました。\n\nRELYRを終了してアップデートし、完了後にメイン画面を開きます。今すぐ再起動しますか？",
-                "アップデートの準備完了", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.Yes)
-            {
-                RestoreUpdateButton(update);
-                reportProgress?.Invoke("更新は保留されています。設定の［アップデート］からいつでも実行できます。");
-                return false;
-            }
             UpdateAvailableButton.Content = "更新しています…";
             reportProgress?.Invoke("RELYRを再起動してアップデートします…");
             const string silentArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RELYRUPDATE=1";

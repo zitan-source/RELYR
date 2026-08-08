@@ -259,7 +259,7 @@ public partial class SettingsWindow : Window
     {
         if (updateCheckInProgress || availableUpdate is not { } update || Owner is not MainWindow main)
             return;
-        if (AppDialog.Show(this, $"RELYR v{update.VersionText} をダウンロードして更新します。\n\n更新ファイルはSHA-256で検証してから実行します。続行しますか？", "RELYRをアップデート", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+        if (AppDialog.Show(this, $"RELYR v{update.VersionText} をダウンロードして更新します。\n\nSHA-256で検証後、RELYRを終了して更新し、自動で再起動します。続行しますか？", "RELYRをアップデート", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
             return;
         CheckForUpdatesButton.IsEnabled = false;
         InstallUpdateButton.IsEnabled = false;

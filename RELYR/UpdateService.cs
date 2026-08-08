@@ -69,7 +69,7 @@ internal static partial class UpdateService
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return null;
 
-        string installerName = $"RELYR-Setup-{versionText}.exe";
+        string installerName = $"RELYR-Update-{versionText}.exe";
         JsonElement? installer = null, checksum = null;
         foreach (var asset in assets.EnumerateArray())
         {

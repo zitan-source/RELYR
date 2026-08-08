@@ -11,7 +11,7 @@ internal static class UpdateIntegrationTest
             var update = await UpdateService.CheckAsync(new Version(0, 0, 0), CancellationToken.None);
             if (update == null)
             {
-                output.WriteLine("FAIL GitHub did not return a published RELYR installer and checksum");
+                output.WriteLine("FAIL GitHub did not return a published RELYR update installer and checksum");
                 return 1;
             }
             output.WriteLine($"PASS GitHub latest release metadata: v{update.VersionText}");
@@ -21,7 +21,7 @@ internal static class UpdateIntegrationTest
                 output.WriteLine("FAIL verified installer was not saved");
                 return 1;
             }
-            output.WriteLine($"PASS downloaded installer SHA-256 verified: {Path.GetFileName(installer)}");
+            output.WriteLine($"PASS downloaded update installer SHA-256 verified: {Path.GetFileName(installer)}");
             try
             {
                 Directory.Delete(Path.GetDirectoryName(installer)!, true);

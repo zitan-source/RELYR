@@ -59,11 +59,14 @@ $manifestText=Get-Content (Join-Path $root "RELYR\app.manifest") -Raw -Encoding 
 if($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"'){
   throw "The application launcher must stay asInvoker so manual launches do not show UAC"
 }
-if($installerText -match '(?im)^Source:.*windowsdesktop-runtime|external\s+download'){
-  throw "Installer must not download or bundle a .NET runtime executable"
-}
 if($installerText -notmatch '(?i)IsDotNetDesktopRuntimeInstalled' -or $installerText -notmatch '(?i)Microsoft\.WindowsDesktop\.App'){
-  throw "Framework-dependent installer must check for the .NET Desktop Runtime"
+  throw "Both distributions must detect the .NET Desktop Runtime"
+}
+if($installerText -match '(?im)external\s+download'){
+  throw "End-user installers must never download an executable"
+}
+if($installerText -notmatch '(?im)^Source:.*\{#RuntimeInstallerPath\}.*windowsdesktop-runtime-10\.0\.10-win-x64\.exe' -or $installerText -notmatch '(?im)^Filename:.*windowsdesktop-runtime-10\.0\.10-win-x64\.exe.*AfterInstall:\s*VerifyDotNetDesktopRuntimeInstalled'){
+  throw "The full setup must bundle and verify the pinned Microsoft .NET Desktop Runtime"
 }
 if($installerText -notmatch '(?im)^ChangesAssociations=yes\s*$' -or $installerText -notmatch '(?im)Subkey:\s*"\.relyr".*RELYR\.SettingsFile' -or $installerText -notmatch '(?im)Subkey:\s*"RELYR\.SettingsFile\\DefaultIcon".*\{#AppExe\},0'){
   throw "Installer must register the RELYR settings file type and icon"
@@ -93,29 +96,64 @@ if(!$iscc){throw "Inno Setup 6 was not found."}
 $version=($project.Project.PropertyGroup.Version|Where-Object{$_}|Select-Object -First 1)
 if(!$version){throw "Project version was not found."}
 
-& $iscc "/DAppVersion=$version" $installerScript
-if($LASTEXITCODE -ne 0){throw "Installer build failed"}
-
-$installer=Join-Path $root "artifacts\production\RELYR-Setup-$version.exe"
-if(-not (Test-Path -LiteralPath $installer)){throw "Installer output was not created: $installer"}
-$checksumFile="$installer.sha256"
-$checksum=(Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
-$checksumLine="$checksum  $([System.IO.Path]::GetFileName($installer))`n"
-[System.IO.File]::WriteAllText($checksumFile,$checksumLine,[System.Text.UTF8Encoding]::new($false))
-if((Get-Content -LiteralPath $checksumFile -Raw -Encoding UTF8).Trim() -ne $checksumLine.Trim()){
-  throw "Installer checksum file could not be verified"
+$runtimeVersion="10.0.10"
+$runtimeFileName="windowsdesktop-runtime-$runtimeVersion-win-x64.exe"
+$runtimeUrl="https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/$runtimeVersion/$runtimeFileName"
+$runtimeSha512="a5502261c25ba163f35bca7d50611c195e78b8797b16c5bbf2203fbdfff92c0275d36838a3200c08443d2d23a2f6a867c58093d5c239a60dd798a6596df4dc13"
+$runtimeDirectory=Join-Path $root ".verification\dotnet-runtime"
+$runtimeInstaller=Join-Path $runtimeDirectory $runtimeFileName
+New-Item -ItemType Directory -Force -Path $runtimeDirectory|Out-Null
+if(-not (Test-Path -LiteralPath $runtimeInstaller) -or (Get-FileHash -Algorithm SHA512 -LiteralPath $runtimeInstaller).Hash -ne $runtimeSha512){
+  Remove-Item -LiteralPath $runtimeInstaller -Force -ErrorAction SilentlyContinue
+  Invoke-WebRequest -UseBasicParsing -Uri $runtimeUrl -OutFile $runtimeInstaller
+}
+if((Get-FileHash -Algorithm SHA512 -LiteralPath $runtimeInstaller).Hash -ne $runtimeSha512){
+  throw "Bundled .NET Desktop Runtime does not match Microsoft's published SHA-512."
+}
+$runtimeSignature=Get-AuthenticodeSignature -LiteralPath $runtimeInstaller
+if($runtimeSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or $runtimeSignature.SignerCertificate.Subject -notmatch 'Microsoft Corporation'){
+  throw "Bundled .NET Desktop Runtime does not have a valid Microsoft Authenticode signature."
 }
 
-# Keep only the current distributable pair. Older installers are reproducible
+& $iscc "/DAppVersion=$version" $installerScript
+if($LASTEXITCODE -ne 0){throw "Update installer build failed"}
+& $iscc "/DAppVersion=$version" "/DIncludeRuntime=1" "/DRuntimeInstallerPath=$runtimeInstaller" $installerScript
+if($LASTEXITCODE -ne 0){throw "Full setup installer build failed"}
+
+$installers=@(
+  (Join-Path $root "artifacts\production\RELYR-Setup-$version.exe"),
+  (Join-Path $root "artifacts\production\RELYR-Update-$version.exe")
+)
+$keptFiles=@()
+foreach($installer in $installers){
+  if(-not (Test-Path -LiteralPath $installer)){throw "Installer output was not created: $installer"}
+  $productVersion=(Get-Item -LiteralPath $installer).VersionInfo.ProductVersion.Trim()
+  if($productVersion -ne $version){throw "Installer product version mismatch: $installer ($productVersion)"}
+  $checksumFile="$installer.sha256"
+  $checksum=(Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+  $checksumLine="$checksum  $([System.IO.Path]::GetFileName($installer))`n"
+  [System.IO.File]::WriteAllText($checksumFile,$checksumLine,[System.Text.UTF8Encoding]::new($false))
+  if((Get-Content -LiteralPath $checksumFile -Raw -Encoding UTF8).Trim() -ne $checksumLine.Trim()){
+    throw "Installer checksum file could not be verified: $installer"
+  }
+  $keptFiles += $installer,$checksumFile
+}
+$setupLength=(Get-Item -LiteralPath $installers[0]).Length
+$updateLength=(Get-Item -LiteralPath $installers[1]).Length
+$runtimeLength=(Get-Item -LiteralPath $runtimeInstaller).Length
+if($setupLength -le $runtimeLength){throw "Full setup does not contain the bundled .NET Desktop Runtime."}
+if($updateLength -ge 25MB){throw "Update installer unexpectedly contains a large runtime payload."}
+
+# Keep only the two current distributables and their checksums. Older installers are reproducible
 # from Git tags and should not make a development checkout grow indefinitely.
-Get-ChildItem -LiteralPath (Split-Path $installer) -File -Filter 'RELYR-Setup-*' |
-  Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
+Get-ChildItem -LiteralPath (Join-Path $root 'artifacts\production') -File -Include 'RELYR-Setup-*','RELYR-Update-*' |
+  Where-Object { $_.FullName -notin $keptFiles } |
   Remove-Item -Force
 
-# The installer contains the complete framework-dependent publish output. Keep only
-# the distributable pair after Inno Setup has finished reading those files.
-Get-ChildItem -LiteralPath (Split-Path $installer) -Force |
-  Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
+# Both installers contain the complete framework-dependent app payload. Keep only
+# the four distributable files after Inno Setup has finished reading those files.
+Get-ChildItem -LiteralPath (Join-Path $root 'artifacts\production') -Force |
+  Where-Object { $_.FullName -notin $keptFiles } |
   Remove-Item -Recurse -Force
 foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\obj'))){
   if(Test-Path -LiteralPath $generated){
@@ -128,5 +166,7 @@ foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\ob
     }
   }
 }
-Write-Host "Installer: $installer"
-Write-Host "Checksum: $checksumFile"
+Write-Host "Full setup: $($installers[0])"
+Write-Host "Update installer: $($installers[1])"
+Write-Host "Full setup bytes: $setupLength"
+Write-Host "Update installer bytes: $updateLength"

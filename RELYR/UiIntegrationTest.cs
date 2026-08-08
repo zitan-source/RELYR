@@ -129,7 +129,7 @@ internal static class UiIntegrationTest
             var launchColor = MainWindow.AssignmentColorFor(new Mapping { Kind = ActionKind.Launch });
             var macroColor = MainWindow.AssignmentColorFor(new Mapping { Kind = ActionKind.Macro });
             Check(keyColor.R > keyColor.G && keyColor.G > keyColor.B && Math.Abs(disabledColor.R - disabledColor.G) < 15 && shortcutColor.G > shortcutColor.R * 2 && textColor.R > textColor.B * 2 && macroColor.R > macroColor.G * 2 && launchColor.B > launchColor.G && new[] { keyColor, disabledColor, shortcutColor, textColor, launchColor, macroColor }.Distinct().Count() == 6, "assigned keys use distinct orange, gray, green, yellow, purple, and red action colors");
-            var updateForTest = new UpdateInfo(new Version(9, 9, 9), "9.9.9", new Uri("https://github.com/zitan-source/RELYR/releases/download/v9.9.9/RELYR-Setup-9.9.9.exe"), new Uri("https://github.com/zitan-source/RELYR/releases/download/v9.9.9/RELYR-Setup-9.9.9.exe.sha256"), null, "RELYR-Setup-9.9.9.exe");
+            var updateForTest = new UpdateInfo(new Version(9, 9, 9), "9.9.9", new Uri("https://github.com/zitan-source/RELYR/releases/download/v9.9.9/RELYR-Update-9.9.9.exe"), new Uri("https://github.com/zitan-source/RELYR/releases/download/v9.9.9/RELYR-Update-9.9.9.exe.sha256"), null, "RELYR-Update-9.9.9.exe");
             window.ShowUpdateAvailableForTest(updateForTest);
             Check(window.UpdateBanner.Visibility == Visibility.Visible && window.UpdateBannerText.Text.Contains("v9.9.9") && window.UpdateAvailableButton.Content?.ToString() == "今すぐ更新", "available update appears as a prominent banner with an update action");
             window.DismissAvailableUpdateForTest();
@@ -846,7 +846,7 @@ internal static class UiIntegrationTest
             }
             using (var appIcon = MainWindow.CreateDefaultTrayIcon())
                 Check(appIcon.Handle != IntPtr.Zero, "tray uses the RELYR application icon when desktop numbers are disabled");
-            var fakeUpdate = new UpdateInfo(new Version(99, 0, 0), "99.0.0", new Uri("https://github.com/zitan-source/RELYR/releases/download/v99.0.0/RELYR-Setup-99.0.0.exe"), new Uri("https://github.com/zitan-source/RELYR/releases/download/v99.0.0/RELYR-Setup-99.0.0.exe.sha256"), null, "RELYR-Setup-99.0.0.exe");
+            var fakeUpdate = new UpdateInfo(new Version(99, 0, 0), "99.0.0", new Uri("https://github.com/zitan-source/RELYR/releases/download/v99.0.0/RELYR-Update-99.0.0.exe"), new Uri("https://github.com/zitan-source/RELYR/releases/download/v99.0.0/RELYR-Update-99.0.0.exe.sha256"), null, "RELYR-Update-99.0.0.exe");
             var settings = new SettingsWindow(new AppConfig(), fakeUpdate);
             settings.UpdateLayout();
             Check(settings.DesktopNumberTrayBox != null, "tray desktop number option exists");

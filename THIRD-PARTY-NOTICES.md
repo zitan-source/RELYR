@@ -6,10 +6,10 @@ license does not replace these notices.
 
 ## Microsoft .NET
 
-RELYR is built as a framework-dependent .NET 10 desktop
-application. The .NET Desktop Runtime itself is downloaded from Microsoft's
-official site when required and is not bundled in the RELYR
-installer.
+RELYR is built as a framework-dependent .NET 10 desktop application. The full
+setup bundles Microsoft's official, Authenticode-signed .NET Desktop Runtime
+installer and installs it only when required. The lightweight RELYR update
+installer does not bundle the runtime.
 
 - Project: https://github.com/dotnet/runtime
 - License: MIT
