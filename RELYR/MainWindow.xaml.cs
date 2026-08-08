@@ -1873,7 +1873,11 @@ public partial class MainWindow : Window
         return IsElevatedInputMapping(FindMapping(input));
     }
     static bool IsElevatedInputMapping(Mapping? map)
-        => MappingInterceptsInput(map) && map!.Kind is ActionKind.Key or ActionKind.Shortcut;
+        => IsElevatedInputMappingForTest(map);
+    internal static bool IsElevatedInputMappingForTest(Mapping? map)
+        => MappingInterceptsInput(map)
+            && (map!.Kind is ActionKind.Key or ActionKind.Shortcut
+                || map.LongPressKind is ActionKind.Key or ActionKind.Shortcut);
     bool TryGetLayerMappingSnapshot(string input, out LayerMappingSnapshot snapshot)
     {
         string candidate = input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) ? input["Taskbar+".Length..] : input;

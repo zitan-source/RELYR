@@ -349,6 +349,7 @@ internal static class UiIntegrationTest
             CaptureForReview(deckOverlay, "deck-overlay.png");
             deckOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(deckExecuted?.Value == "Ctrl+C", "Deck overlay sends the selected action through the normal executor");
+            Check(Math.Abs(deckOverlay.CloseButton.ActualWidth - 44) < .1 && Math.Abs(deckOverlay.CloseButton.ActualHeight - 30) < .1 && deckOverlay.CloseButton.InputHitTest(new System.Windows.Point(2, 2)) != null, "Deck overlay close control keeps a compact visual while its full transparent surface remains clickable");
             deckOverlay.CloseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!deckOverlay.IsVisible, "Deck overlay closes from its top-right X button");
@@ -364,7 +365,6 @@ internal static class UiIntegrationTest
             if (anotherProfile != null)
                 window.SwitchProfileForTest(originalProfileName);
             Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int dialogColumns, out int dialogRows) && dialogColumns == 18 && dialogRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && window.DeckSizePresetBox.Style == window.FindResource("ToolbarComboBoxStyle") && Math.Abs(window.DeckSizePresetBox.Height - 40) < .1, "Deck creation supports themed preset and custom 1x1 through 18x18 sizes");
-            Check(deckOverlay.CloseButton.ActualHeight <= 26.1, "Deck overlay uses the compact header and close control");
             Check(deckOverlay.CloseButton.BorderThickness == new Thickness(0) && ReferenceEquals(deckOverlay.CloseButton.Background, System.Windows.Media.Brushes.Transparent), "Deck overlay close control renders only the X without a surrounding outline or surface");
             Check(!Descendants<TextBlock>(window).Any(x => x.Text is "一般権限" or "管理者モード"), "the obsolete process privilege label is absent from the main footer");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
