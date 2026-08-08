@@ -387,7 +387,7 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     Border BuildHeader()
     {
-        var border = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 2, 4, 2), Cursor = WpfCursors.SizeAll };
+        var border = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 0, 0, 0), Cursor = WpfCursors.SizeAll };
         border.SetResourceReference(Border.BackgroundProperty, "SurfaceBackground");
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -400,12 +400,12 @@ internal sealed class DeckPanelOverlayWindow : Window
         title.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
         var close = new Button
         {
-            Width = 26,
-            Height = 26,
-            MinWidth = 26,
-            MaxWidth = 26,
-            MinHeight = 26,
-            MaxHeight = 26,
+            Width = 44,
+            Height = 30,
+            MinWidth = 44,
+            MaxWidth = 44,
+            MinHeight = 30,
+            MaxHeight = 30,
             Margin = new Thickness(0),
             Padding = new Thickness(0),
             Focusable = false,
