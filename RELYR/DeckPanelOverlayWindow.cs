@@ -468,11 +468,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         style.Setters.Add(new Setter(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0)));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.FocusVisualStyleProperty, null));
         var template = new ControlTemplate(typeof(Button));
+        var hitSurface = new FrameworkElementFactory(typeof(Border));
+        hitSurface.SetValue(Border.BackgroundProperty, WpfBrushes.Transparent);
         var content = new FrameworkElementFactory(typeof(ContentPresenter));
         content.SetValue(ContentPresenter.HorizontalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.HorizontalContentAlignmentProperty));
         content.SetValue(ContentPresenter.VerticalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.VerticalContentAlignmentProperty));
         content.SetValue(ContentPresenter.ContentProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
-        template.VisualTree = content;
+        hitSurface.AppendChild(content);
+        template.VisualTree = hitSurface;
         template.Triggers.Add(new Trigger { Property = UIElement.IsMouseOverProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .72d) } });
         template.Triggers.Add(new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .5d) } });
         style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, template));
