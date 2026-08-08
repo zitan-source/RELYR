@@ -4,8 +4,6 @@
 #endif
 #define AppExe "RELYR.exe"
 #define LegacyAppExe "InputCustomizer.exe"
-#define DotNetRuntimeExe "windowsdesktop-runtime-10-win-x64.exe"
-#define DotNetRuntimeUrl "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe"
 
 [Setup]
 AppId={{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}
@@ -16,13 +14,16 @@ DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
 OutputDir=artifacts\production
 OutputBaseFilename=RELYR-Setup-{#AppVersion}
-Compression=lzma2
-SolidCompression=yes
+; Keep installer payloads uncompressed. RELYR legitimately uses global input
+; hooks and an elevated helper; avoiding a packed payload gives scanners the
+; clearest possible view without changing any application behavior.
+Compression=none
+SolidCompression=no
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-CloseApplications=force
+CloseApplications=no
 RestartApplications=no
 ; Normal installs and upgrades never require a Windows restart.  The only
 ; restart prompt RELYR owns is the conditional CapsLock restoration prompt
@@ -51,12 +52,7 @@ YesRadio=今すぐ再起動する(&Y)
 NoRadio=後で再起動する(&N)
 
 [Files]
-Source: "artifacts\production\RELYR.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "artifacts\production\RELYR-Macro.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "artifacts\production\VirtualDesktopAccessor.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "artifacts\production\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "artifacts\production\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#DotNetRuntimeUrl}"; DestDir: "{tmp}"; DestName: "{#DotNetRuntimeExe}"; ExternalSize: 60053808; Flags: external download ignoreversion deleteafterinstall; Check: not IsDotNetDesktopRuntimeInstalled
+Source: "artifacts\production\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 Type: files; Name: "{app}\{#LegacyAppExe}"
@@ -79,7 +75,6 @@ Name: "desktopicon"; Description: "デスクトップにショートカットを
 Name: "autostart"; Description: "Windowsへのサインイン時に自動起動する"; GroupDescription: "自動起動:"; Flags: unchecked
 
 [Run]
-Filename: "{tmp}\{#DotNetRuntimeExe}"; Parameters: "/install /quiet /norestart"; StatusMsg: ".NET 10 Desktop Runtimeをインストールしています..."; Flags: runhidden waituntilterminated; Check: not IsDotNetDesktopRuntimeInstalled
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-elevated-launcher"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
@@ -147,25 +142,6 @@ end;
 function ShouldDeleteUserSettings(): Boolean;
 begin
   Result := DeleteUserSettings;
-end;
-
-function IsDotNetDesktopRuntimeInstalled(): Boolean;
-var
-  Versions: TArrayOfString;
-  I: Integer;
-begin
-  Result := False;
-  if RegGetValueNames(HKLM64,
-    'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App',
-    Versions) then
-  begin
-    for I := 0 to GetArrayLength(Versions) - 1 do
-      if Pos('10.', Versions[I]) = 1 then
-      begin
-        Result := True;
-        Exit;
-      end;
-  end;
 end;
 
 procedure RemoveLegacyStartupTask;

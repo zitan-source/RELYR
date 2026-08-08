@@ -1,45 +1,76 @@
 namespace RELYR;
 
-public sealed record CatalogAction(string Category,string Name,string Description,ActionKind Kind,string Value)
+public sealed record CatalogAction(string Category, string Name, string Description, ActionKind Kind, string Value)
 {
-    public string MajorCategory=>ActionCatalog.GetMajorCategory(Category);
+    public string MajorCategory => ActionCatalog.GetMajorCategory(Category);
 }
 
 public static class ActionCatalog
 {
-    public const string ShowRelyrMainWindowAction="ShowRelyrMainWindow";
-    static readonly IReadOnlyDictionary<string,string> MouseActionLabels=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+    public const string ShowRelyrMainWindowAction = "ShowRelyrMainWindow";
+    static readonly IReadOnlyDictionary<string, string> MouseActionLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["MouseLeft"]="左クリック",["ShiftDrag"]="Shift + 左クリック",["CtrlDrag"]="Ctrl + 左クリック",["AltDrag"]="Alt + 左クリック",
-        ["MouseRight"]="右クリック",["MouseMiddle"]="ホイールクリック",["WheelUp"]="ホイール上",["WheelDown"]="ホイール下",
-        ["TiltLeft"]="チルト左",["TiltRight"]="チルト右",["MouseBack"]="戻る",["MouseForward"]="進む",["MouseX"]="追加ボタン"
+        ["MouseLeft"] = "左クリック",
+        ["ShiftDrag"] = "Shift + 左クリック",
+        ["CtrlDrag"] = "Ctrl + 左クリック",
+        ["AltDrag"] = "Alt + 左クリック",
+        ["MouseRight"] = "右クリック",
+        ["MouseMiddle"] = "ホイールクリック",
+        ["WheelUp"] = "ホイール上",
+        ["WheelDown"] = "ホイール下",
+        ["TiltLeft"] = "チルト左",
+        ["TiltRight"] = "チルト右",
+        ["MouseBack"] = "戻る",
+        ["MouseForward"] = "進む",
+        ["MouseX"] = "追加ボタン"
     };
 
     public static string DisplayMouseAction(string? value)
     {
-        string input=(value??"").Trim();
-        return MouseActionLabels.TryGetValue(input,out string? label)?"マウス："+label:input;
+        string input = (value ?? "").Trim();
+        return MouseActionLabels.TryGetValue(input, out string? label) ? "マウス：" + label : input;
     }
 
-    public static bool TryNormalizeMouseAction(string? value,out string normalized)
+    public static bool TryNormalizeMouseAction(string? value, out string normalized)
     {
-        string input=(value??"").Trim();
-        const string displayPrefix="マウス：";
-        bool displayedValue=input.StartsWith(displayPrefix,StringComparison.Ordinal);
-        if(displayedValue)input=input[displayPrefix.Length..].Trim();
-        if(displayedValue)
+        string input = (value ?? "").Trim();
+        const string displayPrefix = "マウス：";
+        bool displayedValue = input.StartsWith(displayPrefix, StringComparison.Ordinal);
+        if (displayedValue)
+            input = input[displayPrefix.Length..].Trim();
+        if (displayedValue)
         {
-            var displayed=MouseActionLabels.FirstOrDefault(x=>x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
-            if(!string.IsNullOrEmpty(displayed.Key)){normalized=displayed.Key;return true;}
+            var displayed = MouseActionLabels.FirstOrDefault(x => x.Value.Equals(input, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(displayed.Key))
+            {
+                normalized = displayed.Key;
+                return true;
+            }
         }
-        if(input.Equals("Shift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftShift+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Shift+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="ShiftDrag";return true;}
-        if(input.Equals("Ctrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftCtrl+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Ctrl+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="CtrlDrag";return true;}
-        if(input.Equals("Alt+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("LeftAlt+MouseLeft",StringComparison.OrdinalIgnoreCase)||input.Equals("Alt+左クリック",StringComparison.OrdinalIgnoreCase)){normalized="AltDrag";return true;}
-        var action=Items.FirstOrDefault(x=>x.Kind==ActionKind.Mouse&&x.Value.Equals(input,StringComparison.OrdinalIgnoreCase));
-        normalized=action?.Value??input;return action!=null;
+        if (input.Equals("Shift+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("LeftShift+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("Shift+左クリック", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "ShiftDrag";
+            return true;
+        }
+        if (input.Equals("Ctrl+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("LeftCtrl+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("Ctrl+左クリック", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "CtrlDrag";
+            return true;
+        }
+        if (input.Equals("Alt+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("LeftAlt+MouseLeft", StringComparison.OrdinalIgnoreCase) || input.Equals("Alt+左クリック", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "AltDrag";
+            return true;
+        }
+        var action = Items.FirstOrDefault(x => x.Kind == ActionKind.Mouse && x.Value.Equals(input, StringComparison.OrdinalIgnoreCase));
+        normalized = action?.Value ?? input;
+        return action != null;
     }
 
-    public static IReadOnlyList<CatalogAction> Items { get; }=
+    public static IReadOnlyList<CatalogAction> Items
+    {
+        get;
+    } =
     [
         new("Windowsの基本機能","設定を開く","Windows設定を表示します",ActionKind.Shortcut,"Win+I"),
         new("Windowsの基本機能","エクスプローラー","ファイルエクスプローラーを開きます",ActionKind.Shortcut,"Win+E"),
@@ -227,31 +258,32 @@ public static class ActionCatalog
         new("RELYR","RELYRを表示","RELYRのメイン画面を表示して前面へ移動します",ActionKind.Shortcut,ShowRelyrMainWindowAction)
     ];
 
-    public static string GetMajorCategory(string category)=>category switch
+    public static string GetMajorCategory(string category) => category switch
     {
-        "Windowsの基本機能" or "画面キャプチャ"=>"Windows",
-        "入力・アクセシビリティ" or "IME・日本語入力" or "編集・クリップボード"=>"入力・編集",
-        "ファイル・文書" or "文書の書式"=>"ファイル・文書",
-        "音量・メディア"=>"メディア",
-        "仮想デスクトップ"=>"ウィンドウ・デスクトップ",
-        _ when category.StartsWith("ウィンドウ・",StringComparison.Ordinal)=>"ウィンドウ・デスクトップ",
-        "表示倍率"=>"ブラウザー",
-        _ when category.StartsWith("ブラウザー・",StringComparison.Ordinal)=>"ブラウザー",
-        _ when category.StartsWith("エクスプローラー・",StringComparison.Ordinal)=>"エクスプローラー",
-        "マウス・ホイール"=>"マウス",
-        _ when category.StartsWith("オーバーレイ・",StringComparison.Ordinal)=>"オーバーレイ",
-        "Deckパネル"=>"Deckパネル",
-        _ when category.StartsWith("Windowsアプリ・",StringComparison.Ordinal)=>"Windowsアプリ",
-        "プロファイル切替"=>"プロファイル",
-        "任意のショートカット"=>"入力・編集",
-        "RELYR"=>"その他",
-        _=>"その他"
+        "Windowsの基本機能" or "画面キャプチャ" => "Windows",
+        "入力・アクセシビリティ" or "IME・日本語入力" or "編集・クリップボード" => "入力・編集",
+        "ファイル・文書" or "文書の書式" => "ファイル・文書",
+        "音量・メディア" => "メディア",
+        "仮想デスクトップ" => "ウィンドウ・デスクトップ",
+        _ when category.StartsWith("ウィンドウ・", StringComparison.Ordinal) => "ウィンドウ・デスクトップ",
+        "表示倍率" => "ブラウザー",
+        _ when category.StartsWith("ブラウザー・", StringComparison.Ordinal) => "ブラウザー",
+        _ when category.StartsWith("エクスプローラー・", StringComparison.Ordinal) => "エクスプローラー",
+        "マウス・ホイール" => "マウス",
+        _ when category.StartsWith("オーバーレイ・", StringComparison.Ordinal) => "オーバーレイ",
+        "Deckパネル" => "Deckパネル",
+        _ when category.StartsWith("Windowsアプリ・", StringComparison.Ordinal) => "Windowsアプリ",
+        "プロファイル切替" => "プロファイル",
+        "任意のショートカット" => "入力・編集",
+        "RELYR" => "その他",
+        _ => "その他"
     };
 
     public static IEnumerable<CatalogAction> Search(string? query)
     {
-        string text=query?.Trim()??"";
-        if(text.Length==0)return Items;
-        return Items.Where(x=>new[]{x.MajorCategory,x.Category,x.Name,x.Description,x.Value}.Any(value=>value.Contains(text,StringComparison.OrdinalIgnoreCase)));
+        string text = query?.Trim() ?? "";
+        if (text.Length == 0)
+            return Items;
+        return Items.Where(x => new[] { x.MajorCategory, x.Category, x.Name, x.Description, x.Value }.Any(value => value.Contains(text, StringComparison.OrdinalIgnoreCase)));
     }
 }

@@ -2,11 +2,26 @@ using System.Text.Json.Serialization;
 
 namespace RELYR;
 
-public enum ActionKind { None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile, Gesture }
-public enum AppThemeMode { System, Dark, Light }
-public enum WindowActionTarget { ActiveWindow, WindowUnderCursor }
-public enum ClockBackgroundMode { FrostedScreen, Image, Solid }
-public enum ClockDisplayMode { Time, TimeWithSeconds, DateAndTime, FullDateAndTime }
+public enum ActionKind
+{
+    None, Disabled, Key, Shortcut, Text, Launch, Mouse, Macro, Profile, Gesture
+}
+public enum AppThemeMode
+{
+    System, Dark, Light
+}
+public enum WindowActionTarget
+{
+    ActiveWindow, WindowUnderCursor
+}
+public enum ClockBackgroundMode
+{
+    FrostedScreen, Image, Solid
+}
+public enum ClockDisplayMode
+{
+    Time, TimeWithSeconds, DateAndTime, FullDateAndTime
+}
 
 public sealed class MacroStep
 {
@@ -41,6 +56,23 @@ public sealed class Mapping
     public string Description { get; set; } = "";
     public string DeckColor { get; set; } = "";
     public string DeckFilePath { get; set; } = "";
+
+    public Mapping Copy() => new()
+    {
+        Input = Input,
+        Kind = Kind,
+        Value = Value,
+        LongPressMs = LongPressMs,
+        LongPressValue = LongPressValue,
+        LongPressKind = LongPressKind,
+        DragValue = DragValue,
+        DragEndValue = DragEndValue,
+        Application = Application,
+        Layer = Layer,
+        Description = Description,
+        DeckColor = DeckColor,
+        DeckFilePath = DeckFilePath
+    };
 }
 
 public sealed class Profile
@@ -58,6 +90,7 @@ public sealed class DeckLayoutDefinition
     public string Name { get; set; } = "標準Deck";
     public int Columns { get; set; } = 9;
     public int Rows { get; set; } = 5;
+    public string PanelColor { get; set; } = "";
     public List<Mapping> Mappings { get; set; } = [];
 }
 
@@ -80,14 +113,14 @@ public sealed class AppConfig
 {
     public AppConfig()
     {
-        var layout=new DeckLayoutDefinition();
-        DeckLayouts=[layout];
-        DefaultDeckLayoutId=layout.Id;
-        SharedDefaultDeckLayoutId=layout.Id;
-        Profiles=[new Profile{DefaultDeckLayoutId=layout.Id}];
+        var layout = new DeckLayoutDefinition();
+        DeckLayouts = [layout];
+        DefaultDeckLayoutId = layout.Id;
+        SharedDefaultDeckLayoutId = layout.Id;
+        Profiles = [new Profile { DefaultDeckLayoutId = layout.Id }];
     }
 
-    public int Version { get; set; } = 26;
+    public int Version { get; set; } = ConfigService.CurrentVersion;
     public string ActiveProfile { get; set; } = "標準";
     public bool AutoSwitchProfilesByCursor { get; set; } = true;
     public bool ShowProfileSwitchOverlay { get; set; } = true;

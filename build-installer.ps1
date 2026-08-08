@@ -36,6 +36,12 @@ if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
 if($installerText -notmatch '(?im)^PrivilegesRequired=admin\s*$'){
   throw "Installer must require administrator privileges"
 }
+if($installerText -notmatch '(?im)^CloseApplications=no\s*$'){
+  throw "Installer must use RELYR's path-scoped graceful shutdown instead of forced application closing"
+}
+if($installerText -notmatch '(?im)^Compression=none\s*$' -or $installerText -notmatch '(?im)^SolidCompression=no\s*$'){
+  throw "Installer must keep payloads uncompressed and non-solid for transparent scanning"
+}
 if($installerText -notmatch '(?im)^UninstallDisplayName=\{#AppName\}\s*$' -or $installerText -notmatch '(?im)^Name:.*\{uninstallexe\}'){
   throw "Installer must present the uninstaller with the RELYR name"
 }
@@ -53,8 +59,8 @@ $manifestText=Get-Content (Join-Path $root "RELYR\app.manifest") -Raw -Encoding 
 if($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"'){
   throw "The application launcher must stay asInvoker so manual launches do not show UAC"
 }
-if($installerText -notmatch '(?is)windowsdesktop-runtime.*\bdownload\b'){
-  throw "Installer must acquire the .NET Desktop Runtime when it is missing"
+if($installerText -match '(?is)windowsdesktop-runtime|external\s+download'){
+  throw "Installer must be self-contained and must not download a runtime"
 }
 if($installerText -notmatch '(?im)^ChangesAssociations=yes\s*$' -or $installerText -notmatch '(?im)Subkey:\s*"\.relyr".*RELYR\.SettingsFile' -or $installerText -notmatch '(?im)Subkey:\s*"RELYR\.SettingsFile\\DefaultIcon".*\{#AppExe\},0'){
   throw "Installer must register the RELYR settings file type and icon"
@@ -66,10 +72,8 @@ $visibleSources=Get-ChildItem (Join-Path $root 'RELYR') -File -Include *.xaml -R
 if(($visibleSources -join [Environment]::NewLine) -match 'Input\s*Customizer'){
   throw "A legacy product name remains in visible XAML"
 }
-foreach($noticeFile in @('LICENSE.txt','THIRD-PARTY-NOTICES.md')){
-  if($installerText -notmatch ('(?im)^Source:\s*"artifacts\\production\\'+[regex]::Escape($noticeFile)+'"')){
-    throw "Installer must distribute $noticeFile"
-  }
+if($installerText -notmatch '(?im)^Source:\s*"artifacts\\production\\\*".*recursesubdirs'){
+  throw "Installer must distribute the complete self-contained application"
 }
 
 & (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest
@@ -105,12 +109,11 @@ Get-ChildItem -LiteralPath (Split-Path $installer) -File -Filter 'RELYR-Setup-*'
   Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
   Remove-Item -Force
 
-# The installer contains these payloads already. Keep only the distributable
-# installer and checksum, and remove compiler output that can be regenerated.
-foreach($payload in @('RELYR.exe','RELYR-Macro.ico','VirtualDesktopAccessor.dll','LICENSE.txt','THIRD-PARTY-NOTICES.md')){
-  $path=Join-Path (Split-Path $installer) $payload
-  if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}
-}
+# The installer contains the complete self-contained publish output. Keep only
+# the distributable pair after Inno Setup has finished reading those files.
+Get-ChildItem -LiteralPath (Split-Path $installer) -Force |
+  Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
+  Remove-Item -Recurse -Force
 foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\obj'))){
   if(Test-Path -LiteralPath $generated){
     try{

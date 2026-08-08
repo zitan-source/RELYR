@@ -11,7 +11,7 @@
     <AssemblyName>RELYR</AssemblyName>
     <Product>RELYR</Product>
     <Description>キーボードとマウスの入力を自由に割り当てるWindowsアプリ</Description>
-    <Version>0.1.144</Version>
+    <Version>0.1.177</Version>
     <Authors>RELYR</Authors>
     <Copyright>Copyright (c) 2026 RELYR contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -27,6 +27,7 @@
     <None Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Include="..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <PackageReference Include="SharpCompress" Version="0.49.1" />
+    <PackageReference Include="System.IO.Pipes.AccessControl" Version="6.0.0-preview.5.21301.5" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(ProductionPublish)' == 'true'">
@@ -34,7 +35,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(ProductionPublish)' == 'true'">
-    <Compile Remove="SelfTest.cs;EngineIntegrationTest.cs;UiIntegrationTest.cs;StartupIntegrationTest.cs;ShutdownIntegrationTest.cs;UpdateIntegrationTest.cs;VirtualDesktopIntegrationTest.cs" />
+    <Compile Remove="SelfTest.cs;AdminDeckIntegrationTest.cs;EngineIntegrationTest.cs;UiIntegrationTest.cs;ShellDropIntegrationTest.cs;StartupIntegrationTest.cs;ShutdownIntegrationTest.cs;UpdateIntegrationTest.cs;VirtualDesktopIntegrationTest.cs" />
   </ItemGroup>
 
 </Project>

@@ -6,7 +6,7 @@ using SharpCompress.Readers;
 
 namespace RELYR;
 
-public sealed class ArchiveWatcher : IDisposable
+public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
 {
     static readonly string[] SupportedSuffixes =
     [
@@ -15,31 +15,38 @@ public sealed class ArchiveWatcher : IDisposable
     ];
     const int MaximumEntries = 10_000;
     const long MaximumExpandedBytes = 20L * 1024 * 1024 * 1024;
-    readonly string? watchFolderOverride;
+    readonly string? watchFolderOverride = watchFolder;
     readonly HashSet<string> processing = new(StringComparer.OrdinalIgnoreCase);
     FileSystemWatcher? watcher;
     int generation;
 
     public event Action<string>? Status;
-    public ArchiveWatcher(string? watchFolder = null) => watchFolderOverride = watchFolder;
 
     public void Apply(AppConfig config)
     {
         generation++;
         watcher?.Dispose();
         watcher = null;
-        if (!config.AutoExtractDesktopArchives) return;
+        if (!config.AutoExtractDesktopArchives)
+            return;
 
         int currentGeneration = generation;
-        string watchFolder,destinationFolder;
-        try{watchFolder=watchFolderOverride??ResolveWatchFolder(config);destinationFolder=ResolveDestinationFolder(config,watchFolder);}
-        catch(Exception ex){Status?.Invoke($"自動解凍のフォルダー設定が正しくありません: {ex.Message}");return;}
+        string watchFolder, destinationFolder;
+        try
+        {
+            watchFolder = watchFolderOverride ?? ResolveWatchFolder(config);
+            destinationFolder = ResolveDestinationFolder(config, watchFolder);
+        }
+        catch (Exception ex) { Status?.Invoke($"自動解凍のフォルダー設定が正しくありません: {ex.Message}"); return; }
         if (!Directory.Exists(watchFolder))
         {
             Status?.Invoke($"自動解凍の監視フォルダーが見つかりません: {watchFolder}");
             return;
         }
-        try { Directory.CreateDirectory(destinationFolder); }
+        try
+        {
+            Directory.CreateDirectory(destinationFolder);
+        }
         catch (Exception ex)
         {
             Status?.Invoke($"自動解凍の保存先を使用できません: {ex.Message}");
@@ -57,8 +64,11 @@ public sealed class ArchiveWatcher : IDisposable
 
     void StartExtract(string path, string destinationFolder, bool deleteArchive, int currentGeneration)
     {
-        if (!IsSupported(path)) return;
-        lock (processing) if (!processing.Add(path)) return;
+        if (!IsSupported(path))
+            return;
+        lock (processing)
+        if (!processing.Add(path))
+            return;
         _ = ExtractWhenReady(path, destinationFolder, deleteArchive, currentGeneration);
     }
 
@@ -71,10 +81,14 @@ public sealed class ArchiveWatcher : IDisposable
                 try
                 {
                     await Task.Delay(700);
-                    if (currentGeneration != generation || !File.Exists(path)) return;
-                    using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None)) { }
+                    if (currentGeneration != generation || !File.Exists(path))
+                        return;
+                    using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                    {
+                    }
                     string destination = ExtractArchive(path, destinationFolder, () => currentGeneration != generation);
-                    if (deleteArchive) File.Delete(path);
+                    if (deleteArchive)
+                        File.Delete(path);
                     Status?.Invoke($"自動解凍しました: {Path.GetFileName(path)} → {Path.GetFileName(destination)}");
                     return;
                 }
@@ -107,7 +121,8 @@ public sealed class ArchiveWatcher : IDisposable
 
     internal static string ExtractArchive(string path, string? destinationFolder, Func<bool>? cancelled = null)
     {
-        if (!IsSupported(path)) throw new NotSupportedException("対応していない拡張子です。");
+        if (!IsSupported(path))
+            throw new NotSupportedException("対応していない拡張子です。");
         string parent = string.IsNullOrWhiteSpace(destinationFolder)
             ? Path.GetDirectoryName(path) ?? throw new InvalidDataException("保存先を取得できません。")
             : Path.GetFullPath(destinationFolder);
@@ -126,17 +141,22 @@ public sealed class ArchiveWatcher : IDisposable
                 return destination;
             }
             using var input = File.OpenRead(path);
-            using var reader = ReaderFactory.OpenReader(input,CreateReaderOptions());
+            using var reader = ReaderFactory.OpenReader(input, CreateReaderOptions());
             int entryCount = 0;
             long expanded = 0;
             while (reader.MoveToNextEntry())
             {
                 var entry = reader.Entry;
-                if (entry.IsDirectory) continue;
-                if (cancelled?.Invoke() == true) throw new OperationCanceledException();
+                if (entry.IsDirectory)
+                    continue;
+                if (cancelled?.Invoke() == true)
+                    throw new OperationCanceledException();
                 if (++entryCount > MaximumEntries)
                     throw new InvalidDataException($"ファイル数が上限 {MaximumEntries:N0} を超えています。");
-                checked { expanded += entry.Size; }
+                checked
+                {
+                    expanded += entry.Size;
+                }
                 if (expanded > MaximumExpandedBytes)
                     throw new InvalidDataException("展開後のサイズが安全上限を超えています。");
                 if (!string.IsNullOrEmpty(entry.LinkTarget))
@@ -156,22 +176,31 @@ public sealed class ArchiveWatcher : IDisposable
         }
         catch
         {
-            try { if (Directory.Exists(temporary)) Directory.Delete(temporary, true); } catch { }
+            try
+            {
+                if (Directory.Exists(temporary))
+                    Directory.Delete(temporary, true);
+            }
+            catch { }
             throw;
         }
     }
 
     static void ExtractSevenZip(string path, string temporary, string root, Func<bool>? cancelled)
     {
-        using var archive = ArchiveFactory.OpenArchive(path,CreateReaderOptions());
+        using var archive = ArchiveFactory.OpenArchive(path, CreateReaderOptions());
         var entries = archive.Entries.Where(entry => !entry.IsDirectory).ToArray();
         if (entries.Length > MaximumEntries)
             throw new InvalidDataException($"ファイル数が上限 {MaximumEntries:N0} を超えています。");
         long expanded = 0;
         foreach (var entry in entries)
         {
-            if (cancelled?.Invoke() == true) throw new OperationCanceledException();
-            checked { expanded += entry.Size; }
+            if (cancelled?.Invoke() == true)
+                throw new OperationCanceledException();
+            checked
+            {
+                expanded += entry.Size;
+            }
             if (expanded > MaximumExpandedBytes)
                 throw new InvalidDataException("展開後のサイズが安全上限を超えています。");
             if (!string.IsNullOrEmpty(entry.LinkTarget))
@@ -213,12 +242,12 @@ public sealed class ArchiveWatcher : IDisposable
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         return new ReaderOptions
         {
-            ArchiveEncoding=new ArchiveEncoding { Default=Encoding.GetEncoding(932) }
+            ArchiveEncoding = new ArchiveEncoding { Default = Encoding.GetEncoding(932) }
         };
     }
 
-    internal static string ResolveWatchFolder(AppConfig config)=>string.IsNullOrWhiteSpace(config.ArchiveWatchFolder)?Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory):Path.GetFullPath(config.ArchiveWatchFolder);
-    internal static string ResolveDestinationFolder(AppConfig config,string watchFolder)=>string.IsNullOrWhiteSpace(config.ArchiveDestinationFolder)?watchFolder:Path.GetFullPath(config.ArchiveDestinationFolder);
+    internal static string ResolveWatchFolder(AppConfig config) => string.IsNullOrWhiteSpace(config.ArchiveWatchFolder) ? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) : Path.GetFullPath(config.ArchiveWatchFolder);
+    internal static string ResolveDestinationFolder(AppConfig config, string watchFolder) => string.IsNullOrWhiteSpace(config.ArchiveDestinationFolder) ? watchFolder : Path.GetFullPath(config.ArchiveDestinationFolder);
 
     public void Dispose()
     {

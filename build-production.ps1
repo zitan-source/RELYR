@@ -58,6 +58,8 @@ if(-not (Test-Path -LiteralPath $assetsFile)){
 # resource from a clean intermediate state.
 dotnet clean $project -c $Configuration
 if($LASTEXITCODE -ne 0){throw "Clean failed"}
+dotnet restore $project --configfile $nugetConfig
+if($LASTEXITCODE -ne 0){throw "Restore after clean failed"}
 dotnet build $project -c $Configuration -warnaserror --no-restore
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 
@@ -75,12 +77,12 @@ if($LASTEXITCODE -ne 0){throw "Shutdown test failed"}
 
 Stop-ProductionInstance $productionExecutable
 Remove-OutputDirectoryWithRetry $output
-dotnet publish $project -c $Configuration --no-restore --no-self-contained `
-  -p:ProductionPublish=true -p:PublishSingleFile=true `
+dotnet publish $project -c $Configuration --no-restore --self-contained true `
+  -p:ProductionPublish=true -p:PublishSingleFile=false `
   -p:DebugType=None -p:DebugSymbols=false -o $output
 if($LASTEXITCODE -ne 0){throw "Publish failed"}
 
-foreach($requiredFile in @("LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
+foreach($requiredFile in @("RELYR.exe","RELYR.dll","hostfxr.dll","hostpolicy.dll","LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
     $requiredPath=Join-Path $output $requiredFile
     if(-not (Test-Path -LiteralPath $requiredPath)){
         throw "Required distribution file was not published: $requiredFile"

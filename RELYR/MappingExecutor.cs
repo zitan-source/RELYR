@@ -4,112 +4,222 @@ namespace RELYR;
 
 public interface IInputOutput
 {
-    void NeutralizeSourceKey(string input) { }
+    void NeutralizeSourceKey(string input)
+    {
+    }
     void SendShortcut(string value);
     void SendText(string value);
     void SendMouse(string value);
     void Launch(string value);
     void RunMacro(string name);
     void SwitchProfile(string name);
+    void ShowOverlay(string value)
+    {
+    }
 }
 
-public sealed class SystemInputOutput(Func<string,MacroDefinition?> findMacro,Action<string>? switchProfile=null,Func<bool>? useUsLayout=null,Func<AppConfig?>? getConfig=null,Func<IntPtr?>? getPreferredActiveWindow=null):IInputOutput
+public sealed class SystemInputOutput(Func<string, MacroDefinition?> findMacro, Action<string>? switchProfile = null, Func<bool>? useUsLayout = null, Func<AppConfig?>? getConfig = null, Func<IntPtr?>? getPreferredActiveWindow = null, Func<string, WindowActionTarget, bool>? ipcShortcut = null, Func<string, bool>? ipcText = null, Func<string, bool>? ipcMouse = null, Func<string, bool>? uiOverlayRequest = null, bool isDeckExecution = false, bool isElevatedInputHelper = false) : IInputOutput
 {
-    public void NeutralizeSourceKey(string input)=>InputEngine.NeutralizePhysicalSourceKey(input);
+    public void NeutralizeSourceKey(string input) => InputEngine.NeutralizePhysicalSourceKey(input);
     public void SendShortcut(string value)
     {
-        InputEngine.SendShortcut(value,useUsLayout?.Invoke()==true,getConfig?.Invoke()?.WindowActionTarget??WindowActionTarget.ActiveWindow,getPreferredActiveWindow?.Invoke());
+        WindowActionTarget target = getConfig?.Invoke()?.WindowActionTarget ?? WindowActionTarget.ActiveWindow;
+        using var helperInput = isElevatedInputHelper ? DeckIpcDiagnostics.BeginHelperInput(value, target) : null;
+        try
+        {
+            if (ipcShortcut != null)
+            {
+                bool sent = ipcShortcut(value, target);
+                DeckIpcDiagnostics.LogUiShortcutDispatch(isDeckExecution ? "Deck" : "MappedInput", value, target, sent);
+                if (sent)
+                {
+                    helperInput?.Complete();
+                    return;
+                }
+                throw new InvalidOperationException("管理者入力ヘルパーに接続できません。");
+            }
+            InputEngine.SendShortcut(value, useUsLayout?.Invoke() == true, target, getPreferredActiveWindow?.Invoke());
+            helperInput?.Complete();
+        }
+        catch (Exception error)
+        {
+            helperInput?.Fail(error);
+            throw;
+        }
     }
-    public void SendText(string value)=>InputEngine.SendText(value,useUsLayout?.Invoke()==true);
-    public void SendMouse(string value)=>InputEngine.SendMouse(value);
+    public void SendText(string value)
+    {
+        if (ipcText != null)
+        {
+            if (ipcText(value))
+                return;
+            throw new InvalidOperationException("管理者入力ヘルパーに接続できません。");
+        }
+        InputEngine.SendText(value, useUsLayout?.Invoke() == true);
+    }
+    public void SendMouse(string value)
+    {
+        if (ipcMouse != null)
+        {
+            if (ipcMouse(value))
+                return;
+            throw new InvalidOperationException("管理者入力ヘルパーに接続できません。");
+        }
+        InputEngine.SendMouse(value);
+    }
     public void Launch(string value)
     {
-        using var process=Process.Start(new ProcessStartInfo(value){UseShellExecute=true});
+        using var process = Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
+    }
+    public void ShowOverlay(string value)
+    {
+        if (uiOverlayRequest != null)
+        {
+            if (uiOverlayRequest(value))
+                return;
+            throw new InvalidOperationException("Medium UI overlay request failed.");
+        }
+        if (!OverlayService.TryShow(value))
+            throw new InvalidOperationException("Overlay display failed.");
     }
     public void RunMacro(string name)
     {
-        var macro=findMacro(name)??throw new InvalidOperationException("マクロが見つかりません: "+name);
-        MacroPlayer.Play(macro,getConfig?.Invoke(),switchProfile,getPreferredActiveWindow?.Invoke());
+        var macro = findMacro(name) ?? throw new InvalidOperationException("マクロが見つかりません: " + name);
+        MacroPlayer.Play(macro, getConfig?.Invoke(), switchProfile, getPreferredActiveWindow?.Invoke());
     }
-    public void SwitchProfile(string name)=>(switchProfile??throw new InvalidOperationException("プロファイル切替を利用できません。"))(name);
+    public void SwitchProfile(string name) => (switchProfile ?? throw new InvalidOperationException("プロファイル切替を利用できません。"))(name);
 }
 
 public sealed class MappingExecutor(IInputOutput output)
 {
-    internal static bool TryGetRecordedAction(Mapping map,string eventName,out ActionKind kind,out string value)
+    internal static bool TryGetRecordedAction(Mapping map, string eventName, out ActionKind kind, out string value)
     {
-        bool longPress=eventName.EndsWith(":Long",StringComparison.OrdinalIgnoreCase);
-        bool dragStart=eventName.EndsWith(":DragStart",StringComparison.OrdinalIgnoreCase);
-        bool dragEnd=eventName.EndsWith(":DragEnd",StringComparison.OrdinalIgnoreCase);
-        bool pressStart=eventName.EndsWith(":PressStart",StringComparison.OrdinalIgnoreCase);
-        bool pressEnd=eventName.EndsWith(":PressEnd",StringComparison.OrdinalIgnoreCase);
-        if(!longPress&&map.Kind==ActionKind.Mouse&&IsModifierDrag(map.Value))
+        bool longPress = eventName.EndsWith(":Long", StringComparison.OrdinalIgnoreCase);
+        bool dragStart = eventName.EndsWith(":DragStart", StringComparison.OrdinalIgnoreCase);
+        bool dragEnd = eventName.EndsWith(":DragEnd", StringComparison.OrdinalIgnoreCase);
+        bool pressStart = eventName.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase);
+        bool pressEnd = eventName.EndsWith(":PressEnd", StringComparison.OrdinalIgnoreCase);
+        if (!longPress && map.Kind == ActionKind.Mouse && IsModifierDrag(map.Value))
         {
-            kind=ActionKind.Mouse;value=map.Value+(pressStart||dragStart?":Start":pressEnd||dragEnd?":End":"");return true;
+            kind = ActionKind.Mouse;
+            value = map.Value + (pressStart || dragStart ? ":Start" : pressEnd || dragEnd ? ":End" : "");
+            return true;
         }
-        if(pressStart||pressEnd){kind=ActionKind.None;value="";return false;}
-        kind=longPress&&map.LongPressKind!=ActionKind.None?map.LongPressKind:map.Kind;
-        value=longPress?map.LongPressValue:dragStart?map.DragValue:dragEnd?map.DragEndValue:map.Value;
-        if(kind is ActionKind.None or ActionKind.Disabled)
+        if (pressStart || pressEnd)
         {
-            if(kind==ActionKind.None&&!longPress&&!dragStart&&!dragEnd&&map.Layer=="通常"&&!string.IsNullOrWhiteSpace(map.LongPressValue)){kind=ActionKind.Shortcut;value=map.Input;return true;}
+            kind = ActionKind.None;
+            value = "";
             return false;
         }
-        if((longPress||dragStart||dragEnd)&&string.IsNullOrWhiteSpace(value))return false;
-        if(!longPress&&!dragStart&&!dragEnd&&string.IsNullOrWhiteSpace(value))
+        kind = longPress && map.LongPressKind != ActionKind.None ? map.LongPressKind : map.Kind;
+        value = longPress ? map.LongPressValue : dragStart ? map.DragValue : dragEnd ? map.DragEndValue : map.Value;
+        if (kind is ActionKind.None or ActionKind.Disabled)
         {
-            if(map.Layer!="通常")return false;
-            kind=ActionKind.Shortcut;value=map.Input;
+            if (kind == ActionKind.None && !longPress && !dragStart && !dragEnd && map.Layer == "通常" && !string.IsNullOrWhiteSpace(map.LongPressValue))
+            {
+                kind = ActionKind.Shortcut;
+                value = map.Input;
+                return true;
+            }
+            return false;
+        }
+        if ((longPress || dragStart || dragEnd) && string.IsNullOrWhiteSpace(value))
+            return false;
+        if (!longPress && !dragStart && !dragEnd && string.IsNullOrWhiteSpace(value))
+        {
+            if (map.Layer != "通常")
+                return false;
+            kind = ActionKind.Shortcut;
+            value = map.Input;
         }
         return true;
     }
 
-    public bool Execute(Mapping map,string eventName,out string executedValue)
+    public bool Execute(Mapping map, string eventName, out string executedValue)
     {
-        bool longPress=eventName.EndsWith(":Long",StringComparison.OrdinalIgnoreCase);
-        bool dragStart=eventName.EndsWith(":DragStart",StringComparison.OrdinalIgnoreCase);
-        bool dragEnd=eventName.EndsWith(":DragEnd",StringComparison.OrdinalIgnoreCase);
-        bool pressStart=eventName.EndsWith(":PressStart",StringComparison.OrdinalIgnoreCase);
-        bool pressEnd=eventName.EndsWith(":PressEnd",StringComparison.OrdinalIgnoreCase);
-        if(!longPress&&map.Kind==ActionKind.Mouse&&IsModifierDrag(map.Value))
+        bool longPress = eventName.EndsWith(":Long", StringComparison.OrdinalIgnoreCase);
+        bool dragStart = eventName.EndsWith(":DragStart", StringComparison.OrdinalIgnoreCase);
+        bool dragEnd = eventName.EndsWith(":DragEnd", StringComparison.OrdinalIgnoreCase);
+        bool pressStart = eventName.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase);
+        bool pressEnd = eventName.EndsWith(":PressEnd", StringComparison.OrdinalIgnoreCase);
+        if (!longPress && map.Kind == ActionKind.Mouse && IsModifierDrag(map.Value))
         {
-            executedValue=map.Value+(pressStart||dragStart?":Start":pressEnd||dragEnd?":End":"");
-            try{output.SendMouse(executedValue);return true;}catch(Exception ex){InputEngine.ReleaseAll();executedValue="エラー: "+ex.Message;return true;}
+            executedValue = map.Value + (pressStart || dragStart ? ":Start" : pressEnd || dragEnd ? ":End" : "");
+            try
+            {
+                output.SendMouse(executedValue);
+                return true;
+            }
+            catch (Exception ex) { InputEngine.ReleaseAll(); executedValue = "エラー: " + ex.Message; return true; }
         }
-        if(pressStart||pressEnd){executedValue="";return false;}
-        executedValue=longPress?map.LongPressValue:dragStart?map.DragValue:dragEnd?map.DragEndValue:map.Value;
-        ActionKind kind=longPress&&map.LongPressKind!=ActionKind.None?map.LongPressKind:map.Kind;
-        if(kind==ActionKind.None)
+        if (pressStart || pressEnd)
         {
-            if(!longPress&&!dragStart&&!dragEnd&&map.Layer=="通常"&&!string.IsNullOrWhiteSpace(map.LongPressValue)){executedValue=map.Input;output.SendShortcut(map.Input);return true;}
+            executedValue = "";
             return false;
         }
-        if(kind==ActionKind.Disabled)return true;
-        if((longPress||dragStart||dragEnd)&&string.IsNullOrWhiteSpace(executedValue))return true;
-        if(!longPress&&!dragStart&&!dragEnd&&string.IsNullOrWhiteSpace(executedValue))
+        executedValue = longPress ? map.LongPressValue : dragStart ? map.DragValue : dragEnd ? map.DragEndValue : map.Value;
+        ActionKind kind = longPress && map.LongPressKind != ActionKind.None ? map.LongPressKind : map.Kind;
+        if (kind == ActionKind.None)
         {
-            if(map.Layer=="通常")
+            if (!longPress && !dragStart && !dragEnd && map.Layer == "通常" && !string.IsNullOrWhiteSpace(map.LongPressValue))
             {
-                string original=map.Input;output.SendShortcut(original);executedValue=original;return true;
+                executedValue = map.Input;
+                output.SendShortcut(map.Input);
+                return true;
+            }
+            return false;
+        }
+        if (kind == ActionKind.Disabled)
+            return true;
+        if ((longPress || dragStart || dragEnd) && string.IsNullOrWhiteSpace(executedValue))
+            return true;
+        if (!longPress && !dragStart && !dragEnd && string.IsNullOrWhiteSpace(executedValue))
+        {
+            if (map.Layer == "通常")
+            {
+                string original = map.Input;
+                output.SendShortcut(original);
+                executedValue = original;
+                return true;
             }
             return true;
         }
         try
         {
-            if(longPress)output.NeutralizeSourceKey(map.Input);
-            switch(kind)
+            if (longPress)
+                output.NeutralizeSourceKey(map.Input);
+            if (OverlayService.IsOverlayAction(executedValue))
             {
-                case ActionKind.Key:case ActionKind.Shortcut:output.SendShortcut(executedValue);break;
-                case ActionKind.Text:output.SendText(executedValue);break;
-                case ActionKind.Mouse:output.SendMouse(executedValue);break;
-                case ActionKind.Launch:output.Launch(executedValue);break;
-                case ActionKind.Macro:output.RunMacro(executedValue);break;
-                case ActionKind.Profile:output.SwitchProfile(executedValue);break;
-                default:return false;
+                output.ShowOverlay(executedValue);
+                return true;
+            }
+            switch (kind)
+            {
+                case ActionKind.Key:
+                case ActionKind.Shortcut:
+                    output.SendShortcut(executedValue);
+                    break;
+                case ActionKind.Text:
+                    output.SendText(executedValue);
+                    break;
+                case ActionKind.Mouse:
+                    output.SendMouse(executedValue);
+                    break;
+                case ActionKind.Launch:
+                    output.Launch(executedValue);
+                    break;
+                case ActionKind.Macro:
+                    output.RunMacro(executedValue);
+                    break;
+                case ActionKind.Profile:
+                    output.SwitchProfile(executedValue);
+                    break;
+                default:
+                    return false;
             }
             return true;
         }
-        catch(Exception ex){InputEngine.ReleaseAll();executedValue="エラー: "+ex.Message;return true;}
+        catch (Exception ex) { InputEngine.ReleaseAll(); executedValue = "エラー: " + ex.Message; return true; }
     }
-    internal static bool IsModifierDrag(string? value)=>value is not null&&(value.Equals("ShiftDrag",StringComparison.OrdinalIgnoreCase)||value.Equals("CtrlDrag",StringComparison.OrdinalIgnoreCase)||value.Equals("AltDrag",StringComparison.OrdinalIgnoreCase));
+    internal static bool IsModifierDrag(string? value) => value is not null && (value.Equals("ShiftDrag", StringComparison.OrdinalIgnoreCase) || value.Equals("CtrlDrag", StringComparison.OrdinalIgnoreCase) || value.Equals("AltDrag", StringComparison.OrdinalIgnoreCase));
 }

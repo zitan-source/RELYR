@@ -1,0 +1,24 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+tab_width = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Keep implementation blocks readable in code review. These settings only
+# affect C# whitespace and line breaks; they do not change generated code.
+csharp_new_line_before_open_brace = all
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+
+# Some callback APIs intentionally use delegate reference identity for
+# registration and cancellation. Do not rewrite those callbacks as local
+# functions during routine formatting.
+dotnet_diagnostic.IDE0039.severity = none
+
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
