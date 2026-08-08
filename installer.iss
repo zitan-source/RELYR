@@ -107,8 +107,37 @@ begin
   Result := CompareText(ExpandConstant('{param:RELYRUPDATE|0}'), '1') = 0;
 end;
 
+function IsDotNetDesktopRuntimeInstalled(): Boolean;
+var
+  Versions: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if RegGetValueNames(HKLM64,
+    'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App',
+    Versions) then
+  begin
+    for I := 0 to GetArrayLength(Versions) - 1 do
+      if Pos('10.', Versions[I]) = 1 then
+      begin
+        Result := True;
+        Exit;
+      end;
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 begin
+  if not IsDotNetDesktopRuntimeInstalled then
+  begin
+    MsgBox(
+      'RELYRには Microsoft .NET 10 Desktop Runtime (x64) が必要です。' + #13#10 + #13#10 +
+      'Microsoft公式サイトからランタイムをインストールした後、RELYRのセットアップをもう一度実行してください。' + #13#10 +
+      'https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe',
+      mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
   UpgradeInstall := RegQueryStringValue(HKLM64,
     'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
     'DisplayVersion', PreviousVersion);

@@ -59,8 +59,11 @@ $manifestText=Get-Content (Join-Path $root "RELYR\app.manifest") -Raw -Encoding 
 if($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"'){
   throw "The application launcher must stay asInvoker so manual launches do not show UAC"
 }
-if($installerText -match '(?is)windowsdesktop-runtime|external\s+download'){
-  throw "Installer must be self-contained and must not download a runtime"
+if($installerText -match '(?im)^Source:.*windowsdesktop-runtime|external\s+download'){
+  throw "Installer must not download or bundle a .NET runtime executable"
+}
+if($installerText -notmatch '(?i)IsDotNetDesktopRuntimeInstalled' -or $installerText -notmatch '(?i)Microsoft\.WindowsDesktop\.App'){
+  throw "Framework-dependent installer must check for the .NET Desktop Runtime"
 }
 if($installerText -notmatch '(?im)^ChangesAssociations=yes\s*$' -or $installerText -notmatch '(?im)Subkey:\s*"\.relyr".*RELYR\.SettingsFile' -or $installerText -notmatch '(?im)Subkey:\s*"RELYR\.SettingsFile\\DefaultIcon".*\{#AppExe\},0'){
   throw "Installer must register the RELYR settings file type and icon"
@@ -73,7 +76,7 @@ if(($visibleSources -join [Environment]::NewLine) -match 'Input\s*Customizer'){
   throw "A legacy product name remains in visible XAML"
 }
 if($installerText -notmatch '(?im)^Source:\s*"artifacts\\production\\\*".*recursesubdirs'){
-  throw "Installer must distribute the complete self-contained application"
+  throw "Installer must distribute the complete framework-dependent application"
 }
 
 & (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest
@@ -109,7 +112,7 @@ Get-ChildItem -LiteralPath (Split-Path $installer) -File -Filter 'RELYR-Setup-*'
   Where-Object { $_.FullName -notin @($installer,$checksumFile) } |
   Remove-Item -Force
 
-# The installer contains the complete self-contained publish output. Keep only
+# The installer contains the complete framework-dependent publish output. Keep only
 # the distributable pair after Inno Setup has finished reading those files.
 Get-ChildItem -LiteralPath (Split-Path $installer) -Force |
   Where-Object { $_.FullName -notin @($installer,$checksumFile) } |

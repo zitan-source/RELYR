@@ -77,12 +77,12 @@ if($LASTEXITCODE -ne 0){throw "Shutdown test failed"}
 
 Stop-ProductionInstance $productionExecutable
 Remove-OutputDirectoryWithRetry $output
-dotnet publish $project -c $Configuration --no-restore --self-contained true `
+dotnet publish $project -c $Configuration --no-restore --no-self-contained `
   -p:ProductionPublish=true -p:PublishSingleFile=false `
   -p:DebugType=None -p:DebugSymbols=false -o $output
 if($LASTEXITCODE -ne 0){throw "Publish failed"}
 
-foreach($requiredFile in @("RELYR.exe","RELYR.dll","hostfxr.dll","hostpolicy.dll","LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
+foreach($requiredFile in @("RELYR.exe","RELYR.dll","RELYR.runtimeconfig.json","LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
     $requiredPath=Join-Path $output $requiredFile
     if(-not (Test-Path -LiteralPath $requiredPath)){
         throw "Required distribution file was not published: $requiredFile"
