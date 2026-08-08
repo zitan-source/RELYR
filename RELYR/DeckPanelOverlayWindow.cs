@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
@@ -226,8 +227,11 @@ internal sealed class DeckPanelOverlayWindow : Window
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
             VerticalContentAlignment = System.Windows.VerticalAlignment.Center
         };
-        if (WpfApplication.Current?.Resources["AppButtonStyle"] is Style style)
-            button.Style = style;
+        button.Style = GlassButtonStyle();
+        button.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "ControlBackground");
+        button.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "PrimaryText");
+        button.BorderBrush = WpfBrushes.Transparent;
+        button.BorderThickness = new Thickness(0);
         if (DeckPanelLayout.TryGetButtonColor(mapping, out var customColor))
         {
             button.Background = new SolidColorBrush(customColor);
@@ -487,7 +491,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         var style = new Style(typeof(Button));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.CursorProperty, WpfCursors.Hand));
         var template = new ControlTemplate(typeof(Button));
-        var root = new FrameworkElementFactory(typeof(Grid));
+        var root = new FrameworkElementFactory(typeof(Grid)) { Name = "HoverRoot" };
+        root.SetValue(UIElement.RenderTransformProperty, new TranslateTransform());
         var surface = new FrameworkElementFactory(typeof(Border)) { Name = "GlassSurface" };
         surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BackgroundProperty));
         surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BorderBrushProperty));
@@ -501,6 +506,18 @@ internal sealed class DeckPanelOverlayWindow : Window
         highlight.SetValue(UIElement.IsHitTestVisibleProperty, false);
         highlight.SetValue(UIElement.OpacityProperty, 0d);
         root.AppendChild(highlight);
+        var underline = new FrameworkElementFactory(typeof(Border)) { Name = "HoverUnderline" };
+        underline.SetValue(Border.BackgroundProperty, new SolidColorBrush(WpfColor.FromArgb(204, 242, 246, 248)));
+        underline.SetValue(Border.CornerRadiusProperty, new CornerRadius(1));
+        underline.SetValue(FrameworkElement.HeightProperty, 2d);
+        underline.SetValue(FrameworkElement.MarginProperty, new Thickness(10, 0, 10, 3));
+        underline.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Stretch);
+        underline.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Bottom);
+        underline.SetValue(FrameworkElement.RenderTransformOriginProperty, new Point(.5, .5));
+        underline.SetValue(UIElement.RenderTransformProperty, new ScaleTransform(.35, 1));
+        underline.SetValue(UIElement.IsHitTestVisibleProperty, false);
+        underline.SetValue(UIElement.OpacityProperty, 0d);
+        root.AppendChild(underline);
         var content = new FrameworkElementFactory(typeof(ContentPresenter));
         content.SetValue(ContentPresenter.HorizontalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.HorizontalContentAlignmentProperty));
         content.SetValue(ContentPresenter.VerticalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.VerticalContentAlignmentProperty));
@@ -509,11 +526,45 @@ internal sealed class DeckPanelOverlayWindow : Window
         content.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
         root.AppendChild(content);
         template.VisualTree = root;
-        template.Triggers.Add(new Trigger { Property = UIElement.IsMouseOverProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .98d, "GlassSurface"), new Setter(UIElement.OpacityProperty, 1d, "GlassHighlight") } });
+        template.Triggers.Add(new Trigger
+        {
+            Property = UIElement.IsMouseOverProperty,
+            Value = true,
+            Setters =
+            {
+                new Setter(UIElement.OpacityProperty, .98d, "GlassSurface"),
+                new Setter(UIElement.EffectProperty, new DropShadowEffect { Color = DeckAccent, BlurRadius = 11, ShadowDepth = 0, Opacity = .24 }, "HoverRoot")
+            }
+        });
         template.Triggers.Add(new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .84d, "GlassSurface") } });
         template.Triggers.Add(new Trigger { Property = UIElement.IsEnabledProperty, Value = false, Setters = { new Setter(UIElement.OpacityProperty, .42d) } });
+        AddDeckHoverTransition(template, UIElement.MouseEnterEvent, true);
+        AddDeckHoverTransition(template, UIElement.MouseLeaveEvent, false);
         style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, template));
         return style;
+    }
+    static void AddDeckHoverTransition(ControlTemplate template, RoutedEvent routedEvent, bool entering)
+    {
+        var duration = TimeSpan.FromMilliseconds(entering ? 150 : 180);
+        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        var storyboard = new Storyboard();
+        AddDeckHoverAnimation(storyboard, "GlassHighlight", new PropertyPath(UIElement.OpacityProperty), entering ? 1 : 0, duration, easing);
+        AddDeckHoverAnimation(storyboard, "HoverUnderline", new PropertyPath(UIElement.OpacityProperty), entering ? .92 : 0, duration, easing);
+        AddDeckHoverAnimation(storyboard, "HoverUnderline", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleXProperty), entering ? 1 : .35, duration, easing);
+        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, TranslateTransform.YProperty), entering ? -1 : 0, duration, easing);
+        var trigger = new EventTrigger(routedEvent);
+        trigger.Actions.Add(new BeginStoryboard { Storyboard = storyboard });
+        template.Triggers.Add(trigger);
+    }
+    static void AddDeckHoverAnimation(Storyboard storyboard, string targetName, PropertyPath property, double value, TimeSpan duration, IEasingFunction easing)
+    {
+        var animation = new DoubleAnimation(value, duration)
+        {
+            EasingFunction = easing
+        };
+        Storyboard.SetTargetName(animation, targetName);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
     }
 
     static System.Windows.Media.Brush GlassSurfaceBrush(WpfColor color, byte opacity)
@@ -772,10 +823,10 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         if (DeckPanelLayout.IsVideoFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
         {
-            videoPreviews.Add(new DeckVideoPreviewPopup(button, mapping.DeckFilePath));
+            videoPreviews.Add(new DeckVideoPreviewPopup(button, mapping.DeckFilePath, this));
             return;
         }
-        object? content = CreateHoverContent(mapping);
+        object? content = CreateHoverContent(mapping, button);
         if (content != null)
         {
             if (content is string text)
@@ -797,6 +848,7 @@ internal sealed class DeckPanelOverlayWindow : Window
                 };
                 tooltip.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "CardBackground");
                 tooltip.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "AccentBrush");
+                ConfigureOutsideDeckPreview(tooltip, button);
                 button.ToolTip = tooltip;
             }
             else
@@ -808,8 +860,9 @@ internal sealed class DeckPanelOverlayWindow : Window
                     BorderBrush = WpfBrushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Padding = new Thickness(0),
-                    Placement = PlacementMode.Mouse
+                    Placement = PlacementMode.Custom
                 };
+                ConfigureOutsideDeckPreview(tooltip, button);
                 button.ToolTip = tooltip;
             }
             ToolTipService.SetInitialShowDelay(button, 220);
@@ -823,7 +876,23 @@ internal sealed class DeckPanelOverlayWindow : Window
             button.Unloaded += (_, _) => StopHoverAudioFor(button);
         }
     }
-    object? CreateHoverContent(Mapping mapping)
+    void ConfigureOutsideDeckPreview(System.Windows.Controls.ToolTip tooltip, Button source)
+    {
+        tooltip.PlacementTarget = source;
+        tooltip.Placement = PlacementMode.Custom;
+        tooltip.CustomPopupPlacementCallback = (popupSize, targetSize, offset) => OutsideDeckPlacements(source, popupSize, targetSize);
+    }
+    CustomPopupPlacement[] OutsideDeckPlacements(FrameworkElement source, System.Windows.Size popupSize, System.Windows.Size targetSize)
+    {
+        double gap = targetSize.Width;
+        double y = (targetSize.Height - popupSize.Height) / 2;
+        var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
+        var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
+        Point sourceInDeck = source.TranslatePoint(new Point(0, 0), this);
+        double deckWidth = ActualWidth > 0 ? ActualWidth : Width;
+        return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+    }
+    object? CreateHoverContent(Mapping mapping, FrameworkElement source)
     {
         if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath))
         {

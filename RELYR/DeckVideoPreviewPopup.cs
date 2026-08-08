@@ -29,6 +29,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
     const double MaxPreviewWidth = 360;
     const double MaxPreviewHeight = 300;
     readonly Button source;
+    readonly FrameworkElement placementBoundary;
     readonly Popup popup;
     readonly Grid frame;
     readonly MediaElement media;
@@ -52,9 +53,10 @@ sealed class DeckVideoPreviewPopup : IDisposable
     double surfacePointerDownX;
     bool disposed;
 
-    internal DeckVideoPreviewPopup(Button source, string path)
+    internal DeckVideoPreviewPopup(Button source, string path, FrameworkElement placementBoundary)
     {
         this.source = source;
+        this.placementBoundary = placementBoundary;
         ImageSource? thumbnail = DeckPanelLayout.LoadVideoThumbnail(path, 640, 360);
         System.Windows.Size initialSize = PreviewSize(thumbnail?.Width ?? 0, thumbnail?.Height ?? 0);
         frame = new Grid { Width = initialSize.Width, Height = initialSize.Height, Background = new SolidColorBrush(WpfColor.FromRgb(12, 17, 21)), ClipToBounds = true, SnapsToDevicePixels = true, Cursor = WpfCursors.SizeWE };
@@ -101,7 +103,8 @@ sealed class DeckVideoPreviewPopup : IDisposable
         card = new Border { Padding = new Thickness(1), CornerRadius = new CornerRadius(11), BorderThickness = new Thickness(1), Child = inner, Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Opacity = .56, Color = Colors.Black }, SnapsToDevicePixels = true };
         card.SetResourceReference(Border.BackgroundProperty, "CardBackground");
         card.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
-        popup = new Popup { Child = card, PlacementTarget = source, Placement = PlacementMode.Bottom, HorizontalOffset = 0, VerticalOffset = 8, StaysOpen = true, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade };
+        popup = new Popup { Child = card, PlacementTarget = source, Placement = PlacementMode.Custom, StaysOpen = true, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade };
+        popup.CustomPopupPlacementCallback = OutsideDeckPlacements;
 
         closeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         closeTimer.Tick += CloseTimerTick;
@@ -118,6 +121,16 @@ sealed class DeckVideoPreviewPopup : IDisposable
         card.PreviewMouseMove += CardMouseMove;
         card.PreviewMouseLeftButtonUp += CardMouseLeftButtonUp;
         SetPlayGlyph(false);
+    }
+    CustomPopupPlacement[] OutsideDeckPlacements(System.Windows.Size popupSize, System.Windows.Size targetSize, Point offset)
+    {
+        double gap = targetSize.Width;
+        double y = (targetSize.Height - popupSize.Height) / 2;
+        var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
+        var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
+        Point sourceInDeck = source.TranslatePoint(new Point(0, 0), placementBoundary);
+        double deckWidth = placementBoundary.ActualWidth > 0 ? placementBoundary.ActualWidth : placementBoundary.Width;
+        return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
     }
     internal bool IsFor(Button button) => ReferenceEquals(source, button);
 

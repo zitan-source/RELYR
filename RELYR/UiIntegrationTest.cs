@@ -336,6 +336,7 @@ internal static class UiIntegrationTest
             Pump(window);
             PumpFor(TimeSpan.FromMilliseconds(150));
             Check(deckReturnedBeforeThumbnail && deckConstructionTime.Elapsed < TimeSpan.FromSeconds(1) && deckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image, $"Deck overlay displays before file thumbnails and fills them asynchronously ({deckConstructionTime.ElapsedMilliseconds} ms)");
+            Check(deckOverlay.DeckButtons[1].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }, "Deck thumbnail preview is placed outside the Deck instead of covering adjacent keys");
             Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck overlay keeps its established translucent panel behavior and remains non-activating");
             deckOverlay.Refresh(40, true);
             PumpFor(TimeSpan.FromMilliseconds(90));
@@ -346,7 +347,15 @@ internal static class UiIntegrationTest
             deckOverlay.Refresh(67, true);
             deckOverlay.MoveAndPersistForTest(180, 210);
             Check(savedDeckPosition is { Left: 180, Top: 210 }, "moving the Deck overlay persists its last display position when dragging ends");
-            CaptureForReview(deckOverlay, "deck-overlay.png");
+            var cursorBeforeDeckHover = System.Windows.Forms.Cursor.Position;
+            try
+            {
+                var hoverCenter = deckOverlay.DeckButtons[0].PointToScreen(new System.Windows.Point(deckOverlay.DeckButtons[0].ActualWidth / 2, deckOverlay.DeckButtons[0].ActualHeight / 2));
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)hoverCenter.X, (int)hoverCenter.Y);
+                PumpFor(TimeSpan.FromMilliseconds(180));
+                CaptureForReview(deckOverlay, "deck-overlay.png");
+            }
+            finally { System.Windows.Forms.Cursor.Position = cursorBeforeDeckHover; }
             deckOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(deckExecuted?.Value == "Ctrl+C", "Deck overlay sends the selected action through the normal executor");
             Check(Math.Abs(deckOverlay.CloseButton.ActualWidth - 44) < .1 && Math.Abs(deckOverlay.CloseButton.ActualHeight - 30) < .1 && deckOverlay.CloseButton.InputHitTest(new System.Windows.Point(2, 2)) != null, "Deck overlay close control keeps a compact visual while its full transparent surface remains clickable");
