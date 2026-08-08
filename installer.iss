@@ -28,7 +28,7 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-CloseApplications=no
+CloseApplications=yes
 RestartApplications=no
 ; Normal installs and upgrades never require a Windows restart.  The only
 ; restart prompt RELYR owns is the conditional CapsLock restoration prompt
@@ -59,7 +59,7 @@ NoRadio=後で再起動する(&N)
 [Files]
 Source: "artifacts\production\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifdef IncludeRuntime
-Source: "{#RuntimeInstallerPath}"; DestDir: "{tmp}"; DestName: "windowsdesktop-runtime-10.0.10-win-x64.exe"; Flags: deleteafterinstall; Check: not IsDotNetDesktopRuntimeInstalled
+Source: "{#RuntimeInstallerPath}"; Flags: dontcopy
 #endif
 
 [InstallDelete]
@@ -83,10 +83,6 @@ Name: "desktopicon"; Description: "デスクトップにショートカットを
 Name: "autostart"; Description: "Windowsへのサインイン時に自動起動する"; GroupDescription: "自動起動:"; Flags: unchecked
 
 [Run]
-#ifdef IncludeRuntime
-Filename: "{tmp}\windowsdesktop-runtime-10.0.10-win-x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Microsoft .NET Desktop Runtimeをインストールしています…"; Flags: runhidden waituntilterminated; Check: not IsDotNetDesktopRuntimeInstalled; AfterInstall: VerifyDotNetDesktopRuntimeInstalled
-#endif
-Filename: "{app}\{#AppExe}"; Parameters: "--configure-elevated-launcher"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Description: "RELYRを起動する"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -135,6 +131,20 @@ begin
         Exit;
       end;
   end;
+  { The official x64 .NET installer registers shared-framework versions in
+    the 32-bit registry view on supported Windows systems. Check both views
+    so a successful runtime installation is never mistaken for a failure. }
+  if RegGetValueNames(HKLM32,
+    'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App',
+    Versions) then
+  begin
+    for I := 0 to GetArrayLength(Versions) - 1 do
+      if Pos('10.', Versions[I]) = 1 then
+      begin
+        Result := True;
+        Exit;
+      end;
+  end;
 end;
 
 function InitializeSetup(): Boolean;
@@ -161,18 +171,20 @@ begin
   Result := True;
 end;
 
-procedure VerifyDotNetDesktopRuntimeInstalled;
-begin
-  if not IsDotNetDesktopRuntimeInstalled then
-    RaiseException('Microsoft .NET 10 Desktop Runtime (x64) のインストールを確認できませんでした。RELYRのセットアップを中止します。');
-end;
-
 procedure InitializeWizard;
 begin
+#ifdef IncludeRuntime
+  WizardForm.Caption := 'RELYR セットアップ';
+#else
+  WizardForm.Caption := 'RELYR アップデート';
+#endif
   if UpgradeInstall then
   begin
-    WizardForm.Caption := 'RELYR アップデート';
+#ifdef IncludeRuntime
+    WizardForm.WelcomeLabel1.Caption := 'RELYRを上書きセットアップします';
+#else
     WizardForm.WelcomeLabel1.Caption := 'RELYRをアップデートします';
+#endif
     WizardForm.WelcomeLabel2.Caption :=
       'インストール済みの RELYR v' + PreviousVersion + ' を v{#AppVersion} へ更新します。' + #13#10 + #13#10 +
       'プロファイル、割り当て、マクロ、Windowsへのサインイン時の自動起動設定はそのまま引き継がれます。';
@@ -202,29 +214,61 @@ begin
     ewWaitUntilTerminated, ResultCode);
 end;
 
-procedure StopInstalledInstance;
+function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
+  TaskXmlPath: String;
+  TaskXml: String;
 begin
-  if FileExists(ExpandConstant('{app}\{#LegacyAppExe}')) then
+  Result := '';
+#ifdef IncludeRuntime
+  if not IsDotNetDesktopRuntimeInstalled then
   begin
-    Exec(ExpandConstant('{app}\{#LegacyAppExe}'), '--shutdown-existing', '', SW_HIDE,
-      ewWaitUntilTerminated, ResultCode);
-    Sleep(750);
+    WizardForm.StatusLabel.Caption := 'Microsoft .NET Desktop Runtimeをインストールしています…';
+    ExtractTemporaryFile(ExtractFileName('{#RuntimeInstallerPath}'));
+    if not Exec(ExpandConstant('{tmp}\') + ExtractFileName('{#RuntimeInstallerPath}'),
+      '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := 'Microsoft .NET 10 Desktop Runtime (x64) を起動できませんでした。セットアップはRELYRを変更していません。';
+      Exit;
+    end;
+    if (ResultCode <> 0) or (not IsDotNetDesktopRuntimeInstalled) then
+    begin
+      Result := 'Microsoft .NET 10 Desktop Runtime (x64) のインストールを確認できませんでした。セットアップはRELYRを変更していません。';
+      Exit;
+    end;
   end;
-  if FileExists(ExpandConstant('{app}\{#AppExe}')) then
+#endif
+  TaskXmlPath := ExpandConstant('{tmp}\RELYR-Elevated-Launcher.xml');
+  TaskXml :=
+    '<?xml version="1.0"?>' + #13#10 +
+    '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' +
+    '<RegistrationInfo><Author>RELYR</Author><Description>RELYR elevated input helper launcher.</Description></RegistrationInfo>' +
+    '<Principals><Principal id="Author"><UserId>' + ExpandConstant('{username}') + '</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>' +
+    '<Settings><MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>' +
+    '<Actions Context="Author"><Exec><Command>' + ExpandConstant('{app}\{#AppExe}') + '</Command><Arguments>--elevated-task "$(Arg0)"</Arguments><WorkingDirectory>' + ExpandConstant('{app}') + '</WorkingDirectory></Exec></Actions>' +
+    '</Task>';
+  if not SaveStringToFile(TaskXmlPath, TaskXml, False) then
   begin
-    Exec(ExpandConstant('{app}\{#AppExe}'), '--shutdown-existing', '', SW_HIDE,
-      ewWaitUntilTerminated, ResultCode);
-    Sleep(750);
+    Result := '管理者入力ヘルパーの設定ファイルを作成できませんでした。セットアップはRELYRを変更していません。';
+    Exit;
   end;
+  if not Exec(ExpandConstant('{sys}\schtasks.exe'),
+    '/Create /TN "RELYR Elevated Launcher" /XML "' + TaskXmlPath + '" /F',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    Log(Format('RELYR Elevated Launcher registration failed. schtasks exit code: %d', [ResultCode]));
+    DeleteFile(TaskXmlPath);
+    Result := '管理者入力ヘルパーを設定できませんでした。セットアップはRELYRを変更していません。';
+    Exit;
+  end;
+  DeleteFile(TaskXmlPath);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
   begin
-    StopInstalledInstance;
     RemoveLegacyStartupTask;
   end;
 end;

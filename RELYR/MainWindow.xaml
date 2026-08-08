@@ -311,11 +311,10 @@
     </Border>
 
     <Border DockPanel.Dock="Bottom" Background="{DynamicResource FooterBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,1,0,0" Padding="10,7">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <ToggleButton x:Name="EngineToggle" Grid.Column="0" Style="{StaticResource StatusToggleStyle}" IsChecked="True" Checked="EngineChanged" Unchecked="EngineChanged" ToolTip="クリックして入力変換を一時停止・再開します"><TextBlock x:Name="EngineStatus" Text="● エンジン稼働中" Foreground="{DynamicResource AccentBrush}"/></ToggleButton>
         <ToggleButton x:Name="AutoSaveToggle" Grid.Column="1" Style="{StaticResource StatusToggleStyle}" Checked="AutoSaveChanged" Unchecked="AutoSaveChanged" ToolTip="クリックして自動保存を切り替えます"><TextBlock x:Name="AutoSaveStatus" Text="自動保存 オフ"/></ToggleButton>
-        <TextBlock x:Name="AdminStatus" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-        <TextBlock x:Name="LastInput" Grid.Column="3" Text="入力: —" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+        <TextBlock x:Name="LastInput" Grid.Column="2" Text="入力: —" VerticalAlignment="Center" HorizontalAlignment="Right"/>
       </Grid>
     </Border>
 

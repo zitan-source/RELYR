@@ -423,8 +423,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             }
         };
         ((System.Windows.Shapes.Path)close.Content).SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "PrimaryText");
-        if (WpfApplication.Current?.Resources["AppButtonStyle"] is Style closeStyle)
-            close.Style = closeStyle;
+        close.Style = CloseButtonStyle();
         close.Click += (_, _) => Close();
         CloseButton = close;
         grid.Children.Add(grip);
@@ -447,8 +446,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         {
             ApplyPanelColor();
             BuildDeckButtons();
-            if (WpfApplication.Current?.Resources["AppButtonStyle"] is Style closeStyle)
-                CloseButton.Style = closeStyle;
+            CloseButton.Style = CloseButtonStyle();
         }));
     }
 
@@ -463,7 +461,22 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (closeButtonStyle != null)
             return closeButtonStyle;
-        closeButtonStyle = CreateGlassButtonStyle(new CornerRadius(13), WpfColor.FromArgb(32, 255, 255, 255));
+        var style = new Style(typeof(Button));
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.CursorProperty, WpfCursors.Hand));
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty, WpfBrushes.Transparent));
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.BorderBrushProperty, WpfBrushes.Transparent));
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.FocusVisualStyleProperty, null));
+        var template = new ControlTemplate(typeof(Button));
+        var content = new FrameworkElementFactory(typeof(ContentPresenter));
+        content.SetValue(ContentPresenter.HorizontalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.HorizontalContentAlignmentProperty));
+        content.SetValue(ContentPresenter.VerticalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.VerticalContentAlignmentProperty));
+        content.SetValue(ContentPresenter.ContentProperty, new TemplateBindingExtension(ContentControl.ContentProperty));
+        template.VisualTree = content;
+        template.Triggers.Add(new Trigger { Property = UIElement.IsMouseOverProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .72d) } });
+        template.Triggers.Add(new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .5d) } });
+        style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, template));
+        closeButtonStyle = style;
         return closeButtonStyle;
     }
     static Style CreateGlassButtonStyle(CornerRadius cornerRadius, WpfColor hoverHighlight)

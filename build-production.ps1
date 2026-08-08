@@ -89,6 +89,16 @@ foreach($requiredFile in @("RELYR.exe","RELYR.dll","RELYR.runtimeconfig.json","L
     }
 }
 
+# Probe the packaged apphost itself, not only `dotnet RELYR.dll`, so a broken
+# global .NET search path can never reach installer generation again.
+$appHostProbe=Start-Process -FilePath $productionExecutable -ArgumentList '--shutdown-existing' -PassThru
+if(-not $appHostProbe.WaitForExit(10000)){
+    try{$appHostProbe.Kill($false)}catch{}
+    throw "Published RELYR.exe could not locate .NET or did not exit"
+}
+if($appHostProbe.ExitCode -ne 0){throw "Published RELYR.exe probe failed with exit code $($appHostProbe.ExitCode)"}
+$appHostProbe.Dispose()
+
 # This hash identifies Ciantic's official 2024-12-16-windows11 release. Any
 # future DLL update must be deliberate and accompanied by an updated notice.
 $expectedVirtualDesktopAccessorHash="8740C572A1C000E3B87FFEB1E4C397EAE9AF3BD4A2ABDC3BCFFACAB4493F8FF5"

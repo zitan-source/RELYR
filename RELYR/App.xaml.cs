@@ -231,7 +231,7 @@ public partial class App : System.Windows.Application
             try
             {
                 bool enabled = args[1].Equals("on", StringComparison.OrdinalIgnoreCase);
-                StartupService.SetEnabled(enabled);
+                StartupService.SetUserStartupEnabled(enabled);
                 var startupConfig = new ConfigService();
                 var value = startupConfig.Load();
                 value.StartWithWindows = enabled;

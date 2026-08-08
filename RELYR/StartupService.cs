@@ -20,13 +20,18 @@ public static class StartupService
 
     public static void SetEnabled(bool enabled)
     {
-        RemoveLegacyRunEntry();
-        SetUserRunEntry(enabled);
+        SetUserStartupEnabled(enabled);
         if (IsProcessElevated())
         {
             EnsureElevatedLauncher();
             DeleteTask(StartupTaskName);
         }
+    }
+
+    public static void SetUserStartupEnabled(bool enabled)
+    {
+        RemoveLegacyRunEntry();
+        SetUserRunEntry(enabled);
     }
 
     public static bool IsEnabled() => GetUserRunEntry() != null;
@@ -132,6 +137,7 @@ public static class StartupService
                 catch (ArgumentException) { continue; }
                 catch (Exception ex) { error = $"残留しているRELYR（PID {processId}）を終了できませんでした: {ex.Message}"; return false; }
             }
+
             var limit = DateTime.UtcNow + timeout;
             while (DateTime.UtcNow < limit)
             {

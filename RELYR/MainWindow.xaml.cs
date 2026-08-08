@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -255,7 +254,6 @@ public partial class MainWindow : Window
         }
         EngineToggle.IsChecked = engine.Enabled;
         EngineToggle.IsEnabled = engineStarted;
-        AdminStatus.Text = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator) ? "管理者モード" : "一般権限";
         archiveWatcher.Status += text => Dispatcher.BeginInvoke(() => LastInput.Text = text);
         archiveWatcher.Apply(config);
         if (!suppressTray)

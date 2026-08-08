@@ -36,8 +36,8 @@ if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
 if($installerText -notmatch '(?im)^PrivilegesRequired=admin\s*$'){
   throw "Installer must require administrator privileges"
 }
-if($installerText -notmatch '(?im)^CloseApplications=no\s*$'){
-  throw "Installer must use RELYR's path-scoped graceful shutdown instead of forced application closing"
+if($installerText -notmatch '(?im)^CloseApplications=yes\s*$' -or $installerText -notmatch '(?im)^CloseApplicationsFilter=RELYR\.exe,InputCustomizer\.exe\s*$'){
+  throw "Installer must use Windows Restart Manager for RELYR executables before replacement"
 }
 if($installerText -notmatch '(?im)^Compression=none\s*$' -or $installerText -notmatch '(?im)^SolidCompression=no\s*$'){
   throw "Installer must keep payloads uncompressed and non-solid for transparent scanning"
@@ -49,8 +49,12 @@ $autostartTask=[regex]::Match($installerText,'(?im)^Name:\s*"autostart";.*$').Va
 if($autostartTask -match 'UAC'){
   throw "Autostart task text must stay concise"
 }
-if($installerText -notmatch '(?im)Parameters:\s*"--configure-elevated-launcher"'){
-  throw "Installer must register the elevated no-UAC launcher"
+if($installerText -match '(?im)^Filename:.*\{#AppExe\}.*--configure-elevated-launcher' -or $installerText -notmatch '(?is)function\s+PrepareToInstall.*?schtasks\.exe.*?/Create.*?RELYR Elevated Launcher.*?/XML'){
+  throw "Installer must register the elevated launcher directly without waiting on a nested RELYR process"
+}
+$appText=Get-Content (Join-Path $root 'RELYR\App.xaml.cs') -Raw -Encoding UTF8
+if($appText -notmatch '(?is)--configure-startup.*?SetUserStartupEnabled' -or $appText -match '(?is)--configure-startup.*?SetEnabled\('){
+  throw "Installer startup configuration must not re-enter elevated task registration"
 }
 if($uninstallRun -notmatch '(?i)RELYR Elevated Launcher' -or $uninstallRun -notmatch '(?i)RELYR Elevated Startup'){
   throw "Uninstaller must remove the elevated launcher tasks"
@@ -59,14 +63,24 @@ $manifestText=Get-Content (Join-Path $root "RELYR\app.manifest") -Raw -Encoding 
 if($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"'){
   throw "The application launcher must stay asInvoker so manual launches do not show UAC"
 }
+$projectText=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Raw -Encoding UTF8
+if($projectText -notmatch '(?im)<AppHostDotNetSearch>Global</AppHostDotNetSearch>'){
+  throw "Published RELYR.exe must search the registered global .NET installation"
+}
 if($installerText -notmatch '(?i)IsDotNetDesktopRuntimeInstalled' -or $installerText -notmatch '(?i)Microsoft\.WindowsDesktop\.App'){
   throw "Both distributions must detect the .NET Desktop Runtime"
+}
+if($installerText -notmatch '(?is)RegGetValueNames\(HKLM64.*?Microsoft\.WindowsDesktop\.App' -or $installerText -notmatch '(?is)RegGetValueNames\(HKLM32.*?Microsoft\.WindowsDesktop\.App'){
+  throw "Runtime detection must check both Windows registry views"
 }
 if($installerText -match '(?im)external\s+download'){
   throw "End-user installers must never download an executable"
 }
-if($installerText -notmatch '(?im)^Source:.*\{#RuntimeInstallerPath\}.*windowsdesktop-runtime-10\.0\.10-win-x64\.exe' -or $installerText -notmatch '(?im)^Filename:.*windowsdesktop-runtime-10\.0\.10-win-x64\.exe.*AfterInstall:\s*VerifyDotNetDesktopRuntimeInstalled'){
-  throw "The full setup must bundle and verify the pinned Microsoft .NET Desktop Runtime"
+if($installerText -notmatch '(?im)^Source:.*\{#RuntimeInstallerPath\}.*Flags:\s*dontcopy' -or $installerText -notmatch '(?is)function\s+PrepareToInstall.*?ExtractTemporaryFile.*?IsDotNetDesktopRuntimeInstalled'){
+  throw "The full setup must install and verify the pinned Microsoft .NET Desktop Runtime before changing RELYR files"
+}
+if($installerText -match '(?is)AfterInstall:\s*VerifyDotNetDesktopRuntimeInstalled|RaiseException|--shutdown-existing-and-wait'){
+  throw "Setup must verify runtime before file replacement and must not launch a nested RELYR shutdown process"
 }
 if($installerText -notmatch '(?im)^ChangesAssociations=yes\s*$' -or $installerText -notmatch '(?im)Subkey:\s*"\.relyr".*RELYR\.SettingsFile' -or $installerText -notmatch '(?im)Subkey:\s*"RELYR\.SettingsFile\\DefaultIcon".*\{#AppExe\},0'){
   throw "Installer must register the RELYR settings file type and icon"

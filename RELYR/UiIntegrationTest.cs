@@ -365,6 +365,8 @@ internal static class UiIntegrationTest
                 window.SwitchProfileForTest(originalProfileName);
             Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int dialogColumns, out int dialogRows) && dialogColumns == 18 && dialogRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && window.DeckSizePresetBox.Style == window.FindResource("ToolbarComboBoxStyle") && Math.Abs(window.DeckSizePresetBox.Height - 40) < .1, "Deck creation supports themed preset and custom 1x1 through 18x18 sizes");
             Check(deckOverlay.CloseButton.ActualHeight <= 26.1, "Deck overlay uses the compact header and close control");
+            Check(deckOverlay.CloseButton.BorderThickness == new Thickness(0) && ReferenceEquals(deckOverlay.CloseButton.Background, System.Windows.Media.Brushes.Transparent), "Deck overlay close control renders only the X without a surrounding outline or surface");
+            Check(!Descendants<TextBlock>(window).Any(x => x.Text is "一般権限" or "管理者モード"), "the obsolete process privilege label is absent from the main footer");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.KeyboardWorkspace.Visibility == Visibility.Visible && window.DeckWorkspace.Visibility == Visibility.Collapsed, "choosing a keyboard layer returns from Deck management to the keyboard");
