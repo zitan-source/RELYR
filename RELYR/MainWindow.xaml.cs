@@ -175,7 +175,11 @@ public partial class MainWindow : Window
         Func<string, bool>? ipcText = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendText : null;
         Func<string, bool>? ipcMouse = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendMouse : null;
         Func<string, bool>? uiOverlayRequest = runtimeRole == RuntimeRole.ElevatedHelper ? OverlayUiBridge.RequestShow : null;
-        executor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", () => appliedConfig, null, ipcShortcut, ipcText, ipcMouse, uiOverlayRequest, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
+        // Physical input is already owned by the correctly privileged hook: the
+        // medium UI hook for normal windows and the elevated hook for elevated
+        // windows. Execute its mapping in that same process so a delayed or failed
+        // helper connection can never disable keyboard or mouse layers.
+        executor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", () => appliedConfig, null, null, null, null, uiOverlayRequest, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
         deckExecutor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", DeckExecutionConfig, null, ipcShortcut, ipcText, ipcMouse, uiOverlayRequest, isDeckExecution: true, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
         actionWorker = Task.Run(ProcessActions);
         dragActionWorker = Task.Factory.StartNew(ProcessDragActions, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);

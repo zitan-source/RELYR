@@ -171,8 +171,18 @@ internal static class IpcRuntime
         => TrySend(IpcCommand.ExecuteText, value);
     internal static bool TrySendMouse(string value)
         => TrySend(IpcCommand.ExecuteMouse, value);
-    internal static bool TrySetCapsLockRemap(bool enabled)
-        => TrySend(IpcCommand.SetCapsLockRemap, enabled.ToString());
+    internal static async Task<bool> TrySetCapsLockRemapAsync(bool enabled)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(12);
+        do
+        {
+            if (await TrySendAsync(IpcCommand.SetCapsLockRemap, enabled.ToString()).ConfigureAwait(false))
+                return true;
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+        while (DateTime.UtcNow < deadline);
+        return false;
+    }
     internal static void RequestReload()
         => _ = TrySendAsync(IpcCommand.ReloadConfig, "");
 

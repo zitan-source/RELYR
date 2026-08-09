@@ -2,6 +2,14 @@
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 
+[xml]$project=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Encoding UTF8
+$version=($project.Project.PropertyGroup.Version|Where-Object{$_}|Select-Object -First 1)
+if(!$version){throw "Project version was not found."}
+$releaseStaging=Join-Path $root ".verification\release-$version"
+$payloadDirectory=Join-Path $releaseStaging "payload"
+$installerOutputDirectory=Join-Path $releaseStaging "installers"
+New-Item -ItemType Directory -Force -Path $installerOutputDirectory|Out-Null
+
 $installerScript=Join-Path $root "installer.iss"
 $installerText=Get-Content $installerScript -Raw -Encoding UTF8
 if($installerText -match '(?is)taskkill(?:\.exe)?.*?/IM\s+(?:RELYR|InputCustomizer)\.exe'){
@@ -92,11 +100,11 @@ $visibleSources=Get-ChildItem (Join-Path $root 'RELYR') -File -Include *.xaml -R
 if(($visibleSources -join [Environment]::NewLine) -match 'Input\s*Customizer'){
   throw "A legacy product name remains in visible XAML"
 }
-if($installerText -notmatch '(?im)^Source:\s*"artifacts\\production\\\*".*recursesubdirs'){
+if($installerText -notmatch '(?im)^Source:\s*"\{#DistributionSourceDir\}\\\*".*recursesubdirs'){
   throw "Installer must distribute the complete framework-dependent application"
 }
 
-& (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest
+& (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest -OutputDirectory $payloadDirectory
 if($LASTEXITCODE -ne 0){throw "Production build failed"}
 
 $iscc=@(
@@ -105,10 +113,6 @@ $iscc=@(
   "C:\Program Files\Inno Setup 6\ISCC.exe"
 )|Where-Object{Test-Path $_}|Select-Object -First 1
 if(!$iscc){throw "Inno Setup 6 was not found."}
-
-[xml]$project=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Encoding UTF8
-$version=($project.Project.PropertyGroup.Version|Where-Object{$_}|Select-Object -First 1)
-if(!$version){throw "Project version was not found."}
 
 $runtimeVersion="10.0.10"
 $runtimeFileName="windowsdesktop-runtime-$runtimeVersion-win-x64.exe"
@@ -129,14 +133,14 @@ if($runtimeSignature.Status -ne [System.Management.Automation.SignatureStatus]::
   throw "Bundled .NET Desktop Runtime does not have a valid Microsoft Authenticode signature."
 }
 
-& $iscc "/DAppVersion=$version" $installerScript
+& $iscc "/DAppVersion=$version" "/DDistributionSourceDir=$payloadDirectory" "/DInstallerOutputDir=$installerOutputDirectory" $installerScript
 if($LASTEXITCODE -ne 0){throw "Update installer build failed"}
-& $iscc "/DAppVersion=$version" "/DIncludeRuntime=1" "/DRuntimeInstallerPath=$runtimeInstaller" $installerScript
+& $iscc "/DAppVersion=$version" "/DDistributionSourceDir=$payloadDirectory" "/DInstallerOutputDir=$installerOutputDirectory" "/DIncludeRuntime=1" "/DRuntimeInstallerPath=$runtimeInstaller" $installerScript
 if($LASTEXITCODE -ne 0){throw "Full setup installer build failed"}
 
 $installers=@(
-  (Join-Path $root "artifacts\production\RELYR-Setup-$version.exe"),
-  (Join-Path $root "artifacts\production\RELYR-Update-$version.exe")
+  (Join-Path $installerOutputDirectory "RELYR-Setup-$version.exe"),
+  (Join-Path $installerOutputDirectory "RELYR-Update-$version.exe")
 )
 $keptFiles=@()
 foreach($installer in $installers){
@@ -158,17 +162,24 @@ $runtimeLength=(Get-Item -LiteralPath $runtimeInstaller).Length
 if($setupLength -le $runtimeLength){throw "Full setup does not contain the bundled .NET Desktop Runtime."}
 if($updateLength -ge 25MB){throw "Update installer unexpectedly contains a large runtime payload."}
 
-# Keep only the two current distributables and their checksums. Older installers are reproducible
-# from Git tags and should not make a development checkout grow indefinitely.
-Get-ChildItem -LiteralPath (Join-Path $root 'artifacts\production') -File -Include 'RELYR-Setup-*','RELYR-Update-*' |
-  Where-Object { $_.FullName -notin $keptFiles } |
-  Remove-Item -Force
-
-# Both installers contain the complete framework-dependent app payload. Keep only
-# the four distributable files after Inno Setup has finished reading those files.
-Get-ChildItem -LiteralPath (Join-Path $root 'artifacts\production') -Force |
-  Where-Object { $_.FullName -notin $keptFiles } |
+$productionDirectory=Join-Path $root 'artifacts\production'
+New-Item -ItemType Directory -Force -Path $productionDirectory|Out-Null
+$productionFiles=@()
+foreach($stagedFile in $keptFiles){
+  $destination=Join-Path $productionDirectory ([System.IO.Path]::GetFileName($stagedFile))
+  Copy-Item -LiteralPath $stagedFile -Destination $destination -Force
+  $productionFiles += $destination
+}
+foreach($installer in $productionFiles|Where-Object{$_ -like '*.exe'}){
+  $productVersion=(Get-Item -LiteralPath $installer).VersionInfo.ProductVersion.Trim()
+  $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+  $expected=((Get-Content -LiteralPath "$installer.sha256" -Raw -Encoding UTF8).Trim() -split '\s+')[0]
+  if($productVersion -ne $version -or $actual -ne $expected){throw "Production copy validation failed: $installer"}
+}
+Get-ChildItem -LiteralPath $productionDirectory -Force |
+  Where-Object { $_.FullName -notin $productionFiles } |
   Remove-Item -Recurse -Force
+Remove-Item -LiteralPath $releaseStaging -Recurse -Force
 foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\obj'))){
   if(Test-Path -LiteralPath $generated){
     try{
@@ -180,7 +191,7 @@ foreach($generated in @((Join-Path $root 'RELYR\bin'),(Join-Path $root 'RELYR\ob
     }
   }
 }
-Write-Host "Full setup: $($installers[0])"
-Write-Host "Update installer: $($installers[1])"
+Write-Host "Full setup: $(Join-Path $productionDirectory ([System.IO.Path]::GetFileName($installers[0])))"
+Write-Host "Update installer: $(Join-Path $productionDirectory ([System.IO.Path]::GetFileName($installers[1])))"
 Write-Host "Full setup bytes: $setupLength"
 Write-Host "Update installer bytes: $updateLength"

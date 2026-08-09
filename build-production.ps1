@@ -1,4 +1,4 @@
-param([string]$Configuration="Release",[switch]$SkipRealHookTest)
+param([string]$Configuration="Release",[switch]$SkipRealHookTest,[string]$OutputDirectory="")
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 $project=Join-Path $root "RELYR\RELYR.csproj"
@@ -7,7 +7,7 @@ $env:APPDATA=Join-Path $root ".verification\appdata"
 New-Item -ItemType Directory -Force -Path $env:APPDATA|Out-Null
 $buildDirectory=Join-Path $root "RELYR\bin\$Configuration\net10.0-windows\win-x64"
 $dll=Join-Path $buildDirectory "RELYR.dll"
-$output=Join-Path $root "artifacts\production"
+$output=if([string]::IsNullOrWhiteSpace($OutputDirectory)){Join-Path $root "artifacts\production"}else{[System.IO.Path]::GetFullPath($OutputDirectory)}
 $productionExecutable=Join-Path $output "RELYR.exe"
 
 function Stop-ProductionInstance([string]$executable) {

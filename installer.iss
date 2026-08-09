@@ -4,6 +4,12 @@
 #endif
 #define AppExe "RELYR.exe"
 #define LegacyAppExe "InputCustomizer.exe"
+#ifndef DistributionSourceDir
+#define DistributionSourceDir "artifacts\production"
+#endif
+#ifndef InstallerOutputDir
+#define InstallerOutputDir "artifacts\production"
+#endif
 #ifdef IncludeRuntime
 #define DistributionName "Setup"
 #else
@@ -17,7 +23,7 @@ AppVersion={#AppVersion}
 AppPublisher=RELYR
 DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
-OutputDir=artifacts\production
+OutputDir={#InstallerOutputDir}
 OutputBaseFilename=RELYR-{#DistributionName}-{#AppVersion}
 ; Keep installer payloads uncompressed. RELYR legitimately uses global input
 ; hooks and an elevated helper; avoiding a packed payload gives scanners the
@@ -57,7 +63,7 @@ YesRadio=今すぐ再起動する(&Y)
 NoRadio=後で再起動する(&N)
 
 [Files]
-Source: "artifacts\production\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#DistributionSourceDir}\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifdef IncludeRuntime
 Source: "{#RuntimeInstallerPath}"; Flags: dontcopy
 #endif

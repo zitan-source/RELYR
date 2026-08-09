@@ -359,7 +359,7 @@ public partial class SettingsWindow : Window
         if (dialog.ShowDialog() == true)
             new ConfigService().Export(config, dialog.FileName);
     }
-    void Import_Click(object sender, RoutedEventArgs e)
+    async void Import_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog { Filter = ImportFileFilter };
         if (dialog.ShowDialog() != true)
@@ -377,7 +377,7 @@ public partial class SettingsWindow : Window
             }
             if (desired != current)
             {
-                if (!ChangeCapsRemap(desired, imported, false))
+                if (!await ChangeCapsRemapAsync(desired, imported, false))
                     return;
                 ImportedCapsLockNeedsRestart = true;
                 ImportedCapsLockEnabled = desired;
@@ -405,28 +405,28 @@ public partial class SettingsWindow : Window
         EnableCapsRemapButton.IsEnabled = !enabled;
         DisableCapsRemapButton.IsEnabled = enabled;
     }
-    void EnableCapsRemap_Click(object sender, RoutedEventArgs e)
+    async void EnableCapsRemap_Click(object sender, RoutedEventArgs e)
     {
         if (AppDialog.Show(this, "CapsLock本来の機能を無効にし、CapsLockレイヤー専用キーへ変更します。CapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。\n\n設定しますか？", "CapsLockレイヤーを有効化", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             return;
-        if (ChangeCapsRemap(true, config, true))
+        if (await ChangeCapsRemapAsync(true, config, true))
             PromptForWindowsRestart(this, true);
     }
-    void DisableCapsRemap_Click(object sender, RoutedEventArgs e)
+    async void DisableCapsRemap_Click(object sender, RoutedEventArgs e)
     {
         if (AppDialog.Show(this, "CapsLockレイヤーを無効にし、元のCapsLockへ戻します。\n\n設定しますか？", "CapsLockへ戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
-        if (ChangeCapsRemap(false, config, true))
+        if (await ChangeCapsRemapAsync(false, config, true))
             PromptForWindowsRestart(this, false);
     }
-    bool ChangeCapsRemap(bool enabled, AppConfig target, bool refresh)
+    async Task<bool> ChangeCapsRemapAsync(bool enabled, AppConfig target, bool refresh)
     {
         try
         {
             bool effectiveBefore = LegacyKeyRemapService.HasCapsLockToF13();
             if (StartupService.IsProcessElevated())
                 LegacyKeyRemapService.SetCapsLockToF13(enabled);
-            else if (!IpcRuntime.TrySetCapsLockRemap(enabled))
+            else if (!await IpcRuntime.TrySetCapsLockRemapAsync(enabled))
                 throw new InvalidOperationException("管理者ヘルパーに接続できません。RELYRを再起動してから、もう一度実行してください。");
             target.CapsLockLayerEnabled = enabled;
             target.CapsLockRemapPendingRestart = true;
