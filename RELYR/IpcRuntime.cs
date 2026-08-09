@@ -122,6 +122,7 @@ internal static class IpcRuntime
         {
             IpcCommand.Ping => "ok",
             IpcCommand.ReloadConfig => await InvokeOnWindowAsync(window, window.ReloadRuntimeConfigForIpc, cancellationToken).ConfigureAwait(false),
+            IpcCommand.SetCapsLockRemap => SetCapsLockRemapOnHelper(message.Value),
             IpcCommand.ExecuteShortcut => await ExecuteShortcutOnHelperAsync(window, message.Value, cancellationToken).ConfigureAwait(false),
             IpcCommand.ExecuteText => await InvokeOnWindowAsync(window, () => window.ExecuteTextForIpc(message.Value), cancellationToken).ConfigureAwait(false),
             IpcCommand.ExecuteMouse => await InvokeOnWindowAsync(window, () => window.ExecuteMouseForIpc(message.Value), cancellationToken).ConfigureAwait(false),
@@ -129,6 +130,14 @@ internal static class IpcRuntime
             _ => "rejected"
         };
         return new IpcMessage(message.Command, message.RequestId, result, secret);
+    }
+
+    static string SetCapsLockRemapOnHelper(string value)
+    {
+        if (!bool.TryParse(value, out bool enabled))
+            return "rejected";
+        LegacyKeyRemapService.SetCapsLockToF13(enabled);
+        return "ok";
     }
 
     static async Task<string> ExecuteShortcutOnHelperAsync(MainWindow window, string value, CancellationToken cancellationToken)
@@ -162,6 +171,8 @@ internal static class IpcRuntime
         => TrySend(IpcCommand.ExecuteText, value);
     internal static bool TrySendMouse(string value)
         => TrySend(IpcCommand.ExecuteMouse, value);
+    internal static bool TrySetCapsLockRemap(bool enabled)
+        => TrySend(IpcCommand.SetCapsLockRemap, enabled.ToString());
     internal static void RequestReload()
         => _ = TrySendAsync(IpcCommand.ReloadConfig, "");
 

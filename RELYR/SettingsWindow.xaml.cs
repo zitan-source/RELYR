@@ -423,10 +423,11 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            if (!StartupService.IsProcessElevated())
-                throw new UnauthorizedAccessException("管理者モードで起動されていません。RELYRを再インストールしてください。");
             bool effectiveBefore = LegacyKeyRemapService.HasCapsLockToF13();
-            LegacyKeyRemapService.SetCapsLockToF13(enabled);
+            if (StartupService.IsProcessElevated())
+                LegacyKeyRemapService.SetCapsLockToF13(enabled);
+            else if (!IpcRuntime.TrySetCapsLockRemap(enabled))
+                throw new InvalidOperationException("管理者ヘルパーに接続できません。RELYRを再起動してから、もう一度実行してください。");
             target.CapsLockLayerEnabled = enabled;
             target.CapsLockRemapPendingRestart = true;
             target.CapsLockRemapEffectiveBeforeRestart = effectiveBefore;

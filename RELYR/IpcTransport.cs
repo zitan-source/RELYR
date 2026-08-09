@@ -17,6 +17,7 @@ internal enum IpcCommand
     Ping,
     Shutdown,
     ReloadConfig,
+    SetCapsLockRemap,
     ExecuteShortcut,
     ExecuteText,
     ExecuteMouse
