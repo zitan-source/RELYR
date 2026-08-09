@@ -215,7 +215,7 @@ public partial class MainWindow : Window
         engine.ShouldInterceptInput = runtimeRole == RuntimeRole.ElevatedHelper
             ? () => engine.HasCapturedPhysicalInput || WindowMonitorService.IsForegroundWindowElevated()
             : runtimeRole == RuntimeRole.UiHost
-                ? () => engine.HasCapturedPhysicalInput || !WindowMonitorService.IsForegroundWindowElevated()
+                ? () => ShouldUiHostInterceptInput(engine.HasCapturedPhysicalInput, WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected)
                 : null;
         engine.IsNativeMouseDrag = input => FindMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
         engine.HasLegacyMouseDrag = input => FindMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
@@ -1882,6 +1882,8 @@ public partial class MainWindow : Window
         => MappingInterceptsInput(map)
             && (map!.Kind is ActionKind.Key or ActionKind.Shortcut
                 || map.LongPressKind is ActionKind.Key or ActionKind.Shortcut);
+    internal static bool ShouldUiHostInterceptInput(bool hasCapturedInput, bool foregroundElevated, bool helperConnected)
+        => hasCapturedInput || !foregroundElevated || !helperConnected;
     bool TryGetLayerMappingSnapshot(string input, out LayerMappingSnapshot snapshot)
     {
         string candidate = input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) ? input["Taskbar+".Length..] : input;

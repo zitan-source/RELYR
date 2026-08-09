@@ -19,7 +19,14 @@ internal static class IpcRuntime
     {
         get; set;
     }
-    internal static bool IsConnected => client != null;
+    internal static bool IsConnected
+    {
+        get
+        {
+            lock (sync)
+                return client != null;
+        }
+    }
     internal static IpcPeerInfo? HelperIdentity
     {
         get
