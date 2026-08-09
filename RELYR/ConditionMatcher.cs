@@ -56,6 +56,21 @@ public static class ConditionMatcher
         }
         catch { return false; }
     }
+    internal static bool IsForegroundVirtualMachineConsole()
+    {
+        var hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero)
+            return false;
+        GetWindowThreadProcessId(hwnd, out var pid);
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            return IsVirtualMachineConsoleProcess(process.ProcessName);
+        }
+        catch { return false; }
+    }
+    internal static bool IsVirtualMachineConsoleProcess(string processName)
+        => Path.GetFileNameWithoutExtension(processName).Equals("VirtualBoxVM", StringComparison.OrdinalIgnoreCase);
     public static string ProcessUnderCursor()
     {
         return ProcessesUnderCursor().FirstOrDefault() ?? "";

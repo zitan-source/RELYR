@@ -213,9 +213,9 @@ public partial class MainWindow : Window
         // foreground window, while either hook retains an already captured
         // press until its physical release is received.
         engine.ShouldInterceptInput = runtimeRole == RuntimeRole.ElevatedHelper
-            ? () => engine.HasCapturedPhysicalInput || WindowMonitorService.IsForegroundWindowElevated()
+            ? () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated())
             : runtimeRole == RuntimeRole.UiHost
-                ? () => ShouldUiHostInterceptInput(engine.HasCapturedPhysicalInput, WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected)
+                ? () => ShouldUiHostInterceptInput(engine.HasCapturedPhysicalInput, ConditionMatcher.IsForegroundVirtualMachineConsole(), WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected)
                 : null;
         engine.IsNativeMouseDrag = input => FindMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
         engine.HasLegacyMouseDrag = input => FindMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
@@ -1882,8 +1882,8 @@ public partial class MainWindow : Window
         => MappingInterceptsInput(map)
             && (map!.Kind is ActionKind.Key or ActionKind.Shortcut
                 || map.LongPressKind is ActionKind.Key or ActionKind.Shortcut);
-    internal static bool ShouldUiHostInterceptInput(bool hasCapturedInput, bool foregroundElevated, bool helperConnected)
-        => hasCapturedInput || !foregroundElevated || !helperConnected;
+    internal static bool ShouldUiHostInterceptInput(bool hasCapturedInput, bool virtualMachineConsoleForeground, bool foregroundElevated, bool helperConnected)
+        => hasCapturedInput || (!virtualMachineConsoleForeground && (!foregroundElevated || !helperConnected));
     bool TryGetLayerMappingSnapshot(string input, out LayerMappingSnapshot snapshot)
     {
         string candidate = input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) ? input["Taskbar+".Length..] : input;
