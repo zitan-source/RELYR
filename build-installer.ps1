@@ -28,6 +28,11 @@ if($installerText -notmatch '(?i)--uninstall-needs-restart' -or $installerText -
 if($installerText -notmatch '(?im)^AlwaysRestart=no\s*$' -or $installerText -notmatch '(?im)^RestartIfNeededByRun=no\s*$'){
   throw "Normal installs and upgrades must not request a Windows restart"
 }
+$usesPreviousAppDir=$installerText -match '(?im)^UsePreviousAppDir=yes\s*$'
+$allowsPrivateFileRollback=$installerText -match '(?im)^Source:.*DestDir:\s*"\{app\}".*Flags:.*\bignoreversion\b'
+if(-not ($usesPreviousAppDir -and $allowsPrivateFileRollback)){
+  throw "Installer must reuse the existing install directory and permit rollback of RELYR-private files"
+}
 $usesPreviousTasks=$installerText -match '(?im)^UsePreviousTasks=yes\s*$'
 $hasUpgradeFlow=$installerText -match '(?is)function\s+IsUpgradeInstall.*function\s+ShouldSkipPage.*wpSelectTasks'
 $explainsPreservedSettings=$installerText -match '(?is)RELYRをアップデートします.*自動起動設定はそのまま引き継がれます'
@@ -46,6 +51,9 @@ if($installerText -notmatch '(?im)^PrivilegesRequired=admin\s*$'){
 }
 if($installerText -notmatch '(?im)^CloseApplications=yes\s*$' -or $installerText -notmatch '(?im)^CloseApplicationsFilter=RELYR\.exe,InputCustomizer\.exe\s*$'){
   throw "Installer must use Windows Restart Manager for RELYR executables before replacement"
+}
+if($installerText -notmatch '(?im)^ApplicationsFound=.*メイン画面.*管理者入力ヘルパー.*2件表示.*正常.*$'){
+  throw "Installer must explain the two expected RELYR processes without changing shutdown behavior"
 }
 if($installerText -notmatch '(?im)^Compression=none\s*$' -or $installerText -notmatch '(?im)^SolidCompression=no\s*$'){
   throw "Installer must keep payloads uncompressed and non-solid for transparent scanning"

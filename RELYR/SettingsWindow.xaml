@@ -5,12 +5,8 @@
         WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
         Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}">
   <Window.Resources>
-    <Style TargetType="Button">
-      <Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="15,8"/><Setter Property="MinHeight" Value="36"/>
-      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+      <Setter Property="Margin" Value="4"/>
     </Style>
     <Style TargetType="CheckBox">
       <Setter Property="Margin" Value="0,7"/><Setter Property="FontSize" Value="13"/>
@@ -19,7 +15,7 @@
     <Style TargetType="RadioButton">
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
     </Style>
-    <Style TargetType="TextBox">
+    <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
     </Style>
@@ -30,7 +26,7 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ListBoxItem">
-            <Border x:Name="ItemBackground" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+            <Border x:Name="ItemBackground" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
               <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -84,7 +80,7 @@
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="ComboBorder" Background="{DynamicResource ControlBackground}"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4">
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}" SnapsToDevicePixels="True">
                       <Grid>
                         <ContentPresenter Margin="10,0,34,0" VerticalAlignment="Center"
                                           HorizontalAlignment="Left"
@@ -108,7 +104,7 @@
                      AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                 <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                         MaxHeight="250" Background="{DynamicResource ControlBackground}"
-                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}"
                         SnapsToDevicePixels="True">
                   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ItemsPresenter/>
@@ -122,7 +118,7 @@
     </Style>
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background" Value="{DynamicResource DangerBackground}"/><Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/><Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/><Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/><Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/><Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
   </Window.Resources>
 
@@ -237,10 +233,10 @@
                   <ColumnDefinition Width="42"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="ClockSolidColorBox" MinHeight="36" Padding="9,6" VerticalContentAlignment="Center"
+                <TextBox x:Name="ClockSolidColorBox" VerticalContentAlignment="Center"
                          TextChanged="ClockSolidColor_Changed" ToolTip="#RRGGBB形式で入力します"/>
                 <Border x:Name="ClockSolidColorSample" Grid.Column="1" Width="32" Height="32" Margin="8,0,0,0"
-                        CornerRadius="6" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}"/>
+                        CornerRadius="{StaticResource ControlCornerRadius}" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}" SnapsToDevicePixels="True"/>
                 <WrapPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0,0,0">
                   <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#101F2E" Background="#101F2E" ToolTip="ネイビー" Click="ClockColorPreset_Click"/>
                   <Button Width="34" Height="30" Margin="2" Padding="0" Tag="#111827" Background="#111827" ToolTip="チャコール" Click="ClockColorPreset_Click"/>
@@ -252,7 +248,7 @@
               </Grid>
               <Grid x:Name="ClockImagePicker" Margin="0,8,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBox x:Name="ClockBackgroundImageBox" MinHeight="38" Padding="9,7" VerticalContentAlignment="Center" IsReadOnly="True"/>
+                <TextBox x:Name="ClockBackgroundImageBox" VerticalContentAlignment="Center" IsReadOnly="True"/>
                 <Button Grid.Column="1" Content="参照…" Click="BrowseClockBackground_Click" Margin="8,0,0,0"/>
               </Grid>
               <TextBlock Text="すりガラスでは、起動直前の各モニター画面をぼかして表示します。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
@@ -327,7 +323,7 @@
                 </CheckBox>
                 <TextBlock Text="リピート開始までの時間" Foreground="{DynamicResource PrimaryText}"/>
                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                  <TextBox x:Name="SpaceRepeatDelayBox" Width="82" Padding="8" FontSize="15"/>
+                  <TextBox x:Name="SpaceRepeatDelayBox" Width="82" FontSize="15"/>
                   <TextBlock Text="ms（100～2000）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
                 </StackPanel>
               </StackPanel>
@@ -336,7 +332,7 @@
                 <TextBlock Text="ジェスチャー感度" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="方向を確定する移動量" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,6"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                  <TextBox x:Name="GestureThresholdBox" Width="72" Padding="8" FontSize="15"/>
+                  <TextBox x:Name="GestureThresholdBox" Width="72" FontSize="15"/>
                   <TextBlock Text="px（3～100）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
                 </StackPanel>
                 <CheckBox x:Name="LockGestureCursorBox" Margin="0,5,0,0" ToolTip="オフにすると、カーソルを動かしながらジェスチャーできます">
@@ -353,9 +349,9 @@
           <Border Style="{StaticResource Card}">
             <StackPanel>
               <TextBlock Text="監視するフォルダー" FontSize="16" FontWeight="SemiBold"/>
-              <Grid Margin="0,7,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="ArchiveWatchFolderBox" MinHeight="38" Padding="9,7" VerticalContentAlignment="Center"/><Button Grid.Column="1" Content="参照…" Click="BrowseArchiveWatchFolder_Click" Margin="8,0,0,0"/></Grid>
+              <Grid Margin="0,7,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="ArchiveWatchFolderBox" VerticalContentAlignment="Center"/><Button Grid.Column="1" Content="参照…" Click="BrowseArchiveWatchFolder_Click" Margin="8,0,0,0"/></Grid>
               <TextBlock Text="解凍後の保存先" FontSize="16" FontWeight="SemiBold"/>
-              <Grid Margin="0,7,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="ArchiveDestinationFolderBox" MinHeight="38" Padding="9,7" VerticalContentAlignment="Center"/><Button Grid.Column="1" Content="参照…" Click="BrowseArchiveDestinationFolder_Click" Margin="8,0,0,0"/></Grid>
+              <Grid Margin="0,7,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="ArchiveDestinationFolderBox" VerticalContentAlignment="Center"/><Button Grid.Column="1" Content="参照…" Click="BrowseArchiveDestinationFolder_Click" Margin="8,0,0,0"/></Grid>
               <TextBlock Text="空欄の場合は監視フォルダー内へ展開します。" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,5"/>
               <CheckBox x:Name="ExtractBox" Content="指定したフォルダーの圧縮ファイルを自動解凍する" Margin="0,5,0,4"/>
               <CheckBox x:Name="DeleteBox" Content="解凍成功後に元の圧縮ファイルを削除する" Margin="25,4,0,4"/>

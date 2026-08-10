@@ -42,7 +42,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        string[] args = e.Args;
+        string[] args = WaitForRestartParent(e.Args);
 #if !PRODUCTION_PUBLISH
         if (args.Contains("--drop-diagnostics", StringComparer.OrdinalIgnoreCase))
             Environment.SetEnvironmentVariable("RELYR_DROP_DIAGNOSTICS", "1");
@@ -386,6 +386,23 @@ public partial class App : System.Windows.Application
         if (args.Contains("--tray-exit-regression-host", StringComparer.OrdinalIgnoreCase))
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(window.ExecuteTrayExitMenuItemForTest));
 #endif
+    }
+    static string[] WaitForRestartParent(string[] args)
+    {
+        int marker = Array.FindIndex(args, value => value.Equals("--restart-after-pid", StringComparison.OrdinalIgnoreCase));
+        if (marker < 0)
+            return args;
+        if (marker + 1 < args.Length && int.TryParse(args[marker + 1], out int parentId) && parentId > 0 && parentId != Environment.ProcessId)
+        {
+            try
+            {
+                using var parent = Process.GetProcessById(parentId);
+                parent.WaitForExit(10000);
+            }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
+        }
+        return args.Where((_, index) => index != marker && index != marker + 1).ToArray();
     }
 
     void StartElevatedHelper(IReadOnlyList<string> args)

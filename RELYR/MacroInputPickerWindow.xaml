@@ -18,7 +18,7 @@
           <ControlTemplate TargetType="Button">
             <Border x:Name="Border" Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="5" Padding="{TemplateBinding Padding}">
+                    CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -34,13 +34,12 @@
         </Setter.Value>
       </Setter>
     </Style>
-    <Style TargetType="TextBox">
+    <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Padding" Value="10,7"/>
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
@@ -55,8 +54,7 @@
       <Setter Property="Template"><Setter.Value>
         <ControlTemplate TargetType="Button">
           <Grid SnapsToDevicePixels="True">
-            <Path x:Name="EnterShape" Data="M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" StrokeLineJoin="Round"/>
-            <Path Data="M 5,1.5 L 155,1.5" Stroke="#24FFFFFF" StrokeThickness="1" IsHitTestVisible="False"/>
+            <Path x:Name="EnterShape" Data="M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" StrokeLineJoin="Round"/>
             <ContentPresenter Margin="18,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Grid>
           <ControlTemplate.Triggers>
@@ -85,7 +83,7 @@
     </Grid>
 
     <Border x:Name="InputSurfaceBorder" Grid.Row="1" Background="{DynamicResource AppBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
-            BorderThickness="1" CornerRadius="8" Padding="12" ClipToBounds="True">
+            BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="12" ClipToBounds="True" SnapsToDevicePixels="True">
       <Viewbox x:Name="InputViewbox" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True"
                HorizontalAlignment="Center" VerticalAlignment="Center">
         <Canvas x:Name="InputCanvas" Width="1200" Height="700" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
@@ -110,7 +108,7 @@
       </Grid>
       <Border x:Name="ShortcutEditorPanel" Grid.Row="1" Visibility="Collapsed"
               Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
-              BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,0">
+              BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10" Margin="0,10,0,0" SnapsToDevicePixels="True">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>

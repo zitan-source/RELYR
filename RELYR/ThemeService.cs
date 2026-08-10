@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using Microsoft.Win32;
 using WpfColor = System.Windows.Media.Color;
 
@@ -26,8 +27,15 @@ internal static class ThemeService
         };
         var colors = usesDark ? DarkPalette : LightPalette;
         if (System.Windows.Application.Current is { } app)
+        {
             foreach (var (key, value) in colors)
-                app.Resources[key] = new SolidColorBrush(Parse(value));
+            {
+                var brush = new SolidColorBrush(Parse(value));
+                brush.Freeze();
+                app.Resources[key] = brush;
+            }
+            ApplyMaterialResources(app, usesDark);
+        }
         ThemeChanged?.Invoke();
     }
 
@@ -57,25 +65,55 @@ internal static class ThemeService
     internal static WpfColor Color(string key) => Brush(key).Color;
     static WpfColor Parse(string value) => (WpfColor)System.Windows.Media.ColorConverter.ConvertFromString(value);
 
+    static void ApplyMaterialResources(System.Windows.Application app, bool dark)
+    {
+        app.Resources["MouseBodyBrush"] = Gradient(dark
+            ? new[] { ("#454A50", 0d), ("#30343A", 1d) }
+            : new[] { ("#FFFFFF", 0d), ("#EAEBED", 1d) });
+        app.Resources["CardShadowEffect"] = Shadow(dark ? "#08090A" : "#6B6E73", 20, 5, dark ? .42 : .24);
+        app.Resources["GroupCardShadowEffect"] = Shadow(dark ? "#08090A" : "#70747A", 12, 3, dark ? .28 : .18);
+        app.Resources["MouseBodyShadowEffect"] = Shadow(dark ? "#08090A" : "#676B71", 18, 7, dark ? .62 : .34);
+    }
+
+    static LinearGradientBrush Gradient(IEnumerable<(string Color, double Offset)> stops)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new System.Windows.Point(0, 0), EndPoint = new System.Windows.Point(0, 1) };
+        foreach (var (color, offset) in stops)
+            brush.GradientStops.Add(new GradientStop(Parse(color), offset));
+        brush.Freeze();
+        return brush;
+    }
+
+    static DropShadowEffect Shadow(string color, double blurRadius, double depth, double opacity) => new()
+    {
+        Color = Parse(color),
+        BlurRadius = blurRadius,
+        ShadowDepth = depth,
+        Direction = 270,
+        Opacity = opacity,
+        RenderingBias = RenderingBias.Performance
+    };
+
     static readonly IReadOnlyDictionary<string, string> DarkPalette = new Dictionary<string, string>
     {
-        ["AppBackground"] = "#151719",
-        ["HeaderBackground"] = "#1C1E21",
-        ["FooterBackground"] = "#17191C",
-        ["PaneBackground"] = "#1C1E21",
-        ["SurfaceBackground"] = "#202225",
-        ["CardBackground"] = "#25282C",
-        ["ControlBackground"] = "#2B2E33",
-        ["ControlHoverBackground"] = "#363A40",
-        ["ControlPressedBackground"] = "#253D57",
-        ["InputBackground"] = "#202225",
-        ["BorderBrush"] = "#484B50",
-        ["SubtleBorderBrush"] = "#35383D",
-        ["PrimaryText"] = "#F2F2F3",
-        ["SecondaryText"] = "#A7ABB1",
-        ["MutedText"] = "#7F848C",
+        ["AppBackground"] = "#161719",
+        ["HeaderBackground"] = "#1A1B1D",
+        ["FooterBackground"] = "#191A1C",
+        ["PaneBackground"] = "#191A1C",
+        ["SurfaceBackground"] = "#1D1F21",
+        ["CardBackground"] = "#212326",
+        ["ControlBackground"] = "#292C30",
+        ["DeckPreviewCellBackground"] = "#292C30",
+        ["ControlHoverBackground"] = "#34383D",
+        ["ControlPressedBackground"] = "#183F38",
+        ["InputBackground"] = "#1C1E20",
+        ["BorderBrush"] = "#41454B",
+        ["SubtleBorderBrush"] = "#2D3034",
+        ["PrimaryText"] = "#F4F4F5",
+        ["SecondaryText"] = "#A9ADB3",
+        ["MutedText"] = "#7D828A",
         ["AccentBrush"] = "#1DA78C",
-        ["AccentStrongBrush"] = "#1DA78C",
+        ["AccentStrongBrush"] = "#168D76",
         ["AccentButtonText"] = "#FFFFFF",
         ["AccentSoftBrush"] = "#183F38",
         ["WarningBrush"] = "#FFD60A",
@@ -84,9 +122,10 @@ internal static class ThemeService
         ["DangerHoverBackground"] = "#69302C",
         ["DangerForeground"] = "#FFFFFF",
         ["DangerHoverForeground"] = "#FFFFFF",
-        ["KeyBackground"] = "#292C30",
-        ["ReservedKeyBackground"] = "#35383C",
-        ["LayerActiveBackground"] = "#164B42",
+        ["KeyBackground"] = "#272A2E",
+        ["ReservedKeyBackground"] = "#30343A",
+        ["KeyDepthBrush"] = "#111214",
+        ["LayerActiveBackground"] = "#183F38",
         ["EditingKeyBackground"] = "#1DA78C",
         ["EditingKeyBorderBrush"] = "#6BD7C0",
         ["ActionKeyIconBrush"] = "#F09A3E",
@@ -100,23 +139,24 @@ internal static class ThemeService
 
     static readonly IReadOnlyDictionary<string, string> LightPalette = new Dictionary<string, string>
     {
-        ["AppBackground"] = "#F5F5F7",
-        ["HeaderBackground"] = "#FFFFFF",
-        ["FooterBackground"] = "#F0F0F2",
-        ["PaneBackground"] = "#F2F2F4",
-        ["SurfaceBackground"] = "#FAFAFB",
+        ["AppBackground"] = "#F4F5F7",
+        ["HeaderBackground"] = "#FAFAFB",
+        ["FooterBackground"] = "#F7F7F8",
+        ["PaneBackground"] = "#F7F7F8",
+        ["SurfaceBackground"] = "#F8F8F9",
         ["CardBackground"] = "#FFFFFF",
-        ["ControlBackground"] = "#FFFFFF",
-        ["ControlHoverBackground"] = "#E9E9EC",
-        ["ControlPressedBackground"] = "#DCEBFA",
+        ["ControlBackground"] = "#FBFBFC",
+        ["DeckPreviewCellBackground"] = "#E1E4E8",
+        ["ControlHoverBackground"] = "#F0F1F3",
+        ["ControlPressedBackground"] = "#DDF4EF",
         ["InputBackground"] = "#FFFFFF",
-        ["BorderBrush"] = "#C7C7CC",
-        ["SubtleBorderBrush"] = "#DEDEE2",
-        ["PrimaryText"] = "#1D1D1F",
-        ["SecondaryText"] = "#626268",
-        ["MutedText"] = "#86868B",
+        ["BorderBrush"] = "#D6D8DC",
+        ["SubtleBorderBrush"] = "#E5E6E8",
+        ["PrimaryText"] = "#202124",
+        ["SecondaryText"] = "#676B73",
+        ["MutedText"] = "#8A8E96",
         ["AccentBrush"] = "#1DA78C",
-        ["AccentStrongBrush"] = "#1DA78C",
+        ["AccentStrongBrush"] = "#168D76",
         ["AccentButtonText"] = "#FFFFFF",
         ["AccentSoftBrush"] = "#DDF4EF",
         ["WarningBrush"] = "#9A6700",
@@ -125,9 +165,10 @@ internal static class ThemeService
         ["DangerHoverBackground"] = "#FFE5E7",
         ["DangerForeground"] = "#FFFFFF",
         ["DangerHoverForeground"] = "#A50011",
-        ["KeyBackground"] = "#FFFFFF",
-        ["ReservedKeyBackground"] = "#E7E7EA",
-        ["LayerActiveBackground"] = "#D6F0EA",
+        ["KeyBackground"] = "#FBFBFC",
+        ["ReservedKeyBackground"] = "#EEF0F2",
+        ["KeyDepthBrush"] = "#D4D6DA",
+        ["LayerActiveBackground"] = "#DDF4EF",
         ["EditingKeyBackground"] = "#1DA78C",
         ["EditingKeyBorderBrush"] = "#147562",
         ["ActionKeyIconBrush"] = "#B85B00",

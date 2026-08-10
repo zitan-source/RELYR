@@ -270,6 +270,8 @@ public sealed class ConfigService
     {
         value.DeckPanelLeft = FiniteOrNull(value.DeckPanelLeft);
         value.DeckPanelTop = FiniteOrNull(value.DeckPanelTop);
+        value.DeckPanelWidth = PositiveFiniteOrNull(value.DeckPanelWidth);
+        value.DeckPanelHeight = PositiveFiniteOrNull(value.DeckPanelHeight);
         value.NumpadPanelLeft = FiniteOrNull(value.NumpadPanelLeft);
         value.NumpadPanelTop = FiniteOrNull(value.NumpadPanelTop);
         value.ExtendedKeypadPanelLeft = FiniteOrNull(value.ExtendedKeypadPanelLeft);
@@ -278,6 +280,8 @@ public sealed class ConfigService
 
     static double? FiniteOrNull(double? value)
         => value is double number && double.IsFinite(number) ? number : null;
+    static double? PositiveFiniteOrNull(double? value)
+        => value is double number && double.IsFinite(number) && number > 0 ? number : null;
 
     static void NormalizeActiveProfile(AppConfig value)
     {

@@ -4,11 +4,10 @@
         Title="起動するアプリを選択" Width="760" Height="620" MinWidth="620" MinHeight="460"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" ShowInTaskbar="False">
   <Window.Resources>
-    <Style TargetType="Button">
-      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="18,9"/><Setter Property="Margin" Value="4"/><Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Border" Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+      <Setter Property="Margin" Value="4"/>
     </Style>
-    <Style TargetType="TextBox"><Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="Padding" Value="10,8"/><Setter Property="FontSize" Value="14"/></Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}"><Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="FontSize" Value="14"/></Style>
   </Window.Resources>
   <Grid Margin="20">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

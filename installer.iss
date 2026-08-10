@@ -41,6 +41,7 @@ RestartApplications=no
 ; returned by UninstallNeedRestart below.
 AlwaysRestart=no
 RestartIfNeededByRun=no
+UsePreviousAppDir=yes
 UsePreviousTasks=yes
 CloseApplicationsFilter=RELYR.exe,InputCustomizer.exe
 UninstallDisplayIcon={app}\{#AppExe}
@@ -58,6 +59,8 @@ ChangesAssociations=yes
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Messages]
+ApplicationsFound=RELYRは「メイン画面」と「管理者入力ヘルパー」の2つで動作します。下にRELYRが2件表示されるのは正常です。セットアップに両方を自動終了させることを推奨します。
+ApplicationsFound2=RELYRは「メイン画面」と「管理者入力ヘルパー」の2つで動作します。下にRELYRが2件表示されるのは正常です。セットアップに両方を自動終了させることを推奨します。
 UninstalledAndNeedsRestart=CapsLockを標準の動作に戻す変更を反映するには、Windowsの再起動が必要です。%n%n今すぐ再起動しますか？
 YesRadio=今すぐ再起動する(&Y)
 NoRadio=後で再起動する(&N)

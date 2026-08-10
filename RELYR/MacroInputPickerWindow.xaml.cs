@@ -195,14 +195,15 @@ public partial class MacroInputPickerWindow : Window
         double x = 0;
         foreach (var key in keys)
         {
-            AddButton(key.Key, key.Label, x, y, key.Width, 52);
-            x += key.Width + Gap;
+            double width = key.Width;
+            AddButton(key.Key, key.Label, x, y, width, 52);
+            x += width + Gap;
         }
     }
 
     void AddJisEnter()
     {
-        var geometry = Geometry.Parse("M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z");
+        var geometry = Geometry.Parse("M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z");
         var button = CreateButton("Enter", "Enter", 160, 108);
         button.Style = (Style)FindResource("JisEnterButton");
         button.Clip = geometry;

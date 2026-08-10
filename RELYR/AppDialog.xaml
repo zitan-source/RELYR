@@ -6,36 +6,13 @@
         ShowInTaskbar="False" Background="{DynamicResource SurfaceBackground}"
         Foreground="{DynamicResource PrimaryText}">
   <Window.Resources>
-    <Style TargetType="Button">
+    <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
       <Setter Property="MinWidth" Value="104"/>
       <Setter Property="Height" Value="40"/>
       <Setter Property="Margin" Value="6,0,0,0"/>
-      <Setter Property="Padding" Value="18,8"/>
-      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="Border" CornerRadius="6" Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
-                <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-              </Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Border" Property="Opacity" Value="0.76"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
     </Style>
   </Window.Resources>
-  <Border BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="8"
+  <Border BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource WindowCornerRadius}"
           Background="{DynamicResource SurfaceBackground}" Padding="24">
     <Grid>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

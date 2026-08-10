@@ -5,36 +5,16 @@
         MinWidth="760" MinHeight="560" WindowStartupLocation="CenterOwner"
         Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}">
   <Window.Resources>
-    <Style TargetType="Button">
-      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-    <Style TargetType="TextBox">
+    <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}"/>
+    <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Padding" Value="10,7"/>
       <Setter Property="FontSize" Value="14"/>
     </Style>
-    <Style x:Key="CatalogList" TargetType="ListBox">
+    <Style x:Key="CatalogList" TargetType="ListBox" BasedOn="{StaticResource AppListBoxStyle}">
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -55,7 +35,7 @@
       <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions><TextBlock Text="中カテゴリ" FontWeight="SemiBold" Margin="4,0,0,6"/><ListBox x:Name="CategoryList" Grid.Row="1" SelectionChanged="CategoryChanged" Style="{StaticResource CatalogList}"/></Grid>
       <Grid Grid.Column="4"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions><Grid><TextBlock Text="アクション" FontWeight="SemiBold" Margin="4,0,0,6"/><TextBlock x:Name="ResultCount" HorizontalAlignment="Right" Foreground="{DynamicResource SecondaryText}" Margin="0,0,4,6"/></Grid><ListBox x:Name="ActionList" Grid.Row="1" SelectionChanged="ActionChanged" MouseDoubleClick="ActionDoubleClick" Style="{StaticResource CatalogList}"><ListBox.ItemTemplate><DataTemplate><StackPanel Margin="6"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="{Binding Description}" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,0"/><TextBlock Text="{Binding Value}" Foreground="{DynamicResource AccentBrush}" FontSize="11" Margin="0,3,0,0"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox></Grid>
     </Grid>
-    <Border Grid.Row="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,12,0,0">
+    <Border Grid.Row="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10" Margin="0,12,0,0">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <Button Content="キーパッドから入力" Padding="14,8" Click="OpenKeypad_Click"/>

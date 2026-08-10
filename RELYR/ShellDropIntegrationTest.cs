@@ -42,7 +42,9 @@ internal static class ShellDropIntegrationTest
             var config = new AppConfig { DeckLayouts = [layout], SharedDefaultDeckLayoutId = layout.Id, Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = layout.Id }] };
             overlay = new DeckPanelOverlayWindow(config, null, selectedLayout: layout);
             overlay.Show();
+            overlay.BeginDeferredBuild();
             overlay.UpdateLayout();
+            overlay.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
             IntPtr hwnd = new WindowInteropHelper(overlay).Handle;
             if (hwnd == IntPtr.Zero || !overlay.UsesShellFileDrop)
                 throw new InvalidOperationException("Shell drop target was not enabled.");

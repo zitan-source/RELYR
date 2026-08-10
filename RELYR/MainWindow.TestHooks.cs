@@ -37,6 +37,10 @@ public partial class MainWindow
     internal bool IsDeckEditorAudioPlayingForTest => deckEditorAudioPlayer != null;
     internal bool IsDeckEditorThumbnailOpenForTest => deckEditorThumbnailPopup?.IsOpen == true;
     internal Action<Window>? NewDeckDialogLoadedForTest { get; set; }
+#if !PRODUCTION_PUBLISH
+    internal Func<bool, string?, CatalogAction?>? ActionPickerRequestedForTest { get; set; }
+    internal Action<MacroInputPickerWindow>? KeypadInputRequestedForTest { get; set; }
+#endif
     internal WindowActionTarget DeckWindowActionTargetForTest => DeckExecutionConfig().WindowActionTarget;
 
     internal DeckLayoutDefinition AddDeckLayoutForTest(string name, int columns, int rows)
@@ -53,6 +57,9 @@ public partial class MainWindow
     internal void ShowNewDeckDialogForTest() => PromptNewDeckLayout();
 
 #if !PRODUCTION_PUBLISH
+    internal string[] TrayMenuItemTextsForTest()
+        => tray.ContextMenuStrip?.Items.OfType<System.Windows.Forms.ToolStripItem>().Select(item => item.Text ?? "").ToArray() ?? [];
+
     internal void ExecuteTrayExitMenuItemForTest()
     {
         if (!Dispatcher.CheckAccess())
@@ -86,15 +93,10 @@ public partial class MainWindow
     internal void RefreshLayerButtonsForTest() => UpdateLayerButtons();
     internal void SaveAndApplyForTest() => SaveAndApply("テスト：設定を保存し、エンジンへ反映しました");
 
-    internal void ChooseDestinationForTest(string key)
-    {
-        var button = VisualInputButtons().First(candidate => string.Equals(candidate.Tag?.ToString(), key, StringComparison.OrdinalIgnoreCase));
-        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
-        {
-            RoutedEvent = Mouse.PreviewMouseDownEvent
-        };
-        DestinationButton_PreviewMouseDown(button, args);
-    }
+    internal bool EnterPhysicalExecutionKeyForTest(Key key, ModifierKeys modifiers, bool longPress = false)
+        => ApplyPhysicalExecutionKey(longPress ? LongValueBox : ValueBox, key, modifiers);
+    internal void OpenKeypadInputForTest(bool longPress = false)
+        => KeypadInput_Click(longPress ? LongKindBox : KindBox, new RoutedEventArgs());
 
     internal void SetCapsLockRemapForTest(bool enabled)
     {

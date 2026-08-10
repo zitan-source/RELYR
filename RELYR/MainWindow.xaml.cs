@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     public static readonly DependencyProperty IsMultiSelectedProperty = DependencyProperty.RegisterAttached("IsMultiSelected", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public static bool GetIsMultiSelected(DependencyObject element) => (bool)element.GetValue(IsMultiSelectedProperty);
     public static void SetIsMultiSelected(DependencyObject element, bool value) => element.SetValue(IsMultiSelectedProperty, value);
+    public static readonly DependencyProperty IsCurrentSelectedProperty = DependencyProperty.RegisterAttached("IsCurrentSelected", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static bool GetIsCurrentSelected(DependencyObject element) => (bool)element.GetValue(IsCurrentSelectedProperty);
+    public static void SetIsCurrentSelected(DependencyObject element, bool value) => element.SetValue(IsCurrentSelectedProperty, value);
     public static readonly DependencyProperty IsSelectionPulseActiveProperty = DependencyProperty.RegisterAttached("IsSelectionPulseActive", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public static bool GetIsSelectionPulseActive(DependencyObject element) => (bool)element.GetValue(IsSelectionPulseActiveProperty);
     public static void SetIsSelectionPulseActive(DependencyObject element, bool value) => element.SetValue(IsSelectionPulseActiveProperty, value);
@@ -71,6 +74,8 @@ public partial class MainWindow : Window
     private bool editingSelectedInput;
     private bool selectionPulseSuppressed;
     int exitRequested;
+    int restartRequested;
+    int lowerKeyboardScaleSyncGeneration;
     string? pendingDetectedLayer;
     bool updateInProgress;
     DateTimeOffset lastAutomaticUpdateCheckAttempt;
@@ -170,7 +175,8 @@ public partial class MainWindow : Window
             PersistDeckPanelPosition,
             PersistInputPanelPosition,
             HandleOverlayDeckLayoutChanged,
-            HandleOverlayDeckSlotsChanged);
+            HandleOverlayDeckSlotsChanged,
+            PersistDeckPanelSize);
         Func<string, WindowActionTarget, bool>? ipcShortcut = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendShortcut : null;
         Func<string, bool>? ipcText = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendText : null;
         Func<string, bool>? ipcMouse = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendMouse : null;
@@ -191,8 +197,8 @@ public partial class MainWindow : Window
         var longActionOptions = ActionOptions(allowGesture: false);
         KindBox.ItemsSource = shortActionOptions;
         LongKindBox.ItemsSource = longActionOptions;
-        KindBox.SelectedValuePath = nameof(ActionOption.Kind);
-        LongKindBox.SelectedValuePath = nameof(ActionOption.Kind);
+        KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
+        LongKindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
         BuildKeyboard();
         BuildDeckManagementPanel();
         engine.UseUsLayout = config.KeyboardLayout == "US";
@@ -343,18 +349,46 @@ public partial class MainWindow : Window
 
     void ArrangeInputWorkspace()
     {
+        if (!ReferenceEquals(LayerNavigationPane.Parent, ShellDock))
+        {
+            if (LayerNavigationPane.Parent is System.Windows.Controls.Panel navigationParent)
+                navigationParent.Children.Remove(LayerNavigationPane);
+            DockPanel.SetDock(LayerNavigationPane, Dock.Left);
+            ShellDock.Children.Insert(0, LayerNavigationPane);
+        }
         if (LayerButtonsPanel.Parent is System.Windows.Controls.Panel layerParent)
             layerParent.Children.Remove(LayerButtonsPanel);
         LayerButtonsPanel.Orientation = System.Windows.Controls.Orientation.Vertical;
         LayerButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         LayerNavigationHost.Children.Add(LayerButtonsPanel);
+        EnsureLayerCardIndicators();
 
         if (MousePanel.Parent is System.Windows.Controls.Panel mouseParent)
         {
             mouseParent.Children.Remove(MousePanel);
         }
         MouseHost.Child = MousePanel;
+        if (!ReferenceEquals(LeftBottomActions.Parent, LayerNavigationGrid))
+        {
+            if (LeftBottomActions.Parent is System.Windows.Controls.Panel actionsParent)
+                actionsParent.Children.Remove(LeftBottomActions);
+            LayerNavigationGrid.Children.Add(LeftBottomActions);
+        }
+        Grid.SetRow(LeftBottomActions, 2);
         UpdateLayerButtonWidths();
+    }
+
+    void EnsureLayerCardIndicators()
+    {
+        foreach (var button in LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>())
+        {
+            if (button.Content is not Grid grid || grid.Children.OfType<System.Windows.Shapes.Ellipse>().Any(x => Equals(x.Tag, "LayerActiveIndicator")))
+                continue;
+            var indicator = new System.Windows.Shapes.Ellipse { Tag = "LayerActiveIndicator", Style = (Style)FindResource("LayerActiveDot"), HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+            Grid.SetColumn(indicator, 0);
+            Grid.SetColumnSpan(indicator, grid.ColumnDefinitions.Count);
+            grid.Children.Add(indicator);
+        }
     }
 
     void WindowsThemeChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -569,8 +603,11 @@ public partial class MainWindow : Window
         double x = 0;
         foreach (var key in keys)
         {
-            AddKey(key.Key, key.Label, x, y, key.Width);
-            x += key.Width + 4;
+            // The JIS home row must leave a real four-pixel gutter before Enter.
+            // Keep the existing labels, but use 52px letter keys so the row ends at x=776.
+            double width = key.Width;
+            AddKey(key.Key, key.Label, x, y, width);
+            x += width + 4;
         }
     }
     void AddKey(string key, string label, double x, double y, double width, double height = 52)
@@ -614,11 +651,12 @@ public partial class MainWindow : Window
         double cursorX = numpadX + numpadWidth + SecondaryGroupGap;
         double cursorWidth = navigationWidth;
         double cursorHeight = SecondaryKeyTop + SecondaryKeyHeight * 2 + SecondaryKeyGap + SecondaryFramePadding;
-        AddSecondaryGroupFrame("ナビゲーション", 0, 0, navigationWidth, navigationHeight);
+        double commonHeight = Math.Max(navigationHeight, Math.Max(numpadHeight, cursorHeight));
+        AddSecondaryGroupFrame("ナビゲーション", 0, 0, navigationWidth, commonHeight);
         AddSecondaryGroupFrame("テンキー", numpadX, 0, numpadWidth, numpadHeight);
-        AddSecondaryGroupFrame("カーソルキー", cursorX, 0, cursorWidth, cursorHeight);
+        AddSecondaryGroupFrame("カーソルキー", cursorX, 0, cursorWidth, commonHeight);
         SecondaryKeyboardPanel.Width = cursorX + cursorWidth;
-        SecondaryKeyboardPanel.Height = numpadHeight;
+        SecondaryKeyboardPanel.Height = commonHeight;
     }
     void AddSecondaryGroupFrame(string title, double x, double y, double width, double height)
     {
@@ -627,18 +665,18 @@ public partial class MainWindow : Window
             Width = width,
             Height = height,
             Tag = title,
-            CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ThemeService.Brush("SubtleBorderBrush"),
-            Background = WpfBrushes.Transparent,
+            CornerRadius = new CornerRadius(0),
+            BorderThickness = new Thickness(0),
+            Background = System.Windows.Media.Brushes.Transparent,
+            Effect = null,
             IsHitTestVisible = false
         };
         Canvas.SetLeft(frame, x);
         Canvas.SetTop(frame, y);
         SecondaryKeyboardPanel.Children.Add(frame);
         var heading = new TextBlock { Text = title, Foreground = ThemeService.Brush("MutedText"), FontSize = 11, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
-        Canvas.SetLeft(heading, x + 10);
-        Canvas.SetTop(heading, y + 3);
+        Canvas.SetLeft(heading, x);
+        Canvas.SetTop(heading, y + 7);
         SecondaryKeyboardPanel.Children.Add(heading);
     }
     bool TrySecondaryPosition(string key, out double x, out double y)
@@ -648,7 +686,10 @@ public partial class MainWindow : Window
         double numpadX = navigationWidth + SecondaryGroupGap;
         double numpadWidth = SecondaryFramePadding * 2 + unit * 4 + SecondaryKeyGap * 3;
         double cursorX = numpadX + numpadWidth + SecondaryGroupGap;
-        double navLeft = SecondaryFramePadding, numpadLeft = numpadX + SecondaryFramePadding, cursorLeft = cursorX + SecondaryFramePadding;
+        // The main keyboard starts at the shared 18-DIP workspace inset. The
+        // secondary Viewbox owns that inset, so every lower group starts at
+        // its local zero instead of adding a second invisible card padding.
+        double navLeft = 0, numpadLeft = numpadX, cursorLeft = cursorX;
         (x, y) = key switch
         {
             "Insert" => (navLeft, SecondaryKeyTop),
@@ -689,7 +730,7 @@ public partial class MainWindow : Window
     {
         // Keep the inner step centered in the row gutter. A straight inner edge
         // prevents the visual gap next to ] from narrowing at the transition.
-        var roundedShape = Geometry.Parse("M 4,0 L 156,0 Q 160,0 160,4 L 160,104 Q 160,108 156,108 L 26,108 Q 22,108 22,104 L 22,54 L 0,54 L 0,4 Q 0,0 4,0 Z");
+        var roundedShape = Geometry.Parse("M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z");
         var button = MakeInputButton("Enter");
         button.Style = (Style)FindResource("JisEnterButton");
         button.Content = "Enter";
@@ -735,11 +776,6 @@ public partial class MainWindow : Window
         }
         if (MultiSelectToggle.IsChecked == true)
         {
-            if (!IsKeyboardInput(key))
-            {
-                ShowInlineNotice("複数選択ではキーボードのキーを選択できます");
-                return;
-            }
             if (!multiSelectedInputs.Add(key))
                 multiSelectedInputs.Remove(key);
             UpdateMultiSelectControls();
@@ -773,41 +809,39 @@ public partial class MainWindow : Window
             OpenShortcutForVisualInput(key);
         }
     }
-    void DestinationButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        var target = ValueBox.IsKeyboardFocusWithin ? ValueBox : LongValueBox.IsKeyboardFocusWithin ? LongValueBox : destinationInputTarget;
-        if (target == null && editingSelectedInput && sender is System.Windows.Controls.Button { Tag: "CapsLock" })
-            target = ValueBox;
-        if (target == null || !target.IsVisible || !target.IsEnabled || sender is not System.Windows.Controls.Button { Tag: string key })
-            return;
-        string token = key;
-        var parts = target.Text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-        parts.Add(token);
-        target.Text = string.Join("+", parts);
-        target.CaretIndex = target.Text.Length;
-        var kindBox = target == LongValueBox ? LongKindBox : KindBox;
-        if (parts.Count > 1)
-            kindBox.SelectedValue = ActionKind.Shortcut;
-        else if (key.StartsWith("Mouse", StringComparison.OrdinalIgnoreCase) || key.StartsWith("Wheel", StringComparison.OrdinalIgnoreCase) || key.StartsWith("Tilt", StringComparison.OrdinalIgnoreCase))
-            kindBox.SelectedValue = ActionKind.Shortcut;
-        else
-            kindBox.SelectedValue = ActionKind.Key;
-        e.Handled = true;
-        FocusExecutionValue(target);
-    }
     void ExecutionValue_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (sender is not TextBox target)
             return;
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        bool modifierKey = key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
-        ModifierKeys modifiers = Keyboard.Modifiers;
-        if (!modifierKey && modifiers == ModifierKeys.None)
+        if (!ApplyPhysicalExecutionKey(target, key, Keyboard.Modifiers))
             return;
-        target.Text = ShortcutTextForKey(key, modifiers);
-        target.CaretIndex = target.Text.Length;
-        (ReferenceEquals(target, LongValueBox) ? LongKindBox : KindBox).SelectedValue = ActionKind.Shortcut;
         e.Handled = true;
+    }
+    void ExecutionValue_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is not TextBox target || selected == null)
+            return;
+        destinationInputTarget = target;
+        editingSelectedInput = true;
+        UpdateExecutionEditButtons(target);
+    }
+    bool ApplyPhysicalExecutionKey(TextBox target, Key key, ModifierKeys modifiers)
+    {
+        bool modifierKey = key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
+        bool enterKey = key is Key.Return;
+        var kindBox = ReferenceEquals(target, LongValueBox) ? LongKindBox : KindBox;
+        var editorKind = kindBox.SelectedValue is ActionKind kind ? kind : ActionKind.None;
+        bool capturesSingleKey = editorKind is ActionKind.Key or ActionKind.Shortcut;
+        if (!modifierKey && !enterKey && modifiers == ModifierKeys.None && !capturesSingleKey)
+            return false;
+        string value = ShortcutTextForKey(key, modifiers);
+        if (value.Length == 0)
+            return false;
+        target.Text = value;
+        target.CaretIndex = target.Text.Length;
+        kindBox.SelectedValue = modifierKey || modifiers != ModifierKeys.None || editorKind == ActionKind.Shortcut ? ActionKind.Shortcut : ActionKind.Key;
+        return true;
     }
     internal static string ShortcutTextForKey(Key key, ModifierKeys modifiers)
     {
@@ -841,6 +875,7 @@ public partial class MainWindow : Window
             return key.ToString();
         return key switch
         {
+            Key.CapsLock => "CapsLock",
             Key.Return => "Enter",
             Key.Escape => "Esc",
             Key.Back => "Backspace",
@@ -880,7 +915,7 @@ public partial class MainWindow : Window
         if (sender is not System.Windows.Controls.Button { Tag: string key })
             return;
         e.Handled = true;
-        if (MultiSelectToggle.IsChecked == true && IsKeyboardInput(key) && multiSelectedInputs.Count > 0)
+        if (MultiSelectToggle.IsChecked == true && multiSelectedInputs.Count > 0)
         {
             var multiMenu = CreateMultiSelectionContextMenu();
             multiMenu.PlacementTarget = (System.Windows.Controls.Button)sender;
@@ -935,6 +970,13 @@ public partial class MainWindow : Window
     }
     void MultiCopy_Click(object sender, RoutedEventArgs e) => CopyMultiSelection();
     void MultiPaste_Click(object sender, RoutedEventArgs e) => PasteMultiSelection();
+    void MultiDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (MultiSelectToggle.IsChecked == true)
+            DeleteMultiSelection();
+        else
+            Delete_Click(sender, e);
+    }
     void CopyMultiSelection()
     {
         if (multiSelectedInputs.Count == 0)
@@ -945,7 +987,7 @@ public partial class MainWindow : Window
             return mapping == null ? null : CloneMapping(mapping);
         }, StringComparer.OrdinalIgnoreCase);
         UpdateMultiSelectControls();
-        ShowInlineNotice($"{copiedMultiMappings.Count}キーの割り当てをコピーしました");
+        ShowInlineNotice($"{copiedMultiMappings.Count}入力の割り当てをコピーしました");
     }
     void PasteMultiSelection()
     {
@@ -970,7 +1012,7 @@ public partial class MainWindow : Window
         MarkDirty();
         UpdateLayerButtons();
         ColorButtons();
-        ShowInlineNotice($"{targets.Count}キーへ割り当てを貼り付けました");
+        ShowInlineNotice($"{targets.Count}入力へ割り当てを貼り付けました");
     }
     void DeleteMultiSelection()
     {
@@ -987,7 +1029,6 @@ public partial class MainWindow : Window
         MultiSelectToggle.IsChecked = false;
         ShowInlineNotice($"{removed}件の割り当てを削除しました");
     }
-    static bool IsKeyboardInput(string key) => !key.StartsWith("Mouse", StringComparison.OrdinalIgnoreCase) && !key.StartsWith("Wheel", StringComparison.OrdinalIgnoreCase) && !key.StartsWith("Tilt", StringComparison.OrdinalIgnoreCase);
     string InputForCurrentLayer(string key) => currentLayer == "通常" ? key : currentLayer + "+" + key;
     void MultiSelectChanged(object sender, RoutedEventArgs e)
     {
@@ -996,7 +1037,7 @@ public partial class MainWindow : Window
             if (destinationInputTarget != null || editingSelectedInput)
                 CompleteDestinationInput(MultiSelectToggle);
             multiSelectedInputs.Clear();
-            ShowInlineNotice("複数選択: キーボードのキーをクリックして選択します");
+            ShowInlineNotice("複数選択: キーやマウスボタンをクリックして選択します");
         }
         else
         {
@@ -1008,15 +1049,24 @@ public partial class MainWindow : Window
     }
     void UpdateMultiSelectControls()
     {
-        if (MultiCopyButton == null || MultiPasteButton == null)
+        if (MultiCopyButton == null || MultiPasteButton == null || MultiDeleteButton == null)
             return;
         bool active = MultiSelectToggle.IsChecked == true;
         MultiCopyButton.IsEnabled = active && multiSelectedInputs.Count > 0;
         MultiPasteButton.IsEnabled = active && multiSelectedInputs.Count > 0 && copiedMultiMappings is { Count: > 0 };
+        MultiDeleteButton.IsEnabled = active ? multiSelectedInputs.Count > 0 : HasDeletableSingleSelection();
         if (!active)
             return;
-        LastInput.Text = multiSelectedInputs.Count == 0 ? "複数選択: キーをクリックして選択します" : $"複数選択: {multiSelectedInputs.Count}キーを選択中";
+        LastInput.Text = multiSelectedInputs.Count == 0 ? "複数選択: キーやマウスボタンをクリックして選択します" : $"複数選択: {multiSelectedInputs.Count}入力を選択中";
         LastInput.Foreground = ThemeService.Brush("AccentBrush");
+    }
+    bool HasDeletableSingleSelection()
+    {
+        if (selected == null)
+            return false;
+        return MappingCollectionForInput(selected.Input).Any(mapping =>
+            mapping.Input.Equals(selected.Input, StringComparison.OrdinalIgnoreCase) &&
+            (MappingHasConfiguredAction(mapping) || HasDeckButtonContent(mapping)));
     }
     void LongPressOnly_Click(object sender, RoutedEventArgs e)
     {
@@ -1033,6 +1083,13 @@ public partial class MainWindow : Window
         LastInput.Text = "長押しのみ：短押しは元のキーを入力します";
     }
     void DestinationInputDone_Click(object sender, RoutedEventArgs e) => CompleteDestinationInput(sender as FrameworkElement);
+    void ExecutionValueClear_Click(object sender, RoutedEventArgs e)
+    {
+        bool longPress = ReferenceEquals(sender, LongDestinationClearButton);
+        var target = longPress ? LongValueBox : ValueBox;
+        target.Clear();
+        FocusExecutionValue(target, longPress);
+    }
     void MainWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left || e.OriginalSource is not DependencyObject source)
@@ -1056,10 +1113,10 @@ public partial class MainWindow : Window
         {
             NormalizeLongOnlyMapping(selected);
             if (config.AutoSave)
-                SaveAndApply("入力完了 — 設定を保存して反映しました");
+                SaveAndApply("確定 — 設定を保存して反映しました");
             else
             {
-                LastInput.Text = "入力完了 — 未保存の変更があります。［保存して反映］で有効になります";
+                LastInput.Text = "確定 — 未保存の変更があります。［保存して反映］で有効になります";
                 LastInput.Foreground = ThemeService.Brush("WarningBrush");
             }
         }
@@ -1092,6 +1149,7 @@ public partial class MainWindow : Window
         loading = false;
         UpdateDeckFileDropTarget();
         ClearExecutionFocus(fallback);
+        UpdateMultiSelectControls();
         ColorButtons();
         CloseAssignmentPane(false);
     }
@@ -1118,6 +1176,8 @@ public partial class MainWindow : Window
     {
         int request = ++destinationFocusRequest;
         destinationInputTarget = target;
+        editingSelectedInput = true;
+        UpdateExecutionEditButtons(target);
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
         {
             if (request != destinationFocusRequest || !ReferenceEquals(destinationInputTarget, target) || !target.IsVisible || !target.IsEnabled)
@@ -1134,6 +1194,7 @@ public partial class MainWindow : Window
     {
         destinationFocusRequest++;
         destinationInputTarget = null;
+        UpdateExecutionEditButtons(null);
         Keyboard.ClearFocus();
         FocusManager.SetFocusedElement(FocusManager.GetFocusScope(this), null);
         if (fallback is { IsVisible: true, IsEnabled: true })
@@ -1142,6 +1203,15 @@ public partial class MainWindow : Window
             Keyboard.Focus(fallback);
         }
     }
+    void UpdateExecutionEditButtons(TextBox? target)
+    {
+        var shortVisibility = ReferenceEquals(target, ValueBox) ? Visibility.Visible : Visibility.Collapsed;
+        var longVisibility = ReferenceEquals(target, LongValueBox) ? Visibility.Visible : Visibility.Collapsed;
+        DestinationClearButton.Visibility = shortVisibility;
+        DestinationConfirmButton.Visibility = shortVisibility;
+        LongDestinationClearButton.Visibility = longVisibility;
+        LongDestinationConfirmButton.Visibility = longVisibility;
+    }
     void ActionKind_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListBox list || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item || item.DataContext is not ActionOption option || !option.IsEnabled)
@@ -1149,7 +1219,7 @@ public partial class MainWindow : Window
         if (option.IsKeypad)
         {
             e.Handled = true;
-            DeckKeypadInput_Click(list, e);
+            KeypadInput_Click(list, e);
             return;
         }
         bool longPress = ReferenceEquals(list, LongKindBox);
@@ -1214,6 +1284,14 @@ public partial class MainWindow : Window
     }
     void OpenActionPicker(bool longPress, string? initialMajorCategory = null)
     {
+#if !PRODUCTION_PUBLISH
+        if (ActionPickerRequestedForTest != null)
+        {
+            if (ActionPickerRequestedForTest(longPress, initialMajorCategory) is { } testAction)
+                ApplyCatalogAction(testAction, longPress);
+            return;
+        }
+#endif
         var picker = new ActionPickerWindow(config.Profiles, config.KeyboardLayout, null, false, initialMajorCategory, config.DeckLayouts) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedAction is not { } action)
             return;
@@ -1289,10 +1367,7 @@ public partial class MainWindow : Window
         UpdateLayerButtons();
         MarkDirty();
         ColorButtons();
-        if (action.Kind == ActionKind.Gesture)
-            ClearExecutionFocus(KindBox);
-        else
-            FocusExecutionValue(longPress ? LongValueBox : ValueBox, longPress);
+        CompleteDestinationInput();
     }
     void OpenProfilePicker(bool longPress, ListBox placementTarget)
     {
@@ -1335,6 +1410,7 @@ public partial class MainWindow : Window
             mappings.Add(selected);
         MarkDirty();
         ColorButtons();
+        CompleteDestinationInput();
     }
     void OpenMacros_Click(object sender, RoutedEventArgs e) => ShowMacroWindow(false, false);
     void OpenProfileManager_Click(object sender, RoutedEventArgs e)
@@ -1402,7 +1478,7 @@ public partial class MainWindow : Window
         UpdateBrowseButtons();
         MarkDirty();
         ColorButtons();
-        ClearExecutionFocus(longPress ? LongKindBox : KindBox);
+        CompleteDestinationInput();
     }
     void ShowMacroWindow(bool assign, bool longPress)
     {
@@ -1428,8 +1504,8 @@ public partial class MainWindow : Window
         {
             KindBox.SelectedValue = ActionKind.Macro;
             ValueBox.Text = window.SelectedMacroName;
-            FocusExecutionValue(ValueBox);
         }
+        CompleteDestinationInput();
     }
     void SetMacroRecording(bool recording, bool captureMouseMoves, bool useMappedActions)
     {
@@ -1474,13 +1550,15 @@ public partial class MainWindow : Window
         {
             KindBox.SelectedValue = ActionKind.Launch;
             ValueBox.Text = path;
-            FocusExecutionValue(ValueBox);
         }
         MarkDirty();
+        CompleteDestinationInput();
     }
 
     void SelectInput(string input, bool focusExecution = true)
     {
+        if (selected != null && (destinationInputTarget != null || editingSelectedInput))
+            CompleteDestinationInput();
         string layer = "通常";
         selectedBaseInput = input;
         int plus = input.IndexOf('+');
@@ -1516,6 +1594,7 @@ public partial class MainWindow : Window
         DeckNameEditorPanel.Visibility = deckManagementMode ? Visibility.Visible : Visibility.Collapsed;
         UpdateBrowseButtons();
         UpdateLayerButtons();
+        UpdateMultiSelectControls();
         ColorButtons();
         ShowAssignmentPane();
         if (focusExecution && ShouldFocusExecutionForSelectedInput(visibleAssignment))
@@ -1610,6 +1689,7 @@ public partial class MainWindow : Window
             MappingCollectionForInput(selected.Input).Remove(selected);
         UpdateBrowseButtons();
         UpdateLayerButtons();
+        UpdateMultiSelectControls();
         MarkDirty();
         RefreshSelectedInputVisual(selected.Input);
         AnimateAssignmentCommit(selected.Input);
@@ -1933,7 +2013,7 @@ public partial class MainWindow : Window
             string input = currentLayer == "通常" ? (string)b.Tag : currentLayer + "+" + (string)b.Tag;
             var assigned = FindProfileMapping(config.Profiles, CurrentProfile.Name, input, MappingInterceptsInput);
             bool currentSelected = selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true;
-            bool multiSelected = MultiSelectToggle.IsChecked == true && keyboardButtons.Contains(b) && multiSelectedInputs.Contains((string)b.Tag);
+            bool multiSelected = MultiSelectToggle.IsChecked == true && multiSelectedInputs.Contains((string)b.Tag);
             bool pulsing = multiSelected || (currentSelected && !selectionPulseSuppressed);
             System.Windows.Media.Brush pulseBrush = ThemeService.Brush("AccentBrush");
             b.Background = reserved ? ThemeService.Brush("ReservedKeyBackground") : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
@@ -1941,10 +2021,16 @@ public partial class MainWindow : Window
             b.BorderThickness = pulsing ? new Thickness(2) : new Thickness(1);
             b.Foreground = currentSelected && assigned == null ? WpfBrushes.White : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity = reserved ? 0.48 : 1;
+            bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
+            bool pulseStateChanged = GetIsSelectionPulseActive(b) != pulsing;
             SetIsMultiSelected(b, multiSelected);
+            SetIsCurrentSelected(b, currentSelected);
+            if (currentSelectionChanged)
+                SetCurrentSelectionVisual(b, currentSelected);
             SetIsSelectionPulseActive(b, pulsing);
             SetSelectionPulseBrush(b, pulseBrush);
-            SetSelectionPulseVisual(b, pulsing, pulseBrush);
+            if (pulseStateChanged)
+                SetSelectionPulseVisual(b, pulsing, pulseBrush);
             b.ToolTip = assigned != null ? CreateAssignmentToolTip(assigned) : keyboardButtons.Contains(b) ? null : DefaultMouseToolTip((string)b.Tag);
             ToolTipService.SetInitialShowDelay(b, 250);
             ToolTipService.SetBetweenShowDelay(b, 80);
@@ -1992,6 +2078,14 @@ public partial class MainWindow : Window
             RepeatBehavior = RepeatBehavior.Forever
         }, HandoffBehavior.SnapshotAndReplace);
     }
+    static void SetCurrentSelectionVisual(System.Windows.Controls.Button button, bool active)
+    {
+        button.ApplyTemplate();
+        UIElement? tint = button.Template.FindName("SelectionTint", button) as UIElement
+            ?? button.Template.FindName("EnterSelectionTint", button) as UIElement;
+        if (tint != null)
+            tint.Opacity = active ? .72 : 0;
+    }
     void ColorDeckManagementButtons()
     {
         foreach (var button in deckManagementButtons)
@@ -2023,9 +2117,15 @@ public partial class MainWindow : Window
         button.BorderThickness = currentSelected ? new Thickness(2) : new Thickness(1);
         button.Foreground = currentSelected && assigned == null && !hasCustomColor ? WpfBrushes.White : hasCustomColor ? new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)) : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
         bool pulsing = currentSelected && !selectionPulseSuppressed;
+        bool currentSelectionChanged = GetIsCurrentSelected(button) != currentSelected;
+        bool pulseStateChanged = GetIsSelectionPulseActive(button) != pulsing;
+        SetIsCurrentSelected(button, currentSelected);
+        if (currentSelectionChanged)
+            SetCurrentSelectionVisual(button, currentSelected);
         SetIsSelectionPulseActive(button, pulsing);
         SetSelectionPulseBrush(button, pulseBrush);
-        SetSelectionPulseVisual(button, pulsing, pulseBrush);
+        if (pulseStateChanged)
+            SetSelectionPulseVisual(button, pulsing, pulseBrush);
         if (DeckPanelLayout.HasRegisteredFile(mapping) || button.Content is not TextBlock)
             button.Content = DeckPanelLayout.CreateButtonContent(input, mapping);
         else
@@ -2163,7 +2263,7 @@ public partial class MainWindow : Window
             if (destinationInputTarget != null || editingSelectedInput)
             {
                 autoSaveTimer.Stop();
-                LastInput.Text = "編集中 — 入力完了または欄外クリックで反映します";
+                LastInput.Text = "編集中 — 確定または欄外クリックで反映します";
                 LastInput.Foreground = ThemeService.Brush("WarningBrush");
                 return;
             }
@@ -2193,8 +2293,21 @@ public partial class MainWindow : Window
             bool active = Equals(b.Tag, currentLayer);
             b.IsEnabled = !blocked;
             b.Background = active ? ThemeService.Brush("LayerActiveBackground") : System.Windows.Media.Brushes.Transparent;
-            b.BorderBrush = active ? ThemeService.Brush("AccentBrush") : System.Windows.Media.Brushes.Transparent;
+            b.BorderBrush = active ? ThemeService.Brush("LayerActiveBackground") : System.Windows.Media.Brushes.Transparent;
             b.Foreground = ThemeService.Brush("PrimaryText");
+            if (b.Content is Grid layerGrid)
+            {
+                var indicator = layerGrid.Children.OfType<System.Windows.Shapes.Ellipse>().FirstOrDefault(x => Equals(x.Tag, "LayerActiveIndicator"));
+                if (indicator != null)
+                    indicator.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+                if (layerGrid.Children.OfType<Border>().FirstOrDefault() is { } iconFrame)
+                {
+                    iconFrame.Background = active ? ThemeService.Brush("AccentSoftBrush") : ThemeService.Brush("SurfaceBackground");
+                    if (iconFrame.Child is Viewbox { Child: Canvas iconCanvas })
+                        foreach (var path in iconCanvas.Children.OfType<System.Windows.Shapes.Path>())
+                            path.Stroke = active ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("PrimaryText");
+                }
+            }
             b.ToolTip = blocked ? $"通常レイヤーの{MouseLayerLabel(b.Tag?.ToString() ?? "")}にジェスチャーが割り当てられているため使用できません。ジェスチャーを削除すると再び使用できます。" : null;
         }
         bool deckActive = deckManagementMode;
@@ -2304,7 +2417,7 @@ public partial class MainWindow : Window
         menu.Items.Add(profiles);
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("押下キーをすべて解除", null, (_, _) => InputEngine.ReleaseAll());
-        menu.Items.Add("セーフモード", null, (_, _) => Dispatcher.BeginInvoke(() => { EngineToggle.IsChecked = false; InputEngine.ReleaseAll(); }));
+        menu.Items.Add("再起動", null, (_, _) => Dispatcher.BeginInvoke(RequestApplicationRestart));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => RequestApplicationExit());
         TrayMenuTheme.Apply(menu, ThemeService.UsesDark);
@@ -2345,33 +2458,71 @@ public partial class MainWindow : Window
         UpdateDeckSettingsLayout(deckEditorWidth);
         if (WorkspaceGrid == null || AssignmentPane == null || LowerInputRow == null)
             return;
-        double gap = e.NewSize.Width < 1000 ? 12 : e.NewSize.Width < 1450 ? 16 : 20;
-        double navigationWidth = e.NewSize.Width < 1000 ? 176 : e.NewSize.Width < 1500 ? 196 : 208;
-        double inspectorWidth = e.NewSize.Width < 1000 ? 288 : e.NewSize.Width < 1500 ? 320 : 340;
-        LayerNavigationColumn.Width = new GridLength(navigationWidth);
-        HeaderBrandColumn.Width = new GridLength(navigationWidth);
+        double gap = e.NewSize.Width < 1000 ? 12 : 16;
+        double shellWidth = ActualWidth > 0 ? ActualWidth : e.NewSize.Width + LayerNavigationPane.Width;
+        double navigationWidth = shellWidth < 1000 ? 200 : shellWidth < 1500 ? 224 : 244;
+        double inspectorWidth = shellWidth < 1000 ? 288 : shellWidth < 1500 ? 320 : 340;
+        LayerNavigationPane.Width = navigationWidth;
+        LayerNavigationColumn.Width = new GridLength(0);
+        HeaderBrandColumn.Width = new GridLength(0);
         AssignmentPaneColumn.Width = new GridLength(inspectorWidth);
-        double centerWidth = Math.Max(360, e.NewSize.Width - navigationWidth - inspectorWidth - gap * 2);
-        double mouseWidth = Math.Clamp(centerWidth * .23, 150, 240);
+        double centerWidth = Math.Max(360, e.NewSize.Width - inspectorWidth - gap * 2);
+        double mouseWidth = Math.Clamp(centerWidth * .23, 96, 240);
         MouseColumn.Width = new GridLength(mouseWidth);
         // Every lower input group follows the same available-space ratio. The
         // mouse diagram is capped below the adjacent keypad/navigation surface.
         double lowerHeight = Math.Clamp(e.NewSize.Height * .36, 220, 340);
-        double mouseScale = Math.Clamp(Math.Min(mouseWidth / 220, lowerHeight / 300), .62, .9);
-        double secondaryHeight = Math.Min(lowerHeight - 12, Math.Max(80, (centerWidth - mouseWidth - 12) / 654 * 312));
+        double mouseScale = Math.Clamp(Math.Min((mouseWidth - 16) / 190, lowerHeight / 300), .35, .9);
+        double secondaryHeight = Math.Min(lowerHeight - 12, Math.Max(80, (centerWidth - mouseWidth - 14) / 654 * 312));
         SecondaryKeyboardViewbox.Height = secondaryHeight;
         MouseHost.Width = 190 * mouseScale;
         MouseHost.Height = Math.Max(48, secondaryHeight - 30);
-        LowerInputRow.Height = new GridLength(secondaryHeight + 36);
+        LowerInputRow.Height = new GridLength(secondaryHeight + 16);
         KeyboardViewbox.MaxWidth = e.NewSize.Width < 1100 ? double.PositiveInfinity : e.NewSize.Width < 1500 ? 1080 : 1180;
         WorkspaceGrid.Margin = new Thickness(gap);
         AssignmentPane.Padding = new Thickness(gap);
         UpdateLayerButtonWidths();
+        ScheduleLowerKeyboardScaleSync();
+    }
+    void KeyboardViewbox_SizeChanged(object sender, SizeChangedEventArgs e) => ScheduleLowerKeyboardScaleSync();
+    void ScheduleLowerKeyboardScaleSync()
+    {
+        int generation = ++lowerKeyboardScaleSyncGeneration;
+        int attempts = 0;
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            if (generation != lowerKeyboardScaleSyncGeneration || ++attempts > 6 || MatchLowerKeyboardScale())
+                LayoutUpdated -= handler;
+        };
+        LayoutUpdated += handler;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, new Action(() =>
         {
-            if (SecondaryKeyboardViewbox.ActualHeight > 0)
-                MouseHost.Height = Math.Max(48, SecondaryKeyboardViewbox.ActualHeight - 30);
+            if (generation == lowerKeyboardScaleSyncGeneration)
+                MatchLowerKeyboardScale();
         }));
+    }
+    bool MatchLowerKeyboardScale()
+    {
+        var referenceKey = KeyboardPanel?.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault(button => Equals(button.Tag, "A"));
+        var lowerKey = SecondaryKeyboardPanel?.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault(button => Equals(button.Tag, "Insert"));
+        if (referenceKey == null || lowerKey == null || referenceKey.ActualHeight <= 0 || lowerKey.ActualHeight <= 0 || SecondaryKeyboardViewbox.ActualHeight <= 0)
+            return false;
+        double mainHeight = referenceKey.TransformToAncestor(this).TransformBounds(new Rect(0, 0, referenceKey.ActualWidth, referenceKey.ActualHeight)).Height;
+        double lowerHeight = lowerKey.TransformToAncestor(this).TransformBounds(new Rect(0, 0, lowerKey.ActualWidth, lowerKey.ActualHeight)).Height;
+        if (mainHeight <= 0 || lowerHeight <= 0)
+            return false;
+        double difference = Math.Abs(mainHeight - lowerHeight);
+        if (difference < .05)
+            return true;
+        double correction = mainHeight / lowerHeight;
+        double matchedWidth = SecondaryKeyboardViewbox.ActualWidth * correction;
+        double matchedHeight = SecondaryKeyboardViewbox.ActualHeight * correction;
+        SecondaryKeyboardViewbox.Width = matchedWidth;
+        SecondaryKeyboardViewbox.Height = matchedHeight;
+        MouseHost.Height = Math.Max(48, matchedHeight - 30);
+        LowerInputRow.Height = new GridLength(matchedHeight + 16);
+        return false;
     }
     void DeckEditorWorkspace_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateDeckSettingsLayout(e.NewSize.Width);
     void UpdateDeckSettingsLayout(double availableWidth)
@@ -2404,34 +2555,40 @@ public partial class MainWindow : Window
     {
         if (LayerButtonsPanel == null)
             return;
-        bool compact = MainContentGrid.ActualHeight > 0 && MainContentGrid.ActualHeight < 720;
-        bool narrow = LayerNavigationColumn.Width.IsAbsolute && LayerNavigationColumn.Width.Value < 155;
+        bool compact = MainContentGrid.ActualHeight > 0 && MainContentGrid.ActualHeight < 620;
+        bool narrow = LayerNavigationPane.Width < 215;
         foreach (var category in new[] { KeyboardLayerCategory, MouseLayerCategory, WindowsLayerCategory })
-            category.Margin = compact ? new Thickness(8, 2, 8, 1) : new Thickness(8, 8, 8, 3);
+            category.Margin = compact ? new Thickness(8, 4, 8, 2) : new Thickness(8, 6, 8, 3);
         foreach (var divider in new[] { KeyboardLayerDivider, MouseLayerDivider })
-            divider.Margin = compact ? new Thickness(4, 3, 4, 2) : new Thickness(4, 8, 4, 4);
+            divider.Margin = compact ? new Thickness(8, 4, 8, 2) : new Thickness(8, 6, 8, 2);
         foreach (var button in LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>())
         {
             button.Width = double.NaN;
-            button.Height = compact ? 36 : 44;
-            button.MinHeight = 36;
-            button.Padding = compact ? new Thickness(8, 0, 8, 0) : new Thickness(10, 4, 10, 4);
-            button.FontSize = compact ? 12 : 13;
-            button.Margin = compact ? new Thickness(0, 1, 0, 1) : new Thickness(0, 2, 0, 2);
+            button.Height = compact ? 48 : 52;
+            button.MinHeight = 48;
+            button.Padding = new Thickness(8, 4, 8, 4);
+            button.FontSize = 15;
+            button.Margin = new Thickness(0, 1, 0, 1);
             button.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
-            button.HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left;
-            if (button.Content is StackPanel content)
+            button.HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch;
+            StackPanel? content = button.Content switch
+            {
+                StackPanel direct => direct,
+                Grid grid => grid.Children.OfType<StackPanel>().FirstOrDefault(),
+                _ => null
+            };
+            if (content != null)
             {
                 content.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
                 foreach (var title in content.Children.OfType<TextBlock>().Take(1))
                 {
                     title.TextWrapping = TextWrapping.NoWrap;
-                    title.FontSize = button.FontSize;
+                    title.FontSize = 15;
                 }
                 foreach (var description in content.Children.OfType<TextBlock>().Skip(1))
                 {
-                    description.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-                    description.FontSize = narrow ? 9 : 10;
+                    description.Visibility = Visibility.Visible;
+                    description.FontSize = narrow ? 9.5 : 10.5;
                     description.TextWrapping = TextWrapping.NoWrap;
                 }
             }
@@ -2912,15 +3069,6 @@ public partial class MainWindow : Window
         currentLayer = layer;
         ClearSelectedInput(button);
         UpdateLayerButtons();
-        AnimateLayerTransition();
-    }
-    void AnimateLayerTransition()
-    {
-        var translation = new TranslateTransform(12, 0);
-        KeyboardWorkspace.RenderTransform = translation;
-        KeyboardWorkspace.Opacity = .9;
-        translation.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(180)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-        KeyboardWorkspace.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(.9, 1, TimeSpan.FromMilliseconds(180)), HandoffBehavior.SnapshotAndReplace);
     }
     bool ConfirmCapsLockLayer()
     {
@@ -3296,12 +3444,33 @@ public partial class MainWindow : Window
             App.ExitImmediately(1);
         }
     }
+    void RequestApplicationRestart()
+    {
+        if (Interlocked.Exchange(ref restartRequested, 1) != 0)
+            return;
+        try
+        {
+            string executable = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所を確認できません。");
+            var start = new ProcessStartInfo(executable) { UseShellExecute = true };
+            start.ArgumentList.Add("--restart-after-pid");
+            start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (Process.Start(start) == null)
+                throw new InvalidOperationException("再起動プロセスを開始できません。");
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Exchange(ref restartRequested, 0);
+            AppDialog.Show(this, "RELYRを再起動できませんでした。\n\n" + ex.Message, "再起動できません", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        RequestApplicationExit();
+    }
     string? PromptText(string title, string label, string initial)
     {
         var dialog = new Window { Title = title, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner, Width = 460, Height = 220, ResizeMode = ResizeMode.NoResize, Background = ThemeService.Brush("SurfaceBackground"), Foreground = ThemeService.Brush("PrimaryText"), ShowInTaskbar = false };
         var panel = new StackPanel { Margin = new Thickness(24) };
         panel.Children.Add(new TextBlock { Text = label, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 9) });
-        var box = new TextBox { Text = initial, FontSize = 15, Height = 42, Padding = new Thickness(10, 8, 10, 8), Background = ThemeService.Brush("InputBackground"), Foreground = ThemeService.Brush("PrimaryText"), BorderBrush = ThemeService.Brush("BorderBrush") };
+        var box = new TextBox { Text = initial, FontSize = 15, Height = 40, Padding = new Thickness(12, 0, 12, 0), Background = ThemeService.Brush("InputBackground"), Foreground = ThemeService.Brush("PrimaryText"), BorderBrush = ThemeService.Brush("BorderBrush"), VerticalContentAlignment = VerticalAlignment.Center };
         panel.Children.Add(box);
         var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
         var cancel = new System.Windows.Controls.Button { Content = "キャンセル", Width = 112, Height = 40, Margin = new Thickness(6, 0, 0, 0), Style = (Style)System.Windows.Application.Current.FindResource("AppButtonStyle") };
@@ -3387,13 +3556,18 @@ public partial class MainWindow : Window
             new(ActionKind.Launch, "▱", "アプリ・パス"),
             new(ActionKind.Macro, "⌘", "マクロ"),
             new(ActionKind.Gesture, "✣", "ジェスチャー", allowGesture),
-            new(ActionKind.Disabled, "⊘", "無効化")
+            new(ActionKind.None, "⌨", "キーパッドから入力", true, true)
         };
         return [.. options];
     }
-    static ActionOption[] DeckActionOptions() => [.. ActionOptions(false).Where(x => x.Kind != ActionKind.Gesture), new(ActionKind.None, "⌨", "キーパッド入力", true, true)];
+    static ActionOption[] DeckActionOptions() => [.. ActionOptions(false).Where(x => x.Kind != ActionKind.Gesture)];
     internal FrameworkElement DeckKeypadInputButton => KindBox;
-    sealed record ActionOption(ActionKind Kind, string Icon, string Label, bool IsEnabled = true, bool IsKeypad = false);
+    sealed record ActionOption(ActionKind Kind, string Icon, string Label, bool IsEnabled = true, bool IsKeypad = false)
+    {
+        public ActionKind? SelectionKind => IsKeypad ? null : Kind;
+        public string DisplayLabel => Label;
+        public double LabelFontSize => IsKeypad ? 10 : 11;
+    }
     sealed record InputMappingSnapshot(Mapping Mapping, GestureDefinition? Gesture);
     sealed record LayerMappingSnapshot(IReadOnlyList<Mapping> Mappings);
     sealed record RunningApplicationOption(string Label, string Value);

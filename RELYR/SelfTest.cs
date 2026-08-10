@@ -151,6 +151,8 @@ public static class SelfTest
             config.SharedDeckMappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A", Description = "共通" }];
             config.DeckPanelLeft = 123.5;
             config.DeckPanelTop = 234.5;
+            config.DeckPanelWidth = 987.5;
+            config.DeckPanelHeight = 543.5;
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -175,7 +177,7 @@ public static class SelfTest
             Check(loaded.GestureThresholdPixels == 12 && !loaded.LockCursorDuringGesture && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and cursor-lock option roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
             Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
-            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5, "Deck and input overlay positions roundtrip independently of profiles");
+            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5, "Deck overlay size and all overlay positions roundtrip independently of profiles");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });

@@ -367,6 +367,7 @@ public partial class MainWindow
                 Style = (Style)FindResource("DeckButtonStyle")
             };
             button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
+            button.MouseDoubleClick += DeckManagementButton_DoubleClick;
             button.PreviewMouseRightButtonDown += InputButton_RightClick;
             button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;
             button.PreviewMouseMove += DeckButtonReorderMoved;
@@ -400,6 +401,15 @@ public partial class MainWindow
             PlayDeckEditorAudio(mapping.DeckFilePath);
         else if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) || DeckPanelLayout.IsVideoFile(mapping.DeckFilePath))
             ShowDeckEditorThumbnail(source, mapping.DeckFilePath);
+    }
+    void DeckManagementButton_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string input })
+            return;
+        e.Handled = true;
+        SelectInput(input, false);
+        CloseDeckEditorMediaPreview();
+        OpenActionPicker(false);
     }
     void PlayDeckEditorAudio(string path)
     {
@@ -585,7 +595,7 @@ public partial class MainWindow
         LongPressExpander.Visibility = Visibility.Collapsed;
         LongPressOnlyButton.Visibility = Visibility.Collapsed;
         KindBox.ItemsSource = DeckActionOptions();
-        KindBox.SelectedValuePath = nameof(ActionOption.Kind);
+        KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
         ShowDeckLayoutList();
         UpdateDeckScopeUi();
         ClearSelectedInput();
@@ -608,7 +618,7 @@ public partial class MainWindow
         LongPressExpander.Visibility = Visibility.Visible;
         LongPressOnlyButton.Visibility = Visibility.Visible;
         KindBox.ItemsSource = ActionOptions(allowGesture: true);
-        KindBox.SelectedValuePath = nameof(ActionOption.Kind);
+        KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
         DeckNameEditorPanel.Visibility = Visibility.Collapsed;
         UpdateDeckScopeUi();
     }
@@ -654,17 +664,17 @@ public partial class MainWindow
     System.Windows.Controls.Button CreateDeckLayoutCard(DeckLayoutDefinition layout)
     {
         var previewSize = DeckPreviewSize(layout.Columns, layout.Rows);
-        var preview = new System.Windows.Controls.Primitives.UniformGrid { Rows = layout.Rows, Columns = layout.Columns, Width = previewSize.Width, Height = previewSize.Height, Margin = new Thickness(0, 0, 0, 12) };
+        var preview = new System.Windows.Controls.Primitives.UniformGrid { Rows = layout.Rows, Columns = layout.Columns, Width = previewSize.Width, Height = previewSize.Height, HorizontalAlignment = System.Windows.HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         for (int index = 0; index < DeckPanelLayout.VisibleSlotCount(layout); index++)
         {
             var cell = new Border { Margin = new Thickness(1), CornerRadius = new CornerRadius(2) };
-            cell.SetResourceReference(Border.BackgroundProperty, "ControlBackground");
+            cell.SetResourceReference(Border.BackgroundProperty, "DeckPreviewCellBackground");
             preview.Children.Add(cell);
         }
         bool isDefault = config.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
         var content = new StackPanel();
-        content.Children.Add(preview);
-        content.Children.Add(new TextBlock { Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        content.Children.Add(new Grid { Height = 88, Margin = new Thickness(0, 0, 0, 12), Children = { preview } });
+        content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 5, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentBrush" : "SecondaryText") });
         var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 190, Margin = new Thickness(0, 0, 14, 14), Padding = new Thickness(16), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, Background = ThemeService.Brush("CardBackground"), BorderBrush = ThemeService.Brush(isDefault ? "AccentBrush" : "BorderBrush"), BorderThickness = new Thickness(1) };
         card.Click += (_, _) => EditDeckLayout(layout);
@@ -705,7 +715,7 @@ public partial class MainWindow
         foreach (var height in new[] { GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto })
             root.RowDefinitions.Add(new RowDefinition { Height = height });
         root.Children.Add(new TextBlock { Text = "レイアウト名", FontSize = 12, Foreground = ThemeService.Brush("SecondaryText") });
-        var name = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "新しいDeck", Height = 38, Margin = new Thickness(0, 6, 0, 18), VerticalContentAlignment = VerticalAlignment.Center };
+        var name = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "新しいDeck", Height = 40, Margin = new Thickness(0, 6, 0, 18), VerticalContentAlignment = VerticalAlignment.Center };
         Grid.SetRow(name, 1);
         root.Children.Add(name);
 
@@ -713,7 +723,7 @@ public partial class MainWindow
         sizeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
         sizeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         sizeRow.Children.Add(new TextBlock { Text = "サイズ", VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") });
-        var sizes = new System.Windows.Controls.ComboBox { Name = "NewDeckSizeBox", Style = (Style)FindResource("ToolbarComboBoxStyle"), Width = 220, Height = 36, Margin = new Thickness(0), SelectedIndex = 1 };
+        var sizes = new System.Windows.Controls.ComboBox { Name = "NewDeckSizeBox", Style = (Style)FindResource("ToolbarComboBoxStyle"), Width = 220, Height = 40, Margin = new Thickness(0), SelectedIndex = 1 };
         sizes.Items.Add(new ComboBoxItem { Content = "コンパクト  3×3", Tag = "3x3" });
         sizes.Items.Add(new ComboBoxItem { Content = "標準  9×5", Tag = "9x5" });
         sizes.Items.Add(new ComboBoxItem { Content = "ワイド  8×2", Tag = "8x2" });
@@ -728,10 +738,10 @@ public partial class MainWindow
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var columnsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "9", Width = 48, Height = 36, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        var columnsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "9", Width = 48, Height = 40, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
         var times = new TextBlock { Text = "×", Margin = new Thickness(10, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") };
         Grid.SetColumn(times, 1);
-        var rowsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "5", Width = 48, Height = 36, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        var rowsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "5", Width = 48, Height = 40, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
         Grid.SetColumn(rowsBox, 2);
         var limit = new TextBlock { Text = "1～18", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("MutedText"), FontSize = 11 };
         Grid.SetColumn(limit, 3);
@@ -746,8 +756,8 @@ public partial class MainWindow
         Grid.SetRow(validation, 4);
         root.Children.Add(validation);
         var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-        var cancel = new System.Windows.Controls.Button { Content = "キャンセル", IsCancel = true, Height = 38, MinWidth = 92, Margin = new Thickness(0, 0, 8, 0) };
-        var create = new System.Windows.Controls.Button { Content = "作成", IsDefault = true, Height = 38, MinWidth = 84, Background = ThemeService.Brush("AccentStrongBrush"), Foreground = ThemeService.Brush("AccentButtonText"), BorderBrush = ThemeService.Brush("AccentBrush") };
+        var cancel = new System.Windows.Controls.Button { Content = "キャンセル", IsCancel = true, Height = 40, MinWidth = 92, Margin = new Thickness(0, 0, 8, 0) };
+        var create = new System.Windows.Controls.Button { Content = "作成", IsDefault = true, Height = 40, MinWidth = 84, Background = ThemeService.Brush("AccentStrongBrush"), Foreground = ThemeService.Brush("AccentButtonText"), BorderBrush = ThemeService.Brush("AccentBrush") };
         if (System.Windows.Application.Current?.Resources["AppButtonStyle"] is Style buttonStyle)
         {
             cancel.Style = buttonStyle;
@@ -957,7 +967,7 @@ public partial class MainWindow
         else
         {
             DeckPanelColorPreview.ClearValue(Border.BackgroundProperty);
-            DeckPanelColorPreview.SetResourceReference(Border.BackgroundProperty, "CardBackground");
+            DeckPanelColorPreview.SetResourceReference(Border.BackgroundProperty, "AppBackground");
         }
     }
     void SetDefaultDeckLayout(DeckLayoutDefinition layout, bool refresh = true)
@@ -1025,6 +1035,23 @@ public partial class MainWindow
         }
         catch { }
     }
+    void PersistDeckPanelSize(double width, double height)
+    {
+        if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+            return;
+        config.DeckPanelWidth = width;
+        config.DeckPanelHeight = height;
+        appliedConfig.DeckPanelWidth = width;
+        appliedConfig.DeckPanelHeight = height;
+        try
+        {
+            var persisted = store.Load();
+            persisted.DeckPanelWidth = width;
+            persisted.DeckPanelHeight = height;
+            store.Save(persisted);
+        }
+        catch { }
+    }
     void PersistInputPanelPosition(bool extended, double left, double top)
     {
         if (!double.IsFinite(left) || !double.IsFinite(top))
@@ -1060,21 +1087,35 @@ public partial class MainWindow
         }
         catch { }
     }
-    void DeckKeypadInput_Click(object sender, RoutedEventArgs e)
+    void KeypadInput_Click(object sender, RoutedEventArgs e)
     {
-        if (!deckManagementMode || selected == null)
+        if (selected == null)
         {
-            ShowInlineNotice("先にDeckパネルのボタンを選択してください");
+            ShowInlineNotice("先に割り当てるキーを選択してください");
             return;
         }
+        bool longPress = ReferenceEquals(sender, LongKindBox);
+        TextBox target = longPress ? LongValueBox : ValueBox;
+        var kindBox = longPress ? LongKindBox : KindBox;
         var picker = new MacroInputPickerWindow(config.KeyboardLayout) { Owner = this };
-        picker.ConfigureShortcutEditing(ValueBox.Text);
+        picker.ConfigureShortcutEditing(target.Text);
+        bool changed = false;
         picker.ShortcutChanged += value =>
         {
-            KindBox.SelectedValue = ActionKind.Shortcut;
-            ValueBox.Text = value;
+            changed = true;
+            kindBox.SelectedValue = ActionKind.Shortcut;
+            target.Text = value;
+            if (longPress)
+                LongPressExpander.IsExpanded = true;
         };
+#if !PRODUCTION_PUBLISH
+        if (KeypadInputRequestedForTest != null)
+            KeypadInputRequestedForTest(picker);
+        else
+#endif
         picker.ShowDialog();
+        if (changed)
+            CompleteDestinationInput();
     }
 
     // Deck overlay synchronization

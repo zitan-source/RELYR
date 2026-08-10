@@ -173,6 +173,8 @@ public sealed class AppConfig
     public List<DeckLayoutDefinition> DeckLayouts { get; set; } = [];
     public double? DeckPanelLeft { get; set; }
     public double? DeckPanelTop { get; set; }
+    public double? DeckPanelWidth { get; set; }
+    public double? DeckPanelHeight { get; set; }
     public double? NumpadPanelLeft { get; set; }
     public double? NumpadPanelTop { get; set; }
     public double? ExtendedKeypadPanelLeft { get; set; }
