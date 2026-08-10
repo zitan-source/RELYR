@@ -124,16 +124,21 @@ sealed class DeckVideoPreviewPopup : IDisposable
     }
     CustomPopupPlacement[] OutsideDeckPlacements(System.Windows.Size popupSize, System.Windows.Size targetSize, Point offset)
     {
-        double gap = targetSize.Width;
-        double y = (targetSize.Height - popupSize.Height) / 2;
-        var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
-        var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
-        Point sourceInDeck = source.TranslatePoint(new Point(0, 0), placementBoundary);
-        double deckWidth = placementBoundary.ActualWidth > 0 ? placementBoundary.ActualWidth : placementBoundary.Width;
-        return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+        try
+        {
+            double gap = targetSize.Width;
+            double y = (targetSize.Height - popupSize.Height) / 2;
+            var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
+            var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
+            Point sourceInDeck = source.TranslatePoint(new Point(0, 0), placementBoundary);
+            double deckWidth = placementBoundary.ActualWidth > 0 ? placementBoundary.ActualWidth : placementBoundary.Width;
+            return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+        }
+        catch { return [new CustomPopupPlacement(new Point(targetSize.Width + 8, 0), PopupPrimaryAxis.None)]; }
     }
     internal bool IsFor(Button button) => ReferenceEquals(source, button);
     internal void Hide() => ClosePreview();
+    internal void Show() => OpenPreview();
 
     static System.Windows.Size PreviewSize(double width, double height)
     {
@@ -157,22 +162,24 @@ sealed class DeckVideoPreviewPopup : IDisposable
         return new ControlTemplate(typeof(Button)) { VisualTree = border };
     }
     void SourceMouseEnter(object sender, MouseEventArgs e)
+        => OpenPreview();
+    void OpenPreview()
     {
         if (disposed)
             return;
-        closeTimer.Stop();
-        if (!popup.IsOpen)
-            popup.IsOpen = true;
-        // Force the media pipeline to open while muted.  ScrubbingEnabled then
-        // presents the frame at each pointer position without playing audio.
         try
         {
+            closeTimer.Stop();
+            if (!popup.IsOpen)
+                popup.IsOpen = true;
+            // Force the media pipeline to open while muted. ScrubbingEnabled
+            // then presents the frame at each pointer position without audio.
             media.Volume = 0;
             media.Play();
             media.Pause();
+            pointerTimer.Start();
         }
-        catch { ShowPlaybackFailure(); }
-        pointerTimer.Start();
+        catch { try { ShowPlaybackFailure(); } catch { ClosePreview(); } }
     }
     void SourceMouseLeave(object sender, MouseEventArgs e) => ScheduleClose();
     void SourceMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => ClosePreview();
@@ -247,7 +254,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
         catch { }
         playRequested = false;
         SetPlayGlyph(false);
-        popup.IsOpen = false;
+        try { popup.IsOpen = false; } catch { }
     }
     void PointerTimerTick(object? sender, EventArgs e)
     {
@@ -279,33 +286,37 @@ sealed class DeckVideoPreviewPopup : IDisposable
     }
     void MediaOpened(object? sender, RoutedEventArgs e)
     {
-        mediaOpened = true;
-        if (media.NaturalDuration.HasTimeSpan)
-            duration = media.NaturalDuration.TimeSpan;
-        if (media.NaturalVideoWidth > 0 && media.NaturalVideoHeight > 0)
+        try
         {
-            System.Windows.Size size = PreviewSize(media.NaturalVideoWidth, media.NaturalVideoHeight);
-            frame.Width = size.Width;
-            frame.Height = size.Height;
+            mediaOpened = true;
+            if (media.NaturalDuration.HasTimeSpan)
+                duration = media.NaturalDuration.TimeSpan;
+            if (media.NaturalVideoWidth > 0 && media.NaturalVideoHeight > 0)
+            {
+                System.Windows.Size size = PreviewSize(media.NaturalVideoWidth, media.NaturalVideoHeight);
+                frame.Width = size.Width;
+                frame.Height = size.Height;
+            }
+            media.Visibility = Visibility.Visible;
+            if (pendingScrubRatio is double pending && duration > TimeSpan.Zero)
+            {
+                media.Position = TimeSpan.FromTicks((long)(duration.Ticks * pending));
+                pendingScrubRatio = null;
+            }
+            if (playRequested)
+            {
+                media.Volume = 1;
+                media.Play();
+                playbackTimer.Start();
+            }
+            else
+            {
+                media.Volume = 0;
+                media.Pause();
+            }
+            UpdateTimeline();
         }
-        media.Visibility = Visibility.Visible;
-        if (pendingScrubRatio is double pending && duration > TimeSpan.Zero)
-        {
-            media.Position = TimeSpan.FromTicks((long)(duration.Ticks * pending));
-            pendingScrubRatio = null;
-        }
-        if (playRequested)
-        {
-            media.Volume = 1;
-            media.Play();
-            playbackTimer.Start();
-        }
-        else
-        {
-            media.Volume = 0;
-            media.Pause();
-        }
-        UpdateTimeline();
+        catch { ShowPlaybackFailure(); }
     }
     void MediaEnded(object? sender, RoutedEventArgs e)
     {
@@ -445,7 +456,10 @@ sealed class DeckVideoPreviewPopup : IDisposable
         timelineFill.Width = width * ratio;
         timelineMarker.Margin = new Thickness(Math.Max(0, width * ratio - 1), 0, 0, 0);
     }
-    void PlaybackTimerTick(object? sender, EventArgs e) => UpdateTimeline();
+    void PlaybackTimerTick(object? sender, EventArgs e)
+    {
+        try { UpdateTimeline(); } catch { ClosePreview(); }
+    }
     void SetPlayGlyph(bool playing) => playPauseGlyph.Data = Geometry.Parse(playing ? "M 7,5 L 11,5 L 11,23 L 7,23 Z M 17,5 L 21,5 L 21,23 L 17,23 Z" : "M 7,5 L 22,14 L 7,23 Z");
     static void TraceVideo(string message)
     {
@@ -481,6 +495,6 @@ sealed class DeckVideoPreviewPopup : IDisposable
             media.Close();
         }
         catch { }
-        popup.IsOpen = false;
+        try { popup.IsOpen = false; } catch { }
     }
 }

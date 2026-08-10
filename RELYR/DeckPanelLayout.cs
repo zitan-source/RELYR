@@ -16,6 +16,7 @@ internal static class DeckPanelLayout
 {
     readonly record struct ThumbnailCacheKey(string Path, long ModifiedTicks, int Width, int Height);
     static readonly ConcurrentDictionary<ThumbnailCacheKey, System.Windows.Media.ImageSource> ThumbnailCache = new();
+    internal static int CachedLargeThumbnailCountForTest => ThumbnailCache.Keys.Count(key => key.Width > 160 || key.Height > 160);
     internal const string Layer = "Deck";
     internal const int Rows = 5;
     internal const int Columns = 9;
@@ -325,6 +326,10 @@ internal static class DeckPanelLayout
 
     static void StoreThumbnail(ThumbnailCacheKey key, System.Windows.Media.ImageSource image)
     {
+        // Keep only compact Deck-face thumbnails. Large hover previews are
+        // transient; caching hundreds of them can exhaust WPF render memory.
+        if (key.Width > 160 || key.Height > 160)
+            return;
         if (ThumbnailCache.Count >= 512)
             ThumbnailCache.Clear();
         ThumbnailCache[key] = image;

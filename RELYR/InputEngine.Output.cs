@@ -781,7 +781,15 @@ public sealed partial class InputEngine
         }
         modifierDragMouseDown = true;
         modifierDragStartedAt = Environment.TickCount64;
-        modifierDragSafetyTimer = new System.Threading.Timer(_ => { if (!(PhysicalKeyDownForTest?.Invoke(0x01) ?? ((GetAsyncKeyState(0x01) & 0x8000) != 0)) || Environment.TickCount64 - Interlocked.Read(ref modifierDragStartedAt) > 30000) EndModifierDrag(); }, null, 100, 25);
+        modifierDragSafetyTimer = new System.Threading.Timer(_ =>
+        {
+            // GetAsyncKeyState(VK_LBUTTON) also reports the synthetic Down above,
+            // which can make the watchdog sustain its own stuck state forever.
+            // The low-level hook records only unmarked physical transitions.
+            bool physicalLeftDown = PhysicalKeyDownForTest?.Invoke(0x01) ?? IsObservedPhysicalMouseButtonDown(1);
+            if (!physicalLeftDown || Environment.TickCount64 - Interlocked.Read(ref modifierDragStartedAt) > 30000)
+                EndModifierDrag();
+        }, null, 100, 25);
     }
     public static void EndModifierDrag()
     {

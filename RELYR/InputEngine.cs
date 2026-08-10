@@ -24,6 +24,11 @@ public sealed partial class InputEngine : IDisposable
     static bool modifierDragMouseDown;
     static long modifierDragStartedAt;
     static System.Threading.Timer? modifierDragSafetyTimer;
+    // GetAsyncKeyState includes SendInput-generated button state.  It therefore
+    // cannot tell a real held button from RELYR's own synthetic drag.  Keep the
+    // unmarked low-level-hook transitions separately so a lost action-end can
+    // never leave the desktop in a permanent left-button-down state.
+    static int physicalMouseButtonsDownMask;
     internal static Action<uint, uint>? MouseFlagOutputForTest = null;
     internal static Action<(uint Flag, uint Data)[]>? MouseClickBatchOutputForTest = null;
     internal static Func<ushort, bool, bool>? KeyOutputForTest = null;
@@ -456,6 +461,7 @@ public sealed partial class InputEngine : IDisposable
         int msg = w.ToInt32();
         if (d.dwExtraInfo == (UIntPtr)Marker)
             return Next(n, w, l);
+        ObservePhysicalMouseTransition(msg);
         if (OverlayService.FullScreenVisible)
         {
             ResetCapturedState(false, true);
@@ -1058,6 +1064,49 @@ public sealed partial class InputEngine : IDisposable
         layerSafetyTimer = null;
         layerSafetyExpired = false;
     }
+
+    static void ObservePhysicalMouseTransition(int message)
+    {
+        (int button, bool down, bool up) = message switch
+        {
+            0x201 => (1, true, false),
+            0x202 => (1, false, true),
+            0x204 => (2, true, false),
+            0x205 => (2, false, true),
+            0x207 => (3, true, false),
+            0x208 => (3, false, true),
+            0x20B => (4, true, false),
+            0x20C => (4, false, true),
+            _ => (0, false, false)
+        };
+        if (button == 0)
+            return;
+        int bit = 1 << (button - 1);
+        if (down)
+        {
+            int previous = Interlocked.Or(ref physicalMouseButtonsDownMask, bit);
+            // Mouse buttons do not auto-repeat.  A second physical left Down
+            // without an observed Up means that the Up was lost while the hook
+            // or UI was changing state.  Release RELYR's old synthetic drag
+            // before Windows receives this new click.
+            if (button == 1 && (previous & bit) != 0 && Volatile.Read(ref modifierDragMouseDown))
+                EndModifierDrag();
+        }
+        else if (up)
+            Interlocked.And(ref physicalMouseButtonsDownMask, ~bit);
+
+        // The physical left Up is the authoritative end of every modifier drag.
+        // Do this on the hook thread itself; the UI action queue may be busy or
+        // may have lost its corresponding PressEnd notification.
+        if (button == 1 && up && Volatile.Read(ref modifierDragMouseDown))
+            EndModifierDrag();
+    }
+
+    static bool IsObservedPhysicalMouseButtonDown(int button)
+        => button is >= 1 and <= 5 && (Volatile.Read(ref physicalMouseButtonsDownMask) & (1 << (button - 1))) != 0;
+
+    internal static bool IsObservedPhysicalMouseButtonDownForTest(int button)
+        => IsObservedPhysicalMouseButtonDown(button);
     void ArmNativeRightDragSafety()
     {
         CancelNativeRightDragSafety();
@@ -1101,6 +1150,7 @@ public sealed partial class InputEngine : IDisposable
             deferredLayer = null;
             layerUsed = false;
             nativeRightLayerDrag = false;
+            Volatile.Write(ref physicalMouseButtonsDownMask, 0);
             if (clearGestureSuppressions)
                 committedGestureSources.Clear();
         }

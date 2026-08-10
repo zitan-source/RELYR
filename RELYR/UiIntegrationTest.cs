@@ -386,6 +386,8 @@ internal static class UiIntegrationTest
             deckOverlay.UpdateLayout();
             Pump(window);
             PumpFor(TimeSpan.FromMilliseconds(150));
+            deckOverlay.DeckButtons[2].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            Pump(window);
             int videoPreviewsBeforeHide = deckOverlay.VideoPreviewCountForTest;
             deckOverlay.HideForReuse();
             var deckReopenTime = System.Diagnostics.Stopwatch.StartNew();
@@ -433,9 +435,44 @@ internal static class UiIntegrationTest
             deckOverlay.CloseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!deckOverlay.IsVisible, "Deck overlay closes from its top-right X button");
-            var maximumDeckLayout = new DeckLayoutDefinition { Name = "18×18", Columns = 18, Rows = 18 };
-            var maximumDeckOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [maximumDeckLayout] }, null, selectedLayout: maximumDeckLayout);
+            var maximumDeckLayout = new DeckLayoutDefinition
+            {
+                Name = "18×18",
+                Columns = 18,
+                Rows = 18,
+                Mappings = Enumerable.Range(1, 324).Select(slot => new Mapping { Input = $"Deck+{slot:00}", Layer = "Deck", DeckFilePath = deckPreviewVideo }).ToList()
+            };
+            var maximumDeckOverlay = new DeckPanelOverlayWindow(
+                new AppConfig { DeckLayouts = [maximumDeckLayout], DeckHoverPreviewsEnabled = true },
+                null,
+                positionChanged: (_, _) => throw new IOException("simulated position persistence failure"),
+                selectedLayout: maximumDeckLayout,
+                sizeChanged: (_, _) => throw new IOException("simulated size persistence failure"));
             Check(maximumDeckOverlay.Width <= SystemParameters.WorkArea.Width - 24 + .1 && maximumDeckOverlay.Height <= SystemParameters.WorkArea.Height - 24 + .1 && maximumDeckOverlay.MinWidth < maximumDeckOverlay.MaxWidth && maximumDeckOverlay.MinHeight < maximumDeckOverlay.MaxHeight, "an 18-by-18 Deck initially fits the work area and remains freely resizable");
+            Check(maximumDeckOverlay.VideoPreviewCountForTest == 0, "an all-video 18-by-18 Deck allocates no media player before hover");
+            maximumDeckOverlay.Show();
+            double maximumDeckRestoreWidth = maximumDeckOverlay.ActualWidth, maximumDeckRestoreHeight = maximumDeckOverlay.ActualHeight;
+            maximumDeckOverlay.ToggleSafeMaximizeForTest();
+            Pump(window);
+            Check(maximumDeckOverlay.IsSafelyMaximizedForTest && maximumDeckOverlay.WindowState == WindowState.Normal && maximumDeckOverlay.ActualWidth <= SystemParameters.WorkArea.Width - 24 + 1 && maximumDeckOverlay.ActualHeight <= SystemParameters.WorkArea.Height - 24 + 1, "Deck maximize stays in a bounded aspect-safe normal window instead of entering WPF transparent-window maximized state");
+            maximumDeckOverlay.ToggleSafeMaximizeForTest();
+            Pump(window);
+            Check(!maximumDeckOverlay.IsSafelyMaximizedForTest && Math.Abs(maximumDeckOverlay.ActualWidth - maximumDeckRestoreWidth) < 1 && Math.Abs(maximumDeckOverlay.ActualHeight - maximumDeckRestoreHeight) < 1, "safe Deck maximize restores the previous overlay size");
+            maximumDeckOverlay.DeckButtons[0].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            Pump(window);
+            maximumDeckOverlay.DeckButtons[1].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            Pump(window);
+            for (int hoverIndex = 2; hoverIndex < 26; hoverIndex++)
+                maximumDeckOverlay.DeckButtons[hoverIndex].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            for (int cycle = 0; cycle < 12; cycle++)
+            {
+                maximumDeckOverlay.HideForReuse();
+                maximumDeckOverlay.Show();
+                maximumDeckOverlay.ToggleSafeMaximizeForTest();
+                maximumDeckOverlay.ToggleSafeMaximizeForTest();
+            }
+            Pump(window);
+            Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
             maximumDeckOverlay.Close();
             backdropProbe.Close();
             window.ShowDeckLayoutListForTest();

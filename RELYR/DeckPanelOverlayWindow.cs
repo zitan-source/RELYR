@@ -39,6 +39,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     const long WsExNoActivate = 0x08000000L;
     const int WmMouseActivate = 0x0021;
     const int WmNcHitTest = 0x0084;
+    const int WmSysCommand = 0x0112;
     const int WmSizing = 0x0214;
     const int WmExitSizeMove = 0x0232;
     const int WmDropFiles = 0x0233;
@@ -46,6 +47,9 @@ internal sealed class DeckPanelOverlayWindow : Window
     const int WmCopyData = 0x004A;
     const uint MsgFiltAllow = 1;
     const int MaNoActivate = 3;
+    const int ScCommandMask = 0xFFF0;
+    const int ScMaximize = 0xF030;
+    const int ScRestore = 0xF120;
     const int HtTopLeft = 13;
     const int HtTopRight = 14;
     const int HtBottomLeft = 16;
@@ -102,13 +106,14 @@ internal sealed class DeckPanelOverlayWindow : Window
     Button? pendingHoverAudioSource;
     string pendingHoverAudioPath = "";
     readonly DispatcherTimer hoverAudioStartTimer = new() { Interval = HoverAudioDelay };
-    readonly List<DeckVideoPreviewPopup> videoPreviews = [];
+    DeckVideoPreviewPopup? videoPreview;
+    CancellationTokenSource? previewLoadCancellation;
     Point dragStart;
     double windowStartLeft, windowStartTop;
     DpiScale dragDpi;
 
     internal IReadOnlyList<Button> DeckButtons => deckButtons;
-    internal int VideoPreviewCountForTest => videoPreviews.Count;
+    internal int VideoPreviewCountForTest => videoPreview == null ? 0 : 1;
     internal Button CloseButton { get; private set; } = null!;
     internal Button ResetSizeButton { get; private set; } = null!;
     internal double VisualOpacityForTest => panelCard.Opacity;
@@ -143,6 +148,8 @@ internal sealed class DeckPanelOverlayWindow : Window
     double defaultWindowHeight;
     double minimumDeckScale;
     double maximumDeckScale;
+    Rect? safeMaximizeRestoreBounds;
+    bool changingWindowState;
 
     enum DeckBackdropMode
     {
@@ -204,8 +211,9 @@ internal sealed class DeckPanelOverlayWindow : Window
         BuildDeckButtons();
 
         SourceInitialized += WindowSourceInitialized;
+        StateChanged += WindowStateChanged;
         ThemeService.ThemeChanged += ThemeChanged;
-        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; dragging = false; fileDragButton = null; ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistSize(); };
+        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; dragging = false; fileDragButton = null; CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistSize(); };
     }
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
@@ -254,6 +262,8 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     void BuildDeckButtons()
     {
+        CancelDeferredPreviews();
+        previewLoadCancellation = new CancellationTokenSource();
         deckBuildQueued = false;
         deckButtonsBuilt = true;
         ClearVideoPreviews();
@@ -292,8 +302,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         fileDragButton = null;
         ClearDeckReorderTarget();
         StopDragPreview();
-        foreach (var preview in videoPreviews)
-            preview.Hide();
+        videoPreview?.Hide();
         CancelPendingHoverAudio();
         StopHoverAudio();
         PersistPosition();
@@ -341,7 +350,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         button.AllowDrop = true;
         button.PreviewDragOver += DeckButtonDragOver;
         button.PreviewDrop += DeckButtonDropped;
-        if (hoverPreviewsEnabled && !NeedsDeferredFilePreview(mapping))
+        if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredFilePreview(mapping)))
             ConfigureHoverPreview(button, mapping);
         var cell = new StackPanel { Width = DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap, Height = DeckPanelLayout.CellHeight };
         cell.Children.Add(button);
@@ -382,24 +391,23 @@ internal sealed class DeckPanelOverlayWindow : Window
         }).Where(x => x.Slot > 0 && x.Path.Length > 0).ToArray();
         if (pending.Length == 0)
             return;
+        CancellationToken cancellation = previewLoadCancellation?.Token ?? CancellationToken.None;
 
         _ = Task.Run(() =>
         {
             foreach (var item in pending)
             {
+                if (cancellation.IsCancellationRequested)
+                    return;
                 try
                 {
                     if (DeckPanelLayout.IsVideoFile(item.Path))
                     {
                         _ = DeckPanelLayout.LoadVideoThumbnail(item.Path, 96, 54);
-                        if (hoverPreviewsEnabled)
-                            _ = DeckPanelLayout.LoadVideoThumbnail(item.Path, 640, 360);
                     }
                     else
                     {
                         _ = DeckPanelLayout.LoadImageThumbnail(item.Path, 96);
-                        if (hoverPreviewsEnabled)
-                            _ = DeckPanelLayout.LoadImageThumbnail(item.Path, 360);
                     }
                 }
                 catch { }
@@ -409,31 +417,42 @@ internal sealed class DeckPanelOverlayWindow : Window
             {
                 _ = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                 {
-                    if (!IsLoaded)
+                    if (cancellation.IsCancellationRequested || !IsLoaded)
                         return;
                     foreach (var item in pending)
                     {
-                        if (!deckButtons.Contains(item.Button))
-                            continue;
-                        var mapping = DeckPanelLayout.FindMapping(layout, item.Slot);
-                        if (mapping == null || !string.Equals(mapping.DeckFilePath, item.Path, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        item.Button.Content = DeckPanelLayout.CreateButtonContent(DeckPanelLayout.InputName(item.Slot), mapping);
-                        if (hoverPreviewsEnabled)
-                            ConfigureHoverPreview(item.Button, mapping);
+                        if (cancellation.IsCancellationRequested)
+                            return;
+                        try
+                        {
+                            if (!deckButtons.Contains(item.Button))
+                                continue;
+                            var mapping = DeckPanelLayout.FindMapping(layout, item.Slot);
+                            if (mapping == null || !string.Equals(mapping.DeckFilePath, item.Path, StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            item.Button.Content = DeckPanelLayout.CreateButtonContent(DeckPanelLayout.InputName(item.Slot), mapping);
+                            if (hoverPreviewsEnabled && !DeckPanelLayout.IsVideoFile(item.Path))
+                                ConfigureHoverPreview(item.Button, mapping);
+                        }
+                        catch { }
                     }
                 }));
             }
             catch { }
         });
     }
+    void CancelDeferredPreviews()
+    {
+        try { previewLoadCancellation?.Cancel(); } catch { }
+        previewLoadCancellation?.Dispose();
+        previewLoadCancellation = null;
+    }
     void ClearVideoPreviewFor(Button source)
     {
-        foreach (var preview in videoPreviews.Where(x => x.IsFor(source)).ToList())
-        {
-            preview.Dispose();
-            videoPreviews.Remove(preview);
-        }
+        if (videoPreview?.IsFor(source) != true)
+            return;
+        videoPreview.Dispose();
+        videoPreview = null;
     }
 
     internal void Refresh(int opacityPercent, bool previewsEnabled)
@@ -962,7 +981,34 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         if (DeckPanelLayout.IsVideoFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
         {
-            videoPreviews.Add(new DeckVideoPreviewPopup(button, mapping.DeckFilePath, this));
+            string path = mapping.DeckFilePath;
+            button.MouseEnter += (_, _) => ShowVideoPreview(button, path);
+            return;
+        }
+        if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
+        {
+            string path = mapping.DeckFilePath;
+            var tooltip = new System.Windows.Controls.ToolTip
+            {
+                Background = WpfBrushes.Transparent,
+                BorderBrush = WpfBrushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                Placement = PlacementMode.Custom,
+                Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Opacity = .5, Color = Colors.Black }
+            };
+            ConfigureOutsideDeckPreview(tooltip, button);
+            button.ToolTip = tooltip;
+            button.ToolTipOpening += (_, _) =>
+            {
+                try
+                {
+                    var image = DeckPanelLayout.LoadImageThumbnail(path, 360);
+                    tooltip.Content = image == null ? new TextBlock { Text = "画像を読み込めません", Foreground = ThemeService.Brush("PrimaryText") } : CreateHoverCard(new WpfImage { Source = image, Width = 240, Height = 180, Stretch = Stretch.Uniform });
+                }
+                catch { tooltip.Content = new TextBlock { Text = "画像を読み込めません", Foreground = ThemeService.Brush("PrimaryText") }; }
+            };
+            button.ToolTipClosing += (_, _) => tooltip.Content = null;
             return;
         }
         object? content = CreateHoverContent(mapping, button);
@@ -1048,9 +1094,25 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     void ClearVideoPreviews()
     {
-        foreach (var preview in videoPreviews)
-            preview.Dispose();
-        videoPreviews.Clear();
+        videoPreview?.Dispose();
+        videoPreview = null;
+    }
+    void ShowVideoPreview(Button source, string path)
+    {
+        try
+        {
+            if (videoPreview?.IsFor(source) != true)
+            {
+                videoPreview?.Dispose();
+                videoPreview = new DeckVideoPreviewPopup(source, path, this);
+            }
+            videoPreview.Show();
+        }
+        catch
+        {
+            try { videoPreview?.Dispose(); } catch { }
+            videoPreview = null;
+        }
     }
     FrameworkElement CreateHoverCard(FrameworkElement content)
     {
@@ -1348,6 +1410,12 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (IsInsideButton(e.OriginalSource as DependencyObject))
             return;
+        if (e.ClickCount == 2)
+        {
+            ToggleSafeMaximize();
+            e.Handled = true;
+            return;
+        }
         dragging = true;
         dragStart = PointToScreen(e.GetPosition(this));
         dragDpi = VisualTreeHelper.GetDpi(this);
@@ -1391,15 +1459,18 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (!positionDirty)
             return;
         positionDirty = false;
-        savePosition?.Invoke(Left, Top);
+        try { savePosition?.Invoke(Left, Top); } catch { }
     }
     void PersistSize()
     {
         if (double.IsFinite(ActualWidth) && double.IsFinite(ActualHeight) && ActualWidth > 0 && ActualHeight > 0)
-            saveSize?.Invoke(ActualWidth, ActualHeight);
+        {
+            try { saveSize?.Invoke(ActualWidth, ActualHeight); } catch { }
+        }
     }
     void ResetToDefaultSize()
     {
+        safeMaximizeRestoreBounds = null;
         Width = defaultWindowWidth;
         Height = defaultWindowHeight;
         UpdateLayout();
@@ -1410,7 +1481,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         Left = left;
         Top = top;
         positionDirty = false;
-        savePosition?.Invoke(left, top);
+        try { savePosition?.Invoke(left, top); } catch { }
     }
     internal void ResizeAndPersistForTest(double width, double height)
     {
@@ -1420,6 +1491,57 @@ internal sealed class DeckPanelOverlayWindow : Window
         Height = constrained.Height;
         UpdateLayout();
         PersistSize();
+    }
+    internal void ToggleSafeMaximizeForTest() => ToggleSafeMaximize();
+    internal bool IsSafelyMaximizedForTest => safeMaximizeRestoreBounds != null && WindowState == WindowState.Normal;
+
+    void WindowStateChanged(object? sender, EventArgs e)
+    {
+        if (!changingWindowState && WindowState == WindowState.Maximized)
+            MaximizeWithinWorkArea();
+    }
+
+    void ToggleSafeMaximize()
+    {
+        if (safeMaximizeRestoreBounds is Rect restore)
+        {
+            safeMaximizeRestoreBounds = null;
+            ApplySafeBounds(restore);
+            return;
+        }
+        MaximizeWithinWorkArea();
+    }
+
+    void MaximizeWithinWorkArea()
+    {
+        if (safeMaximizeRestoreBounds == null)
+            safeMaximizeRestoreBounds = new Rect(Left, Top, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
+        var maximum = WindowSizeForScale(maximumDeckScale);
+        Rect workArea = SystemParameters.WorkArea;
+        ApplySafeBounds(new Rect(
+            workArea.Left + (workArea.Width - maximum.Width) / 2,
+            workArea.Top + (workArea.Height - maximum.Height) / 2,
+            maximum.Width,
+            maximum.Height));
+    }
+
+    void ApplySafeBounds(Rect bounds)
+    {
+        changingWindowState = true;
+        try
+        {
+            if (WindowState != WindowState.Normal)
+                WindowState = WindowState.Normal;
+            Left = bounds.Left;
+            Top = bounds.Top;
+            Width = bounds.Width;
+            Height = bounds.Height;
+            UpdateLayout();
+            positionDirty = false;
+            try { savePosition?.Invoke(Left, Top); } catch { }
+            try { saveSize?.Invoke(ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height); } catch { }
+        }
+        finally { changingWindowState = false; }
     }
     internal int ResizeHitTestForTest(Point point) => ResizeCornerHit(point.X, point.Y, ActualWidth, ActualHeight, ResizeCornerSize);
     static int ResizeCornerHit(double x, double y, double width, double height, double corner)
@@ -1732,6 +1854,22 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     IntPtr WindowMessageHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WmSysCommand)
+        {
+            int command = unchecked((int)wParam.ToInt64()) & ScCommandMask;
+            if (command == ScMaximize)
+            {
+                MaximizeWithinWorkArea();
+                handled = true;
+                return IntPtr.Zero;
+            }
+            if (command == ScRestore && safeMaximizeRestoreBounds != null)
+            {
+                ToggleSafeMaximize();
+                handled = true;
+                return IntPtr.Zero;
+            }
+        }
         if (msg == WmSizing && lParam != IntPtr.Zero)
         {
             var proposed = Marshal.PtrToStructure<NativeWindowRect>(lParam);

@@ -92,21 +92,28 @@ internal static class OverlayService
             return;
         _ = dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
         {
-            Interlocked.Exchange(ref deckRefreshQueued, 0);
-            if (deckPanel is not { } panel)
-                return;
-            var config = configProvider?.Invoke();
-            if (config != null)
-                panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled);
+            RunOverlayUiSafely(() =>
+            {
+                Interlocked.Exchange(ref deckRefreshQueued, 0);
+                if (deckPanel is not { } panel)
+                    return;
+                var config = configProvider?.Invoke();
+                if (config != null)
+                    panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled);
+            }, "refresh Deck panel");
         }));
     }
 
     internal static void NotifyDeckLayoutChanged(bool refreshDeckPanel = true, string? layoutId = null, int? firstSlot = null, int? secondSlot = null)
     {
         if (layoutId is not null && firstSlot is int first && secondSlot is int second)
-            deckSlotsChanged?.Invoke(layoutId, first, second);
+        {
+            try { deckSlotsChanged?.Invoke(layoutId, first, second); } catch (Exception exception) { LogOverlayFailure("persist Deck slot changes", exception); }
+        }
         else
-            deckLayoutChanged?.Invoke();
+        {
+            try { deckLayoutChanged?.Invoke(); } catch (Exception exception) { LogOverlayFailure("persist Deck layout changes", exception); }
+        }
         if (refreshDeckPanel)
             RefreshDeckPanel();
     }
@@ -128,8 +135,32 @@ internal static class OverlayService
         var dispatcher = WpfApplication.Current?.Dispatcher;
         if (dispatcher == null)
             return false;
-        _ = dispatcher.BeginInvoke(() => ShowOnUiThread(action));
+        _ = dispatcher.BeginInvoke(() => RunOverlayUiSafely(() => ShowOnUiThread(action), "show overlay"));
         return true;
+    }
+
+    static void RunOverlayUiSafely(Action action, string operation)
+    {
+        try { action(); }
+        catch (Exception exception)
+        {
+            LogOverlayFailure(operation, exception);
+            try { deckPanel?.Close(); } catch { }
+            deckPanel = null;
+            try { inputPanel?.Close(); } catch { }
+            inputPanel = null;
+        }
+    }
+
+    static void LogOverlayFailure(string operation, Exception exception)
+    {
+        try
+        {
+            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RELYR");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(Path.Combine(directory, "overlay-errors.log"), $"{DateTimeOffset.Now:O} {operation}: {exception}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     static void ShowOnUiThread(string action)
