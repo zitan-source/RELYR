@@ -108,6 +108,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     DpiScale dragDpi;
 
     internal IReadOnlyList<Button> DeckButtons => deckButtons;
+    internal int VideoPreviewCountForTest => videoPreviews.Count;
     internal Button CloseButton { get; private set; } = null!;
     internal Button ResetSizeButton { get; private set; } = null!;
     internal double VisualOpacityForTest => panelCard.Opacity;
@@ -291,7 +292,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         fileDragButton = null;
         ClearDeckReorderTarget();
         StopDragPreview();
-        ClearVideoPreviews();
+        foreach (var preview in videoPreviews)
+            preview.Hide();
         CancelPendingHoverAudio();
         StopHoverAudio();
         PersistPosition();

@@ -133,6 +133,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
         return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
     }
     internal bool IsFor(Button button) => ReferenceEquals(source, button);
+    internal void Hide() => ClosePreview();
 
     static System.Windows.Size PreviewSize(double width, double height)
     {

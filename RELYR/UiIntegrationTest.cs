@@ -353,6 +353,8 @@ internal static class UiIntegrationTest
                 audioWriter.Write(2);
                 audioWriter.Write((short)0);
             }
+            string deckPreviewVideo = Path.Combine(testConfigDirectory, "deck-preview.mp4");
+            File.WriteAllBytes(deckPreviewVideo, [0]);
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewAudio });
             window.EditDeckLayoutForTest(standardDeck);
@@ -370,6 +372,7 @@ internal static class UiIntegrationTest
             var overlayLayout = new DeckLayoutDefinition { Name = "標準Deck", Columns = 9, Rows = 5, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C", Description = "コピー" }] };
             var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 67, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
+            overlayLayout.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewVideo });
             var backdropProbe = CreateBackdropProbeWindow();
             backdropProbe.Show();
             backdropProbe.UpdateLayout();
@@ -383,12 +386,14 @@ internal static class UiIntegrationTest
             deckOverlay.UpdateLayout();
             Pump(window);
             PumpFor(TimeSpan.FromMilliseconds(150));
+            int videoPreviewsBeforeHide = deckOverlay.VideoPreviewCountForTest;
             deckOverlay.HideForReuse();
             var deckReopenTime = System.Diagnostics.Stopwatch.StartNew();
             deckOverlay.Show();
             deckReopenTime.Stop();
             Pump(window);
             Check(deckReadyBeforeShow && deckConstructionTime.Elapsed < TimeSpan.FromMilliseconds(250) && deckReopenTime.Elapsed < TimeSpan.FromMilliseconds(100) && deckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image, $"Deck overlay presents complete controls on its first frame and reopens from cache without another initialization beat (construct={deckConstructionTime.ElapsedMilliseconds} ms, firstShow={deckShowTime.ElapsedMilliseconds} ms, reopen={deckReopenTime.ElapsedMilliseconds} ms)");
+            Check(videoPreviewsBeforeHide == 1 && deckOverlay.VideoPreviewCountForTest == 1, "Deck video hover preview remains wired after the cached overlay is hidden and reopened");
             Check(deckOverlay.DeckButtons[1].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }, "Deck thumbnail preview is placed outside the Deck instead of covering adjacent keys");
             var deckOverlayBackground = (deckOverlay.Content as Border)?.Background as SolidColorBrush;
             Check(deckOverlayBackground != null && deckOverlayBackground.Color.R == ThemeService.Color("AppBackground").R && deckOverlayBackground.Color.G == ThemeService.Color("AppBackground").G && deckOverlayBackground.Color.B == ThemeService.Color("AppBackground").B, "Deck overlay default surface uses the same background tone as the main app");
