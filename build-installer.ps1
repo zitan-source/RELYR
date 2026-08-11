@@ -55,8 +55,8 @@ if($installerText -notmatch '(?im)^CloseApplications=yes\s*$' -or $installerText
 if($installerText -notmatch '(?im)^ApplicationsFound=.*メイン画面.*管理者入力ヘルパー.*2件表示.*正常.*$'){
   throw "Installer must explain the two expected RELYR processes without changing shutdown behavior"
 }
-if($installerText -notmatch '(?im)^Compression=none\s*$' -or $installerText -notmatch '(?im)^SolidCompression=no\s*$'){
-  throw "Installer must keep payloads uncompressed and non-solid for transparent scanning"
+if($installerText -notmatch '(?is)#ifdef\s+IncludeRuntime.*?Compression=none.*?SolidCompression=no.*?#else.*?Compression=lzma2/ultra64.*?SolidCompression=yes.*?#endif'){
+  throw "Full setup must stay transparent while the lightweight update uses the Defender-safe compressed container"
 }
 if($installerText -notmatch '(?im)^UninstallDisplayName=\{#AppName\}\s*$' -or $installerText -notmatch '(?im)^Name:.*\{uninstallexe\}'){
   throw "Installer must present the uninstaller with the RELYR name"

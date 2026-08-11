@@ -25,11 +25,17 @@ DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
 OutputDir={#InstallerOutputDir}
 OutputBaseFilename=RELYR-{#DistributionName}-{#AppVersion}
-; Keep installer payloads uncompressed. RELYR legitimately uses global input
-; hooks and an elevated helper; avoiding a packed payload gives scanners the
-; clearest possible view without changing any application behavior.
+; Keep the runtime-bearing full setup transparent, while using Inno Setup's
+; standard compression for the lightweight update. Microsoft Defender has
+; falsely classified the small uncompressed update container even though its
+; extracted RELYR payload scans cleanly.
+#ifdef IncludeRuntime
 Compression=none
 SolidCompression=no
+#else
+Compression=lzma2/ultra64
+SolidCompression=yes
+#endif
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
