@@ -395,7 +395,10 @@ internal static class UiIntegrationTest
             deckReopenTime.Stop();
             Pump(window);
             Check(deckReadyBeforeShow && deckConstructionTime.Elapsed < TimeSpan.FromMilliseconds(250) && deckReopenTime.Elapsed < TimeSpan.FromMilliseconds(100) && deckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image, $"Deck overlay presents complete controls on its first frame and reopens from cache without another initialization beat (construct={deckConstructionTime.ElapsedMilliseconds} ms, firstShow={deckShowTime.ElapsedMilliseconds} ms, reopen={deckReopenTime.ElapsedMilliseconds} ms)");
-            Check(videoPreviewsBeforeHide == 1 && deckOverlay.VideoPreviewCountForTest == 1, "Deck video hover preview remains wired after the cached overlay is hidden and reopened");
+            int videoPreviewsAfterHide = deckOverlay.VideoPreviewCountForTest;
+            deckOverlay.DeckButtons[2].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            Pump(window);
+            Check(videoPreviewsBeforeHide == 1 && videoPreviewsAfterHide == 0 && deckOverlay.VideoPreviewCountForTest == 1, "hiding the cached Deck releases its video player and the preview remains wired after reopening");
             Check(deckOverlay.DeckButtons[1].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }, "Deck thumbnail preview is placed outside the Deck instead of covering adjacent keys");
             var deckOverlayBackground = (deckOverlay.Content as Border)?.Background as SolidColorBrush;
             Check(deckOverlayBackground != null && deckOverlayBackground.Color.R == ThemeService.Color("AppBackground").R && deckOverlayBackground.Color.G == ThemeService.Color("AppBackground").G && deckOverlayBackground.Color.B == ThemeService.Color("AppBackground").B, "Deck overlay default surface uses the same background tone as the main app");
@@ -471,6 +474,9 @@ internal static class UiIntegrationTest
                 maximumDeckOverlay.ToggleSafeMaximizeForTest();
                 maximumDeckOverlay.ToggleSafeMaximizeForTest();
             }
+            Pump(window);
+            Check(maximumDeckOverlay.VideoPreviewCountForTest == 0, "each cached Deck hide releases the active hover video player");
+            maximumDeckOverlay.DeckButtons[25].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
             maximumDeckOverlay.Close();

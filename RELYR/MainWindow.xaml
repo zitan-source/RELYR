@@ -574,7 +574,7 @@
             <TextBlock Text="⌘" FontFamily="Segoe UI Symbol" FontSize="27" Foreground="{DynamicResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <TextBlock Text="キーを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-          <TextBlock Text="編集するキーまたはDeckボタンを選択してください" Margin="8,6,8,0" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap"/>
+          <TextBlock Margin="8,6,8,0" MaxWidth="270" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap"><Run Text="編集するキーまたはDeckボタンを"/><LineBreak/><Run Text="選択してください"/></TextBlock>
         </StackPanel>
         </Grid>
       </Border>

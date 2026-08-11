@@ -25,6 +25,8 @@ public partial class App : System.Windows.Application
     EventWaitHandle? showAcknowledgement;
     EventWaitHandle? shutdownSignal;
     ForegroundWindowTracker? foregroundWindowTracker;
+    System.Threading.Timer? elevatedLauncherMaintenanceTimer;
+    int elevatedLauncherRepairBusy;
     bool ownsMutex;
     readonly CancellationTokenSource signalStop = new();
     public App()
@@ -427,6 +429,7 @@ public partial class App : System.Windows.Application
         MainWindow = window;
         window.Hide();
         IpcRuntime.IsElevatedHelper = true;
+        StartElevatedLauncherMaintenance();
         _ = Task.Run(async () =>
         {
             try
@@ -436,6 +439,29 @@ public partial class App : System.Windows.Application
             catch { }
             finally { try { helperMutex.ReleaseMutex(); } catch { } helperMutex.Dispose(); ExitImmediately(0); }
         });
+    }
+
+    void StartElevatedLauncherMaintenance()
+    {
+        // The installed helper already has the required integrity level. Keep the
+        // command-only launcher task healthy without prompting the user or touching
+        // any keyboard/mouse hook state. This also repairs external task deletion
+        // while the resident helper is still available. Run maintenance off the
+        // input/UI dispatcher so Task Scheduler latency cannot delay a layer event.
+        elevatedLauncherMaintenanceTimer?.Dispose();
+        elevatedLauncherMaintenanceTimer = new System.Threading.Timer(
+            _ => RepairElevatedLauncherInBackground(),
+            null,
+            TimeSpan.Zero,
+            TimeSpan.FromMinutes(1));
+    }
+
+    void RepairElevatedLauncherInBackground()
+    {
+        if (Interlocked.Exchange(ref elevatedLauncherRepairBusy, 1) != 0)
+            return;
+        try { _ = StartupService.TryEnsureElevatedLauncher(out _); }
+        finally { Volatile.Write(ref elevatedLauncherRepairBusy, 0); }
     }
 
     static void StartStartupMaintenance(AppConfig config)
@@ -757,6 +783,13 @@ public partial class App : System.Windows.Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        var launcherTimer = elevatedLauncherMaintenanceTimer;
+        elevatedLauncherMaintenanceTimer = null;
+        if (launcherTimer != null)
+        {
+            try { launcherTimer.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+            catch { launcherTimer.Dispose(); }
+        }
         try
         {
             IpcRuntime.StopAsync().GetAwaiter().GetResult();

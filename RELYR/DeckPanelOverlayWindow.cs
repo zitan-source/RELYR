@@ -302,7 +302,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         fileDragButton = null;
         ClearDeckReorderTarget();
         StopDragPreview();
-        videoPreview?.Hide();
+        ClearVideoPreviews();
         CancelPendingHoverAudio();
         StopHoverAudio();
         PersistPosition();

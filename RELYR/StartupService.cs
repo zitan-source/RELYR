@@ -72,6 +72,24 @@ public static class StartupService
         DeleteTask(LegacyTaskName);
     }
 
+    internal static bool TryEnsureElevatedLauncher(out string error)
+        => TryEnsureElevatedLauncher(EnsureElevatedLauncher, out error);
+
+    internal static bool TryEnsureElevatedLauncher(Action repair, out string error)
+    {
+        try
+        {
+            repair();
+            error = "";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
     public static void RemoveElevatedTasks()
     {
         RequireElevated();
