@@ -157,7 +157,7 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="DeckRoundedTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentTextBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
         <Border x:Name="DeckTextBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
           <ScrollViewer x:Name="PART_ContentHost" Focusable="False" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
@@ -195,7 +195,16 @@
       <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource SurfaceBackground}"/><Setter Property="Padding" Value="10,7"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-        <Style.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource AccentStrongBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentButtonText}"/></Trigger></Style.Triggers>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+          <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+            <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ItemBorder" Property="Opacity" Value="0.45"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
       </Style></Setter.Value></Setter>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
         <Grid>
@@ -250,7 +259,7 @@
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Text}"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Launch}"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Macro}"><Setter Property="Foreground" Value="{DynamicResource ActionMacroIconBrush}"/></DataTrigger>
-        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Gesture}"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Gesture}"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></DataTrigger>
       </Style.Triggers>
     </Style>
     <DataTemplate x:Key="ActionChoiceTemplate">
@@ -291,10 +300,10 @@
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition x:Name="HeaderBrandColumn" Width="0"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock x:Name="VersionText" Text="v—" Visibility="Collapsed" Width="0" Height="0" Margin="0"/>
-        <Grid x:Name="ToolbarPanel" Grid.Column="1">
+        <Grid x:Name="ToolbarPanel" Grid.Column="1" Margin="14,0,0,0">
           <Grid.ColumnDefinitions><ColumnDefinition MinWidth="0"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBlock Text="プロファイル" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryText}"/>
+            <TextBlock x:Name="ProfileToolbarLabel" Text="プロファイル" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryText}"/>
             <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="200" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
             <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="40" MinWidth="40" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
             <TextBlock Text="配列" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/>
@@ -396,7 +405,7 @@
           </StackPanel>
           <StackPanel x:Name="SidebarStatusPanel" Grid.Row="3">
             <WrapPanel HorizontalAlignment="Left" VerticalAlignment="Center">
-              <ToggleButton x:Name="EngineToggle" Style="{StaticResource StatusToggleStyle}" IsChecked="True" Checked="EngineChanged" Unchecked="EngineChanged" ToolTip="クリックして入力変換を一時停止・再開します"><TextBlock x:Name="EngineStatus" Text="● エンジン稼働中" FontSize="10.5" Foreground="{DynamicResource AccentBrush}"/></ToggleButton>
+              <ToggleButton x:Name="EngineToggle" Style="{StaticResource StatusToggleStyle}" IsChecked="True" Checked="EngineChanged" Unchecked="EngineChanged" ToolTip="クリックして入力変換を一時停止・再開します"><TextBlock x:Name="EngineStatus" Text="● エンジン稼働中" FontSize="10.5" Foreground="{DynamicResource AccentTextBrush}"/></ToggleButton>
               <ToggleButton x:Name="AutoSaveToggle" Style="{StaticResource StatusToggleStyle}" Checked="AutoSaveChanged" Unchecked="AutoSaveChanged" ToolTip="クリックして自動保存を切り替えます"><TextBlock x:Name="AutoSaveStatus" Text="自動保存 オフ" FontSize="10.5"/></ToggleButton>
             </WrapPanel>
           </StackPanel>
@@ -473,7 +482,7 @@
                   </ComboBox>
                 </StackPanel>
                 <StackPanel x:Name="DeckCustomSizePanel" Orientation="Horizontal" Margin="10,0,0,0" Visibility="Collapsed">
-                  <TextBox x:Name="DeckColumnsBox" Style="{StaticResource DeckRoundedTextBox}" Width="52" Height="40" Margin="0" Padding="6,0" MaxLength="2" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="DeckRowsBox" Style="{StaticResource DeckRoundedTextBox}" Width="52" Height="40" Margin="0" Padding="6,0" MaxLength="2" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text="  最大18×18" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
+                  <TextBox x:Name="DeckColumnsBox" Style="{StaticResource DeckRoundedTextBox}" Width="64" Height="40" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="DeckRowsBox" Style="{StaticResource DeckRoundedTextBox}" Width="64" Height="40" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text="  最大18×18" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
                 </StackPanel>
               </WrapPanel>
               </StackPanel>

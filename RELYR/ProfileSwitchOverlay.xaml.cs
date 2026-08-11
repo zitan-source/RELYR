@@ -7,19 +7,41 @@ public partial class ProfileSwitchOverlay : Window
 {
     readonly TimeSpan visibleDuration;
     System.Threading.Timer? hideTimer;
+    bool themeAppliedBeforeReveal;
+
+    internal bool ThemeAppliedBeforeRevealForTest => themeAppliedBeforeReveal;
+    internal System.Windows.Media.Color SurfaceColorForTest => ((System.Windows.Media.SolidColorBrush)OverlaySurface.Background).Color;
 
     internal ProfileSwitchOverlay(string profileName, TimeSpan? duration = null)
     {
+        Opacity = 0;
         InitializeComponent();
         ProfileNameText.Text = profileName;
         visibleDuration = duration ?? TimeSpan.FromSeconds(1);
+        ApplyCurrentTheme();
+        themeAppliedBeforeReveal = true;
+        ThemeService.ThemeChanged += ThemeChanged;
         Loaded += OverlayLoaded;
-        Closed += (_, _) => { hideTimer?.Dispose(); hideTimer = null; };
+        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; hideTimer?.Dispose(); hideTimer = null; };
     }
 
     void OverlayLoaded(object sender, RoutedEventArgs e)
     {
+        ApplyCurrentTheme();
         PositionOnCurrentScreen();
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, new Action(() =>
+        {
+            if (!IsLoaded)
+                return;
+            ApplyCurrentTheme();
+            Opacity = 1;
+            StartHideTimer();
+        }));
+    }
+
+    void StartHideTimer()
+    {
+        hideTimer?.Dispose();
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         hideTimer = new System.Threading.Timer(_ =>
         {
@@ -33,6 +55,25 @@ public partial class ProfileSwitchOverlay : Window
                     Close();
             }));
         }, null, visibleDuration, Timeout.InfiniteTimeSpan);
+    }
+
+    void ThemeChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke((Action)ApplyCurrentTheme);
+            return;
+        }
+        ApplyCurrentTheme();
+    }
+
+    void ApplyCurrentTheme()
+    {
+        OverlaySurface.Background = ThemeService.Brush("CardBackground");
+        OverlaySurface.BorderBrush = ThemeService.Brush("AccentBrush");
+        AccentBar.Background = ThemeService.Brush("AccentBrush");
+        CaptionText.Foreground = ThemeService.Brush("SecondaryText");
+        ProfileNameText.Foreground = ThemeService.Brush("PrimaryText");
     }
 
     void PositionOnCurrentScreen()

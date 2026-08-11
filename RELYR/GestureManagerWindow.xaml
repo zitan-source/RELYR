@@ -43,13 +43,13 @@
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
           <UniformGrid Grid.Row="2" Columns="3" Margin="0,9,0,0">
             <Button x:Name="AddGestureButton" Style="{StaticResource AppButtonStyle}" Margin="3" Padding="0" Click="AddGesture_Click" ToolTip="ジェスチャーを追加">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="White" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
             </Button>
             <Button x:Name="RenameGestureButton" Style="{StaticResource AppButtonStyle}" Margin="3" Padding="0" Click="RenameGesture_Click" ToolTip="ジェスチャー名を変更">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="White" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
             </Button>
             <Button x:Name="DeleteGestureButton" Style="{StaticResource DangerButton}" Margin="3" Padding="0" Click="DeleteGesture_Click" ToolTip="ジェスチャーを削除">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="White" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
             </Button>
           </UniformGrid>
         </Grid>

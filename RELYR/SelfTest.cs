@@ -148,7 +148,7 @@ public static class SelfTest
             config.ClockShowOnAllMonitors = false;
             config.InputPanelOpacityPercent = 67;
             config.UseSharedDeckPanel = true;
-            config.SharedDeckMappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A", Description = "共通" }];
+            config.SharedDeckMappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A", Description = "共通", DeckIcon = "home", DeckIconPath = @"C:\Icons\home.png" }];
             config.DeckPanelLeft = 123.5;
             config.DeckPanelTop = 234.5;
             config.DeckPanelWidth = 987.5;
@@ -166,6 +166,7 @@ public static class SelfTest
             Check(!loaded.CheckForUpdates && loaded.DismissedUpdateVersion == "9.9.9", "update-check and dismissed-version settings roundtrip");
             Check(loaded.WindowActionTarget == WindowActionTarget.WindowUnderCursor, "window action target setting roundtrip");
             Check(loaded.ThemeMode == AppThemeMode.Light && loaded.LastUpdateCheckUtcTicks == config.LastUpdateCheckUtcTicks, "theme mode and last update check roundtrip");
+            Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
             Check(!loaded.RecordKeyboardInputInMacros, "macro keyboard recording option roundtrip");
             Check(loaded.RecordMappedActionsInMacros, "macro mapped-action recording option roundtrip");
             Check(loaded.RecordMouseMovementInMacros, "macro mouse trajectory option roundtrip");
@@ -392,7 +393,9 @@ public static class SelfTest
             string globalDeckId = DeckPanelLayout.DefaultLayout(normalizedV25Deck)!.Id;
             normalizedV25Deck.ActiveProfile = "動画";
             Check(normalizedV25Deck.DeckLayouts is [{ Name: "標準Deck" }] && DeckPanelLayout.DefaultLayout(normalizedV25Deck)?.Id == globalDeckId && normalizedV25Deck.Profiles.All(x => x.DefaultDeckLayoutId == globalDeckId), "v25 profile-generated empty Decks collapse to one global Deck and profile changes cannot switch it");
-            Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int customColumns, out int customRows) && customColumns == 18 && customRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && !MainWindow.TryResolveDeckLayoutSize("custom", "0", "5", out _, out _), "new Deck dialog accepts custom sizes from 1x1 through 18x18 only");
+            Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int customColumns, out int customRows) && customColumns == 18 && customRows == 18 && MainWindow.TryResolveDeckLayoutSize("custom", "１２", "１８", out int fullWidthColumns, out int fullWidthRows) && fullWidthColumns == 12 && fullWidthRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && !MainWindow.TryResolveDeckLayoutSize("custom", "0", "5", out _, out _), "new Deck dialog accepts half-width and full-width custom sizes from 1x1 through 18x18 only");
+            var assignmentKinds = new[] { ActionKind.Key, ActionKind.Shortcut, ActionKind.Text, ActionKind.Launch, ActionKind.Macro, ActionKind.Profile, ActionKind.Gesture, ActionKind.Disabled };
+            Check(assignmentKinds.All(kind => { var background = MainWindow.AssignmentColorFor(new Mapping { Kind = kind, Value = "test" }); return DeckPanelLayout.ContrastRatio(background, DeckPanelLayout.TextColorFor(background)) >= 4.5; }), "every assignment color automatically receives black or white text with accessible contrast");
             Check(MainWindow.ContainsJapaneseText("コピー") && MainWindow.ContainsJapaneseText("alpha漢字") && !MainWindow.ContainsJapaneseText("Ctrl+Shift+K"), "Japanese action content is detected for automatic text-action selection");
             var (Width, Height) = MainWindow.DeckPreviewSize(12, 1);
             var squarePreview = MainWindow.DeckPreviewSize(3, 3);
@@ -494,6 +497,8 @@ public static class SelfTest
             var desktopBytes = desktopA.ToByteArray().Concat(desktopB.ToByteArray()).ToArray();
             var parsedDesktops = VirtualDesktopService.ParseDesktopIds(desktopBytes);
             Check(parsedDesktops.SequenceEqual([desktopA, desktopB]), "virtual desktop id parsing");
+            var lowResolutionBounds = MainWindow.ConstrainWindowBoundsForTest(new System.Windows.Rect(-80, -60, 1600, 1000), new System.Windows.Rect(0, 0, 1024, 720));
+            Check(lowResolutionBounds == new System.Windows.Rect(8, 8, 1008, 704), "main window stays fully movable and keeps its title controls visible on a low-resolution work area");
             Check(InputEngine.KeyName(0x31) == "1" && InputEngine.KeyName(0x2C) == "PrintScreen", "visual and physical key names match");
             Check(InputEngine.KeyName(0xF3) == "半角/全角" && InputEngine.KeyName(0xE2) == "_", "JIS key name normalization");
             Check(InputEngine.KeyName(0x0D) == "Enter" && InputEngine.KeyName(0x1B) == "Esc" && InputEngine.KeyName(0x61) == "NumPad1", "special key names match visual keyboard");

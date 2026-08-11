@@ -271,7 +271,7 @@ public partial class ProfileManagerWindow : Window
     void ShowStatus(string message, bool error = false)
     {
         StatusText.Text = message;
-        StatusText.Foreground = ThemeService.Brush(error ? "DangerBrush" : "AccentBrush");
+        StatusText.Foreground = ThemeService.Brush(error ? "DangerBrush" : "AccentTextBrush");
     }
     string UniqueName(string basis)
     {

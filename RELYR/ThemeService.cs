@@ -113,6 +113,7 @@ internal static class ThemeService
         ["SecondaryText"] = "#A9ADB3",
         ["MutedText"] = "#7D828A",
         ["AccentBrush"] = "#1DA78C",
+        ["AccentTextBrush"] = "#1DA78C",
         ["AccentStrongBrush"] = "#168D76",
         ["AccentButtonText"] = "#FFFFFF",
         ["AccentSoftBrush"] = "#183F38",
@@ -139,7 +140,7 @@ internal static class ThemeService
 
     static readonly IReadOnlyDictionary<string, string> LightPalette = new Dictionary<string, string>
     {
-        ["AppBackground"] = "#F4F5F7",
+        ["AppBackground"] = "#F3F3F3",
         ["HeaderBackground"] = "#FAFAFB",
         ["FooterBackground"] = "#F7F7F8",
         ["PaneBackground"] = "#F7F7F8",
@@ -154,9 +155,10 @@ internal static class ThemeService
         ["SubtleBorderBrush"] = "#E5E6E8",
         ["PrimaryText"] = "#202124",
         ["SecondaryText"] = "#676B73",
-        ["MutedText"] = "#8A8E96",
+        ["MutedText"] = "#6C7078",
         ["AccentBrush"] = "#1DA78C",
-        ["AccentStrongBrush"] = "#168D76",
+        ["AccentTextBrush"] = "#087B69",
+        ["AccentStrongBrush"] = "#087B69",
         ["AccentButtonText"] = "#FFFFFF",
         ["AccentSoftBrush"] = "#DDF4EF",
         ["WarningBrush"] = "#9A6700",

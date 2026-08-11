@@ -96,7 +96,7 @@
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <StackPanel VerticalAlignment="Center">
           <TextBlock x:Name="StatusText" Text="キーまたはマウスのボタンを選んでください。"
-                     Foreground="{DynamicResource AccentBrush}"/>
+                     Foreground="{DynamicResource AccentTextBrush}"/>
           <TextBlock x:Name="LastChosenText" Text="直前に押したキー：—"
                      Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0"/>
           <TextBlock x:Name="ShortcutPreviewText" Text="現在の入力：—"

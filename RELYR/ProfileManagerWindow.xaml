@@ -40,18 +40,18 @@
         <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <TextBlock Text="一覧" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
           <ListBox x:Name="ProfileList" Grid.Row="1" SelectionChanged="ProfileSelectionChanged" PreviewMouseRightButtonDown="ProfileList_PreviewMouseRightButtonDown">
-            <ListBox.ItemTemplate><DataTemplate><Grid Margin="6,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="自動" FontSize="11" Foreground="{DynamicResource AccentBrush}" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/></Grid></DataTemplate></ListBox.ItemTemplate>
+            <ListBox.ItemTemplate><DataTemplate><Grid Margin="6,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="自動" FontSize="11" Foreground="{DynamicResource AccentTextBrush}" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/></Grid></DataTemplate></ListBox.ItemTemplate>
             <ListBox.ContextMenu><ContextMenu><MenuItem Header="割り当てをコピー" Click="CopyAssignments_Click"/><MenuItem Header="割り当てを貼り付け" Click="PasteAssignments_Click"/><Separator/><MenuItem Header="名前を変更" Click="RenameProfileManager_Click"/><MenuItem Header="削除" Foreground="{DynamicResource DangerBrush}" Click="DeleteProfileManager_Click"/></ContextMenu></ListBox.ContextMenu>
           </ListBox>
           <UniformGrid Grid.Row="2" Columns="3" Margin="0,9,0,0">
             <Button x:Name="AddProfileButton" Click="AddProfileManager_Click" ToolTip="プロファイルを追加" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="White" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
             </Button>
             <Button x:Name="RenameProfileButton" Click="RenameProfileManager_Click" ToolTip="プロファイル名を編集" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="White" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
             </Button>
             <Button x:Name="DeleteProfileButton" Style="{StaticResource DangerButton}" Click="DeleteProfileManager_Click" ToolTip="プロファイルを削除" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="White" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
             </Button>
           </UniformGrid>
           <StackPanel Grid.Row="3" Margin="0,3,0,0"><Button Content="割り当てをコピー" Click="CopyAssignments_Click"/><Button Content="割り当てを貼り付け" Click="PasteAssignments_Click"/></StackPanel>

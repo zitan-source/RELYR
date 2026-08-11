@@ -74,7 +74,7 @@ public partial class MainWindow
         MarkDirty();
         RefreshSelectedInputVisual(selected.Input);
     }
-    static bool HasDeckButtonContent(Mapping? mapping) => MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping?.Description) || !string.IsNullOrWhiteSpace(mapping?.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping);
+    static bool HasDeckButtonContent(Mapping? mapping) => MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping?.Description) || !string.IsNullOrWhiteSpace(mapping?.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
     void SetDeckButtonFile(string input, string path)
     {
         if (!DeckPanelLayout.IsInputName(input))
@@ -193,6 +193,8 @@ public partial class MainWindow
         reveal.Click += (_, _) => RevealDeckFile(input);
         var color = CreateDeckContextMenuItem("\uE790", "色を変更...", "");
         color.Click += (_, _) => ChooseDeckButtonColor(input);
+        var icon = CreateDeckContextMenuItem("\uE8B9", "アイコン変更...", "");
+        icon.Click += (_, _) => ChooseDeckButtonIcon(input);
         var resetColor = CreateDeckContextMenuItem("\uE777", "色を標準に戻す", "");
         resetColor.Click += (_, _) => SetDeckButtonColor(input, "");
         var delete = CreateDeckContextMenuItem("\uE74D", "削除", "Del", true);
@@ -204,6 +206,7 @@ public partial class MainWindow
         menu.Items.Add(reveal);
         menu.Items.Add(new Separator());
         menu.Items.Add(color);
+        menu.Items.Add(icon);
         menu.Items.Add(resetColor);
         menu.Items.Add(new Separator());
         menu.Items.Add(delete);
@@ -287,6 +290,28 @@ public partial class MainWindow
             return;
         var selectedColor = picker.SelectedColor;
         SetDeckButtonColor(input, $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}");
+    }
+    void ChooseDeckButtonIcon(string input)
+    {
+        var mappings = MappingCollectionForInput(input);
+        var mapping = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        var picker = new DeckIconPickerWindow(mapping?.DeckIcon ?? "", mapping?.DeckIconPath ?? "") { Owner = this };
+        if (picker.ShowDialog() != true)
+            return;
+        mapping ??= new Mapping { Input = input, Layer = DeckPanelLayout.Layer };
+        if (!mappings.Contains(mapping))
+            mappings.Add(mapping);
+        mapping.DeckIcon = picker.SelectedPresetId;
+        mapping.DeckIconPath = picker.SelectedCustomPath;
+        if (selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true)
+        {
+            selected.DeckIcon = mapping.DeckIcon;
+            selected.DeckIconPath = mapping.DeckIconPath;
+        }
+        if (!HasDeckButtonContent(mapping))
+            mappings.Remove(mapping);
+        MarkDirty();
+        RefreshSelectedInputVisual(input);
     }
     void SetDeckButtonColor(string input, string color)
     {
@@ -510,10 +535,40 @@ public partial class MainWindow
             data.SetData(System.Windows.DataFormats.FileDrop, new[] { mapping!.DeckFilePath });
         try
         {
-            DragDrop.DoDragDrop(button, data, System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
+            RunDeckEditorDrag(button, mapping, data);
         }
         finally { ClearDeckReorderTarget(); }
         e.Handled = true;
+    }
+    static void RunDeckEditorDrag(System.Windows.Controls.Button button, Mapping? mapping, System.Windows.DataObject data)
+    {
+        DeckDragPreviewWindow? preview = null;
+        System.Windows.GiveFeedbackEventHandler? feedback = null;
+        try
+        {
+            var icon = DeckIconCatalog.CreateVisual(mapping, 34, false);
+            if (icon != null)
+            {
+                preview = new DeckDragPreviewWindow(icon);
+                feedback = (_, e) =>
+                {
+                    var cursor = System.Windows.Forms.Cursor.Position;
+                    preview.MoveToPhysical(cursor.X, cursor.Y);
+                    e.UseDefaultCursors = false;
+                    e.Handled = true;
+                };
+                button.GiveFeedback += feedback;
+                preview.Show();
+                var cursor = System.Windows.Forms.Cursor.Position;
+                preview.MoveToPhysical(cursor.X, cursor.Y);
+            }
+            DragDrop.DoDragDrop(button, data, System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
+        }
+        finally
+        {
+            if (feedback != null) button.GiveFeedback -= feedback;
+            preview?.Close();
+        }
     }
     void DeckButtonReorderEnded(object sender, MouseButtonEventArgs e)
     {
@@ -675,8 +730,10 @@ public partial class MainWindow
         var content = new StackPanel();
         content.Children.Add(new Grid { Height = 88, Margin = new Thickness(0, 0, 0, 12), Children = { preview } });
         content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 5, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentBrush" : "SecondaryText") });
-        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 190, Margin = new Thickness(0, 0, 14, 14), Padding = new Thickness(16), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, Background = ThemeService.Brush("CardBackground"), BorderBrush = ThemeService.Brush(isDefault ? "AccentBrush" : "BorderBrush"), BorderThickness = new Thickness(1) };
+        content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 5, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentTextBrush" : "SecondaryText") });
+        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 190, Margin = new Thickness(0, 0, 14, 14), Padding = new Thickness(16), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, BorderThickness = new Thickness(1) };
+        card.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "CardBackground");
+        card.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, isDefault ? "AccentBrush" : "BorderBrush");
         card.Click += (_, _) => EditDeckLayout(layout);
         var menu = new ContextMenu();
         var makeDefault = new MenuItem { Header = "既定のDeckにする", IsEnabled = !isDefault };
@@ -738,10 +795,10 @@ public partial class MainWindow
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         customRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var columnsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "9", Width = 48, Height = 40, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        var columnsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "9", Width = 64, Height = 40, MaxLength = 2, FontSize = 14, Padding = new Thickness(8, 0, 8, 0), Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
         var times = new TextBlock { Text = "×", Margin = new Thickness(10, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") };
         Grid.SetColumn(times, 1);
-        var rowsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "5", Width = 48, Height = 40, MaxLength = 2, Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        var rowsBox = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "5", Width = 64, Height = 40, MaxLength = 2, FontSize = 14, Padding = new Thickness(8, 0, 8, 0), Margin = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
         Grid.SetColumn(rowsBox, 2);
         var limit = new TextBlock { Text = "1～18", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("MutedText"), FontSize = 11 };
         Grid.SetColumn(limit, 3);
@@ -812,7 +869,22 @@ public partial class MainWindow
         };
         if (!preset.Equals("custom", StringComparison.OrdinalIgnoreCase))
             return columns > 0 && rows > 0;
-        return int.TryParse(columnsText, out columns) && int.TryParse(rowsText, out rows) && columns is >= 1 and <= DeckPanelLayout.MaximumColumns && rows is >= 1 and <= DeckPanelLayout.MaximumRows;
+        return TryParseDeckDimension(columnsText, out columns) && TryParseDeckDimension(rowsText, out rows) && columns is >= 1 and <= DeckPanelLayout.MaximumColumns && rows is >= 1 and <= DeckPanelLayout.MaximumRows;
+    }
+
+    internal static bool TryParseDeckDimension(string text, out int value)
+    {
+        string trimmed = text.Trim();
+        if (trimmed.Length is 0 or > 2)
+        {
+            value = 0;
+            return false;
+        }
+        Span<char> normalized = stackalloc char[trimmed.Length];
+        int length = 0;
+        foreach (char character in trimmed)
+            normalized[length++] = character is >= '０' and <= '９' ? (char)('0' + character - '０') : character;
+        return int.TryParse(normalized[..length], out value);
     }
     void EditDeckLayout(DeckLayoutDefinition layout)
     {

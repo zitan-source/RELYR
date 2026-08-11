@@ -56,6 +56,8 @@ public sealed class Mapping
     public string Description { get; set; } = "";
     public string DeckColor { get; set; } = "";
     public string DeckFilePath { get; set; } = "";
+    public string DeckIcon { get; set; } = "";
+    public string DeckIconPath { get; set; } = "";
 
     public Mapping Copy() => new()
     {
@@ -71,7 +73,9 @@ public sealed class Mapping
         Layer = Layer,
         Description = Description,
         DeckColor = DeckColor,
-        DeckFilePath = DeckFilePath
+        DeckFilePath = DeckFilePath,
+        DeckIcon = DeckIcon,
+        DeckIconPath = DeckIconPath
     };
 }
 

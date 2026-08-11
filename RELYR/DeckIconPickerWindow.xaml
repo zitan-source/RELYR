@@ -1,0 +1,32 @@
+<Window x:Class="RELYR.DeckIconPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Deckアイコンを変更" Width="620" Height="610" MinWidth="520" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}">
+  <Grid Margin="20">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,14">
+      <TextBlock Text="アイコン変更" FontSize="20" FontWeight="SemiBold"/>
+      <TextBlock Text="プリセットを選ぶか、画像ファイルを参照してください" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}"/>
+    </StackPanel>
+    <Border Grid.Row="1" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <WrapPanel x:Name="PresetPanel" HorizontalAlignment="Left"/>
+      </ScrollViewer>
+    </Border>
+    <Grid Grid.Row="2" Margin="0,14,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Border x:Name="SelectedPreview" Width="48" Height="48" CornerRadius="8" Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="8"/>
+      <TextBlock x:Name="SelectedNameText" Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="アイコンなし" TextTrimming="CharacterEllipsis"/>
+      <StackPanel Grid.Column="2" Orientation="Horizontal">
+        <Button x:Name="BrowseButton" Style="{StaticResource AppButtonStyle}" Content="参照…" Click="Browse_Click" ToolTip="好きな画像ファイルを選択"/>
+        <Button x:Name="ClearButton" Style="{StaticResource AppButtonStyle}" Content="なし" Click="Clear_Click" ToolTip="設定したアイコンを外す" Margin="8,0,0,0"/>
+      </StackPanel>
+    </Grid>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Style="{StaticResource AppButtonStyle}" Content="キャンセル" IsCancel="True" Width="104"/>
+      <Button Style="{StaticResource AccentAppButtonStyle}" Content="適用" Click="Apply_Click" IsDefault="True" Width="104" Margin="8,0,0,0"/>
+    </StackPanel>
+  </Grid>
+</Window>

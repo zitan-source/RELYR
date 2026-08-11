@@ -24,6 +24,9 @@ namespace RELYR;
 
 public partial class MainWindow : Window
 {
+    const double DefaultMainWindowMinWidth = 880;
+    const double DefaultMainWindowMinHeight = 640;
+    const double MainWindowWorkAreaInset = 8;
     public static readonly DependencyProperty IsMultiSelectedProperty = DependencyProperty.RegisterAttached("IsMultiSelected", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public static bool GetIsMultiSelected(DependencyObject element) => (bool)element.GetValue(IsMultiSelectedProperty);
     public static void SetIsMultiSelected(DependencyObject element, bool value) => element.SetValue(IsMultiSelectedProperty, value);
@@ -72,6 +75,7 @@ public partial class MainWindow : Window
     private bool allowClose;
     private readonly bool engineStarted;
     private bool editingSelectedInput;
+    bool textInputOwnsPhysicalKeys;
     private bool selectionPulseSuppressed;
     int exitRequested;
     int restartRequested;
@@ -136,16 +140,21 @@ public partial class MainWindow : Window
         this.runtimeRole = runtimeRole;
         loading = true;
         InitializeComponent();
-        Loaded += (_, _) => EnsureUpdateCheckStarted();
+        AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(UpdateTextInputFocus), true);
+        AddHandler(Keyboard.LostKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(UpdateTextInputFocus), true);
+        Loaded += (_, _) => { EnsureUpdateCheckStarted(); Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea); };
         IsVisibleChanged += (_, _) => { if (IsVisible) EnsureUpdateCheckStarted(); };
         StateChanged += (_, _) => { if (IsVisible && WindowState != WindowState.Minimized) EnsureUpdateCheckStarted(); };
         SourceInitialized += (_, _) =>
         {
             ApplyWindowsTitleBarTheme();
+            ConstrainToCurrentWorkArea();
             if (runtimeRole == RuntimeRole.UiHost)
                 OverlayUiBridge.Attach(this);
         };
         SystemEvents.UserPreferenceChanged += WindowsThemeChanged;
+        SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea);
         ArrangeInputWorkspace();
         VersionText.Text = "v" + DisplayVersion;
         Title = "RELYR v" + DisplayVersion;
@@ -221,8 +230,8 @@ public partial class MainWindow : Window
         engine.ShouldInterceptInput = runtimeRole == RuntimeRole.ElevatedHelper
             ? () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated())
             : runtimeRole == RuntimeRole.UiHost
-                ? () => ShouldUiHostInterceptInput(engine.HasCapturedPhysicalInput, ConditionMatcher.IsForegroundVirtualMachineConsole(), WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected)
-                : null;
+                ? () => engine.HasCapturedPhysicalInput || (!Volatile.Read(ref textInputOwnsPhysicalKeys) && ShouldUiHostInterceptInput(false, ConditionMatcher.IsForegroundVirtualMachineConsole(), WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected))
+                : () => engine.HasCapturedPhysicalInput || !Volatile.Read(ref textInputOwnsPhysicalKeys);
         engine.IsNativeMouseDrag = input => FindMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
         engine.HasLegacyMouseDrag = input => FindMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
         engine.SuppressLayerTap = key => key.Equals("CapsLock", StringComparison.OrdinalIgnoreCase);
@@ -284,7 +293,7 @@ public partial class MainWindow : Window
         else if (configuredCapsLockRemap)
         {
             LastInput.Text = "CapsLock→F13設定を検出しました。CapsLockレイヤーとして互換動作します";
-            LastInput.Foreground = ThemeService.Brush("AccentBrush");
+            LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
         }
         if (skipSetup && NeedsFirstRunSetup)
         {
@@ -397,6 +406,47 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke((Action)(() => { ThemeService.RefreshSystemTheme(); ApplyWindowsTitleBarTheme(); }));
     }
 
+    void DisplaySettingsChanged(object? sender, EventArgs e)
+        => Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea);
+
+    void ConstrainToCurrentWorkArea()
+    {
+        if (WindowState != WindowState.Normal)
+            return;
+        IntPtr handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target)
+            return;
+        var pixels = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        var topLeft = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Left, pixels.Top));
+        var bottomRight = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Right, pixels.Bottom));
+        var workArea = new Rect(topLeft, bottomRight);
+        double safeWidth = Math.Max(1, workArea.Width - MainWindowWorkAreaInset * 2);
+        double safeHeight = Math.Max(1, workArea.Height - MainWindowWorkAreaInset * 2);
+        MinWidth = Math.Min(DefaultMainWindowMinWidth, safeWidth);
+        MinHeight = Math.Min(DefaultMainWindowMinHeight, safeHeight);
+        double currentWidth = ActualWidth > 0 ? ActualWidth : Width;
+        double currentHeight = ActualHeight > 0 ? ActualHeight : Height;
+        Rect constrained = ConstrainWindowBoundsForTest(new Rect(Left, Top, currentWidth, currentHeight), workArea);
+        Width = constrained.Width;
+        Height = constrained.Height;
+        Left = constrained.Left;
+        Top = constrained.Top;
+    }
+
+    internal static Rect ConstrainWindowBoundsForTest(Rect requested, Rect workArea)
+    {
+        double insetX = workArea.Width > MainWindowWorkAreaInset * 2 ? MainWindowWorkAreaInset : 0;
+        double insetY = workArea.Height > MainWindowWorkAreaInset * 2 ? MainWindowWorkAreaInset : 0;
+        var safe = new Rect(workArea.Left + insetX, workArea.Top + insetY, Math.Max(1, workArea.Width - insetX * 2), Math.Max(1, workArea.Height - insetY * 2));
+        double width = Math.Clamp(double.IsFinite(requested.Width) ? requested.Width : safe.Width, Math.Min(DefaultMainWindowMinWidth, safe.Width), safe.Width);
+        double height = Math.Clamp(double.IsFinite(requested.Height) ? requested.Height : safe.Height, Math.Min(DefaultMainWindowMinHeight, safe.Height), safe.Height);
+        double left = double.IsFinite(requested.Left) ? requested.Left : safe.Left + (safe.Width - width) / 2;
+        double top = double.IsFinite(requested.Top) ? requested.Top : safe.Top + (safe.Height - height) / 2;
+        left = Math.Clamp(left, safe.Left, safe.Right - width);
+        top = Math.Clamp(top, safe.Top, safe.Bottom - height);
+        return new Rect(left, top, width, height);
+    }
+
     void AppThemeChanged()
     {
         if (!Dispatcher.CheckAccess())
@@ -411,9 +461,14 @@ public partial class MainWindow : Window
             ColorButtons();
             UpdateLayerButtons();
         }
+        if (DeckLayoutCardsPanel != null && DeckLayoutListWorkspace.Visibility == Visibility.Visible)
+            RefreshDeckLayoutCards();
         if (engine != null)
             UpdateStatus();
     }
+
+    void UpdateTextInputFocus(object sender, KeyboardFocusChangedEventArgs e)
+        => Volatile.Write(ref textInputOwnsPhysicalKeys, e.NewFocus is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox);
 
     internal static bool IsWindowsAppDarkMode()
     {
@@ -946,7 +1001,20 @@ public partial class MainWindow : Window
         var copy = new MenuItem { Header = "この割り当てをコピー", IsEnabled = existing != null };
         copy.Click += (_, _) => { copiedMapping = existing == null ? null : CloneMapping(existing); ShowInlineNotice(input + " の割り当てをコピーしました"); };
         var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMapping != null };
-        paste.Click += (_, _) => { if (copiedMapping == null) return; var map = CloneMapping(copiedMapping); map.Input = input; map.Layer = currentLayer; if (map.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(input)) return; CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)); CurrentProfile.Mappings.Add(map); SelectInput(input); UpdateLayerButtons(); MarkDirty(); ColorButtons(); };
+        paste.Click += (_, _) =>
+        {
+            if (copiedMapping == null) return;
+            var map = CloneMapping(copiedMapping);
+            map.Input = input;
+            map.Layer = currentLayer;
+            if (map.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(input)) return;
+            CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+            CurrentProfile.Mappings.Add(map);
+            UpdateLayerButtons();
+            MarkDirty();
+            ClearSelectedInput();
+            ShowInlineNotice(DisplayInputName(input) + " の割り当てを貼り付けました");
+        };
         var delete = new MenuItem { Header = "この割り当てを削除", IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => { if (existing == null) return; CurrentProfile.Mappings.Remove(existing); MarkDirty(); UpdateLayerButtons(); ClearSelectedInput(); ShowInlineNotice(DisplayInputName(input) + " の割り当てを削除しました"); };
         menu.Items.Add(copy);
@@ -1012,6 +1080,8 @@ public partial class MainWindow : Window
         MarkDirty();
         UpdateLayerButtons();
         ColorButtons();
+        MultiSelectToggle.IsChecked = false;
+        ClearSelectedInput();
         ShowInlineNotice($"{targets.Count}入力へ割り当てを貼り付けました");
     }
     void DeleteMultiSelection()
@@ -1058,7 +1128,7 @@ public partial class MainWindow : Window
         if (!active)
             return;
         LastInput.Text = multiSelectedInputs.Count == 0 ? "複数選択: キーやマウスボタンをクリックして選択します" : $"複数選択: {multiSelectedInputs.Count}入力を選択中";
-        LastInput.Foreground = ThemeService.Brush("AccentBrush");
+        LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     bool HasDeletableSingleSelection()
     {
@@ -1878,7 +1948,7 @@ public partial class MainWindow : Window
             {
                 bool result = (ForceActiveWindow ? deckExecutor : executor).Execute(Map, Input, out var value);
                 if (result)
-                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentBrush"); });
+                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }
             catch (Exception ex) { InputEngine.ReleaseAll(); Dispatcher.BeginInvoke(() => { LastInput.Text = "実行エラー: " + ex.Message; LastInput.Foreground = ThemeService.Brush("DangerBrush"); }); }
     }
@@ -1894,7 +1964,7 @@ public partial class MainWindow : Window
                 }
                 bool result = executor.Execute(Map, Input, out var value);
                 if (result)
-                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentBrush"); });
+                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }
             catch (Exception ex) { InputEngine.ReleaseAll(); Dispatcher.BeginInvoke(() => { LastInput.Text = "ドラッグ実行エラー: " + ex.Message; LastInput.Foreground = ThemeService.Brush("DangerBrush"); }); }
     }
@@ -2019,7 +2089,7 @@ public partial class MainWindow : Window
             b.Background = reserved ? ThemeService.Brush("ReservedKeyBackground") : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
             b.BorderBrush = currentSelected || multiSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
             b.BorderThickness = pulsing ? new Thickness(2) : new Thickness(1);
-            b.Foreground = currentSelected && assigned == null ? WpfBrushes.White : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
+            b.Foreground = assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
             b.Opacity = reserved ? 0.48 : 1;
             bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
             bool pulseStateChanged = GetIsSelectionPulseActive(b) != pulsing;
@@ -2115,7 +2185,7 @@ public partial class MainWindow : Window
         button.Background = hasCustomColor ? new SolidColorBrush(customColor) : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
         button.BorderBrush = currentSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
         button.BorderThickness = currentSelected ? new Thickness(2) : new Thickness(1);
-        button.Foreground = currentSelected && assigned == null && !hasCustomColor ? WpfBrushes.White : hasCustomColor ? new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)) : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
+        button.Foreground = hasCustomColor ? new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)) : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
         bool pulsing = currentSelected && !selectionPulseSuppressed;
         bool currentSelectionChanged = GetIsCurrentSelected(button) != currentSelected;
         bool pulseStateChanged = GetIsSelectionPulseActive(button) != pulsing;
@@ -2126,7 +2196,7 @@ public partial class MainWindow : Window
         SetSelectionPulseBrush(button, pulseBrush);
         if (pulseStateChanged)
             SetSelectionPulseVisual(button, pulsing, pulseBrush);
-        if (DeckPanelLayout.HasRegisteredFile(mapping) || button.Content is not TextBlock)
+        if (DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping) || button.Content is not TextBlock)
             button.Content = DeckPanelLayout.CreateButtonContent(input, mapping);
         else
             ((TextBlock)button.Content).Text = DeckPanelLayout.ActionLabel(input, mapping);
@@ -2158,7 +2228,7 @@ public partial class MainWindow : Window
         };
     }
     static ActionKind AssignmentDisplayKind(Mapping mapping) => !HasConfiguredShortAction(mapping) && HasConfiguredLongPress(mapping) ? mapping.LongPressKind : mapping.Kind == ActionKind.None ? mapping.LongPressKind : mapping.Kind;
-    static WpfColor AssignmentTextColorFor(Mapping mapping) => AssignmentDisplayKind(mapping) is ActionKind.Text or ActionKind.Key ? WpfColors.Black : WpfColors.White;
+    static WpfColor AssignmentTextColorFor(Mapping mapping) => DeckPanelLayout.TextColorFor(AssignmentColorFor(mapping));
     static string AssignmentTypeLabel(Mapping mapping) => AssignmentDisplayKind(mapping) switch { ActionKind.Key => "別のキー", ActionKind.Disabled => "無効化", ActionKind.Text => "文字列", ActionKind.Macro => "マクロ", ActionKind.Launch => "アプリ・パス", ActionKind.Profile => "プロファイル", ActionKind.Gesture => "ジェスチャー", _ => "ショートカット" };
     internal static string? AssignmentToolTipText(Mapping? mapping)
     {
@@ -2268,7 +2338,7 @@ public partial class MainWindow : Window
                 return;
             }
             LastInput.Text = "変更を自動保存しています…";
-            LastInput.Foreground = ThemeService.Brush("AccentBrush");
+            LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
             autoSaveTimer.Stop();
             autoSaveTimer.Start();
         }
@@ -2337,7 +2407,7 @@ public partial class MainWindow : Window
     void UpdateStatus()
     {
         EngineStatus.Text = engine.Enabled ? "● エンジン稼働中" : "■ エンジン停止中";
-        EngineStatus.Foreground = ThemeService.Brush(engine.Enabled ? "AccentBrush" : "DangerBrush");
+        EngineStatus.Foreground = ThemeService.Brush(engine.Enabled ? "AccentTextBrush" : "DangerBrush");
     }
     void SetupTray()
     {
@@ -2956,7 +3026,7 @@ public partial class MainWindow : Window
         if (runtimeRole == RuntimeRole.UiHost)
             IpcRuntime.RequestReload();
         LastInput.Text = message;
-        LastInput.Foreground = ThemeService.Brush("AccentBrush");
+        LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     void EnsureProfileDeckDefaults()
     {
@@ -3033,7 +3103,7 @@ public partial class MainWindow : Window
     {
         if (result.Cancelled)
             return;
-        Dispatcher.BeginInvoke(() => { LastInput.Text = result.Succeeded ? result.Message : "マクロ実行エラー: " + result.Message; LastInput.Foreground = ThemeService.Brush(result.Succeeded ? "AccentBrush" : "DangerBrush"); });
+        Dispatcher.BeginInvoke(() => { LastInput.Text = result.Succeeded ? result.Message : "マクロ実行エラー: " + result.Message; LastInput.Foreground = ThemeService.Brush(result.Succeeded ? "AccentTextBrush" : "DangerBrush"); });
     }
     static bool IsDetectableLayer(string input) => input is "Space" or "CapsLock" or "MouseRight" or "MouseBack" or "MouseForward";
     void ShowDetectionLayerWaiting(string layer)
@@ -3051,7 +3121,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(ValueBox.Text))
             FocusExecutionValue(ValueBox);
         LastInput.Text = "検出: " + DisplayInputName(input);
-        LastInput.Foreground = ThemeService.Brush("AccentBrush");
+        LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     void LayerButton_Click(object sender, RoutedEventArgs e)
     {
@@ -3114,7 +3184,7 @@ public partial class MainWindow : Window
             persisted.AutoSave = false;
             store.Save(persisted);
             LastInput.Text = "自動保存をオフにしました";
-            LastInput.Foreground = ThemeService.Brush("AccentBrush");
+            LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
         }
     }
     void UpdateAutoSaveToggleText()
@@ -3122,7 +3192,7 @@ public partial class MainWindow : Window
         if (AutoSaveStatus != null)
         {
             AutoSaveStatus.Text = AutoSaveToggle.IsChecked == true ? "● 自動保存 オン" : "○ 自動保存 オフ";
-            AutoSaveStatus.Foreground = ThemeService.Brush(AutoSaveToggle.IsChecked == true ? "AccentBrush" : "SecondaryText");
+            AutoSaveStatus.Foreground = ThemeService.Brush(AutoSaveToggle.IsChecked == true ? "AccentTextBrush" : "SecondaryText");
         }
     }
     void ClearPendingActions()
@@ -3182,7 +3252,7 @@ public partial class MainWindow : Window
             else
             {
                 LastInput.Text = "アプリ設定を保存しました — 自動保存はオフです";
-                LastInput.Foreground = ThemeService.Brush("AccentBrush");
+                LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
             }
         }
         catch (Exception ex) { WpfMessageBox.Show("設定を保存できません: " + ex.Message); }
@@ -3277,7 +3347,7 @@ public partial class MainWindow : Window
         RebuildTrayMenu();
         ApplyUpdateCheckPreference(false);
         LastInput.Text = message;
-        LastInput.Foreground = ThemeService.Brush("AccentBrush");
+        LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     public void ShowFirstRunSetup()
     {
@@ -3298,6 +3368,7 @@ public partial class MainWindow : Window
         Show();
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
+        ConstrainToCurrentWorkArea();
         Activate();
         Topmost = true;
         Topmost = false;
@@ -3344,6 +3415,7 @@ public partial class MainWindow : Window
             return;
         }
         SystemEvents.UserPreferenceChanged -= WindowsThemeChanged;
+        SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
         ThemeService.ThemeChanged -= AppThemeChanged;
         MacroPlayer.PlaybackFinished -= MacroPlaybackFinished;
         engine.PointerMoved -= QueueAutomaticProfileCheck;

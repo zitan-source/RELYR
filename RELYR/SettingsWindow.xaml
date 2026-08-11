@@ -38,7 +38,7 @@
       </Setter>
       <Style.Triggers>
         <Trigger Property="IsSelected" Value="True">
-          <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+          <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
           <Setter Property="FontWeight" Value="SemiBold"/>
         </Trigger>
       </Style.Triggers>
@@ -61,7 +61,7 @@
         </Trigger>
         <Trigger Property="IsSelected" Value="True">
           <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
-          <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+          <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
         </Trigger>
       </Style.Triggers>
     </Style>
@@ -355,7 +355,7 @@
               <TextBlock Text="空欄の場合は監視フォルダー内へ展開します。" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,5"/>
               <CheckBox x:Name="ExtractBox" Content="指定したフォルダーの圧縮ファイルを自動解凍する" Margin="0,5,0,4"/>
               <CheckBox x:Name="DeleteBox" Content="解凍成功後に元の圧縮ファイルを削除する" Margin="25,4,0,4"/>
-              <TextBlock Text="ZIP / 7Z / RAR / TAR / GZ / BZ2 / XZ などに対応。失敗時は元ファイルを削除しません。" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" Margin="25,3,0,0"/>
+              <TextBlock Text="ZIP / 7Z / RAR / TAR / GZ / BZ2 / XZ などに対応。失敗時は元ファイルを削除しません。" TextWrapping="Wrap" Foreground="{DynamicResource AccentTextBrush}" Margin="25,3,0,0"/>
             </StackPanel>
           </Border>
         </StackPanel>

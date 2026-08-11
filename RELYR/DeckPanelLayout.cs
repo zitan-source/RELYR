@@ -252,17 +252,23 @@ internal static class DeckPanelLayout
         var icon = new System.Windows.Shapes.Path
         {
             Stretch = System.Windows.Media.Stretch.Uniform,
-            Stroke = System.Windows.Media.Brushes.White,
             StrokeThickness = 1.8,
             StrokeLineJoin = System.Windows.Media.PenLineJoin.Round,
             StrokeStartLineCap = System.Windows.Media.PenLineCap.Round,
             StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
             IsHitTestVisible = false
         };
+        icon.SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new System.Windows.Data.Binding("Foreground")
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(System.Windows.Controls.Button), 1)
+        });
         if (IsAudioFile(path))
         {
             icon.Data = Geometry.Parse("M 3,2 L 19,12 L 3,22 Z");
-            icon.Fill = System.Windows.Media.Brushes.White;
+            icon.SetBinding(System.Windows.Shapes.Shape.FillProperty, new System.Windows.Data.Binding("Foreground")
+            {
+                RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(System.Windows.Controls.Button), 1)
+            });
             icon.StrokeThickness = 0;
         }
         else if (IsTextFile(path))
@@ -273,7 +279,23 @@ internal static class DeckPanelLayout
     }
 
     internal static WpfColor TextColorFor(WpfColor background)
-        => (.2126 * background.R + .7152 * background.G + .0722 * background.B) > 150 ? WpfColors.Black : WpfColors.White;
+        => ContrastRatio(background, WpfColors.Black) >= ContrastRatio(background, WpfColors.White) ? WpfColors.Black : WpfColors.White;
+
+    internal static double ContrastRatio(WpfColor first, WpfColor second)
+    {
+        double firstLuminance = RelativeLuminance(first);
+        double secondLuminance = RelativeLuminance(second);
+        return (Math.Max(firstLuminance, secondLuminance) + .05) / (Math.Min(firstLuminance, secondLuminance) + .05);
+    }
+
+    static double RelativeLuminance(WpfColor color) =>
+        .2126 * LinearChannel(color.R) + .7152 * LinearChannel(color.G) + .0722 * LinearChannel(color.B);
+
+    static double LinearChannel(byte channel)
+    {
+        double value = channel / 255d;
+        return value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+    }
 
     internal static int VisibleSlotCount(DeckLayoutDefinition layout) => Math.Clamp(layout.Rows, 1, MaximumRows) * Math.Clamp(layout.Columns, 1, MaximumColumns);
 
@@ -289,7 +311,7 @@ internal static class DeckPanelLayout
     static string DeckSignature(IEnumerable<Mapping> mappings) => string.Join("\n", mappings
         .Where(map => IsInputName(map.Input))
         .OrderBy(map => SlotNumber(map.Input))
-        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}"));
+        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}\u001f{map.DeckIcon}\u001f{map.DeckIconPath}"));
 
     internal static string ActionLabel(string input, Mapping? mapping)
     {
@@ -337,6 +359,9 @@ internal static class DeckPanelLayout
 
     internal static FrameworkElement CreateButtonContent(string input, Mapping? mapping, bool loadThumbnail = true)
     {
+        var configuredIcon = DeckIconCatalog.CreateVisual(mapping, 22);
+        if (configuredIcon != null)
+            return configuredIcon;
         if (HasRegisteredFile(mapping))
         {
             bool video = IsVideoFile(mapping!.DeckFilePath);

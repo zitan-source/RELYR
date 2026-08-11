@@ -71,6 +71,8 @@ internal sealed class DeckPanelOverlayWindow : Window
     const double PanelInset = 12;
     const double HeaderHeight = 30;
     const double HeaderToGridGap = 12;
+    const double CompactHeaderThreshold = 150;
+    const double UltraCompactHeaderThreshold = 88;
     const double ResizeCornerSize = 12;
     const byte SolidSurfaceTintAlpha = 222;
     const int MinimumGlassOpacityPercent = 40;
@@ -124,6 +126,17 @@ internal sealed class DeckPanelOverlayWindow : Window
     internal string LayoutId => layout.Id;
     internal Thickness PanelPaddingForTest => panelCard.Padding;
     internal System.Windows.Media.Brush HeaderBackgroundForTest => dragArea.Background;
+    internal bool HeaderTitleVisibleForTest => headerTitle.Visibility == Visibility.Visible;
+    internal bool HeaderGripVisibleForTest => headerGrip.Visibility == Visibility.Visible && headerGrip.ActualWidth >= 7;
+    internal Rect HeaderGripBoundsForTest
+    {
+        get
+        {
+            var topLeft = headerGrip.TranslatePoint(new Point(), this);
+            return new Rect(topLeft, new WpfSize(headerGrip.ActualWidth, headerGrip.ActualHeight));
+        }
+    }
+    internal string HeaderToolTipForTest => dragArea.ToolTip?.ToString() ?? "";
     internal double DefaultWidthForTest => defaultWindowWidth;
     internal double DefaultHeightForTest => defaultWindowHeight;
     internal bool UsesNoActivateStyle
@@ -136,6 +149,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly DeckLayoutDefinition layout;
     readonly UniformGrid deckGrid;
     TextBlock headerTitle = null!;
+    FrameworkElement headerGrip = null!;
     Style? glassButtonStyle;
     Style? closeButtonStyle;
     DeckBackdropMode backdropMode;
@@ -193,7 +207,10 @@ internal sealed class DeckPanelOverlayWindow : Window
         };
         SetGlassOpacity(opacityPercent);
         panelCard.SizeChanged += (_, _) => ApplyRoundedPanelClip();
-        SizeChanged += (_, _) => ApplyRoundedPanelClip();
+        panelCard.PreviewMouseLeftButtonDown += DragStarted;
+        panelCard.PreviewMouseMove += DragMoved;
+        panelCard.PreviewMouseLeftButtonUp += DragEnded;
+        SizeChanged += (_, _) => { ApplyRoundedPanelClip(); UpdateHeaderLayout(); };
         ApplyPanelColor();
         Content = panelCard;
 
@@ -204,6 +221,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         panelCard.Child = root;
         dragArea = BuildHeader();
         root.Children.Add(dragArea);
+        UpdateHeaderLayout();
 
         var deckView = new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0), Child = deckGrid };
         Grid.SetRow(deckView, 2);
@@ -339,13 +357,15 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         else if (MainWindow.MappingInterceptsInput(mapping))
         {
-            button.Background = new SolidColorBrush(MainWindow.AssignmentColorFor(mapping!));
-            button.Foreground = WpfBrushes.White;
+            var assignmentColor = MainWindow.AssignmentColorFor(mapping!);
+            button.Background = new SolidColorBrush(assignmentColor);
+            button.Foreground = new SolidColorBrush(DeckPanelLayout.TextColorFor(assignmentColor));
         }
         button.Click += DeckButtonClicked;
         button.PreviewMouseLeftButtonDown += DeckButtonDragStarted;
         button.PreviewMouseMove += DeckButtonDragMoved;
         button.PreviewMouseLeftButtonUp += DeckButtonDragEnded;
+        button.GiveFeedback += DeckDragGiveFeedback;
         button.ContextMenu = CreateDeckButtonContextMenu(slot);
         button.AllowDrop = true;
         button.PreviewDragOver += DeckButtonDragOver;
@@ -471,7 +491,9 @@ internal sealed class DeckPanelOverlayWindow : Window
         ApplyPanelColor();
         Title = "RELYR Deck - " + layout.Name;
         headerTitle.Text = layout.Name;
+        dragArea.ToolTip = layout.Name;
         UpdateDeckDimensions(Width, Height);
+        UpdateHeaderLayout();
     }
 
     void ApplyPanelColor()
@@ -513,23 +535,31 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     Border BuildHeader()
     {
-        var border = new Border { CornerRadius = new CornerRadius(0), Padding = new Thickness(6, 0, 0, 0), Cursor = WpfCursors.SizeAll, Background = WpfBrushes.Transparent };
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(0),
+            Margin = new Thickness(-PanelInset, 0, -PanelInset, 0),
+            Padding = new Thickness(8, 0, 2, 0),
+            Cursor = WpfCursors.SizeAll,
+            Background = WpfBrushes.Transparent,
+            ToolTip = layout.Name
+        };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var grip = new TextBlock { Text = "⋮⋮", FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) };
-        grip.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
+        var grip = CreateHeaderGrip();
+        headerGrip = grip;
         var title = new TextBlock { Text = layout.Name, FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         headerTitle = title;
         title.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
         var reset = new Button
         {
-            Width = 36,
+            Width = 28,
             Height = 30,
-            MinWidth = 36,
-            MaxWidth = 36,
+            MinWidth = 28,
+            MaxWidth = 28,
             MinHeight = 30,
             MaxHeight = 30,
             Margin = new Thickness(0),
@@ -556,10 +586,10 @@ internal sealed class DeckPanelOverlayWindow : Window
         ResetSizeButton = reset;
         var close = new Button
         {
-            Width = 44,
+            Width = 28,
             Height = 30,
-            MinWidth = 44,
-            MaxWidth = 44,
+            MinWidth = 28,
+            MaxWidth = 28,
             MinHeight = 30,
             MaxHeight = 30,
             Margin = new Thickness(0),
@@ -590,10 +620,45 @@ internal sealed class DeckPanelOverlayWindow : Window
         Grid.SetColumn(close, 3);
         grid.Children.Add(close);
         border.Child = grid;
-        border.PreviewMouseLeftButtonDown += DragStarted;
-        border.PreviewMouseMove += DragMoved;
-        border.PreviewMouseLeftButtonUp += DragEnded;
         return border;
+    }
+
+    static FrameworkElement CreateHeaderGrip()
+    {
+        var canvas = new Canvas { Width = 8, Height = 16, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0), IsHitTestVisible = false };
+        for (int row = 0; row < 3; row++)
+        for (int column = 0; column < 2; column++)
+        {
+            var dot = new System.Windows.Shapes.Ellipse { Width = 2, Height = 2 };
+            dot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "AccentBrush");
+            Canvas.SetLeft(dot, column * 5d);
+            Canvas.SetTop(dot, 2 + row * 5d);
+            canvas.Children.Add(dot);
+        }
+        return canvas;
+    }
+
+    void UpdateHeaderLayout()
+    {
+        if (dragArea == null || headerTitle == null || headerGrip == null || ResetSizeButton == null || CloseButton == null)
+            return;
+        double availableWidth = ActualWidth > 0 ? ActualWidth : Width;
+        bool compact = availableWidth < CompactHeaderThreshold;
+        bool ultraCompact = availableWidth < UltraCompactHeaderThreshold;
+        headerTitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        headerGrip.Visibility = ultraCompact ? Visibility.Collapsed : Visibility.Visible;
+        headerGrip.Margin = new Thickness(0, 0, ultraCompact ? 1 : 7, 0);
+        headerGrip.RenderTransform = Transform.Identity;
+        dragArea.Padding = ultraCompact ? new Thickness(6, 0, 8, 0) : new Thickness(8, 0, 6, 0);
+        SetFixedHeaderButtonWidth(ResetSizeButton, ultraCompact ? 24 : 28);
+        SetFixedHeaderButtonWidth(CloseButton, ultraCompact ? 24 : 28);
+    }
+
+    static void SetFixedHeaderButtonWidth(Button button, double width)
+    {
+        button.Width = width;
+        button.MinWidth = width;
+        button.MaxWidth = width;
     }
 
     void ThemeChanged()
@@ -811,6 +876,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         reveal.Click += (_, _) => RevealDeckFile(slot);
         var color = CreateDeckContextMenuItem("\uE790", "色を変更...", "");
         color.Click += (_, _) => ChooseDeckButtonColor(slot);
+        var icon = CreateDeckContextMenuItem("\uE8B9", "アイコン変更...", "");
+        icon.Click += (_, _) => ChooseDeckButtonIcon(slot);
         var resetColor = CreateDeckContextMenuItem("\uE777", "色を標準に戻す", "");
         resetColor.Click += (_, _) => ResetDeckButtonColor(slot);
         var delete = CreateDeckContextMenuItem("\uE74D", "削除", "Del", true);
@@ -822,6 +889,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         menu.Items.Add(reveal);
         menu.Items.Add(new Separator());
         menu.Items.Add(color);
+        menu.Items.Add(icon);
         menu.Items.Add(resetColor);
         menu.Items.Add(new Separator());
         menu.Items.Add(delete);
@@ -866,7 +934,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         return mapping;
     }
     static bool HasDeckButtonContent(Mapping mapping)
-        => MainWindow.MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping.Description) || !string.IsNullOrWhiteSpace(mapping.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping);
+        => MainWindow.MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping.Description) || !string.IsNullOrWhiteSpace(mapping.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
     void RenameDeckButton(int slot)
     {
         var existing = DeckPanelLayout.FindMapping(layout, slot);
@@ -963,6 +1031,20 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
         RefreshDeckColorSlot(slot);
+    }
+    void ChooseDeckButtonIcon(int slot)
+    {
+        var mapping = DeckPanelLayout.FindMapping(layout, slot);
+        var picker = new DeckIconPickerWindow(mapping?.DeckIcon ?? "", mapping?.DeckIconPath ?? "") { Owner = this, Topmost = true };
+        if (picker.ShowDialog() != true)
+            return;
+        mapping ??= GetOrCreateDeckMapping(slot);
+        mapping.DeckIcon = picker.SelectedPresetId;
+        mapping.DeckIconPath = picker.SelectedCustomPath;
+        if (!HasDeckButtonContent(mapping))
+            layout.Mappings.Remove(mapping);
+        RefreshDeckSlots(slot, slot);
+        OverlayService.NotifyDeckLayoutChanged(false, layout.Id, slot, slot);
     }
     void RefreshDeckColorSlot(int slot)
     {
@@ -1233,15 +1315,14 @@ internal sealed class DeckPanelOverlayWindow : Window
             var data = new System.Windows.DataObject();
             data.SetData(System.Windows.DataFormats.FileDrop, new[] { mapping.DeckFilePath });
             data.SetData(DeckPanelLayout.FileSourceDragFormat, true);
-            // External targets already provide their own drag affordance.  A
-            // topmost Deck preview can outlive a drop in Chromium-based apps,
-            // so reserve the custom preview exclusively for Deck reordering.
+            if (DeckIconCatalog.HasIcon(mapping))
+                StartDragPreview(mapping);
             try
             {
                 internalDeckDragActive = true;
                 System.Windows.DragDrop.DoDragDrop(button, data, System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
             }
-            finally { internalDeckDragActive = false; }
+            finally { internalDeckDragActive = false; StopDragPreview(); }
         }
         catch (COMException) { }
     }
@@ -1290,10 +1371,11 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         try
         {
-            var image = DeckPanelLayout.LoadFileThumbnail(mapping.DeckFilePath, 128);
-            FrameworkElement preview = image != null
+            FrameworkElement? configuredIcon = DeckIconCatalog.CreateVisual(mapping, 42, false);
+            var image = configuredIcon == null && DeckPanelLayout.HasRegisteredFile(mapping) ? DeckPanelLayout.LoadFileThumbnail(mapping.DeckFilePath, 128) : null;
+            FrameworkElement preview = configuredIcon ?? (image != null
                 ? new WpfImage { Source = image, Stretch = Stretch.Uniform }
-                : DeckPanelLayout.CreateFileIcon(mapping.DeckFilePath, 42);
+                : DeckPanelLayout.CreateFileIcon(mapping.DeckFilePath, 42));
             dragPreview = new DeckDragPreviewWindow(preview);
             dragPreview.Show();
             UpdateDragPreview();
@@ -1421,7 +1503,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         dragDpi = VisualTreeHelper.GetDpi(this);
         windowStartLeft = Left;
         windowStartTop = Top;
-        dragArea.CaptureMouse();
+        panelCard.CaptureMouse();
         e.Handled = true;
     }
     static bool IsInsideButton(DependencyObject? source)
@@ -1434,6 +1516,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         return false;
     }
+    internal static bool CanDragPanelFromForTest(DependencyObject source) => !IsInsideButton(source);
     void DragMoved(object sender, MouseEventArgs e)
     {
         if (!dragging || e.LeftButton != MouseButtonState.Pressed)
@@ -1450,7 +1533,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (!dragging)
             return;
         dragging = false;
-        dragArea.ReleaseMouseCapture();
+        panelCard.ReleaseMouseCapture();
         PersistPosition();
         e.Handled = true;
     }

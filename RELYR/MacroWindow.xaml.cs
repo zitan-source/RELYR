@@ -468,7 +468,7 @@ public partial class MacroWindow : Window
         RecordButton.Background = ThemeService.Brush("AccentStrongBrush");
         RecordButton.Foreground = ThemeService.Brush("AccentButtonText");
         RecordStatus.Text = $"記録中（{(config.RecordMappedActionsInMacros ? "割り当て後のアクション" : "物理キー")}）— Ctrl + Shift + F12 で終了";
-        RecordStatus.Foreground = ThemeService.Brush("AccentBrush");
+        RecordStatus.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     public void Capture(string text)
     {
@@ -1058,7 +1058,7 @@ public partial class MacroWindow : Window
             bool active = EditorTabs.SelectedIndex == index;
             buttons[index].Background = ThemeService.Brush(active ? "AccentSoftBrush" : "ControlBackground");
             buttons[index].BorderBrush = ThemeService.Brush(active ? "AccentBrush" : "BorderBrush");
-            buttons[index].Foreground = ThemeService.Brush(active ? "AccentBrush" : "PrimaryText");
+            buttons[index].Foreground = ThemeService.Brush(active ? "AccentTextBrush" : "PrimaryText");
         }
     }
     void StepSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1204,7 +1204,7 @@ public partial class MacroWindow : Window
             return;
         testRunning = false;
         FooterStatus.Text = result.Cancelled ? "テストを停止しました。" : result.Succeeded ? "テストは正常に完了しました。" : "テスト失敗: " + result.Message;
-        FooterStatus.Foreground = ThemeService.Brush(result.Succeeded ? "AccentBrush" : result.Cancelled ? "SecondaryText" : "DangerBrush");
+        FooterStatus.Foreground = ThemeService.Brush(result.Succeeded ? "AccentTextBrush" : result.Cancelled ? "SecondaryText" : "DangerBrush");
         SetEditorState();
     }
     void StopTest_Click(object sender, RoutedEventArgs e)
@@ -1246,7 +1246,7 @@ public partial class MacroWindow : Window
         dirty = false;
         UnsavedStatus.Text = "";
         Saved?.Invoke();
-        FooterStatus.Foreground = ThemeService.Brush("AccentBrush");
+        FooterStatus.Foreground = ThemeService.Brush("AccentTextBrush");
         FooterStatus.Text = "保存して反映しました。この画面を開いたまま編集を続けられます。";
         return true;
     }

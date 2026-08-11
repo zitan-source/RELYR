@@ -21,7 +21,7 @@
         <Border x:Name="IconBadge" Width="34" Height="34" CornerRadius="17" VerticalAlignment="Top"
                 Background="{DynamicResource AccentSoftBrush}">
           <TextBlock x:Name="IconText" FontSize="21" FontWeight="Bold" HorizontalAlignment="Center"
-                     VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}"/>
+                     VerticalAlignment="Center" Foreground="{DynamicResource AccentTextBrush}"/>
         </Border>
         <StackPanel Grid.Column="1">
           <TextBlock x:Name="HeadingText" FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap"/>

@@ -99,7 +99,7 @@
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
@@ -133,12 +133,11 @@
             </StackPanel></DataTemplate></ListBox.ItemTemplate>
           </ListBox>
           <Grid Grid.Row="3" Margin="0,7,0,0">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-            <Button x:Name="NewMacroButton" Grid.RowSpan="2" Content="＋" Click="New_Click" ToolTip="新規マクロを追加" Padding="0"/>
-            <Button x:Name="DuplicateMacroButton" Grid.Column="1" Content="複製" Click="DuplicateMacro_Click" IsEnabled="False"/>
-            <Button x:Name="EditMacroButton" Grid.Column="2" Content="名前変更" Click="EditMacro_Click" IsEnabled="False" Padding="3,7"/>
-            <Button x:Name="DeleteMacroButton" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Content="削除" Click="DeleteMacro_Click" IsEnabled="False" Style="{StaticResource DangerButton}"/>
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <Button x:Name="NewMacroButton" Grid.Column="0" Height="40" MinWidth="0" Margin="0,0,4,0" Click="New_Click" ToolTip="新規マクロを追加" Padding="0"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE710;"/></Button>
+            <Button x:Name="DuplicateMacroButton" Grid.Column="1" Height="40" MinWidth="0" Margin="2,0" Click="DuplicateMacro_Click" IsEnabled="False" ToolTip="選択したマクロを複製" Padding="0"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE8C8;"/></Button>
+            <Button x:Name="EditMacroButton" Grid.Column="2" Height="40" MinWidth="0" Margin="2,0" Click="EditMacro_Click" IsEnabled="False" ToolTip="選択したマクロの名前を変更" Padding="0"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE70F;"/></Button>
+            <Button x:Name="DeleteMacroButton" Grid.Column="3" Height="40" MinWidth="0" Margin="4,0,0,0" Click="DeleteMacro_Click" IsEnabled="False" Style="{StaticResource DangerButton}" ToolTip="選択したマクロを削除" Padding="0"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE74D;"/></Button>
           </Grid>
         </Grid>
       </Border>
@@ -178,7 +177,7 @@
                 <Border Grid.Column="0" Style="{StaticResource MacroStepKindBar}"/>
                 <TextBlock Grid.Column="1" Text="{Binding Number}" Foreground="{DynamicResource MutedText}" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="2"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel>
-                <TextBlock Grid.Column="3" Text="{Binding DelayLabel}" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <TextBlock Grid.Column="3" Text="{Binding DelayLabel}" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
               </Grid></Border></DataTemplate></ListBox.ItemTemplate>
             </ListBox>
             <Border x:Name="DropIndicator" Grid.Row="2" Height="3" Margin="5,0,5,0" VerticalAlignment="Top" Background="{DynamicResource AccentBrush}" CornerRadius="2" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="20"/>
@@ -213,7 +212,7 @@
               <TextBlock Text="キーを追加" FontSize="16" FontWeight="Bold"/>
               <Button x:Name="KeypadInputButton" Content="キーパッドから入力…" Click="KeypadInput_Click" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}"/>
               <Button x:Name="ManualCaptureButton" Content="手動追加を開始" PreviewKeyDown="ManualCapture_KeyDown" PreviewKeyUp="ManualCapture_KeyUp" Click="ManualCapture_Click" LostKeyboardFocus="ManualCapture_LostKeyboardFocus" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}" Background="{DynamicResource AccentSoftBrush}"/>
-              <TextBlock x:Name="ManualStatus" Text="停止中" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="3,3,3,12"/>
+              <TextBlock x:Name="ManualStatus" Text="停止中" Foreground="{DynamicResource AccentTextBrush}" TextWrapping="Wrap" Margin="3,3,3,12"/>
               <TextBlock Text="停止: Ctrl + Shift + F12" Foreground="{DynamicResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="2,0,2,10"/>
 
               <Separator Margin="0,2,0,10" Background="{DynamicResource SubtleBorderBrush}"/>
@@ -285,7 +284,7 @@
       <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
         <TextBlock x:Name="AssignmentTargetText" Foreground="{DynamicResource SecondaryText}" TextTrimming="CharacterEllipsis"/>
         <TextBlock x:Name="UnsavedStatus" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold"/>
-        <TextBlock x:Name="FooterStatus" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"/>
+        <TextBlock x:Name="FooterStatus" Foreground="{DynamicResource AccentTextBrush}" TextWrapping="Wrap"/>
       </StackPanel>
       <WrapPanel Grid.Column="1" HorizontalAlignment="Right">
         <Button x:Name="TestButton" Content="▶ テスト実行" Click="TestMacro_Click" IsEnabled="False"/>

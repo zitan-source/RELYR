@@ -107,7 +107,6 @@
     </Border>
 
     <Grid Grid.Row="4" Margin="0,18,0,0">
-      <TextBlock Text="Enterで適用 / Escでキャンセル" Foreground="{DynamicResource MutedText}" FontSize="11" VerticalAlignment="Center"/>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button Style="{StaticResource AppButtonStyle}" Content="キャンセル" Width="104" Margin="0,0,8,0" IsCancel="True"/>
         <Button Style="{StaticResource AccentAppButtonStyle}" Content="この色を使う" Width="126" IsDefault="True" Click="Apply_Click"/>
