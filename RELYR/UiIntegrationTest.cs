@@ -65,6 +65,18 @@ internal static class UiIntegrationTest
             window.UpdateLayout();
             Check(mouseButtons.All(x => x.Foreground is SolidColorBrush foreground && foreground.Color == ThemeService.Color("PrimaryText")) && window.MouseBody.BorderBrush is SolidColorBrush border && border.Color == ThemeService.Color("SubtleBorderBrush"), "light theme keeps every mouse label and the outer boundary visible");
             CaptureForReview(window, "mouse-layout-light.png");
+            Check(window.MouseWheelWatermark.Opacity is > .1 and < .25 && !window.MouseWheelWatermark.IsHitTestVisible, "a subtle non-interactive wheel watermark identifies the mouse");
+            window.Width = 880;
+            window.Height = 640;
+            window.UpdateLayout();
+            for (int i = 0; i < 3; i++)
+            {
+                window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                window.UpdateLayout();
+            }
+            double mouseBottomAtMinimum = window.MouseHost.TranslatePoint(new System.Windows.Point(0, window.MouseHost.ActualHeight), window.MainContentGrid).Y;
+            Check(mouseBottomAtMinimum <= window.MainContentGrid.ActualHeight + .1, $"mouse bottom remains visible at the minimum window size ({mouseBottomAtMinimum:F1}/{window.MainContentGrid.ActualHeight:F1})");
+            CaptureForReview(window, "mouse-layout-minimum.png");
 
             ThemeService.Apply(AppThemeMode.Dark);
             picker = new MacroInputPickerWindow("JIS") { Owner = window, ShowInTaskbar = false };

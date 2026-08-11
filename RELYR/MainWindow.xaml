@@ -368,6 +368,15 @@
              <Grid x:Name="MousePanel" Width="190" Height="390" HorizontalAlignment="Center">
              <Canvas x:Name="MouseCanvas" Width="190" Height="390" ClipToBounds="False">
                <Border x:Name="MouseBody" Canvas.Left="0" Canvas.Top="0" Width="190" Height="390" CornerRadius="{StaticResource SurfaceCornerRadius}" BorderBrush="{DynamicResource SubtleBorderBrush}" Background="Transparent" BorderThickness="1" Effect="{x:Null}"/>
+               <Canvas x:Name="MouseWheelWatermark" Canvas.Left="74" Canvas.Top="278" Width="42" Height="88" Opacity="0.18" IsHitTestVisible="False">
+                 <Border Canvas.Left="4" Canvas.Top="2" Width="34" Height="76" CornerRadius="17" BorderThickness="1.4" BorderBrush="{DynamicResource MutedText}" Background="Transparent">
+                   <Grid>
+                     <Line X1="16" Y1="0" X2="16" Y2="14" Stroke="{DynamicResource MutedText}" StrokeThickness="1"/>
+                     <Border Width="11" Height="28" CornerRadius="5.5" BorderThickness="1.3" BorderBrush="{DynamicResource MutedText}" Background="{DynamicResource AppBackground}" VerticalAlignment="Top" Margin="0,9,0,0"/>
+                     <Line X1="16" Y1="37" X2="16" Y2="74" Stroke="{DynamicResource MutedText}" StrokeThickness="1"/>
+                   </Grid>
+                 </Border>
+               </Canvas>
                <Button x:Name="MouseLeftVisual" Style="{StaticResource MouseHotspot}" Tag="MouseLeft" Content="左" ToolTip="左クリック" Click="InputButton_Click" Canvas.Left="10" Canvas.Top="10" Width="54" Height="108" FontSize="12"/>
                <Button x:Name="MouseRightVisual" Style="{StaticResource MouseHotspot}" Tag="MouseRight" Content="右" ToolTip="右クリック／右クリックレイヤー" Click="InputButton_Click" Canvas.Left="126" Canvas.Top="10" Width="54" Height="108" FontSize="12"/>
                <Button x:Name="WheelUpVisual" Style="{StaticResource MouseHotspot}" Tag="WheelUp" Content="▲" ToolTip="ホイール上回転" Click="InputButton_Click" Canvas.Left="68" Canvas.Top="10" Width="54" Height="52" FontSize="11"/>

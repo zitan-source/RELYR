@@ -713,6 +713,7 @@ public partial class MainWindow : Window
 
         MousePanel.Width = MouseCanvas.Width = MouseBody.Width = panelWidth;
         MousePanel.Height = MouseCanvas.Height = MouseBody.Height = panelHeight;
+        Canvas.SetLeft(MouseWheelWatermark, (panelWidth - MouseWheelWatermark.Width) / 2);
         SetMouseBounds(MouseLeftVisual, padding, top, unit, doubleHeight);
         SetMouseBounds(MouseRightVisual, rightX, top, unit, doubleHeight);
         SetMouseBounds(WheelUpVisual, centerX, top, unit, keyHeight);
@@ -2627,6 +2628,14 @@ public partial class MainWindow : Window
         // Keep the mouse on the same visual key scale as the main keyboard.
         // Its portrait layout may make the lower row taller than the keypad.
         double lowerHeight = Math.Clamp(e.NewSize.Height * .36, 220, 340);
+        // Fit the main and lower controls as one vertical composition.  The
+        // A-key remains the scale reference for every lower and mouse key,
+        // even on a short display, so the mouse can never be clipped below.
+        double availableHeight = Math.Max(360, e.NewSize.Height - gap * 2);
+        double fixedVerticalSpace = KeyboardSurfaceCard.Padding.Top + KeyboardSurfaceCard.Padding.Bottom
+            + LowerInputGrid.Margin.Top + MouseHost.Margin.Top + MouseHost.Margin.Bottom;
+        double maxCommonScale = Math.Clamp((availableHeight - fixedVerticalSpace) / (KeyboardPanel.Height + MousePanel.Height), .35, 1);
+        KeyboardViewbox.MaxHeight = KeyboardPanel.Height * maxCommonScale;
         double mouseScale = Math.Clamp((mouseWidth - 16) / Math.Max(1, MousePanel.Width), .35, 1);
         double secondaryHeight = Math.Min(lowerHeight - 12, Math.Max(80, (centerWidth - mouseWidth - 14) / 654 * 312));
         SecondaryKeyboardViewbox.Height = secondaryHeight;
@@ -2669,19 +2678,21 @@ public partial class MainWindow : Window
         if (mainHeight <= 0 || lowerHeight <= 0)
             return false;
         double difference = Math.Abs(mainHeight - lowerHeight);
-        if (difference < .05)
-            return true;
-        double correction = mainHeight / lowerHeight;
-        double matchedWidth = SecondaryKeyboardViewbox.ActualWidth * correction;
-        double matchedHeight = SecondaryKeyboardViewbox.ActualHeight * correction;
-        SecondaryKeyboardViewbox.Width = matchedWidth;
-        SecondaryKeyboardViewbox.Height = matchedHeight;
+        double matchedHeight = SecondaryKeyboardViewbox.ActualHeight;
+        if (difference >= .05)
+        {
+            double correction = mainHeight / lowerHeight;
+            double matchedWidth = SecondaryKeyboardViewbox.ActualWidth * correction;
+            matchedHeight = SecondaryKeyboardViewbox.ActualHeight * correction;
+            SecondaryKeyboardViewbox.Width = matchedWidth;
+            SecondaryKeyboardViewbox.Height = matchedHeight;
+        }
         double mouseScale = Math.Min(mainHeight / SecondaryKeyHeight, Math.Max(.35, (MouseColumn.ActualWidth - 16) / Math.Max(1, MousePanel.Width)));
         MouseHost.Width = MousePanel.Width * mouseScale;
         MouseHost.Height = MousePanel.Height * mouseScale;
         double mouseTotalHeight = MouseHost.Height + MouseHost.Margin.Top + MouseHost.Margin.Bottom;
         LowerInputRow.Height = new GridLength(Math.Max(matchedHeight, mouseTotalHeight) + LowerInputGrid.Margin.Top);
-        return false;
+        return difference < .05;
     }
     void DeckEditorWorkspace_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateDeckSettingsLayout(e.NewSize.Width);
     void UpdateDeckSettingsLayout(double availableWidth)
