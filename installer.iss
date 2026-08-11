@@ -25,16 +25,15 @@ DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
 OutputDir={#InstallerOutputDir}
 OutputBaseFilename=RELYR-{#DistributionName}-{#AppVersion}
-; Keep the runtime-bearing full setup transparent, while using Inno Setup's
-; standard compression for the lightweight update. Microsoft Defender has
-; falsely classified the small uncompressed update container even though its
-; extracted RELYR payload scans cleanly.
+; Keep the runtime-bearing full setup transparent. Use Inno Setup's normal,
+; non-solid compression for the lightweight update so endpoint scanners can
+; inspect its payload without the high-entropy ultra64/solid container.
 #ifdef IncludeRuntime
 Compression=none
 SolidCompression=no
 #else
-Compression=lzma2/ultra64
-SolidCompression=yes
+Compression=lzma2/normal
+SolidCompression=no
 #endif
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
