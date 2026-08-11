@@ -169,7 +169,7 @@ internal static class UiIntegrationTest
             closeSettings.LockGestureCursorBox.IsChecked = true;
             Check(closeSettings.LockCursorDuringGesture, "gesture cursor locking can be enabled without changing the sensitivity");
             var settingsCategories = closeSettings.CategoryList.Items.Cast<ListBoxItem>().ToArray();
-            Check(settingsCategories.Last().Tag?.ToString() == "Update" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay options discoverable");
+            Check(settingsCategories[^2].Tag?.ToString() == "Update" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay and support options discoverable");
             closeSettings.SelectCategory("Appearance");
             closeSettings.UpdateLayout();
             CaptureForReview(closeSettings, "appearance-settings.png");
@@ -355,14 +355,17 @@ internal static class UiIntegrationTest
             }
             string deckPreviewVideo = Path.Combine(testConfigDirectory, "deck-preview.mp4");
             File.WriteAllBytes(deckPreviewVideo, [0]);
+            string missingDeckFile = Path.Combine(testConfigDirectory, "moved-or-deleted.png");
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewAudio });
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+04", Layer = "Deck", DeckIcon = "home" });
+            standardDeck.Mappings.Add(new Mapping { Input = "Deck+05", Layer = "Deck", DeckFilePath = missingDeckFile });
             window.EditDeckLayoutForTest(standardDeck);
             Pump(window);
             var editorIconMenu = window.CreateDeckInputContextMenu("Deck+04");
             bool editorHasIconCommand = editorIconMenu.Items.OfType<MenuItem>().Select(item => item.Header).OfType<Grid>().SelectMany(grid => grid.Children.OfType<TextBlock>()).Any(text => text.Text == "アイコン変更...");
             Check(window.DeckManagementButtonsForTest[3].Content is TextBlock { Text: "\uE80F" } && editorHasIconCommand, $"Deck editor renders a selected preset and exposes icon change from right-click (content={window.DeckManagementButtonsForTest[3].Content?.GetType().Name}:{(window.DeckManagementButtonsForTest[3].Content as TextBlock)?.Text}, menu={editorHasIconCommand})");
+            Check(window.DeckManagementButtonsForTest[4].Content is Grid missingEditorIcon && Descendants<System.Windows.Shapes.Path>(missingEditorIcon).Any(path => Equals(path.Stroke, ThemeService.Brush("DangerBrush"))) && window.DeckManagementButtonsForTest[4].ToolTip is System.Windows.Controls.ToolTip { Content: TextBlock { Text: "参照先のファイルが削除されたか、移動された可能性があります。" } }, "a missing Deck file automatically becomes a broken-link icon with a concise explanation in the editor");
             window.DeckManagementButtonsForTest[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(window.IsDeckEditorThumbnailOpenForTest, "clicking an image file in the Deck editor opens its thumbnail preview");
             window.DeckManagementButtonsForTest[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -374,10 +377,11 @@ internal static class UiIntegrationTest
             (double Left, double Top)? savedDeckPosition = null;
             (double Width, double Height)? savedDeckSize = null;
             var overlayLayout = new DeckLayoutDefinition { Name = "標準Deck", Columns = 9, Rows = 5, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C", Description = "コピー" }] };
-            var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 67, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
+            var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 67, DeckAutoHideAfterAction = false, DeckAutoHideOnPointerLeave = false, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewVideo });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+04", Layer = "Deck", DeckFilePath = deckPreviewImage, DeckIcon = "search" });
+            overlayLayout.Mappings.Add(new Mapping { Input = "Deck+05", Layer = "Deck", DeckFilePath = missingDeckFile });
             var backdropProbe = CreateBackdropProbeWindow();
             backdropProbe.Show();
             backdropProbe.UpdateLayout();
@@ -416,6 +420,7 @@ internal static class UiIntegrationTest
             var overlayIconMenu = deckOverlay.DeckButtons[3].ContextMenu;
             bool overlayHasIconCommand = overlayIconMenu != null && overlayIconMenu.Items.OfType<MenuItem>().Select(item => item.Header).OfType<Grid>().SelectMany(grid => grid.Children.OfType<TextBlock>()).Any(text => text.Text == "アイコン変更...");
             Check(deckOverlay.DeckButtons[3].Content is TextBlock { Text: "\uE721" } && overlayHasIconCommand && DeckIconCatalog.CreateVisual(overlayLayout.Mappings.Single(x => x.Input == "Deck+04"), 34, false) != null, "Deck overlay uses the configured icon, offers the same right-click picker, and can build that icon for external drag feedback");
+            Check(deckOverlay.DeckButtons[4].Content is Grid missingOverlayIcon && Descendants<System.Windows.Shapes.Path>(missingOverlayIcon).Any(path => Equals(path.Stroke, ThemeService.Brush("DangerBrush"))) && deckOverlay.DeckButtons[4].ToolTip is System.Windows.Controls.ToolTip { Content: TextBlock { Text: "参照先のファイルが削除されたか、移動された可能性があります。" } }, "a missing Deck file uses the same broken-link icon and compact warning in the overlay");
             deckOverlay.Refresh(40, true);
             PumpFor(TimeSpan.FromMilliseconds(90));
             Check(Math.Abs(deckOverlay.VisualOpacityForTest - .4) < .001, "Deck refresh immediately applies 40 percent panel opacity");
@@ -440,6 +445,14 @@ internal static class UiIntegrationTest
                 CaptureForReview(deckOverlay, "deck-overlay.png");
             }
             finally { System.Windows.Forms.Cursor.Position = cursorBeforeDeckHover; }
+            window.OpenSettingsForTest();
+            Pump(window);
+            var openSettings = window.SettingsWindowForTest;
+            deckExecuted = null;
+            deckOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(openSettings is { IsVisible: true } && deckOverlay.IsEnabled && deckExecuted?.Value == "Ctrl+C", "Deck overlay remains enabled and executes actions while the modeless settings window is open");
+            openSettings?.Close();
+            Pump(window);
             deckOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(deckExecuted?.Value == "Ctrl+C", "Deck overlay sends the selected action through the normal executor");
             Check(Math.Abs(deckOverlay.CloseButton.ActualWidth - 28) < .1 && Math.Abs(deckOverlay.CloseButton.ActualHeight - 30) < .1 && deckOverlay.CloseButton.InputHitTest(new System.Windows.Point(2, 2)) != null, "Deck overlay close control keeps a compact visual while its full transparent surface remains clickable");
@@ -453,9 +466,49 @@ internal static class UiIntegrationTest
             Pump(window);
             var narrowResetTopLeft = narrowDeckOverlay.ResetSizeButton.TranslatePoint(new System.Windows.Point(), narrowDeckOverlay);
             var narrowCloseBottomRight = narrowDeckOverlay.CloseButton.TranslatePoint(new System.Windows.Point(narrowDeckOverlay.CloseButton.ActualWidth, narrowDeckOverlay.CloseButton.ActualHeight), narrowDeckOverlay);
-            Check(!narrowDeckOverlay.HeaderTitleVisibleForTest && !narrowDeckOverlay.HeaderGripVisibleForTest && narrowDeckOverlay.HeaderToolTipForTest == narrowDeckLayout.Name && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)narrowDeckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(narrowDeckOverlay.DeckButtons[0]) && narrowDeckOverlay.ResetSizeButton.IsVisible && narrowDeckOverlay.CloseButton.IsVisible && narrowDeckOverlay.ResetSizeButton.ActualWidth <= 24.1 && narrowDeckOverlay.CloseButton.ActualWidth <= 24.1 && narrowResetTopLeft.X >= 0 && narrowCloseBottomRight.X <= narrowDeckOverlay.ActualWidth - 6 && narrowCloseBottomRight.Y <= narrowDeckOverlay.ActualHeight + .1, "a 1-by-18 Deck hides its title and grip, keeps reset and close fully inset, and remains draggable from every non-key surface");
+            Check(!narrowDeckOverlay.HeaderTitleVisibleForTest && !narrowDeckOverlay.HeaderGripVisibleForTest && narrowDeckOverlay.HeaderToolTipForTest == narrowDeckLayout.Name && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)narrowDeckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(narrowDeckOverlay.DeckButtons[0]) && !narrowDeckOverlay.ResetSizeButton.IsVisible && narrowDeckOverlay.MoreButton.IsVisible && narrowDeckOverlay.CloseButton.IsVisible && narrowDeckOverlay.MoreButton.ActualWidth <= 24.1 && narrowDeckOverlay.CloseButton.ActualWidth <= 24.1 && narrowResetTopLeft.X >= 0 && narrowCloseBottomRight.X <= narrowDeckOverlay.ActualWidth - 6 && narrowCloseBottomRight.Y <= narrowDeckOverlay.ActualHeight + .1 && narrowDeckOverlay.HeaderContextMenuForTest?.Items.Count == 2, "a 1-by-18 Deck replaces separate pin/reset controls with an overflow menu, keeps close fully inset, and remains draggable from every non-key surface");
             CaptureForReview(narrowDeckOverlay, "deck-overlay-1x18.png");
             narrowDeckOverlay.Close();
+            var autoHideLayout = new DeckLayoutDefinition { Name = "Auto hide", Columns = 3, Rows = 3, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }] };
+            bool? savedPinned = null;
+            Mapping? autoHideExecuted = null;
+            var autoHideConfig = new AppConfig { DeckLayouts = [autoHideLayout], DeckAutoHideAfterAction = true, DeckAutoHideOnPointerLeave = true };
+            var autoHideOverlay = new DeckPanelOverlayWindow(autoHideConfig, mapping => autoHideExecuted = mapping, selectedLayout: autoHideLayout, pinnedChanged: (_, pinned) => savedPinned = pinned);
+            var autoHideCursor = System.Windows.Forms.Cursor.Position;
+            try
+            {
+                var work = SystemParameters.WorkArea;
+                autoHideOverlay.Left = work.Right - autoHideOverlay.Width - 8;
+                autoHideOverlay.Top = work.Bottom - autoHideOverlay.Height - 8;
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)work.Left + 4, (int)work.Top + 4);
+                autoHideOverlay.PrepareForShow();
+                autoHideOverlay.Show();
+                PumpFor(TimeSpan.FromMilliseconds(650));
+                Check(autoHideOverlay.IsVisible, "an unpinned Deck shown away from the pointer remains visible until the pointer has entered it once");
+                autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                PumpFor(TimeSpan.FromMilliseconds(350));
+                Check(!autoHideOverlay.IsVisible && autoHideExecuted?.Value == "Ctrl+C", "an unpinned Deck hides after executing a button without losing the action");
+                autoHideOverlay.PrepareForShow();
+                autoHideOverlay.Show();
+                autoHideOverlay.PinButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                PumpFor(TimeSpan.FromMilliseconds(350));
+                Check(autoHideOverlay.IsVisible && autoHideOverlay.IsPinnedForTest && savedPinned == true, "pinning keeps the Deck visible after actions and persists the choice for that layout");
+                autoHideOverlay.PinButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                autoHideOverlay.ArmPointerAutoHideForTest();
+                autoHideOverlay.SetDragActiveForTest(true);
+                autoHideOverlay.RequestPointerAutoHideForTest();
+                PumpFor(TimeSpan.FromMilliseconds(650));
+                bool stayedDuringDrag = autoHideOverlay.IsVisible;
+                autoHideOverlay.SetDragActiveForTest(false);
+                PumpFor(TimeSpan.FromMilliseconds(650));
+                Check(stayedDuringDrag && !autoHideOverlay.IsVisible && savedPinned == false, "pointer-leave auto-hide pauses throughout drag and resumes only after drag completion");
+            }
+            finally
+            {
+                System.Windows.Forms.Cursor.Position = autoHideCursor;
+                autoHideOverlay.Close();
+            }
             var maximumDeckLayout = new DeckLayoutDefinition
             {
                 Name = "18×18",
@@ -498,6 +551,21 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
             maximumDeckOverlay.Close();
+            var maximumAnimatedDeck = new DeckLayoutDefinition
+            {
+                Name = "18×18 アニメ",
+                Columns = 18,
+                Rows = 18,
+                Mappings = Enumerable.Range(1, 324).Select(slot => new Mapping { Input = $"Deck+{slot:00}", Layer = "Deck", DeckIcon = DeckIconCatalog.AnimatedId(DeckIconCatalog.Presets[(slot - 1) % DeckIconCatalog.Presets.Count].Id) }).ToList()
+            };
+            var animatedDeckConstruction = System.Diagnostics.Stopwatch.StartNew();
+            var maximumAnimatedOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [maximumAnimatedDeck] }, null, selectedLayout: maximumAnimatedDeck);
+            animatedDeckConstruction.Stop();
+            maximumAnimatedOverlay.Show();
+            PumpFor(TimeSpan.FromMilliseconds(350));
+            int runningAnimatedIcons = maximumAnimatedOverlay.DeckButtons.Count(button => button.Content is TextBlock text && (text.HasAnimatedProperties || text.RenderTransform is TransformGroup transforms && transforms.Children.Any(transform => transform.HasAnimatedProperties)));
+            Check(animatedDeckConstruction.Elapsed < TimeSpan.FromSeconds(1) && runningAnimatedIcons == 324, $"an 18-by-18 Deck keeps all 324 lightweight animated presets running without media decoders or a slow construction path (construct={animatedDeckConstruction.ElapsedMilliseconds} ms, running={runningAnimatedIcons})");
+            maximumAnimatedOverlay.Close();
             backdropProbe.Close();
             window.ShowDeckLayoutListForTest();
             string defaultDeckBeforeSwitch = DeckPanelLayout.DefaultLayout(window.ConfigForTest)!.Id;
@@ -869,6 +937,17 @@ internal static class UiIntegrationTest
             ((MenuItem)window.CreateInputContextMenu("B").Items[1]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" } && window.InputName.Text.Length == 0 && !window.AssignmentEditor.IsEnabled && window.ProfileBox.IsEnabled, "single-key paste immediately completes editing and leaves profile switching available");
+            var allLayerSource = window.CurrentProfileForTest.Mappings.Last(x => x.Input == "B");
+            allLayerSource.LongPressKind = ActionKind.Shortcut;
+            allLayerSource.LongPressValue = "Ctrl+Shift+B";
+            allLayerSource.LongPressMs = 640;
+            allLayerSource.Application = "notepad.exe";
+            var mainKeyboardMenu = window.CreateInputContextMenu("B");
+            var assignAllLayers = mainKeyboardMenu.Items.OfType<MenuItem>().SingleOrDefault(item => item.Header?.ToString() == "全レイヤーに割り当てる");
+            assignAllLayers?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Pump(window);
+            var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+B", StringComparison.OrdinalIgnoreCase))).ToArray();
+            Check(assignAllLayers?.IsEnabled == true && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" }) && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames) && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "B") == allLayerSource && !window.CreateInputContextMenu("Insert", false).Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる"), "main keyboard context menu copies the complete assignment through every non-default layer without changing the default or exposing the command on lower keys");
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.MultiDeleteButton.IsEnabled && window.MultiDeleteButton.Foreground is SolidColorBrush deleteForeground && deleteForeground.Color == ThemeService.Color("PrimaryText"), "toolbar trash becomes active for one normally selected assigned key and uses a white icon");
@@ -1115,6 +1194,9 @@ internal static class UiIntegrationTest
             Check(settings.UpdatePanel.Visibility == Visibility.Visible && settings.GeneralPanel.Visibility == Visibility.Collapsed && settings.CheckForUpdatesButton.Content?.ToString() == "アップデートを確認" && settings.InstallUpdateButton.Content?.ToString() == "今すぐアップデート" && settings.InstallUpdateButton.Visibility == Visibility.Visible && settings.UpdateStatusText.Text.Contains("v99.0.0") && settings.UpdateStatusText.Foreground is SolidColorBrush availableBrush && availableBrush.Color == ThemeService.Color("WarningBrush") && !settings.UpdateStatusText.Text.EndsWith('。'), "available update uses a clear orange status without unnecessary terminal punctuation");
             settings.ApplyUpdateResult(new UpdateCheckResult(MainWindow.RunningVersion, MainWindow.DisplayVersion, null, DateTimeOffset.Now), true);
             Check(settings.UpdateStatusText.Text == $"最新バージョンです（v{MainWindow.DisplayVersion}）" && settings.UpdateStatusText.Foreground is SolidColorBrush currentBrush && currentBrush.Color == ThemeService.Color("AccentBrush"), "current version uses a concise green status");
+            settings.SelectCategory("Support");
+            settings.UpdateLayout();
+            Check(settings.SupportPanel.Visibility == Visibility.Visible && settings.UpdatePanel.Visibility == Visibility.Collapsed && settings.OpenSupportPageButton.Content?.ToString() == "支援ページを開く" && Uri.TryCreate(SettingsWindow.SupportPageUrl, UriKind.Absolute, out var supportUri) && supportUri.Scheme == Uri.UriSchemeHttps && supportUri.Host == "ko-fi.com", "support settings appear directly after updates and use the trusted HTTPS Ko-fi page");
             settings.CategoryList.SelectedIndex = 2;
             settings.UpdateLayout();
             Check(settings.LayersPanel.Visibility == Visibility.Visible && settings.GeneralPanel.Visibility == Visibility.Collapsed, "settings sidebar switches category pages");
@@ -1156,6 +1238,9 @@ internal static class UiIntegrationTest
             settingsWithAutoSave.CategoryList.SelectedIndex = 6;
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.UpdatePanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.UpdatePanel.Parent).ActualHeight + .5, "update settings surface fits above the footer without clipping");
+            settingsWithAutoSave.CategoryList.SelectedIndex = 7;
+            settingsWithAutoSave.UpdateLayout();
+            Check(settingsWithAutoSave.SupportPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.SupportPanel.Parent).ActualHeight + .5, "support settings fit without scrolling or clipping");
             settingsWithAutoSave.CategoryList.SelectedIndex = 2;
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.LayersPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.LayersPanel.Parent).ActualHeight + .5, "layer settings fit without scrolling or clipping");
@@ -1508,7 +1593,35 @@ internal static class UiIntegrationTest
             var lightDeckIconPicker = new DeckIconPickerWindow("home") { Owner = window, ShowInTaskbar = false };
             lightDeckIconPicker.Show();
             lightDeckIconPicker.UpdateLayout();
-            Check(lightDeckIconPicker.PresetCountForTest == 50 && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), "Deck icon picker provides 50 theme-readable presets plus a custom image browse action");
+            var animatedPresetVisual = DeckIconCatalog.CreateVisual(new Mapping { DeckIcon = DeckIconCatalog.AnimatedId("refresh") }, 22, false);
+            bool animatedPresetIsRunning = animatedPresetVisual is TextBlock { RenderTransform: TransformGroup animatedTransforms } && animatedTransforms.Children.Any(transform => transform.HasAnimatedProperties);
+            var animatedScissors = DeckIconCatalog.CreateVisual(new Mapping { DeckIcon = DeckIconCatalog.AnimatedId("cut") }, 22, false);
+            bool scissorsSnipIsRunning = animatedScissors is TextBlock { RenderTransform: TransformGroup scissorsTransforms }
+                && scissorsTransforms.Children.OfType<ScaleTransform>().Any(transform => transform.HasAnimatedProperties)
+                && scissorsTransforms.Children.OfType<RotateTransform>().Any(transform => transform.HasAnimatedProperties);
+            Check(lightDeckIconPicker.PresetCountForTest == 100 && lightDeckIconPicker.AnimatedPresetCountForTest == 100 && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && animatedPresetIsRunning && scissorsSnipIsRunning && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), $"Deck icon picker separates 100 theme-readable still presets from 100 continuously animated presets, including the scissors-specific two-part snip motion, and retains custom image browsing (still={lightDeckIconPicker.PresetCountForTest}, animated={lightDeckIconPicker.AnimatedPresetCountForTest}, running={animatedPresetIsRunning}, scissors={scissorsSnipIsRunning})");
+            string customGifPath = Path.Combine(testConfigDirectory, "custom-deck-icon.gif");
+            var gifEncoder = new GifBitmapEncoder();
+            foreach (byte red in new byte[] { 0, 255 })
+            {
+                var pixels = new byte[16];
+                for (int pixel = 0; pixel < 4; pixel++)
+                {
+                    pixels[pixel * 4 + 2] = red;
+                    pixels[pixel * 4 + 3] = 255;
+                }
+                gifEncoder.Frames.Add(BitmapFrame.Create(BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, pixels, 8)));
+            }
+            using (var gifStream = File.Create(customGifPath))
+                gifEncoder.Save(gifStream);
+            var customGifIcon = DeckIconCatalog.CreateVisual(new Mapping { DeckIconPath = customGifPath }, 28, false) as AnimatedGifIcon;
+            var gifHost = new Window { Width = 80, Height = 80, Content = customGifIcon, ShowInTaskbar = false, WindowStyle = WindowStyle.None };
+            gifHost.Show();
+            PumpFor(TimeSpan.FromMilliseconds(600));
+            long gifAdvancesBefore = customGifIcon?.FrameAdvanceCountForTest ?? -1;
+            PumpFor(TimeSpan.FromMilliseconds(240));
+            Check(customGifIcon is { FrameCountForTest: >= 2, Source: not null } && customGifIcon.FrameAdvanceCountForTest > gifAdvancesBefore, $"a user-selected GIF is bounded, decoded off the UI path, and continuously advances through its loop (frames={customGifIcon?.FrameCountForTest ?? 0}, advances={customGifIcon?.FrameAdvanceCountForTest ?? 0})");
+            gifHost.Close();
             CaptureForReview(lightDeckIconPicker, "deck-icon-picker-light.png");
             lightDeckIconPicker.Close();
             var lightProfileOverlay = new ProfileSwitchOverlay("ライト確認", TimeSpan.FromSeconds(2));

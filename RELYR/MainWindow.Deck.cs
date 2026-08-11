@@ -392,6 +392,7 @@ public partial class MainWindow
                 Style = (Style)FindResource("DeckButtonStyle")
             };
             button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
+            button.MouseEnter += DeckManagementButton_MouseEnter;
             button.MouseDoubleClick += DeckManagementButton_DoubleClick;
             button.PreviewMouseRightButtonDown += InputButton_RightClick;
             button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;
@@ -413,6 +414,16 @@ public partial class MainWindow
             deckManagementNameLabels[button] = nameLabel;
         }
         ColorDeckManagementButtons();
+    }
+    void DeckManagementButton_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string input } button)
+            return;
+        var mapping = DeckPanelLayout.FindMapping(selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config), DeckPanelLayout.SlotNumber(input));
+        bool available = DeckPanelLayout.IsAvailableFile(mapping);
+        bool previous = button.Resources["DeckFileAvailable"] is bool value && value;
+        if (DeckPanelLayout.HasRegisteredFile(mapping) && available != previous)
+            UpdateDeckManagementButtonVisual(button);
     }
     void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input)
     {
@@ -1067,28 +1078,93 @@ public partial class MainWindow
             ShowInlineNotice("最後のDeckレイアウトは削除できません");
             return;
         }
-        if (IsDeckLayoutReferenced(layout))
+        var references = CountDeckLayoutReferences(config, layout);
+        var fallback = config.DeckLayouts.First(candidate => !ReferenceEquals(candidate, layout));
+        if (references.Total > 0)
         {
-            WpfMessageBox.Show(this, "このレイアウトは既定設定またはアクションから参照されています。先に参照先を別のレイアウトへ変更してください。", "Deckレイアウトを削除できません", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            var lines = new List<string> { $"「{layout.Name}」は現在、次の場所から参照されています。", "" };
+            if (references.DefaultSettings > 0)
+                lines.Add($"・既定Deck設定：{references.DefaultSettings}件（「{fallback.Name}」へ変更）");
+            if (references.Mappings > 0)
+                lines.Add($"・キー／Deckの割り当て：{references.Mappings}件");
+            if (references.MacroSteps > 0)
+                lines.Add($"・マクロ内のアクション：{references.MacroSteps}件");
+            if (references.GestureActions > 0)
+                lines.Add($"・ジェスチャーのアクション：{references.GestureActions}件");
+            lines.Add("");
+            lines.Add("これらの参照を解除して、このDeckレイアウトを削除しますか？");
+            if (WpfMessageBox.Show(this, string.Join(Environment.NewLine, lines), "参照を解除してDeckレイアウトを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+            RemoveDeckLayoutReferences(config, layout, fallback);
         }
-        if (WpfMessageBox.Show(this, $"「{layout.Name}」を削除しますか？\n割り当てたボタンも削除されます。", "Deckレイアウトの削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        else if (WpfMessageBox.Show(this, $"「{layout.Name}」を削除しますか？\n割り当てたボタンも削除されます。", "Deckレイアウトの削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         config.DeckLayouts.Remove(layout);
+        if (ReferenceEquals(selectedDeckLayout, layout))
+            selectedDeckLayout = fallback;
         MarkDirty();
         RefreshDeckLayoutCards();
+        ShowInlineNotice($"「{layout.Name}」と参照していた割り当てを削除しました");
     }
-    bool IsDeckLayoutReferenced(DeckLayoutDefinition layout)
+
+    internal sealed record DeckLayoutReferenceSummary(int DefaultSettings, int Mappings, int MacroSteps, int GestureActions)
     {
-        if (config.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase))
-            return true;
+        internal int Total => DefaultSettings + Mappings + MacroSteps + GestureActions;
+    }
+
+    internal static DeckLayoutReferenceSummary CountDeckLayoutReferences(AppConfig source, DeckLayoutDefinition layout)
+    {
+        int defaults = (source.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            + (source.SharedDefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            + source.Profiles.Count(profile => profile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase));
         string action = DeckPanelLayout.ActionValue(layout.Id);
-        IEnumerable<Mapping> mappings = config.Profiles.SelectMany(x => x.Mappings).Concat(config.SharedDeckMappings).Concat(config.DeckLayouts.SelectMany(x => x.Mappings));
-        if (mappings.Any(x => x.Value.Equals(action, StringComparison.OrdinalIgnoreCase) || x.LongPressValue.Equals(action, StringComparison.OrdinalIgnoreCase)))
-            return true;
-        if (config.Macros.SelectMany(x => x.Steps).Any(x => x.RecordedActionValue.Equals(action, StringComparison.OrdinalIgnoreCase)))
-            return true;
-        return config.Gestures.Any(x => new[] { x.UpValue, x.DownValue, x.LeftValue, x.RightValue, x.CenterValue }.Any(v => v.Equals(action, StringComparison.OrdinalIgnoreCase)));
+        IEnumerable<Mapping> mappings = source.Profiles.SelectMany(profile => profile.Mappings).Concat(source.SharedDeckMappings).Concat(source.DeckLayouts.SelectMany(deck => deck.Mappings));
+        int mappingCount = mappings.Sum(mapping => (mapping.Value.Equals(action, StringComparison.OrdinalIgnoreCase) ? 1 : 0) + (mapping.LongPressValue.Equals(action, StringComparison.OrdinalIgnoreCase) ? 1 : 0));
+        int macroCount = source.Macros.SelectMany(macro => macro.Steps).Count(step => step.RecordedActionValue.Equals(action, StringComparison.OrdinalIgnoreCase));
+        int gestureCount = source.Gestures.Sum(gesture => new[] { gesture.UpValue, gesture.DownValue, gesture.LeftValue, gesture.RightValue, gesture.CenterValue }.Count(value => value.Equals(action, StringComparison.OrdinalIgnoreCase)));
+        return new DeckLayoutReferenceSummary(defaults, mappingCount, macroCount, gestureCount);
+    }
+
+    internal static DeckLayoutReferenceSummary RemoveDeckLayoutReferences(AppConfig source, DeckLayoutDefinition layout, DeckLayoutDefinition fallback)
+    {
+        var removed = CountDeckLayoutReferences(source, layout);
+        if (source.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase))
+            source.DefaultDeckLayoutId = fallback.Id;
+        if (source.SharedDefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase))
+            source.SharedDefaultDeckLayoutId = fallback.Id;
+        foreach (var profile in source.Profiles.Where(profile => profile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase)))
+            profile.DefaultDeckLayoutId = fallback.Id;
+
+        string action = DeckPanelLayout.ActionValue(layout.Id);
+        foreach (var mappings in source.Profiles.Select(profile => profile.Mappings).Append(source.SharedDeckMappings).Concat(source.DeckLayouts.Select(deck => deck.Mappings)))
+        {
+            foreach (var mapping in mappings.ToArray())
+            {
+                if (mapping.Value.Equals(action, StringComparison.OrdinalIgnoreCase))
+                {
+                    mapping.Kind = ActionKind.None;
+                    mapping.Value = "";
+                }
+                if (mapping.LongPressValue.Equals(action, StringComparison.OrdinalIgnoreCase))
+                {
+                    mapping.LongPressKind = ActionKind.None;
+                    mapping.LongPressValue = "";
+                }
+                if (!MappingHasConfiguredAction(mapping) && !(DeckPanelLayout.IsInputName(mapping.Input) && HasDeckButtonContent(mapping)))
+                    mappings.Remove(mapping);
+            }
+        }
+        foreach (var macro in source.Macros)
+            macro.Steps.RemoveAll(step => step.RecordedActionValue.Equals(action, StringComparison.OrdinalIgnoreCase));
+        foreach (var gesture in source.Gestures)
+        {
+            if (gesture.UpValue.Equals(action, StringComparison.OrdinalIgnoreCase)) { gesture.UpKind = ActionKind.None; gesture.UpValue = ""; }
+            if (gesture.DownValue.Equals(action, StringComparison.OrdinalIgnoreCase)) { gesture.DownKind = ActionKind.None; gesture.DownValue = ""; }
+            if (gesture.LeftValue.Equals(action, StringComparison.OrdinalIgnoreCase)) { gesture.LeftKind = ActionKind.None; gesture.LeftValue = ""; }
+            if (gesture.RightValue.Equals(action, StringComparison.OrdinalIgnoreCase)) { gesture.RightKind = ActionKind.None; gesture.RightValue = ""; }
+            if (gesture.CenterValue.Equals(action, StringComparison.OrdinalIgnoreCase)) { gesture.CenterKind = ActionKind.None; gesture.CenterValue = ""; }
+        }
+        return removed;
     }
     void PersistDeckPanelPosition(double left, double top)
     {
@@ -1120,6 +1196,25 @@ public partial class MainWindow
             var persisted = store.Load();
             persisted.DeckPanelWidth = width;
             persisted.DeckPanelHeight = height;
+            store.Save(persisted);
+        }
+        catch { }
+    }
+    void PersistDeckPanelPinned(string layoutId, bool pinned)
+    {
+        static void Apply(IEnumerable<DeckLayoutDefinition> layouts, string id, bool value)
+        {
+            var target = layouts.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+                target.PanelPinned = value;
+        }
+
+        Apply(config.DeckLayouts, layoutId, pinned);
+        Apply(appliedConfig.DeckLayouts, layoutId, pinned);
+        try
+        {
+            var persisted = store.Load();
+            Apply(persisted.DeckLayouts, layoutId, pinned);
             store.Save(persisted);
         }
         catch { }

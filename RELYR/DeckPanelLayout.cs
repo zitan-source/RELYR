@@ -359,6 +359,8 @@ internal static class DeckPanelLayout
 
     internal static FrameworkElement CreateButtonContent(string input, Mapping? mapping, bool loadThumbnail = true)
     {
+        if (HasRegisteredFile(mapping) && !File.Exists(mapping!.DeckFilePath))
+            return CreateMissingFileIcon(22);
         var configuredIcon = DeckIconCatalog.CreateVisual(mapping, 22);
         if (configuredIcon != null)
             return configuredIcon;
@@ -400,6 +402,50 @@ internal static class DeckPanelLayout
             TextTrimming = TextTrimming.CharacterEllipsis
         };
     }
+
+    internal static FrameworkElement CreateMissingFileIcon(double size)
+    {
+        var root = new Grid { Width = size, Height = size, IsHitTestVisible = false };
+        var link = new TextBlock
+        {
+            Text = "\uE71B",
+            FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = size * .9,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = .72
+        };
+        link.SetBinding(TextBlock.ForegroundProperty, new System.Windows.Data.Binding("Foreground") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(System.Windows.Controls.Button), 1) });
+        root.Children.Add(link);
+        root.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 3,3 L 19,19"),
+            Stroke = ThemeService.Brush("DangerBrush"),
+            StrokeThickness = 2.2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Stretch = Stretch.Uniform,
+            Margin = new Thickness(2)
+        });
+        return root;
+    }
+
+    internal static System.Windows.Controls.ToolTip CreateMissingFileToolTip() => new()
+    {
+        Content = new TextBlock
+        {
+            Text = "参照先のファイルが削除されたか、移動された可能性があります。",
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 280,
+            FontSize = 12,
+            Foreground = ThemeService.Brush("PrimaryText")
+        },
+        Padding = new Thickness(10, 7, 10, 7),
+        BorderThickness = new Thickness(1),
+        Background = ThemeService.Brush("CardBackground"),
+        BorderBrush = ThemeService.Brush("DangerBrush"),
+        Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse
+    };
 
     [Flags]
     enum ShellImageFlags

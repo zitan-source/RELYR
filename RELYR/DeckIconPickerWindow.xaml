@@ -9,11 +9,20 @@
     <StackPanel Margin="0,0,0,14">
       <TextBlock Text="アイコン変更" FontSize="20" FontWeight="SemiBold"/>
       <TextBlock Text="プリセットを選ぶか、画像ファイルを参照してください" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}"/>
+      <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+        <Button x:Name="StaticPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="静止アイコン 100" Click="StaticPresetTab_Click" MinWidth="132"/>
+        <Button x:Name="AnimatedPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="GIFアニメ 100" Click="AnimatedPresetTab_Click" MinWidth="132" Margin="8,0,0,0"/>
+      </StackPanel>
     </StackPanel>
     <Border Grid.Row="1" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <WrapPanel x:Name="PresetPanel" HorizontalAlignment="Left"/>
-      </ScrollViewer>
+      <Grid>
+        <ScrollViewer x:Name="StaticPresetScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <WrapPanel x:Name="PresetPanel" HorizontalAlignment="Left"/>
+        </ScrollViewer>
+        <ScrollViewer x:Name="AnimatedPresetScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <WrapPanel x:Name="AnimatedPresetPanel" HorizontalAlignment="Left"/>
+        </ScrollViewer>
+      </Grid>
     </Border>
     <Grid Grid.Row="2" Margin="0,14,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

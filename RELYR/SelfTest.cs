@@ -153,6 +153,9 @@ public static class SelfTest
             config.DeckPanelTop = 234.5;
             config.DeckPanelWidth = 987.5;
             config.DeckPanelHeight = 543.5;
+            config.DeckAutoHideAfterAction = false;
+            config.DeckAutoHideOnPointerLeave = false;
+            config.DeckLayouts[0].PanelPinned = true;
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -178,7 +181,7 @@ public static class SelfTest
             Check(loaded.GestureThresholdPixels == 12 && !loaded.LockCursorDuringGesture && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and cursor-lock option roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
             Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
-            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5, "Deck overlay size and all overlay positions roundtrip independently of profiles");
+            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && !loaded.DeckAutoHideAfterAction && !loaded.DeckAutoHideOnPointerLeave && loaded.DeckLayouts[0].PanelPinned, "Deck overlay size, pin, auto-hide, and all overlay positions roundtrip independently of profiles");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });
@@ -402,6 +405,22 @@ public static class SelfTest
             Check(Math.Abs(Width - 190) < .01 && Math.Abs(Height - 190d / 12) < .01 && Math.Abs(squarePreview.Width - 88) < .01 && Math.Abs(squarePreview.Height - 88) < .01, "Deck thumbnails preserve each layout's grid aspect ratio");
             var explicitDeckAction = DeckPanelLayout.ActionValue(migratedDeck.Id);
             Check(DeckPanelLayout.ResolveActionLayout(deckClone, explicitDeckAction)?.Id == migratedDeck.Id && InputEngine.IsRecognizedShortcut(explicitDeckAction), "Deck actions use stable layout IDs and remain valid after a layout rename");
+            var referencedLayout = new DeckLayoutDefinition { Name = "参照中" };
+            var fallbackLayout = new DeckLayoutDefinition { Name = "移行先" };
+            string referencedAction = DeckPanelLayout.ActionValue(referencedLayout.Id);
+            var referenceConfig = new AppConfig
+            {
+                DefaultDeckLayoutId = referencedLayout.Id,
+                SharedDefaultDeckLayoutId = referencedLayout.Id,
+                DeckLayouts = [referencedLayout, fallbackLayout],
+                Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = referencedLayout.Id, Mappings = [new Mapping { Input = "A", Kind = ActionKind.Shortcut, Value = referencedAction, LongPressKind = ActionKind.Key, LongPressValue = "B" }] }],
+                Macros = [new MacroDefinition { Name = "参照マクロ", Steps = [new MacroStep { RecordedActionKind = ActionKind.Shortcut, RecordedActionValue = referencedAction }] }],
+                Gestures = [new GestureDefinition { Name = "参照ジェスチャー", UpKind = ActionKind.Shortcut, UpValue = referencedAction, RightKind = ActionKind.Key, RightValue = "C" }]
+            };
+            fallbackLayout.Mappings.Add(new Mapping { Input = "Deck+01", Layer = "Deck", LongPressKind = ActionKind.Shortcut, LongPressValue = referencedAction, Description = "残す表示" });
+            var referenceSummary = MainWindow.CountDeckLayoutReferences(referenceConfig, referencedLayout);
+            var removedReferences = MainWindow.RemoveDeckLayoutReferences(referenceConfig, referencedLayout, fallbackLayout);
+            Check(referenceSummary == new MainWindow.DeckLayoutReferenceSummary(3, 2, 1, 1) && removedReferences == referenceSummary && referenceConfig.DefaultDeckLayoutId == fallbackLayout.Id && referenceConfig.SharedDefaultDeckLayoutId == fallbackLayout.Id && referenceConfig.Profiles.All(profile => profile.DefaultDeckLayoutId == fallbackLayout.Id) && referenceConfig.Profiles[0].Mappings.Single() is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "B" } && fallbackLayout.Mappings.Single() is { LongPressKind: ActionKind.None, LongPressValue: "", Description: "残す表示" } && referenceConfig.Macros[0].Steps.Count == 0 && referenceConfig.Gestures[0] is { UpKind: ActionKind.None, UpValue: "", RightKind: ActionKind.Key, RightValue: "C" } && MainWindow.CountDeckLayoutReferences(referenceConfig, referencedLayout).Total == 0, "deleting a referenced Deck can retarget defaults and remove only the exact key, Deck, macro, and gesture references after confirmation");
             var missingDeckReference = service.Clone(deckClone);
             missingDeckReference.Profiles[0].Mappings.Add(new Mapping { Input = "Q", Kind = ActionKind.Shortcut, Value = DeckPanelLayout.ActionValue("missing") });
             Check(ConfigValidator.Validate(missingDeckReference).Any(x => x.Contains("Deckレイアウト")), "missing Deck layout references are rejected before saving");

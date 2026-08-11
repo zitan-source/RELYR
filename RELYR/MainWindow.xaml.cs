@@ -86,6 +86,7 @@ public partial class MainWindow : Window
     Task<UpdateCheckResult>? runningUpdateCheckTask;
     bool capsLockRemapped;
     string currentLayer = "通常";
+    internal static IReadOnlyList<string> AllAssignmentLayerNames { get; } = ["Space", "CapsLock", "MouseRight", "MouseForward", "MouseBack", "Taskbar"];
     MacroWindow? macroWindow; bool engineBeforeMacroRecording, macroEmergencyStop, macroIsRecording;
     ProfileSwitchOverlay? profileOverlay;
     string lastProfileOverlayName = "";
@@ -104,6 +105,7 @@ public partial class MainWindow : Window
     int destinationFocusRequest;
     UpdateInfo? availableUpdate;
     UpdateCheckResult? lastUpdateCheck;
+    SettingsWindow? settingsWindow;
     internal event Action<UpdateCheckResult>? UpdateCheckCompleted;
     readonly System.Windows.Forms.NotifyIcon tray = new();
     readonly bool suppressTray;
@@ -185,7 +187,8 @@ public partial class MainWindow : Window
             PersistInputPanelPosition,
             HandleOverlayDeckLayoutChanged,
             HandleOverlayDeckSlotsChanged,
-            PersistDeckPanelSize);
+            PersistDeckPanelSize,
+            PersistDeckPanelPinned);
         Func<string, WindowActionTarget, bool>? ipcShortcut = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendShortcut : null;
         Func<string, bool>? ipcText = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendText : null;
         Func<string, bool>? ipcMouse = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendMouse : null;
@@ -989,11 +992,12 @@ public partial class MainWindow : Window
             ShowInlineNotice("Spaceキーはレイヤー専用のため変更できません");
             return;
         }
-        var menu = CreateInputContextMenu(key);
+        var button = (System.Windows.Controls.Button)sender;
+        var menu = CreateInputContextMenu(key, KeyboardPanel.Children.Contains(button));
         menu.PlacementTarget = (System.Windows.Controls.Button)sender;
         menu.IsOpen = true;
     }
-    internal ContextMenu CreateInputContextMenu(string key)
+    internal ContextMenu CreateInputContextMenu(string key, bool includeAllLayers = true)
     {
         string input = currentLayer == "通常" ? key : currentLayer + "+" + key;
         var existing = CurrentProfile.Mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
@@ -1015,12 +1019,53 @@ public partial class MainWindow : Window
             ClearSelectedInput();
             ShowInlineNotice(DisplayInputName(input) + " の割り当てを貼り付けました");
         };
+        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = existing != null };
+        assignAllLayers.Click += (_, _) =>
+        {
+            if (existing == null)
+                return;
+            int applied = AssignMappingToAllLayers(CurrentProfile.Mappings, key, existing);
+            if (applied == 0)
+                return;
+            ClearSelectedInput();
+            MarkDirty();
+            UpdateLayerButtons();
+            ColorButtons();
+            ShowInlineNotice($"{DisplayInputName(input)} の割り当てをデフォルト以外の{applied}レイヤーへ適用しました");
+        };
         var delete = new MenuItem { Header = "この割り当てを削除", IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => { if (existing == null) return; CurrentProfile.Mappings.Remove(existing); MarkDirty(); UpdateLayerButtons(); ClearSelectedInput(); ShowInlineNotice(DisplayInputName(input) + " の割り当てを削除しました"); };
         menu.Items.Add(copy);
         menu.Items.Add(paste);
+        if (includeAllLayers)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(assignAllLayers);
+            menu.Items.Add(new Separator());
+        }
         menu.Items.Add(delete);
         return menu;
+    }
+    internal static int AssignMappingToAllLayers(List<Mapping> mappings, string key, Mapping source)
+    {
+        if (string.IsNullOrWhiteSpace(key) || DeckPanelLayout.IsInputName(key))
+            return 0;
+        var template = CloneMapping(source);
+        int applied = 0;
+        foreach (string layer in AllAssignmentLayerNames)
+        {
+            // A layer activation key cannot trigger itself while it is being held.
+            if (layer.Equals(key, StringComparison.OrdinalIgnoreCase))
+                continue;
+            string targetInput = layer + "+" + key;
+            mappings.RemoveAll(mapping => mapping.Input.Equals(targetInput, StringComparison.OrdinalIgnoreCase));
+            var copy = CloneMapping(template);
+            copy.Input = targetInput;
+            copy.Layer = layer;
+            mappings.Add(copy);
+            applied++;
+        }
+        return applied;
     }
     internal ContextMenu CreateMultiSelectionContextMenu()
     {
@@ -2208,7 +2253,9 @@ public partial class MainWindow : Window
             else
                 nameLabel.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
         }
-        button.ToolTip = assigned != null ? CreateAssignmentToolTip(assigned) : null;
+        bool missingFile = DeckPanelLayout.HasRegisteredFile(mapping) && !DeckPanelLayout.IsAvailableFile(mapping);
+        button.Resources["DeckFileAvailable"] = DeckPanelLayout.IsAvailableFile(mapping);
+        button.ToolTip = missingFile ? DeckPanelLayout.CreateMissingFileToolTip() : assigned != null ? CreateAssignmentToolTip(assigned) : null;
         ToolTipService.SetInitialShowDelay(button, 250);
         ToolTipService.SetShowDuration(button, 20000);
     }
@@ -3210,10 +3257,32 @@ public partial class MainWindow : Window
 
     internal void OpenSettingsFrom(Window owner, string? category = null)
     {
+        if (settingsWindow is { IsVisible: true } existing)
+        {
+            if (category != null)
+                existing.SelectCategory(category);
+            existing.Activate();
+            return;
+        }
+
         var window = new SettingsWindow(config, lastUpdateCheck) { Owner = owner };
+        settingsWindow = window;
         if (category != null)
             window.SelectCategory(category);
-        if (window.ShowDialog() != true)
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(settingsWindow, window))
+                settingsWindow = null;
+            if (window.Accepted)
+                ApplySettingsWindowResult(window);
+        };
+        window.Show();
+        window.Activate();
+    }
+
+    void ApplySettingsWindowResult(SettingsWindow window)
+    {
+        if (!window.Accepted)
             return;
         if (window.CapsRemapChanged)
         {
@@ -3238,6 +3307,7 @@ public partial class MainWindow : Window
         try
         {
             ApplySettingsWindowValues(window);
+            OverlayService.RefreshDeckPanel();
             CopyApplicationOptions(config, appliedConfig);
             var persisted = store.Load();
             CopyApplicationOptions(config, persisted);
@@ -3283,6 +3353,8 @@ public partial class MainWindow : Window
         config.ClockSolidColor = window.ClockSolidColor;
         config.ClockShowOnAllMonitors = window.ClockShowOnAllMonitors;
         config.InputPanelOpacityPercent = window.InputPanelOpacityPercent;
+        config.DeckAutoHideAfterAction = window.DeckAutoHideAfterAction;
+        config.DeckAutoHideOnPointerLeave = window.DeckAutoHideOnPointerLeave;
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
@@ -3312,6 +3384,8 @@ public partial class MainWindow : Window
         destination.ClockSolidColor = source.ClockSolidColor;
         destination.ClockShowOnAllMonitors = source.ClockShowOnAllMonitors;
         destination.InputPanelOpacityPercent = source.InputPanelOpacityPercent;
+        destination.DeckAutoHideAfterAction = source.DeckAutoHideAfterAction;
+        destination.DeckAutoHideOnPointerLeave = source.DeckAutoHideOnPointerLeave;
     }
     void ApplyCompleteConfig(AppConfig value, string message)
     {

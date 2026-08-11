@@ -9,6 +9,8 @@ public partial class MainWindow
 {
     internal bool IsInputHookDisposedForTest => engine.IsDisposedForTest;
     internal bool IsInputEngineReadyForTest => engineStarted && engine.Enabled;
+    internal SettingsWindow? SettingsWindowForTest => settingsWindow;
+    internal void OpenSettingsForTest() => OpenSettingsFrom(this);
     internal bool HasDestinationInputTargetForTest => destinationInputTarget != null;
     internal bool IsEditingSelectedInputForTest => editingSelectedInput;
     internal bool ShouldInterceptPhysicalInputForTest => engine.ShouldInterceptInput?.Invoke() ?? true;

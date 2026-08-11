@@ -9,6 +9,7 @@ public partial class SettingsWindow : Window
     internal const string ExportFileName = "relyr-settings.relyr";
     internal const string ExportFileFilter = "RELYR 設定ファイル (*.relyr)|*.relyr";
     internal const string ImportFileFilter = "RELYR 設定ファイル (*.relyr)|*.relyr|以前のRELYR設定 (*.json)|*.json";
+    internal const string SupportPageUrl = "https://ko-fi.com/relyr";
     readonly AppConfig config;
     readonly bool initialStartWithWindows;
     readonly AppThemeMode originalThemeMode;
@@ -19,6 +20,8 @@ public partial class SettingsWindow : Window
     private readonly bool themeSelectionLoading = true;
     private bool themeAccepted;
     private bool ownerUpdateSubscribed;
+
+    internal bool Accepted { get; private set; }
 
     public AppConfig? ImportedConfig
     {
@@ -54,6 +57,8 @@ public partial class SettingsWindow : Window
     public string ClockSolidColor => NormalizeClockColor(ClockSolidColorBox.Text);
     public bool ClockShowOnAllMonitors => ClockAllMonitorsBox.IsChecked == true;
     public int InputPanelOpacityPercent => (int)Math.Round(InputPanelOpacitySlider.Value);
+    public bool DeckAutoHideAfterAction => DeckAutoHideAfterActionBox.IsChecked == true;
+    public bool DeckAutoHideOnPointerLeave => DeckAutoHideOnPointerLeaveBox.IsChecked == true;
     public bool CapsRemapChanged
     {
         get; private set;
@@ -108,6 +113,8 @@ public partial class SettingsWindow : Window
         ClockSolidColorBox.Text = NormalizeClockColor(config.ClockSolidColor);
         ClockAllMonitorsBox.IsChecked = config.ClockShowOnAllMonitors;
         InputPanelOpacitySlider.Value = Math.Clamp(config.InputPanelOpacityPercent, 40, 100);
+        DeckAutoHideAfterActionBox.IsChecked = config.DeckAutoHideAfterAction;
+        DeckAutoHideOnPointerLeaveBox.IsChecked = config.DeckAutoHideOnPointerLeave;
         UpdateInputPanelOpacityText();
         UpdateClockBackgroundControls();
         ArchiveWatchFolderBox.Text = string.IsNullOrWhiteSpace(config.ArchiveWatchFolder) ? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) : config.ArchiveWatchFolder;
@@ -147,6 +154,7 @@ public partial class SettingsWindow : Window
         GeneralPanel.Visibility = selected == "General" ? Visibility.Visible : Visibility.Collapsed;
         AppearancePanel.Visibility = selected == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
         UpdatePanel.Visibility = selected == "Update" ? Visibility.Visible : Visibility.Collapsed;
+        SupportPanel.Visibility = selected == "Support" ? Visibility.Visible : Visibility.Collapsed;
         LayersPanel.Visibility = selected == "Layers" ? Visibility.Visible : Visibility.Collapsed;
         OverlayPanel.Visibility = selected == "Overlay" ? Visibility.Visible : Visibility.Collapsed;
         ArchivePanel.Visibility = selected == "Archive" ? Visibility.Visible : Visibility.Collapsed;
@@ -345,14 +353,27 @@ public partial class SettingsWindow : Window
             }
         }
         themeAccepted = true;
-        DialogResult = true;
+        Accepted = true;
+        Close();
     }
     void Cancel_Click(object sender, RoutedEventArgs e)
     {
         ThemeService.Apply(originalThemeMode);
-        DialogResult = false;
+        Accepted = false;
+        Close();
     }
     void ShowTutorial_Click(object sender, RoutedEventArgs e) => new SetupWindow(true) { Owner = this }.ShowDialog();
+    void OpenSupportPage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(SupportPageUrl) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            AppDialog.Show(this, "支援ページを開けませんでした。\n\n" + ex.Message, "支援ページを開けません", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
     void Export_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { Filter = ExportFileFilter, FileName = ExportFileName, DefaultExt = ".relyr", AddExtension = true };
@@ -392,7 +413,8 @@ public partial class SettingsWindow : Window
                 ImportedCapsLockEnabled = desired;
             }
             ImportedConfig = imported;
-            DialogResult = true;
+            Accepted = true;
+            Close();
         }
         catch (Exception ex) { AppDialog.Show(this, ex.Message, "インポートできません", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
@@ -478,7 +500,8 @@ public partial class SettingsWindow : Window
             new ConfigService().Save(reset);
             ResetConfig = reset;
             CapsRemapChanged = ResetNeedsRestart;
-            DialogResult = true;
+            Accepted = true;
+            Close();
         }
         catch (Exception ex) { AppDialog.Show(this, "設定をリセットできませんでした。\n\n" + ex.Message, "リセットできません", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
