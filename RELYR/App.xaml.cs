@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
 #if !PRODUCTION_PUBLISH
     internal static string EngineTestReportPath => VerificationPaths.GetFile("engine-test-last.log");
     internal static string UiTestReportPath => VerificationPaths.GetFile("ui-test-last.log");
+    internal static string MouseUiTestReportPath => VerificationPaths.GetFile("mouse-ui-test-last.log");
     internal static string SelfTestReportPath => VerificationPaths.GetFile("self-test-last.log");
 #endif
     internal const string InstanceMutexName = @"Local\RELYR.SingleInstance.v2";
@@ -257,6 +258,18 @@ public partial class App : System.Windows.Application
             var helper = new Window { Title = "RELYR Desktop Test", Width = 320, Height = 160, WindowStartupLocation = WindowStartupLocation.CenterScreen };
             MainWindow = helper;
             helper.Show();
+            return;
+        }
+        if (e.Args.Contains("--mouse-ui-test", StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                File.Delete(MouseUiTestReportPath);
+            }
+            catch { }
+            using var mouseUiLog = new StreamWriter(MouseUiTestReportPath, false, Encoding.UTF8) { AutoFlush = true };
+            int result = UiIntegrationTest.RunMouseLayout(mouseUiLog);
+            ShutdownWithExitCode(result);
             return;
         }
         if (e.Args.Contains("--ui-test", StringComparer.OrdinalIgnoreCase))

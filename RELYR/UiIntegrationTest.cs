@@ -9,6 +9,90 @@ namespace RELYR;
 
 internal static class UiIntegrationTest
 {
+    internal static int RunMouseLayout(TextWriter output)
+    {
+        var report = new VerificationReport(output);
+        Action<bool, string> Check = report.Check;
+        string? previousConfigDirectory = Environment.GetEnvironmentVariable("RELYR_CONFIG_DIR");
+        string testConfigDirectory = VerificationPaths.CreateRunDirectory("mouse-ui-test");
+        AppThemeMode previousTheme = ThemeService.CurrentMode;
+        MainWindow? window = null;
+        MacroInputPickerWindow? picker = null;
+        try
+        {
+            Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", testConfigDirectory);
+            new ConfigService().Save(new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false, ThemeMode = AppThemeMode.Dark });
+            ThemeService.Apply(AppThemeMode.Dark);
+            window = new MainWindow(true) { Width = 1500, Height = 900 };
+            System.Windows.Application.Current.MainWindow = window;
+            window.Show();
+            window.UpdateLayout();
+            for (int i = 0; i < 3; i++)
+            {
+                window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                window.UpdateLayout();
+            }
+
+            var aKey = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "A"));
+            var mouseButtons = Descendants<System.Windows.Controls.Button>(window.MousePanel).Where(x => x.Tag is string).ToList();
+            var leftClick = mouseButtons.First(x => Equals(x.Tag, "MouseLeft"));
+            var rightClick = mouseButtons.First(x => Equals(x.Tag, "MouseRight"));
+            var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
+            var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
+            var tiltLeft = mouseButtons.First(x => Equals(x.Tag, "TiltLeft"));
+            var tiltRight = mouseButtons.First(x => Equals(x.Tag, "TiltRight"));
+            var forward = mouseButtons.First(x => Equals(x.Tag, "MouseForward"));
+            var back = mouseButtons.First(x => Equals(x.Tag, "MouseBack"));
+            var x1 = mouseButtons.First(x => Equals(x.Tag, "MouseX"));
+            static Rect Bounds(System.Windows.Controls.Button button) => new(Canvas.GetLeft(button), Canvas.GetTop(button), button.Width, button.Height);
+
+            Check(mouseButtons.Count == 10, "mouse diagram exposes exactly the ten existing mouse actions");
+            Check(ordinary.All(x => Math.Abs(x.Width - aKey.Width) < .1 && Math.Abs(x.Height - aKey.Height) < .1), "every ordinary mouse control exactly matches the active-layout A-key size");
+            double renderedAHeight = aKey.TransformToAncestor(window).TransformBounds(new Rect(0, 0, aKey.ActualWidth, aKey.ActualHeight)).Height;
+            double renderedMouseKeyHeight = ordinary[0].TransformToAncestor(window).TransformBounds(new Rect(0, 0, ordinary[0].ActualWidth, ordinary[0].ActualHeight)).Height;
+            Check(Math.Abs(renderedMouseKeyHeight - renderedAHeight) < .1, "ordinary mouse controls render at the same on-screen height as the A key");
+            Check(new[] { leftClick, rightClick }.All(x => Math.Abs(x.Width - aKey.Width) < .1 && Math.Abs(x.Height - (aKey.Height * 2 + 4)) < .1), "left and right click exactly match the two-row numpad Enter span");
+            Check(Canvas.GetTop(tiltLeft) > Canvas.GetTop(wheelDown) + wheelDown.Height && Math.Abs((Canvas.GetLeft(tiltLeft) + tiltLeft.Width + 2) - window.MousePanel.Width / 2) < .1 && Math.Abs((Canvas.GetLeft(tiltRight) - 2) - window.MousePanel.Width / 2) < .1, "tilt controls sit immediately below the wheel and share the horizontal center");
+            Check(Math.Abs(Canvas.GetLeft(forward) - Canvas.GetLeft(back)) < .1 && Canvas.GetTop(forward) < Canvas.GetTop(back) && Canvas.GetLeft(x1) > Canvas.GetLeft(back) && Math.Abs(Canvas.GetTop(x1) - Canvas.GetTop(back)) < .1, "Forward and Back stay on the left while X1 occupies the lower right");
+            Check(mouseButtons.SelectMany((button, index) => mouseButtons.Skip(index + 1).Select(other => !Bounds(button).IntersectsWith(Bounds(other)))).All(x => x), "mouse controls never overlap and preserve the keyboard gap system");
+            double mouseHostBottom = window.MouseHost.TranslatePoint(new System.Windows.Point(0, window.MouseHost.ActualHeight), window.LowerInputGrid).Y + window.MouseHost.Margin.Bottom;
+            Check(mouseHostBottom <= window.LowerInputGrid.ActualHeight + .1, $"the complete portrait mouse remains visible inside the lower workspace row ({mouseHostBottom:F1}/{window.LowerInputGrid.ActualHeight:F1})");
+            Check(window.MousePanel.Height > window.MousePanel.Width * 1.9 && window.MouseBody.CornerRadius.TopLeft == 14 && window.MouseBody.Effect == null && window.MouseBody.Background is SolidColorBrush body && body.Color.A == 0, "mouse diagram uses a tall flat rounded-rectangle body without the old oval gradient or shadow");
+            Check(mouseButtons.All(x => Descendants<Border>(x).All(border => border.Background is not LinearGradientBrush)), "mouse controls use the same flat solid faces as keyboard keys");
+            CaptureForReview(window, "mouse-layout-dark.png");
+
+            ThemeService.Apply(AppThemeMode.Light);
+            window.UpdateLayout();
+            Check(mouseButtons.All(x => x.Foreground is SolidColorBrush foreground && foreground.Color == ThemeService.Color("PrimaryText")) && window.MouseBody.BorderBrush is SolidColorBrush border && border.Color == ThemeService.Color("SubtleBorderBrush"), "light theme keeps every mouse label and the outer boundary visible");
+            CaptureForReview(window, "mouse-layout-light.png");
+
+            ThemeService.Apply(AppThemeMode.Dark);
+            picker = new MacroInputPickerWindow("JIS") { Owner = window, ShowInTaskbar = false };
+            picker.Show();
+            picker.UpdateLayout();
+            var pickerA = picker.InputButtonsForTest.First(x => Equals(x.Tag, "A"));
+            var pickerMouseButtons = picker.InputButtonsForTest.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight" or "MouseMiddle" or "MouseBack" or "MouseForward" or "MouseX" or "WheelUp" or "WheelDown" or "TiltLeft" or "TiltRight").ToList();
+            var pickerOrdinary = pickerMouseButtons.Where(x => x.Tag?.ToString() is not "MouseLeft" and not "MouseRight").ToList();
+            var pickerClicks = pickerMouseButtons.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight").ToList();
+            Check(pickerMouseButtons.Count == 10 && pickerOrdinary.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - pickerA.Height) < .1) && pickerClicks.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - (pickerA.Height * 2 + 4)) < .1), "keypad-input mouse mirrors the same A-key and two-row click dimensions");
+            CaptureForReview(picker, "mouse-layout-keypad-dark.png");
+            ThemeService.Apply(AppThemeMode.Light);
+            picker.UpdateLayout();
+            Check(pickerMouseButtons.All(x => x.Foreground is SolidColorBrush foreground && foreground.Color == ThemeService.Color("PrimaryText")), "keypad-input mouse remains readable in the light theme");
+            CaptureForReview(picker, "mouse-layout-keypad-light.png");
+        }
+        catch (Exception ex) { report.RecordException("Mouse UI exception", "FAIL Mouse UI exception: ", ex); }
+        finally
+        {
+            ThemeService.Apply(previousTheme);
+            picker?.Close();
+            if (window != null) { window.PrepareForSystemShutdown(); window.Close(); }
+            Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", previousConfigDirectory);
+            try { if (Directory.Exists(testConfigDirectory)) Directory.Delete(testConfigDirectory, true); } catch { }
+        }
+        return report.Complete("MOUSE UI TEST PASSED", "MOUSE UI TEST FAILED: ");
+    }
+
     internal static int Run(TextWriter output)
     {
         var report = new VerificationReport(output);
@@ -623,7 +707,7 @@ internal static class UiIntegrationTest
             materialKey.ApplyTemplate();
             var materialKeyBorder = (Border)materialKey.Template.FindName("KeyBorder", materialKey)!;
             bool hasCheapKeyDepth = Descendants<Border>(materialKey).Any(x => x.Background is SolidColorBrush brush && brush.Color == ThemeService.Color("KeyDepthBrush"));
-            Check(materialKeyBorder.Effect == null && hasCheapKeyDepth && materialKeyBorder.CornerRadius.TopLeft == 8 && !Descendants<Border>(materialKey).Any(x => x.Background is LinearGradientBrush) && window.MouseBody.Background is LinearGradientBrush && window.MouseBody.Effect is System.Windows.Media.Effects.DropShadowEffect, "buttons use flat solid faces and shared eight-pixel corners while the non-button mouse body keeps its directional shading");
+            Check(materialKeyBorder.Effect == null && hasCheapKeyDepth && materialKeyBorder.CornerRadius.TopLeft == 8 && !Descendants<Border>(materialKey).Any(x => x.Background is LinearGradientBrush) && window.MouseBody.Background is SolidColorBrush mouseBodyBrush && mouseBodyBrush.Color.A == 0 && window.MouseBody.Effect == null, "buttons use flat solid faces and shared eight-pixel corners while the mouse body remains flat and transparent");
             window.KeyboardLayoutBox.SelectedIndex = 1;
             window.UpdateLayout();
             var usEnter = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "Enter"));
@@ -714,7 +798,9 @@ internal static class UiIntegrationTest
                 $"main keyboard and navigation share one exact left edge ({mainLeft:F1}/{navigationLeft:F1}/{navigationHeadingLeft:F1})");
             Check(RenderedWidth(maximizedMainKey, window) <= RenderedWidth(maximizedNumpadKey, window) * 1.35, "main and lower keyboard controls stay visually balanced when maximized");
             var renderedMouseWidth = RenderedWidth(window.MousePanel, window);
-            Check(Math.Abs(window.MouseFrame.ActualHeight - window.SecondaryKeyboardViewbox.ActualHeight) < 1 && renderedMouseWidth <= window.MouseColumn.ActualWidth - 16, $"mouse controls share the lower keyboard height and never overpower its column ({window.MouseFrame.ActualHeight:F1}/{window.SecondaryKeyboardViewbox.ActualHeight:F1}, {renderedMouseWidth:F1}/{window.MouseColumn.ActualWidth:F1})");
+            var renderedMainAHeight = RenderedHeight(maximizedMainKey, window);
+            var ordinaryMouseKey = Descendants<System.Windows.Controls.Button>(window.MousePanel).First(x => Equals(x.Tag, "MouseMiddle"));
+            Check(Math.Abs(RenderedHeight(ordinaryMouseKey, window) - renderedMainAHeight) < 1 && renderedMouseWidth <= window.MouseColumn.ActualWidth - 16, $"mouse controls match the main A-key height and never overpower their column ({RenderedHeight(ordinaryMouseKey, window):F1}/{renderedMainAHeight:F1}, {renderedMouseWidth:F1}/{window.MouseColumn.ActualWidth:F1})");
             Check(Math.Abs(window.LowerInputGrid.ActualWidth - window.KeyboardSurfaceCard.ActualWidth) < 1 && window.MouseHost.TranslatePoint(new System.Windows.Point(window.MouseHost.ActualWidth, 0), window.WorkspaceGrid).X <= window.KeyboardSurfaceCard.TranslatePoint(new System.Windows.Point(window.KeyboardSurfaceCard.ActualWidth, 0), window.WorkspaceGrid).X + 1, "mouse stays inside the keyboard workspace right edge");
             window.Width = 1160;
             window.Height = 1250;
@@ -723,7 +809,7 @@ internal static class UiIntegrationTest
             var portraitNumpadFrame = window.SecondaryKeyboardPanel.Children.OfType<Border>().First(x => Equals(x.Tag, "テンキー"));
             var portraitNumpadBounds = portraitNumpadFrame.TransformToAncestor(window).TransformBounds(new Rect(0, 0, portraitNumpadFrame.ActualWidth, portraitNumpadFrame.ActualHeight));
             double portraitLowerTop = window.LowerInputGrid.TranslatePoint(new System.Windows.Point(), window).Y, portraitKeyboardBottom = window.KeyboardSurfaceCard.TranslatePoint(new System.Windows.Point(0, window.KeyboardSurfaceCard.ActualHeight), window).Y, portraitMouseTop = window.MouseFrame.TranslatePoint(new System.Windows.Point(), window).Y;
-            Check(Math.Abs(portraitLowerTop - portraitKeyboardBottom - 16) < 1 && Math.Abs(portraitMouseTop - portraitNumpadBounds.Top) < 1 && Math.Abs(window.MouseFrame.ActualHeight - portraitNumpadBounds.Height) < 1 && window.MouseFrame.TranslatePoint(new System.Windows.Point(0, window.MouseFrame.ActualHeight), window.LowerInputGrid).Y <= window.LowerInputGrid.ActualHeight + 1, "portrait layout uses whitespace to separate the main and lower controls while keeping navigation and mouse aligned");
+            Check(Math.Abs(portraitLowerTop - portraitKeyboardBottom - 16) < 1 && portraitMouseTop >= portraitNumpadBounds.Top && window.MouseFrame.TranslatePoint(new System.Windows.Point(0, window.MouseFrame.ActualHeight), window.LowerInputGrid).Y <= window.LowerInputGrid.ActualHeight + 1, "portrait layout uses whitespace to separate the main and lower controls while keeping the complete mouse visible");
             CaptureForReview(window, "portrait-main.png");
             window.Width = 800;
             window.Height = 620;
@@ -801,11 +887,10 @@ internal static class UiIntegrationTest
             Check(ReferenceEquals(window.SidebarStatusPanel.Parent, ((Grid)window.LayerNavigationPane.Child)) && !Descendants<TextBlock>(window.SidebarStatusPanel).Any(x => x.Text.StartsWith("プロファイル:", StringComparison.Ordinal)), "sidebar status row omits the redundant active-profile label");
             Check(!Descendants<TextBlock>(window).Any(x => x.Text.StartsWith("レイヤーボタンを押しながら")), "redundant layer explanation banner is removed");
             var mouseButtons = Descendants<System.Windows.Controls.Button>(window.MousePanel).Where(x => x.Tag is string).ToList();
-            var mouseBodyGradient = window.MouseBody.Background as LinearGradientBrush;
-            Check(mouseButtons.All(button => button.BorderThickness == new Thickness(1)) && mouseBodyGradient != null && mouseBodyGradient.GradientStops.Count >= 2 && mouseBodyGradient.GradientStops[0].Color != ThemeService.Color("ControlBackground"), "mouse buttons use visible borders against a lighter body surface");
+            Check(mouseButtons.All(button => button.BorderThickness == new Thickness(1) && !Descendants<Border>(button).Any(border => border.Background is LinearGradientBrush)) && window.MouseBody.Background is SolidColorBrush flatMouseBody && flatMouseBody.Color.A == 0, "mouse buttons use visible flat borders inside a transparent body surface");
             var tiltButtons = mouseButtons.Where(x => Equals(x.Tag, "TiltLeft") || Equals(x.Tag, "TiltRight")).ToList();
-            var tiltText = Descendants<TextBlock>(window.MousePanel).FirstOrDefault(x => x.Text == "TILT");
-            Check(tiltButtons.Count == 2 && tiltText != null && Math.Abs(Canvas.GetLeft(tiltText)) < .1 && Math.Abs(tiltText.Width - window.MousePanel.Width) < .1 && tiltText.TextAlignment == TextAlignment.Center, "mouse TILT label is precisely centered");
+            var tiltText = Descendants<TextBlock>(window.MousePanel).FirstOrDefault(x => x.Text == "チルト");
+            Check(tiltButtons.Count == 2 && tiltText != null && Math.Abs(Canvas.GetLeft(tiltText) + tiltText.Width / 2 - window.MousePanel.Width / 2) < .1 && tiltText.TextAlignment == TextAlignment.Center, "mouse tilt label is precisely centered");
             var mouseBack = mouseButtons.First(x => Equals(x.Tag, "MouseBack"));
             var mouseForward = mouseButtons.First(x => Equals(x.Tag, "MouseForward"));
             Check(mouseBack.Content?.ToString() == "戻る" && mouseForward.Content?.ToString() == "進む" && Canvas.GetTop(mouseForward) < Canvas.GetTop(mouseBack), "mouse side buttons use the conventional front/upper Forward and rear/lower Back positions without changing their input identities");
@@ -816,7 +901,8 @@ internal static class UiIntegrationTest
             var rightClick = mouseButtons.First(x => Equals(x.Tag, "MouseRight"));
             var wheelControls = mouseButtons.Where(x => Equals(x.Tag, "WheelUp") || Equals(x.Tag, "WheelDown") || Equals(x.Tag, "MouseMiddle"));
             static Rect Bounds(System.Windows.Controls.Button b) => new(Canvas.GetLeft(b), Canvas.GetTop(b), b.Width, b.Height);
-            Check(leftClick.Width <= 56 && rightClick.Width <= 56 && wheelControls.All(x => !Bounds(x).IntersectsWith(Bounds(leftClick)) && !Bounds(x).IntersectsWith(Bounds(rightClick))), "mouse click areas are compact and do not overlap wheel controls");
+            var mainA = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "A"));
+            Check(Math.Abs(leftClick.Width - mainA.Width) < .1 && Math.Abs(rightClick.Width - mainA.Width) < .1 && Math.Abs(leftClick.Height - (mainA.Height * 2 + 4)) < .1 && Math.Abs(rightClick.Height - (mainA.Height * 2 + 4)) < .1 && wheelControls.All(x => !Bounds(x).IntersectsWith(Bounds(leftClick)) && !Bounds(x).IntersectsWith(Bounds(rightClick))), "left and right click match the two-row numpad Enter span and do not overlap wheel controls");
             Check(mouseButtons.Sum(x => x.Content?.ToString()?.Length ?? 0) <= 24, "mouse diagram uses concise labels");
             Check(window.Icon != null && window.Icon.Width > 0 && window.Icon.Height > 0, "main window explicitly uses the normal RELYR application icon instead of inheriting a macro-shortcut icon");
             CaptureForReview(window, "mouse-layout-main.png");

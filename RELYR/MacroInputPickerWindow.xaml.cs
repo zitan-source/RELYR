@@ -92,7 +92,8 @@ public partial class MacroInputPickerWindow : Window
 
     void BuildLowerGroups()
     {
-        const double top = 390, unit = 54, keyHeight = 52, padding = 10, titleHeight = 26, groupGap = 12;
+        const double top = 390, keyHeight = 52, padding = 10, titleHeight = 26, groupGap = 12;
+        double unit = layout == "US" ? 56 : 54;
         double navigationWidth = padding * 2 + unit * 3 + Gap * 2;
         double navigationHeight = titleHeight + keyHeight * 3 + Gap * 2 + padding;
         double numpadX = navigationWidth + groupGap;
@@ -107,7 +108,9 @@ public partial class MacroInputPickerWindow : Window
         AddFrame("ナビゲーション", 0, top, navigationWidth, navigationHeight);
         AddFrame("テンキー", numpadX, top, numpadWidth, numpadHeight);
         AddFrame("カーソルキー", cursorX, top, cursorWidth, cursorHeight);
-        AddFrame("マウス", mouseX, top, mouseWidth, numpadHeight);
+        double mouseHeight = titleHeight + 390 + padding;
+        AddFrame("マウス", mouseX, top, mouseWidth, mouseHeight);
+        InputCanvas.Height = top + Math.Max(numpadHeight, mouseHeight);
 
         double navLeft = padding, firstY = top + titleHeight, step = unit + Gap;
         AddButton("Insert", "Insert", navLeft, firstY, unit, keyHeight);
@@ -150,32 +153,35 @@ public partial class MacroInputPickerWindow : Window
 
     void BuildMouse(double x, double y, double width, double height)
     {
-        const double bodyWidth = 168;
-        double bodyX = x + (width - bodyWidth) / 2, bodyY = y + 34;
-        var body = new Border { Width = 156, Height = 238, CornerRadius = new CornerRadius(74), BorderThickness = new Thickness(2), BorderBrush = ThemeService.Brush("BorderBrush"), Background = ThemeService.Brush("CardBackground"), IsHitTestVisible = false };
-        Canvas.SetLeft(body, bodyX + 6);
-        Canvas.SetTop(body, bodyY + 8);
+        const double keyHeight = 52, gap = 4, padding = 10, bodyHeight = 390;
+        double unit = layout == "US" ? 56 : 54;
+        double bodyWidth = padding * 2 + unit * 3 + gap * 2;
+        double bodyX = x + (width - bodyWidth) / 2, bodyY = y + 26;
+        double centerX = bodyX + padding + unit + gap;
+        double rightX = centerX + unit + gap;
+        double doubleHeight = keyHeight * 2 + gap;
+        double tiltWidth = unit * 2 + gap;
+        double tiltLeft = bodyX + (bodyWidth - tiltWidth) / 2;
+        var body = new Border { Width = bodyWidth, Height = bodyHeight, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = ThemeService.Brush("SubtleBorderBrush"), Background = System.Windows.Media.Brushes.Transparent, IsHitTestVisible = false };
+        Canvas.SetLeft(body, bodyX);
+        Canvas.SetTop(body, bodyY);
         InputCanvas.Children.Add(body);
-        var centerLine = new Line { X1 = bodyX + 84, X2 = bodyX + 84, Y1 = bodyY + 10, Y2 = bodyY + 82, Stroke = ThemeService.Brush("BorderBrush"), StrokeThickness = 2, IsHitTestVisible = false };
-        InputCanvas.Children.Add(centerLine);
-        var split = new Line { X1 = bodyX + 8, X2 = bodyX + 160, Y1 = bodyY + 82, Y2 = bodyY + 82, Stroke = ThemeService.Brush("BorderBrush"), StrokeThickness = 2, IsHitTestVisible = false };
-        InputCanvas.Children.Add(split);
 
-        AddButton("MouseLeft", "左", bodyX + 14, bodyY + 16, 56, 54);
-        AddButton("MouseRight", "右", bodyX + 98, bodyY + 16, 56, 54);
-        AddButton("WheelUp", "▲", bodyX + 72, bodyY + 18, 24, 20);
-        AddButton("MouseMiddle", "●", bodyX + 72, bodyY + 40, 24, 16);
-        AddButton("WheelDown", "▼", bodyX + 72, bodyY + 58, 24, 20);
+        AddButton("MouseLeft", "左", bodyX + padding, bodyY + 10, unit, doubleHeight);
+        AddButton("MouseRight", "右", rightX, bodyY + 10, unit, doubleHeight);
+        AddButton("WheelUp", "▲", centerX, bodyY + 10, unit, keyHeight);
+        AddButton("MouseMiddle", "●", centerX, bodyY + 10 + keyHeight + gap, unit, keyHeight);
+        AddButton("WheelDown", "▼", centerX, bodyY + 10 + (keyHeight + gap) * 2, unit, keyHeight);
 
-        var tiltLabel = new TextBlock { Text = "TILT", Width = 168, TextAlignment = TextAlignment.Center, Foreground = ThemeService.Brush("MutedText"), FontSize = 8, FontWeight = FontWeights.Bold, IsHitTestVisible = false };
-        Canvas.SetLeft(tiltLabel, bodyX);
-        Canvas.SetTop(tiltLabel, bodyY + 96);
+        var tiltLabel = new TextBlock { Text = "チルト", Width = tiltWidth, TextAlignment = TextAlignment.Center, Foreground = ThemeService.Brush("MutedText"), FontSize = 10, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
+        Canvas.SetLeft(tiltLabel, tiltLeft);
+        Canvas.SetTop(tiltLabel, bodyY + 181);
         InputCanvas.Children.Add(tiltLabel);
-        AddButton("TiltLeft", "◀", bodyX + 44, bodyY + 108, 38, 28);
-        AddButton("TiltRight", "▶", bodyX + 86, bodyY + 108, 38, 28);
-        AddButton("MouseForward", "進む", bodyX + 20, bodyY + 151, 48, 31);
-        AddButton("MouseBack", "戻る", bodyX + 20, bodyY + 186, 48, 31);
-        AddButton("MouseX", "X1", bodyX + 112, bodyY + 151, 36, 66);
+        AddButton("TiltLeft", "◀", tiltLeft, bodyY + 200, unit, keyHeight);
+        AddButton("TiltRight", "▶", tiltLeft + unit + gap, bodyY + 200, unit, keyHeight);
+        AddButton("MouseForward", "進む", bodyX + padding, bodyY + 270, unit, keyHeight);
+        AddButton("MouseBack", "戻る", bodyX + padding, bodyY + 326, unit, keyHeight);
+        AddButton("MouseX", "X1", rightX, bodyY + 326, unit, keyHeight);
     }
 
     void AddFrame(string title, double x, double y, double width, double height)

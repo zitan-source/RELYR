@@ -525,6 +525,7 @@ public partial class MainWindow : Window
         KeyboardPanel.Children.Clear();
         SecondaryKeyboardPanel.Children.Clear();
         KeyboardPanel.Width = config.KeyboardLayout == "US" ? 900 : 942;
+        LayoutMousePanel();
         AddSecondaryGroupFrames();
         if (config.KeyboardLayout == "US")
         {
@@ -698,6 +699,43 @@ public partial class MainWindow : Window
         : label;
     const double SecondaryKeyHeight = 52, SecondaryKeyGap = 4, SecondaryFramePadding = 10, SecondaryKeyTop = 26, SecondaryGroupGap = 12;
     double SecondaryKeyWidth => config.KeyboardLayout == "US" ? 56 : 54;
+    void LayoutMousePanel()
+    {
+        const double gap = SecondaryKeyGap, keyHeight = SecondaryKeyHeight, padding = 10;
+        const double top = 10, tiltLabelTop = 181, tiltTop = 200, forwardTop = 270, backTop = 326, panelHeight = 390;
+        double unit = SecondaryKeyWidth;
+        double doubleHeight = keyHeight * 2 + gap;
+        double centerX = padding + unit + gap;
+        double rightX = centerX + unit + gap;
+        double panelWidth = padding * 2 + unit * 3 + gap * 2;
+        double tiltWidth = unit * 2 + gap;
+        double tiltLeft = (panelWidth - tiltWidth) / 2;
+
+        MousePanel.Width = MouseCanvas.Width = MouseBody.Width = panelWidth;
+        MousePanel.Height = MouseCanvas.Height = MouseBody.Height = panelHeight;
+        SetMouseBounds(MouseLeftVisual, padding, top, unit, doubleHeight);
+        SetMouseBounds(MouseRightVisual, rightX, top, unit, doubleHeight);
+        SetMouseBounds(WheelUpVisual, centerX, top, unit, keyHeight);
+        SetMouseBounds(MouseMiddleVisual, centerX, top + keyHeight + gap, unit, keyHeight);
+        SetMouseBounds(WheelDownVisual, centerX, top + (keyHeight + gap) * 2, unit, keyHeight);
+        Canvas.SetLeft(TiltLabel, tiltLeft);
+        Canvas.SetTop(TiltLabel, tiltLabelTop);
+        TiltLabel.Width = tiltWidth;
+        SetMouseBounds(TiltLeftVisual, tiltLeft, tiltTop, unit, keyHeight);
+        SetMouseBounds(TiltRightVisual, tiltLeft + unit + gap, tiltTop, unit, keyHeight);
+        SetMouseBounds(MouseForwardVisual, padding, forwardTop, unit, keyHeight);
+        SetMouseBounds(MouseBackVisual, padding, backTop, unit, keyHeight);
+        SetMouseBounds(MouseXVisual, rightX, backTop, unit, keyHeight);
+    }
+    static void SetMouseBounds(System.Windows.Controls.Button button, double x, double y, double width, double height)
+    {
+        Canvas.SetLeft(button, x);
+        Canvas.SetTop(button, y);
+        button.Width = width;
+        button.Height = height;
+        button.MinWidth = 0;
+        button.MinHeight = 0;
+    }
     void AddSecondaryGroupFrames()
     {
         double unit = SecondaryKeyWidth;
@@ -2586,15 +2624,16 @@ public partial class MainWindow : Window
         double centerWidth = Math.Max(360, e.NewSize.Width - inspectorWidth - gap * 2);
         double mouseWidth = Math.Clamp(centerWidth * .23, 96, 240);
         MouseColumn.Width = new GridLength(mouseWidth);
-        // Every lower input group follows the same available-space ratio. The
-        // mouse diagram is capped below the adjacent keypad/navigation surface.
+        // Keep the mouse on the same visual key scale as the main keyboard.
+        // Its portrait layout may make the lower row taller than the keypad.
         double lowerHeight = Math.Clamp(e.NewSize.Height * .36, 220, 340);
-        double mouseScale = Math.Clamp(Math.Min((mouseWidth - 16) / 190, lowerHeight / 300), .35, .9);
+        double mouseScale = Math.Clamp((mouseWidth - 16) / Math.Max(1, MousePanel.Width), .35, 1);
         double secondaryHeight = Math.Min(lowerHeight - 12, Math.Max(80, (centerWidth - mouseWidth - 14) / 654 * 312));
         SecondaryKeyboardViewbox.Height = secondaryHeight;
-        MouseHost.Width = 190 * mouseScale;
-        MouseHost.Height = Math.Max(48, secondaryHeight - 30);
-        LowerInputRow.Height = new GridLength(secondaryHeight + 16);
+        MouseHost.Width = MousePanel.Width * mouseScale;
+        MouseHost.Height = MousePanel.Height * mouseScale;
+        double mouseTotalHeight = MouseHost.Height + MouseHost.Margin.Top + MouseHost.Margin.Bottom;
+        LowerInputRow.Height = new GridLength(Math.Max(secondaryHeight, mouseTotalHeight) + LowerInputGrid.Margin.Top);
         KeyboardViewbox.MaxWidth = e.NewSize.Width < 1100 ? double.PositiveInfinity : e.NewSize.Width < 1500 ? 1080 : 1180;
         WorkspaceGrid.Margin = new Thickness(gap);
         AssignmentPane.Padding = new Thickness(gap);
@@ -2637,8 +2676,11 @@ public partial class MainWindow : Window
         double matchedHeight = SecondaryKeyboardViewbox.ActualHeight * correction;
         SecondaryKeyboardViewbox.Width = matchedWidth;
         SecondaryKeyboardViewbox.Height = matchedHeight;
-        MouseHost.Height = Math.Max(48, matchedHeight - 30);
-        LowerInputRow.Height = new GridLength(matchedHeight + 16);
+        double mouseScale = Math.Min(mainHeight / SecondaryKeyHeight, Math.Max(.35, (MouseColumn.ActualWidth - 16) / Math.Max(1, MousePanel.Width)));
+        MouseHost.Width = MousePanel.Width * mouseScale;
+        MouseHost.Height = MousePanel.Height * mouseScale;
+        double mouseTotalHeight = MouseHost.Height + MouseHost.Margin.Top + MouseHost.Margin.Bottom;
+        LowerInputRow.Height = new GridLength(Math.Max(matchedHeight, mouseTotalHeight) + LowerInputGrid.Margin.Top);
         return false;
     }
     void DeckEditorWorkspace_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateDeckSettingsLayout(e.NewSize.Width);
