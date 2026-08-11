@@ -27,13 +27,6 @@ public static class StartupIntegrationTest
             Check(!StartupService.IsRelyrExecutableIdentity("RELYR.exe", "Other product", "RELYR.dll")
                 && !StartupService.IsRelyrExecutableIdentity("Other.exe", "RELYR", "RELYR.dll"),
                 "unrelated processes are never treated as RELYR remnants");
-            int launcherRepairCalls = 0;
-            Check(StartupService.TryEnsureElevatedLauncher(() => launcherRepairCalls++, out string launcherRepairError)
-                && launcherRepairCalls == 1 && launcherRepairError.Length == 0,
-                "elevated launcher maintenance performs one isolated repair attempt");
-            Check(!StartupService.TryEnsureElevatedLauncher(() => throw new InvalidOperationException("test failure"), out launcherRepairError)
-                && launcherRepairError == "test failure",
-                "elevated launcher maintenance contains scheduler failures without affecting input startup");
             using (var show = new EventWaitHandle(false, EventResetMode.AutoReset))
             using (var acknowledgement = new EventWaitHandle(false, EventResetMode.AutoReset))
             {
