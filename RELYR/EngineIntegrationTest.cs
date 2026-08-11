@@ -273,6 +273,50 @@ public static class EngineIntegrationTest
             engine.DirectMouseForTest(0x201, 0, 100, 100);
             engine.DirectMouseForTest(0x202, 0, 100, 100);
             Check(rawLeftPreservedHeldForward && rawForwardRecovered && events.Count(x => x == "MouseForward+MouseLeft") == 1 && events.Count(x => x == "MouseLeft") == 1 && layerStarts.Count - rawLayerStart == 1 && layerEnds.Count - rawLayerEnd == 1, "raw physical Up recovery clears a Forward layer whose low-level Up was lost, preserves repeated layer clicks, and returns the next ordinary click to Windows mapping");
+            events.Clear();
+            engine.ResetStateForTest();
+            engine.SetRawInputMonitorStartedForTest(true);
+            engine.NextHookForTest = (_, _, _) => forwarded;
+            plainMouseMappings = true;
+            var rawFirstRightDown = engine.DirectMouseForTest(0x204, 0, 100, 100);
+            engine.ReconcileRawMouseButtonUpForTest("MouseRight");
+            var delayedLowLevelRightUp = engine.DirectMouseForTest(0x205, 0, 100, 100);
+            plainMouseMappings = false;
+            var nextOrdinaryRightDown = engine.DirectMouseForTest(0x204, 0, 100, 100);
+            engine.ObserveRawMouseButtonDownForTest("MouseRight");
+            var nextOrdinaryRightUp = engine.DirectMouseForTest(0x205, 0, 100, 100);
+            engine.ReconcileRawMouseButtonUpForTest("MouseRight");
+            Check(rawFirstRightDown == (IntPtr)1 && delayedLowLevelRightUp == (IntPtr)1 && events.Count(x => x == "MouseRight") == 1 && nextOrdinaryRightDown == forwarded && nextOrdinaryRightUp == forwarded && !engine.HasCapturedStateForTest(), "raw-first mapped right release suppresses its delayed low-level Up exactly once, never opens a native context menu, and preserves the next ordinary right click");
+            engine.SetRawInputMonitorStartedForTest(false);
+            engine.NextHookForTest = null;
+            multiLayerMappings = true;
+            foreach (var mouseLayerCase in new[]
+            {
+                (Name: "MouseLeft", Down: 0x201, Data: 0),
+                (Name: "MouseMiddle", Down: 0x207, Data: 0),
+                (Name: "MouseBack", Down: 0x20B, Data: 1 << 16),
+                (Name: "MouseForward", Down: 0x20B, Data: 2 << 16)
+            })
+            {
+                events.Clear();
+                engine.ResetStateForTest();
+                int sourceLayerStarts = layerStarts.Count, sourceLayerEnds = layerEnds.Count;
+                engine.DirectMouseForTest(mouseLayerCase.Down, mouseLayerCase.Data, 100, 100);
+                engine.DirectKeyForTest(0x4A, false);
+                engine.DirectKeyForTest(0x4A, true);
+                engine.ReconcileRawMouseButtonUpForTest(mouseLayerCase.Name);
+                Check(events.Count(x => x == mouseLayerCase.Name + "+J") == 1 && !engine.HasCapturedStateForTest() && layerStarts.Count - sourceLayerStarts == 1 && layerEnds.Count - sourceLayerEnds == 1, $"raw release recovery independently retires a lost {mouseLayerCase.Name} layer Up without changing its mapped key action");
+            }
+            multiLayerMappings = false;
+            rightWheelLayer = true;
+            events.Clear();
+            engine.ResetStateForTest();
+            int rightRawLayerStarts = layerStarts.Count, rightRawLayerEnds = layerEnds.Count;
+            engine.DirectMouseForTest(0x204, 0, 100, 100);
+            engine.DirectMouseForTest(0x20A, 120 << 16, 100, 100);
+            engine.ReconcileRawMouseButtonUpForTest("MouseRight");
+            Check(events.Count(x => x == "MouseRight+WheelUp") == 1 && !engine.HasCapturedStateForTest() && layerStarts.Count - rightRawLayerStarts == 1 && layerEnds.Count - rightRawLayerEnds == 1, "raw release recovery independently retires a lost MouseRight layer Up without changing its wheel action");
+            rightWheelLayer = false;
             multiLayerMappings = true;
             events.Clear();
             engine.ResetStateForTest();
@@ -837,6 +881,49 @@ public static class EngineIntegrationTest
             Check(dragDownResult == (IntPtr)1 && dragUpResult == (IntPtr)1 && ctrlHeldUntilMouseUp && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2", "M:4", "K:17:U"]) && events.Count(x => x == "Space+MouseLeft:PressStart") == 1 && events.Count(x => x == "Space+MouseLeft:PressEnd") == 1 && !InputEngine.HasInjectedInputForTest(), "AHK-style Ctrl drag waits for mouse release when the Space layer is released first");
             nativeDragQueue.CompleteAdding();
             await nativeDragWorker;
+            string rawModifierAction = "";
+            engine.InputReceived = input =>
+            {
+                lock (events) events.Add(input);
+                if (input == "Space+MouseLeft:PressStart")
+                {
+                    InputEngine.SendMouse(rawModifierAction + ":Start");
+                    return true;
+                }
+                if (input == "Space+MouseLeft:PressEnd")
+                {
+                    InputEngine.SendMouse(rawModifierAction + ":End");
+                    return true;
+                }
+                return !input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase);
+            };
+            foreach (var modifierCase in new[] { (Action: "ShiftDrag", Key: (ushort)0x10), (Action: "CtrlDrag", Key: (ushort)0x11), (Action: "AltDrag", Key: (ushort)0x12) })
+            {
+                rawModifierAction = modifierCase.Action;
+                events.Clear();
+                ClearNativeDrag();
+                engine.ResetStateForTest();
+                engine.SetRawInputMonitorStartedForTest(true);
+                engine.NextHookForTest = (_, _, _) => forwarded;
+                spaceMappings = true;
+                plainMouseMappings = false;
+                engine.DirectKeyForTest(0x20, false);
+                var modifierDown = engine.DirectMouseForTest(0x201);
+                engine.ReconcileRawMouseButtonUpForTest("MouseLeft");
+                var modifierDelayedUp = engine.DirectMouseForTest(0x202);
+                engine.DirectKeyForTest(0x20, true);
+                await Task.Delay(40);
+                spaceMappings = false;
+                var followingDown = engine.DirectMouseForTest(0x201);
+                engine.ObserveRawMouseButtonDownForTest("MouseLeft");
+                var followingUp = engine.DirectMouseForTest(0x202);
+                engine.ReconcileRawMouseButtonUpForTest("MouseLeft");
+                Check(modifierDown == (IntPtr)1 && modifierDelayedUp == (IntPtr)1 && NativeDragSnapshot().SequenceEqual([$"K:{modifierCase.Key}:D", "M:2", "M:4", $"K:{modifierCase.Key}:U"]) && events.Count(x => x == "Space+MouseLeft:PressStart") == 1 && events.Count(x => x == "Space+MouseLeft:PressEnd") == 1 && followingDown == forwarded && followingUp == forwarded && !InputEngine.HasInjectedInputForTest() && !engine.HasCapturedStateForTest(), $"raw-first {modifierCase.Action} releases its modifier and synthetic click once, suppresses the delayed source Up, and preserves the following ordinary click");
+            }
+            engine.SetRawInputMonitorStartedForTest(false);
+            engine.NextHookForTest = null;
+            spaceMappings = true;
+            plainMouseMappings = true;
             engine.IsNativeMouseDrag = null;
             engine.InputReceived = input => { lock (events) events.Add(input); return !input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase); };
             engine.DragPixels = 50;

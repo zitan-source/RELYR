@@ -54,6 +54,7 @@ public sealed partial class InputEngine : IDisposable
     uint hookThreadId;
     volatile bool rawInputMonitorStarted;
     readonly int[] lowLevelMouseUpsPendingRaw = new int[6];
+    readonly int[] rawMouseUpsAwaitingLowLevel = new int[6];
     readonly ManualResetEventSlim hookReady = new(false);
     readonly AutoResetEvent hookTestCompleted = new(false);
     Exception? hookStartException;
@@ -477,7 +478,8 @@ public sealed partial class InputEngine : IDisposable
         int msg = w.ToInt32();
         if (d.dwExtraInfo == (UIntPtr)Marker)
             return Next(n, w, l);
-        ObservePhysicalMouseTransition(msg);
+        if (ObservePhysicalMouseTransition(msg))
+            return (IntPtr)1;
         if (OverlayService.FullScreenVisible)
         {
             ResetCapturedState(false, true);
@@ -670,7 +672,10 @@ public sealed partial class InputEngine : IDisposable
         if (button == 0)
             return;
         lock (stateLock)
+        {
             lowLevelMouseUpsPendingRaw[button] = 0;
+            rawMouseUpsAwaitingLowLevel[button] = 0;
+        }
     }
 
     void ReconcileRawMouseButtonUp(string physicalInput)
@@ -687,6 +692,8 @@ public sealed partial class InputEngine : IDisposable
             {
                 Detected?.Invoke(physicalInput + " Raw Release Recovery");
                 EndDeferredMouseLayer(deferredLayer);
+                if (button != 0)
+                    rawMouseUpsAwaitingLowLevel[button]++;
                 return;
             }
 
@@ -698,11 +705,16 @@ public sealed partial class InputEngine : IDisposable
                 ProcessPress(pending, false, true, 0, IntPtr.Zero, IntPtr.Zero);
             else
                 presses.Remove(pending);
+            if (button != 0)
+                rawMouseUpsAwaitingLowLevel[button]++;
         }
     }
 
     internal void ReconcileRawMouseButtonUpForTest(string physicalInput)
         => ReconcileRawMouseButtonUp(physicalInput);
+
+    internal void ObserveRawMouseButtonDownForTest(string physicalInput)
+        => ObserveRawMouseButtonDown(physicalInput);
 
     static int MouseButtonNumber(string physicalInput) => physicalInput.ToUpperInvariant() switch
     {
@@ -1127,7 +1139,7 @@ public sealed partial class InputEngine : IDisposable
         layerSafetyExpired = false;
     }
 
-    void ObservePhysicalMouseTransition(int message)
+    bool ObservePhysicalMouseTransition(int message)
     {
         (int button, bool down, bool up) = message switch
         {
@@ -1142,8 +1154,9 @@ public sealed partial class InputEngine : IDisposable
             _ => (0, false, false)
         };
         if (button == 0)
-            return;
+            return false;
         int bit = 1 << (button - 1);
+        bool suppressUpAlreadyRecoveredByRawInput = false;
         if (down)
         {
             int previous = Interlocked.Or(ref physicalMouseButtonsDownMask, bit);
@@ -1158,7 +1171,15 @@ public sealed partial class InputEngine : IDisposable
         {
             Interlocked.And(ref physicalMouseButtonsDownMask, ~bit);
             if (rawInputMonitorStarted)
-                lowLevelMouseUpsPendingRaw[button] = Math.Min(32, lowLevelMouseUpsPendingRaw[button] + 1);
+            {
+                if (rawMouseUpsAwaitingLowLevel[button] > 0)
+                {
+                    rawMouseUpsAwaitingLowLevel[button]--;
+                    suppressUpAlreadyRecoveredByRawInput = true;
+                }
+                else
+                    lowLevelMouseUpsPendingRaw[button] = Math.Min(32, lowLevelMouseUpsPendingRaw[button] + 1);
+            }
         }
 
         // The physical left Up is the authoritative end of every modifier drag.
@@ -1166,6 +1187,7 @@ public sealed partial class InputEngine : IDisposable
         // may have lost its corresponding PressEnd notification.
         if (button == 1 && up && Volatile.Read(ref modifierDragMouseDown))
             EndModifierDrag();
+        return suppressUpAlreadyRecoveredByRawInput;
     }
 
     static bool IsObservedPhysicalMouseButtonDown(int button)
@@ -1489,6 +1511,7 @@ public sealed partial class InputEngine : IDisposable
     static string PhysicalInputToken(string input) => input[(input.LastIndexOf('+') + 1)..];
     internal bool HookTestStateCleanForTest => hookTestStateClean;
     internal bool RawInputMonitorStartedForTest => rawInputMonitorStarted;
+    internal void SetRawInputMonitorStartedForTest(bool started) => rawInputMonitorStarted = started;
     internal bool HasCapturedPhysicalInput
     {
         get
@@ -1511,6 +1534,8 @@ public sealed partial class InputEngine : IDisposable
     {
         ResetCapturedState(false, true);
         held.Clear();
+        Array.Clear(lowLevelMouseUpsPendingRaw);
+        Array.Clear(rawMouseUpsAwaitingLowLevel);
         lastSpaceTapTick = 0;
     }
     public void ResetForSessionTransition()
