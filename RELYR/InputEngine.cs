@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
+using System.Windows.Interop;
 
 namespace RELYR;
 
@@ -51,6 +52,8 @@ public sealed partial class InputEngine : IDisposable
     IntPtr keyboardHook, mouseHook;
     Thread? hookThread;
     uint hookThreadId;
+    volatile bool rawInputMonitorStarted;
+    readonly int[] lowLevelMouseUpsPendingRaw = new int[6];
     readonly ManualResetEventSlim hookReady = new(false);
     readonly AutoResetEvent hookTestCompleted = new(false);
     Exception? hookStartException;
@@ -197,6 +200,7 @@ public sealed partial class InputEngine : IDisposable
         hookStartException = null;
         hookReady.Reset();
         hookThread = new Thread(HookLoop) { IsBackground = true, Name = "RELYR input hook" };
+        hookThread.SetApartmentState(ApartmentState.STA);
         hookThread.Start();
         if (!hookReady.Wait(TimeSpan.FromSeconds(5)))
             throw new TimeoutException("入力フックの開始が5秒以内に完了しませんでした。");
@@ -207,6 +211,7 @@ public sealed partial class InputEngine : IDisposable
     void HookLoop()
     {
         hookThreadId = GetCurrentThreadId();
+        HwndSource? rawInputSource = null;
         try
         {
             IntPtr module = GetModuleHandle(null);
@@ -214,11 +219,20 @@ public sealed partial class InputEngine : IDisposable
             mouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseProc, module, 0);
             if (keyboardHook == IntPtr.Zero || mouseHook == IntPtr.Zero)
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            // Raw Input is independent from the low-level hook chain. It supplies an
+            // authoritative physical Up when a desktop/integrity transition prevents
+            // one hook instance from seeing the matching WH_MOUSE_LL release.
+            rawInputSource = CreateRawMouseInputSource();
+            rawInputMonitorStarted = true;
             hookReady.Set();
             while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
             {
                 if (message.message != WM_RUN_HOOK_TEST)
+                {
+                    TranslateMessage(ref message);
+                    DispatchMessage(ref message);
                     continue;
+                }
                 try
                 {
                     RunHookTestSequence();
@@ -230,6 +244,8 @@ public sealed partial class InputEngine : IDisposable
         catch (Exception ex) { hookStartException = ex; hookReady.Set(); }
         finally
         {
+            rawInputMonitorStarted = false;
+            rawInputSource?.Dispose();
             if (keyboardHook != IntPtr.Zero)
             {
                 UnhookWindowsHookEx(keyboardHook);
@@ -594,33 +610,7 @@ public sealed partial class InputEngine : IDisposable
         }
         if (deferredLayer != null && name.Equals(deferredLayer, StringComparison.OrdinalIgnoreCase) && buttonUp)
         {
-            string releasedLayer = deferredLayer;
-            bool used = layerUsed, nativeDrag = nativeRightLayerDrag;
-            Detected?.Invoke(name + " Layer Up");
-            EndImmediateLayerPresses(releasedLayer);
-            CancelLayerSafety();
-            CancelNativeRightDragSafety();
-            deferredLayer = null;
-            layerUsed = false;
-            nativeRightLayerDrag = false;
-            if (nativeDrag)
-            {
-                QueueMouseLayerRelease(releasedLayer);
-                LayerEnded?.Invoke(releasedLayer);
-                return (IntPtr)1;
-            }
-            // レイヤーの物理Upは抑止するため、Windows側に以前のDown状態が
-            // 残っていても必ず解放する。Upの重複送信はクリックを発生させない。
-            if (used)
-                QueueMouseLayerRelease(releasedLayer);
-            else if (HasMapping?.Invoke(releasedLayer) == true)
-            {
-                QueueMouseLayerRelease(releasedLayer);
-                InputReceived?.Invoke(releasedLayer);
-            }
-            else
-                _ = Task.Run(() => SendMouseClickAtomic(releasedLayer));
-            LayerEnded?.Invoke(releasedLayer);
+            EndDeferredMouseLayer(name);
             return (IntPtr)1;
         }
         if (buttonUp)
@@ -651,6 +641,78 @@ public sealed partial class InputEngine : IDisposable
         }
         return ProcessPress(name, down, up, n, w, l, d.pt.x, d.pt.y);
     }
+
+    void EndDeferredMouseLayer(string releasedLayer)
+    {
+        bool used = layerUsed, nativeDrag = nativeRightLayerDrag;
+        Detected?.Invoke(releasedLayer + " Layer Up");
+        EndImmediateLayerPresses(releasedLayer);
+        CancelLayerSafety();
+        CancelNativeRightDragSafety();
+        deferredLayer = null;
+        layerUsed = false;
+        nativeRightLayerDrag = false;
+        if (nativeDrag || used)
+            QueueMouseLayerRelease(releasedLayer);
+        else if (HasMapping?.Invoke(releasedLayer) == true)
+        {
+            QueueMouseLayerRelease(releasedLayer);
+            InputReceived?.Invoke(releasedLayer);
+        }
+        else
+            _ = Task.Run(() => SendMouseClickAtomic(releasedLayer));
+        LayerEnded?.Invoke(releasedLayer);
+    }
+
+    void ObserveRawMouseButtonDown(string physicalInput)
+    {
+        int button = MouseButtonNumber(physicalInput);
+        if (button == 0)
+            return;
+        lock (stateLock)
+            lowLevelMouseUpsPendingRaw[button] = 0;
+    }
+
+    void ReconcileRawMouseButtonUp(string physicalInput)
+    {
+        lock (stateLock)
+        {
+            int button = MouseButtonNumber(physicalInput);
+            if (button != 0 && lowLevelMouseUpsPendingRaw[button] > 0)
+            {
+                lowLevelMouseUpsPendingRaw[button]--;
+                return;
+            }
+            if (deferredLayer != null && deferredLayer.Equals(physicalInput, StringComparison.OrdinalIgnoreCase))
+            {
+                Detected?.Invoke(physicalInput + " Raw Release Recovery");
+                EndDeferredMouseLayer(deferredLayer);
+                return;
+            }
+
+            string? pending = PendingLayerInput(physicalInput);
+            if (pending == null || !presses.TryGetValue(pending, out var state))
+                return;
+            Detected?.Invoke(pending + " Raw Release Recovery");
+            if (state.Handled)
+                ProcessPress(pending, false, true, 0, IntPtr.Zero, IntPtr.Zero);
+            else
+                presses.Remove(pending);
+        }
+    }
+
+    internal void ReconcileRawMouseButtonUpForTest(string physicalInput)
+        => ReconcileRawMouseButtonUp(physicalInput);
+
+    static int MouseButtonNumber(string physicalInput) => physicalInput.ToUpperInvariant() switch
+    {
+        "MOUSELEFT" => 1,
+        "MOUSERIGHT" => 2,
+        "MOUSEMIDDLE" => 3,
+        "MOUSEBACK" => 4,
+        "MOUSEFORWARD" or "MOUSEX" => 5,
+        _ => 0
+    };
 
     internal static bool BeginCoordinateCapture(Action<int, int> callback)
     {
@@ -1065,7 +1127,7 @@ public sealed partial class InputEngine : IDisposable
         layerSafetyExpired = false;
     }
 
-    static void ObservePhysicalMouseTransition(int message)
+    void ObservePhysicalMouseTransition(int message)
     {
         (int button, bool down, bool up) = message switch
         {
@@ -1093,7 +1155,11 @@ public sealed partial class InputEngine : IDisposable
                 EndModifierDrag();
         }
         else if (up)
+        {
             Interlocked.And(ref physicalMouseButtonsDownMask, ~bit);
+            if (rawInputMonitorStarted)
+                lowLevelMouseUpsPendingRaw[button] = Math.Min(32, lowLevelMouseUpsPendingRaw[button] + 1);
+        }
 
         // The physical left Up is the authoritative end of every modifier drag.
         // Do this on the hook thread itself; the UI action queue may be busy or
@@ -1422,6 +1488,7 @@ public sealed partial class InputEngine : IDisposable
     }
     static string PhysicalInputToken(string input) => input[(input.LastIndexOf('+') + 1)..];
     internal bool HookTestStateCleanForTest => hookTestStateClean;
+    internal bool RawInputMonitorStartedForTest => rawInputMonitorStarted;
     internal bool HasCapturedPhysicalInput
     {
         get

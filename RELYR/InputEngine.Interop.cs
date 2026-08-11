@@ -148,6 +148,12 @@ public sealed partial class InputEngine
     private static extern int GetMessage(out MSG message, IntPtr window, uint minimum, uint maximum);
 
     [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
     private static extern bool PostThreadMessage(uint threadId, uint message, UIntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]

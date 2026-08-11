@@ -257,7 +257,22 @@ public static class EngineIntegrationTest
             }
             engine.DirectMouseForTest(0x20C, 2 << 16, 100, 100);
             Check(forwardProfileChangeAllowed && events.Count(x => x == "MouseForward+MouseLeft") == 40 && !engine.HasCapturedStateForTest() && inputStarts.Count - lifecycleStart == inputEnds.Count - lifecycleEnd && layerStarts.Count - layerStart == 1 && layerEnds.Count - layerEnd == 1, "a swallowed Forward layer survives a profile change even when Windows reports XBUTTON2 as up, then executes every repeated left click with balanced snapshots");
+            events.Clear();
+            engine.ResetStateForTest();
+            int rawLayerStart = layerStarts.Count, rawLayerEnd = layerEnds.Count;
+            engine.DirectMouseForTest(0x20B, 2 << 16, 100, 100);
+            engine.DirectMouseForTest(0x201, 0, 100, 100);
+            engine.DirectMouseForTest(0x202, 0, 100, 100);
+            engine.ReconcileRawMouseButtonUpForTest("MouseLeft");
+            bool rawLeftPreservedHeldForward = engine.HasCapturedStateForTest();
+            // Deliberately omit the low-level XBUTTON2 Up. WM_INPUT must be able to
+            // retire the layer independently when a desktop transition loses it.
+            engine.ReconcileRawMouseButtonUpForTest("MouseForward");
+            bool rawForwardRecovered = !engine.HasCapturedStateForTest();
             multiLayerMappings = false;
+            engine.DirectMouseForTest(0x201, 0, 100, 100);
+            engine.DirectMouseForTest(0x202, 0, 100, 100);
+            Check(rawLeftPreservedHeldForward && rawForwardRecovered && events.Count(x => x == "MouseForward+MouseLeft") == 1 && events.Count(x => x == "MouseLeft") == 1 && layerStarts.Count - rawLayerStart == 1 && layerEnds.Count - rawLayerEnd == 1, "raw physical Up recovery clears a Forward layer whose low-level Up was lost, preserves repeated layer clicks, and returns the next ordinary click to Windows mapping");
             multiLayerMappings = true;
             events.Clear();
             engine.ResetStateForTest();
@@ -1021,6 +1036,7 @@ public static class EngineIntegrationTest
                 hookEngine.Detected += x => hookDetected.Add(x);
                 hookEngine.Start();
                 await Task.Delay(550);
+                Check(hookEngine.RawInputMonitorStartedForTest, "hook thread registers the independent raw mouse release monitor");
                 hookEngine.RunHookThreadSequenceForTest();
                 await Task.Delay(180);
                 Check(hookEvents.Count(x => x == "CapsLock+U") == 2 && hookEvents.Contains("Space+J") && hookEvents.Contains("MouseRight+WheelUp"), "dedicated hook thread keeps delayed CapsLock, Space and mouse layers active until actual release events=[" + string.Join(',', hookEvents) + "] detected=[" + string.Join(',', hookDetected.TakeLast(12)) + "]");
