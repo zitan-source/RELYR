@@ -95,6 +95,7 @@ public partial class MainWindow
     internal void CompleteDestinationInputForTest() => CompleteDestinationInput();
     internal void RefreshLayerButtonsForTest() => UpdateLayerButtons();
     internal void SaveAndApplyForTest() => SaveAndApply("テスト：設定を保存し、エンジンへ反映しました");
+    internal bool HandleInputForTest(string input) => HandleInput(input);
 
     internal bool EnterPhysicalExecutionKeyForTest(Key key, ModifierKeys modifiers, bool longPress = false)
         => ApplyPhysicalExecutionKey(longPress ? LongValueBox : ValueBox, key, modifiers);

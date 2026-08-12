@@ -1956,8 +1956,10 @@ public partial class MainWindow : Window
         {
             if (dragEnd || pressEnd)
             {
-                if (!QueueDragAction(null, input))
-                    _ = Task.Run(InputEngine.EndModifierDrag);
+                // A physical left-button Up must clear a possible modifier
+                // drag before the next native click reaches the target app.
+                // Queueing this release leaves a visible range-selection lag.
+                InputEngine.EndModifierDrag();
                 return true;
             }
             return false;
@@ -1965,10 +1967,21 @@ public partial class MainWindow : Window
         var snapshot = CloneMapping(map);
         if ((pressStart || pressEnd || dragStart || dragEnd) && MappingExecutor.IsModifierDrag(snapshot.Value))
         {
-            bool queued = QueueDragAction(snapshot, input);
-            if (queued)
+            // Modifier clicks are the one mapped action whose physical timing
+            // matters: start and end must be emitted in this hook callback.
+            // The former background queue could start/end a Shift click after
+            // the user's next ordinary click, leaving range selection active.
+            string phase = pressStart || dragStart ? ":Start" : ":End";
+            try
+            {
+                InputEngine.SendMouse(snapshot.Value + phase);
                 RecordMappedAction(snapshot, input);
-            return queued;
+            }
+            catch
+            {
+                InputEngine.ReleaseAll();
+            }
+            return true;
         }
         if (pressStart || pressEnd)
             return false;

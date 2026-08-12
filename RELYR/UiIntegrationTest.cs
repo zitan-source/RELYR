@@ -65,6 +65,18 @@ internal static class UiIntegrationTest
             window.UpdateLayout();
             Check(mouseButtons.All(x => x.Foreground is SolidColorBrush foreground && foreground.Color == ThemeService.Color("PrimaryText")) && window.MouseBody.BorderBrush is SolidColorBrush border && border.Color == ThemeService.Color("SubtleBorderBrush"), "light theme keeps every mouse label and the outer boundary visible");
             CaptureForReview(window, "mouse-layout-light.png");
+
+            var modifierDragOutput = new List<string>();
+            InputEngine.KeyOutputForTest = (key, up) => { modifierDragOutput.Add($"K:{key}:{(up ? "U" : "D")}"); return true; };
+            InputEngine.MouseFlagOutputForTest = (flag, _) => modifierDragOutput.Add("M:" + flag);
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Space+MouseLeft", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Space+MouseLeft", Layer = "Space", Kind = ActionKind.Mouse, Value = "ShiftDrag" });
+            window.SaveAndApplyForTest();
+            bool dragStartedImmediately = window.HandleInputForTest("Space+MouseLeft:PressStart") && modifierDragOutput.SequenceEqual(["K:16:D", "M:2"]);
+            bool dragEndedImmediately = window.HandleInputForTest("Space+MouseLeft:PressEnd") && modifierDragOutput.SequenceEqual(["K:16:D", "M:2", "M:4", "K:16:U"]);
+            InputEngine.KeyOutputForTest = null;
+            InputEngine.MouseFlagOutputForTest = null;
+            Check(dragStartedImmediately && dragEndedImmediately && !InputEngine.HasInjectedInputForTest(), "Space-layer Shift click releases before the following native click without queue delay");
             Check(window.MouseWheelWatermark.Opacity is > .1 and < .25 && !window.MouseWheelWatermark.IsHitTestVisible, "a subtle non-interactive wheel watermark identifies the mouse");
             window.Width = 880;
             window.Height = 640;
