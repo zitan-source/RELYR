@@ -34,7 +34,27 @@ internal static class DeckIconCatalog
         new("microphone", "マイク", "\uE720"), new("headphones", "ヘッドホン", "\uE7F6"), new("game", "ゲーム", "\uE7FC"), new("lightbulb", "ヒント", "\uEA80"), new("bookmark", "ブックマーク", "\uE8A4"),
         new("archive", "アーカイブ", "\uE7B8"), new("shield", "セキュリティ", "\uE83D"), new("key", "キー", "\uE8D7"), new("sort", "並べ替え", "\uE8CB"), new("view", "表示", "\uE890"),
         new("hide", "非表示", "\uED1A"), new("chat", "チャット", "\uE8BD"), new("comment", "コメント", "\uE90A"), new("notification", "通知", "\uE7ED"), new("code", "コード", "\uE943"),
-        new("terminal", "ターミナル", "\uE756"), new("database", "データベース", "\uE8F1"), new("globe", "インターネット", "\uE774"), new("rocket", "起動", "\uE945"), new("gift", "ギフト", "\uEA39")
+        new("terminal", "ターミナル", "\uE756"), new("database", "データベース", "\uE8F1"), new("globe", "インターネット", "\uE774"), new("rocket", "起動", "\uE945"), new("gift", "ギフト", "\uEA39"),
+        new("app-edge", "Microsoft Edge", "\uE774"), new("app-chrome", "Google Chrome", "\uE774"), new("app-firefox", "Mozilla Firefox", "\uE774"), new("app-opera", "Opera", "\uE774"), new("app-brave", "Brave", "\uE83D"),
+        new("app-vivaldi", "Vivaldi", "\uE774"), new("app-word", "Microsoft Word", "\uE8A5"), new("app-excel", "Microsoft Excel", "\uE9F9"), new("app-powerpoint", "Microsoft PowerPoint", "\uE8A5"), new("app-outlook", "Microsoft Outlook", "\uE715"),
+        new("app-onenote", "Microsoft OneNote", "\uE70B"), new("app-teams", "Microsoft Teams", "\uE716"), new("app-notepad", "メモ帳", "\uE70B"), new("app-paint", "ペイント", "\uE790"), new("app-file-explorer", "エクスプローラー", "\uE8B7"),
+        new("app-powershell", "PowerShell", "\uE756"), new("app-windows-terminal", "Windows Terminal", "\uE756"), new("app-microsoft-store", "Microsoft Store", "\uE719"), new("app-photos", "フォト", "\uEB9F"), new("app-media-player", "メディア プレーヤー", "\uE768"),
+        new("app-clipchamp", "Clipchamp", "\uE714"), new("app-acrobat", "Adobe Acrobat", "\uE8A5"), new("app-photoshop", "Adobe Photoshop", "\uEB9F"), new("app-illustrator", "Adobe Illustrator", "\uE790"), new("app-premiere", "Adobe Premiere Pro", "\uE714"),
+        new("app-after-effects", "Adobe After Effects", "\uE7F4"), new("app-lightroom", "Adobe Lightroom", "\uEB9F"), new("app-audition", "Adobe Audition", "\uE8D6"), new("app-vlc", "VLC media player", "\uE768"), new("app-obs", "OBS Studio", "\uE7C8"),
+        new("app-spotify", "Spotify", "\uE8D6"), new("app-discord", "Discord", "\uE8BD"), new("app-slack", "Slack", "\uE716"), new("app-zoom", "Zoom", "\uE714"), new("app-skype", "Skype", "\uE717"),
+        new("app-line", "LINE", "\uE8BD"), new("app-whatsapp", "WhatsApp", "\uE717"), new("app-telegram", "Telegram", "\uE724"), new("app-steam", "Steam", "\uE7FC"), new("app-epic-games", "Epic Games", "\uE7FC"),
+        new("app-xbox", "Xbox", "\uE7FC"), new("app-battlenet", "Battle.net", "\uE7FC"), new("app-minecraft", "Minecraft", "\uE7FC"), new("app-roblox", "Roblox", "\uE7FC"), new("app-vscode", "Visual Studio Code", "\uE943"),
+        new("app-visual-studio", "Visual Studio", "\uE943"), new("app-github", "GitHub", "\uE943"), new("app-git", "Git", "\uE8AB"), new("app-gitlab", "GitLab", "\uE943"), new("app-docker", "Docker Desktop", "\uE7B8"),
+        new("app-kubernetes", "Kubernetes", "\uE713"), new("app-postman", "Postman", "\uE724"), new("app-figma", "Figma", "\uE790"), new("app-blender", "Blender", "\uEB9F"), new("app-unity", "Unity", "\uE7FC"),
+        new("app-unreal-engine", "Unreal Engine", "\uE7FC"), new("app-seven-zip", "7-Zip", "\uE7B8"), new("app-winrar", "WinRAR", "\uE7B8"), new("app-everything", "Everything", "\uE721"), new("app-powertoys", "Microsoft PowerToys", "\uE945"),
+        new("app-autohotkey", "AutoHotkey", "\uE8D7"), new("app-dropbox", "Dropbox", "\uE753"), new("app-onedrive", "OneDrive", "\uE753"), new("app-google-drive", "Google Drive", "\uE838"), new("app-notion", "Notion", "\uE8A5"),
+        new("app-trello", "Trello", "\uE80A"), new("app-asana", "Asana", "\uE73E"), new("app-evernote", "Evernote", "\uE70B"), new("app-todoist", "Todoist", "\uE73E"), new("app-davinci-resolve", "DaVinci Resolve", "\uE714"),
+        new("app-filmora", "Filmora", "\uE714"), new("app-capcut", "CapCut", "\uE8C6"), new("app-handbrake", "HandBrake", "\uE714"), new("app-audacity", "Audacity", "\uE720"), new("app-thunderbird", "Thunderbird", "\uE715"),
+        new("app-access", "Microsoft Access", "\uE8F1"), new("app-publisher", "Microsoft Publisher", "\uE8A5"), new("app-project", "Microsoft Project", "\uE787"), new("app-visio", "Microsoft Visio", "\uE8FD"), new("app-windows-security", "Windows セキュリティ", "\uE83D"),
+        new("app-task-manager", "タスク マネージャー", "\uE9D9"), new("app-remote-desktop", "リモート デスクトップ", "\uE7F4"), new("app-snipping-tool", "Snipping Tool", "\uE8C6"), new("app-windows-camera", "Windows カメラ", "\uE722"), new("app-windows-maps", "Windows マップ", "\uE707"),
+        new("app-windows-weather", "Windows 天気", "\uE706"), new("app-windows-clock", "Windows クロック", "\uE823"), new("app-chatgpt", "ChatGPT", "\uE8BD"), new("app-copilot", "Microsoft Copilot", "\uEA80"), new("app-gimp", "GIMP", "\uEB9F"),
+        new("app-inkscape", "Inkscape", "\uE790"), new("app-krita", "Krita", "\uE790"), new("app-virtualbox", "VirtualBox", "\uE7F4"), new("app-vmware", "VMware Workstation", "\uE7F4"), new("app-teamspeak", "TeamSpeak", "\uE720"),
+        new("app-foobar2000", "foobar2000", "\uE8D6"), new("app-putty", "PuTTY", "\uE756"), new("app-winscp", "WinSCP", "\uE898"), new("app-wireshark", "Wireshark", "\uE774"), new("app-unity-hub", "Unity Hub", "\uE71D")
     ];
 
     internal static FrameworkElement? CreateVisual(Mapping? mapping, double size, bool bindToButtonForeground = true)
@@ -63,11 +83,14 @@ internal static class DeckIconCatalog
         var preset = Presets.FirstOrDefault(item => item.Id.Equals(presetId, StringComparison.OrdinalIgnoreCase));
         if (preset == null)
             return null;
+        bool softwarePreset = preset.Id.StartsWith("app-", StringComparison.OrdinalIgnoreCase);
+        string displayGlyph = softwarePreset ? SoftwareMark(preset.Id) : preset.Glyph;
         var glyph = new TextBlock
         {
-            Text = preset.Glyph,
-            FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = size,
+            Text = displayGlyph,
+            FontFamily = new System.Windows.Media.FontFamily(softwarePreset ? "Segoe UI Variable, Segoe UI" : "Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = softwarePreset ? size * (displayGlyph.Length > 2 ? .46 : .62) : size,
+            FontWeight = softwarePreset ? FontWeights.SemiBold : FontWeights.Normal,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -81,6 +104,32 @@ internal static class DeckIconCatalog
             return glyph;
         ApplyPresetAnimation(glyph, preset.Id);
         return glyph;
+    }
+
+    static string SoftwareMark(string presetId)
+    {
+        string id = presetId[4..];
+        return id switch
+        {
+            "edge" => "E", "chrome" => "C", "firefox" => "Fx", "opera" => "O", "brave" => "B", "vivaldi" => "V",
+            "word" => "W", "excel" => "X", "powerpoint" => "P", "outlook" => "O", "onenote" => "N", "teams" => "T",
+            "notepad" => "N", "paint" => "P", "file-explorer" => "FE", "powershell" => ">_", "windows-terminal" => "WT", "microsoft-store" => "MS",
+            "photos" => "Ph", "media-player" => "MP", "clipchamp" => "Cc", "acrobat" => "Ac", "photoshop" => "Ps", "illustrator" => "Ai",
+            "premiere" => "Pr", "after-effects" => "Ae", "lightroom" => "Lr", "audition" => "Au", "vlc" => "VLC", "obs" => "OBS",
+            "spotify" => "Sp", "discord" => "Dc", "slack" => "Sl", "zoom" => "Z", "skype" => "S", "line" => "L",
+            "whatsapp" => "WA", "telegram" => "Tg", "steam" => "St", "epic-games" => "EG", "xbox" => "X", "battlenet" => "BN",
+            "minecraft" => "MC", "roblox" => "R", "vscode" => "</>", "visual-studio" => "VS", "github" => "GH", "git" => "Git",
+            "gitlab" => "GL", "docker" => "D", "kubernetes" => "K8", "postman" => "Pm", "figma" => "F", "blender" => "B",
+            "unity" => "U", "unreal-engine" => "UE", "seven-zip" => "7z", "winrar" => "RAR", "everything" => "Ev", "powertoys" => "PT",
+            "autohotkey" => "AHK", "dropbox" => "Db", "onedrive" => "1D", "google-drive" => "GD", "notion" => "N", "trello" => "Tr",
+            "asana" => "As", "evernote" => "En", "todoist" => "Td", "davinci-resolve" => "DR", "filmora" => "Fl", "capcut" => "Cc",
+            "handbrake" => "HB", "audacity" => "Ad", "thunderbird" => "Tb", "access" => "A", "publisher" => "Pb", "project" => "Pj",
+            "visio" => "V", "windows-security" => "WS", "task-manager" => "TM", "remote-desktop" => "RD", "snipping-tool" => "ST", "windows-camera" => "Cam",
+            "windows-maps" => "Map", "windows-weather" => "Wx", "windows-clock" => "Clk", "chatgpt" => "GPT", "copilot" => "Co", "gimp" => "Gi",
+            "inkscape" => "In", "krita" => "Kr", "virtualbox" => "VB", "vmware" => "VM", "teamspeak" => "TS", "foobar2000" => "Fb",
+            "putty" => "Pu", "winscp" => "SCP", "wireshark" => "Wi", "unity-hub" => "UH",
+            _ => string.Concat(id.Split('-', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(part => char.ToUpperInvariant(part[0])))
+        };
     }
 
     internal static string AnimatedId(string presetId) => AnimatedPrefix + presetId;

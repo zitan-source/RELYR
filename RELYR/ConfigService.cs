@@ -6,7 +6,8 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 26;
+    internal const int CurrentVersion = 31;
+    const int MappingApplicationLossVersion = 29;
 
     const string SettingsFileName = "settings.json";
     const int RetainedBackupCount = 20;
@@ -14,6 +15,7 @@ public sealed class ConfigService
     const int GestureLongPressMigrationVersion = 20;
     const int GestureThresholdMigrationVersion = 22;
     const int DeckLayoutMigrationVersion = 25;
+    const int ActionKindRepairMigrationVersion = 28;
     const int ForceEngineEnabledMigrationVersion = 8;
     const int ClearStaleLongPressValueMigrationVersion = 9;
     static readonly Lock MigrationLock = new();
@@ -95,6 +97,7 @@ public sealed class ConfigService
                 return CreateDefault();
             var loaded = DeserializeConfig(File.ReadAllText(FilePath));
             int storedVersion = loaded.Version;
+            RestoreV29MappingApplicationsFromBackup(loaded);
             var normalized = Normalize(loaded);
             if (normalized.Version != storedVersion)
                 Save(normalized);
@@ -137,6 +140,69 @@ public sealed class ConfigService
         {
             oldBackup.Delete();
         }
+    }
+
+    void RestoreV29MappingApplicationsFromBackup(AppConfig current)
+    {
+        if (current.Version != MappingApplicationLossVersion)
+            return;
+        try
+        {
+            var backups = new DirectoryInfo(DirectoryPath)
+                .GetFiles("settings-*.bak.json")
+                .OrderBy(file => file.Name, StringComparer.Ordinal)
+                .ToArray();
+            AppConfig? preV29 = null;
+            AppConfig? firstV29 = null;
+            foreach (var backup in backups)
+            {
+                AppConfig candidate;
+                try { candidate = DeserializeConfig(File.ReadAllText(backup.FullName)); }
+                catch { continue; }
+                if (candidate.Profiles == null || candidate.Profiles.Count == 0)
+                    continue;
+                if (candidate.Version < MappingApplicationLossVersion)
+                    preV29 = candidate;
+                else if (candidate.Version == MappingApplicationLossVersion && firstV29 == null)
+                    firstV29 = candidate;
+            }
+            if (preV29 != null)
+                RestoreMappingApplications(current, preV29, firstV29);
+        }
+        catch
+        {
+            // Backup recovery is best-effort. A missing or unreadable backup
+            // must never make a valid primary settings file look corrupt.
+        }
+    }
+
+    internal static int RestoreMappingApplications(AppConfig current, AppConfig preV29, AppConfig? firstV29)
+    {
+        int restored = 0;
+        foreach (var currentProfile in current.Profiles ?? [])
+        {
+            var backupProfile = (preV29.Profiles ?? []).FirstOrDefault(profile =>
+                string.Equals(profile.Name, currentProfile.Name, StringComparison.OrdinalIgnoreCase));
+            if (backupProfile == null)
+                continue;
+            var anchorProfile = (firstV29?.Profiles ?? []).FirstOrDefault(profile =>
+                string.Equals(profile.Name, currentProfile.Name, StringComparison.OrdinalIgnoreCase));
+            foreach (var mapping in currentProfile.Mappings ?? [])
+            {
+                if (!string.IsNullOrWhiteSpace(mapping.Application))
+                    continue;
+                if (firstV29 != null && (anchorProfile?.Mappings?.Any(anchor =>
+                    string.Equals(anchor.Input, mapping.Input, StringComparison.OrdinalIgnoreCase)) != true))
+                    continue;
+                var backupMapping = (backupProfile.Mappings ?? []).LastOrDefault(candidate =>
+                    string.Equals(candidate.Input, mapping.Input, StringComparison.OrdinalIgnoreCase));
+                if (backupMapping == null || string.IsNullOrWhiteSpace(backupMapping.Application))
+                    continue;
+                mapping.Application = backupMapping.Application.Trim();
+                restored++;
+            }
+        }
+        return restored;
     }
 
     public void Export(AppConfig value, string path) => File.WriteAllText(path, JsonSerializer.Serialize(value, jsonOptions));
@@ -184,20 +250,32 @@ public sealed class ConfigService
     {
         int originalVersion = value.Version;
         EnsureRequiredCollections(value);
+        NormalizeScalarSettings(value);
         NormalizeGestureThreshold(value, originalVersion);
         NormalizeArchiveFolders(value);
-        NormalizeMacros(value.Macros);
+        NormalizeMacros(value.Macros, originalVersion);
+        NormalizeGestures(value.Gestures, originalVersion);
         // v7以前ではWindows再起動を異常終了と誤認し、全レイヤー停止が保存されることがあったため一度だけ復旧する。
         if (originalVersion < ForceEngineEnabledMigrationVersion)
             value.EngineEnabled = true;
         if (value.Profiles.Count == 0)
             value.Profiles.Add(new Profile());
+        var profileIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var profile in value.Profiles)
         {
+            if (string.IsNullOrWhiteSpace(profile.Id) || !profileIds.Add(profile.Id))
+            {
+                do profile.Id = Guid.NewGuid().ToString("N");
+                while (!profileIds.Add(profile.Id));
+            }
             profile.Name = string.IsNullOrWhiteSpace(profile.Name) ? "名称未設定" : profile.Name;
             profile.Mappings ??= [];
             profile.DefaultDeckLayoutId ??= "";
             profile.AutoSwitchApplications ??= [];
+            profile.AutoSwitchApplications = [.. profile.AutoSwitchApplications
+                .Where(application => !string.IsNullOrWhiteSpace(application))
+                .Select(application => application.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
             NormalizeMappings(profile.Mappings, originalVersion);
         }
         NormalizeSharedDeckMappings(value.SharedDeckMappings, originalVersion);
@@ -216,6 +294,32 @@ public sealed class ConfigService
         value.Gestures ??= [];
         value.SharedDeckMappings ??= [];
         value.DeckLayouts ??= [];
+        value.Profiles.RemoveAll(profile => profile is null);
+        value.Macros.RemoveAll(macro => macro is null);
+        value.Gestures.RemoveAll(gesture => gesture is null);
+        value.SharedDeckMappings.RemoveAll(mapping => mapping is null);
+        value.DeckLayouts.RemoveAll(layout => layout is null);
+    }
+
+    static void NormalizeScalarSettings(AppConfig value)
+    {
+        value.ActiveProfile ??= "";
+        value.DismissedUpdateVersion ??= "";
+        value.KeyboardLayout = value.KeyboardLayout?.Equals("US", StringComparison.OrdinalIgnoreCase) == true ? "US" : "JIS";
+        value.EmergencyShortcut = string.IsNullOrWhiteSpace(value.EmergencyShortcut) ? "Ctrl+Alt+Shift+F12" : value.EmergencyShortcut;
+        value.ClockBackgroundImage ??= "";
+        value.ClockSolidColor ??= "#101F2E";
+        value.SpaceHoldRepeatDelayMs = Math.Clamp(value.SpaceHoldRepeatDelayMs, 100, 2000);
+        value.DoubleClickMs = Math.Clamp(value.DoubleClickMs, 100, 2000);
+        value.MouseDragPixels = Math.Clamp(value.MouseDragPixels, 1, 100);
+        value.InputPanelOpacityPercent = Math.Clamp(value.InputPanelOpacityPercent, 40, 100);
+        value.LastUpdateCheckUtcTicks = Math.Max(0, value.LastUpdateCheckUtcTicks);
+        if (!Enum.IsDefined(value.WindowActionTarget))
+            value.WindowActionTarget = WindowActionTarget.ActiveWindow;
+        if (!Enum.IsDefined(value.ClockBackgroundMode))
+            value.ClockBackgroundMode = ClockBackgroundMode.FrostedScreen;
+        if (!Enum.IsDefined(value.ClockDisplayMode))
+            value.ClockDisplayMode = ClockDisplayMode.DateAndTime;
     }
 
     static void NormalizeGestureThreshold(AppConfig value, int originalVersion)
@@ -235,17 +339,55 @@ public sealed class ConfigService
         value.ArchiveDestinationFolder ??= "";
     }
 
-    static void NormalizeMacros(IEnumerable<MacroDefinition> macros)
+    static void NormalizeMacros(IEnumerable<MacroDefinition> macros, int originalVersion)
     {
         var macroIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var macro in macros)
         {
+            macro.Name ??= "";
             macro.Steps ??= [];
+            // Unknown recorded-action enum values cannot be executed or shown
+            // safely. Remove the whole corrupt step instead of converting it
+            // into an empty raw event that would fail validation later.
+            macro.Steps.RemoveAll(step => step is null
+                || step.RecordedActionKind is { } kind && !Enum.IsDefined(kind));
             foreach (var step in macro.Steps)
+            {
+                step.Event ??= "";
                 step.RecordedActionValue ??= "";
+                if (step.RecordedActionKind is { } kind)
+                {
+                    var repaired = RepairLegacyActionKind(kind, step.RecordedActionValue, originalVersion);
+                    step.RecordedActionKind = repaired.Kind;
+                    step.RecordedActionValue = repaired.Value;
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(macro.Id) || !macroIds.Add(macro.Id))
                 macro.Id = CreateUniqueMacroId(macroIds);
+        }
+    }
+
+    static void NormalizeGestures(IEnumerable<GestureDefinition> gestures, int originalVersion)
+    {
+        foreach (var gesture in gestures)
+        {
+            gesture.Name ??= "";
+            gesture.UpValue ??= "";
+            gesture.DownValue ??= "";
+            gesture.LeftValue ??= "";
+            gesture.RightValue ??= "";
+            gesture.CenterValue ??= "";
+            if (!Enum.IsDefined(gesture.UpKind)) gesture.UpKind = ActionKind.None;
+            if (!Enum.IsDefined(gesture.DownKind)) gesture.DownKind = ActionKind.None;
+            if (!Enum.IsDefined(gesture.LeftKind)) gesture.LeftKind = ActionKind.None;
+            if (!Enum.IsDefined(gesture.RightKind)) gesture.RightKind = ActionKind.None;
+            if (!Enum.IsDefined(gesture.CenterKind)) gesture.CenterKind = ActionKind.None;
+            (gesture.UpKind, gesture.UpValue) = RepairLegacyActionKind(gesture.UpKind, gesture.UpValue, originalVersion);
+            (gesture.DownKind, gesture.DownValue) = RepairLegacyActionKind(gesture.DownKind, gesture.DownValue, originalVersion);
+            (gesture.LeftKind, gesture.LeftValue) = RepairLegacyActionKind(gesture.LeftKind, gesture.LeftValue, originalVersion);
+            (gesture.RightKind, gesture.RightValue) = RepairLegacyActionKind(gesture.RightKind, gesture.RightValue, originalVersion);
+            (gesture.CenterKind, gesture.CenterValue) = RepairLegacyActionKind(gesture.CenterKind, gesture.CenterValue, originalVersion);
         }
     }
 
@@ -297,6 +439,7 @@ public sealed class ConfigService
 
     static void NormalizeDeckLayouts(AppConfig value, int originalVersion)
     {
+        var profileIds = value.Profiles.Select(profile => profile.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         value.DefaultDeckLayoutId ??= "";
         value.SharedDefaultDeckLayoutId ??= "";
         if (originalVersion < DeckLayoutMigrationVersion)
@@ -332,12 +475,38 @@ public sealed class ConfigService
             layout.Name = string.IsNullOrWhiteSpace(layout.Name) ? "名称未設定" : layout.Name.Trim().Replace("デッキ", "Deck", StringComparison.Ordinal);
             layout.Columns = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns);
             layout.Rows = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows);
+            layout.PanelWidth = PositiveFiniteOrNull(layout.PanelWidth);
+            layout.PanelHeight = PositiveFiniteOrNull(layout.PanelHeight);
             layout.PanelColor ??= "";
+            layout.ProfileGroupId ??= "";
+            layout.ProfileId ??= "";
+            if (!layout.ProfileSwitchEnabled || !profileIds.Contains(layout.ProfileId))
+            {
+                layout.ProfileSwitchEnabled = false;
+                layout.ProfileGroupId = "";
+                layout.ProfileId = "";
+            }
+            else if (string.IsNullOrWhiteSpace(layout.ProfileGroupId))
+                layout.ProfileGroupId = Guid.NewGuid().ToString("N");
             if (!DeckPanelLayout.TryParseButtonColor(layout.PanelColor, out _))
                 layout.PanelColor = "";
             layout.Mappings ??= [];
+            layout.Mappings.RemoveAll(mapping => mapping is null);
             NormalizeMappings(layout.Mappings, originalVersion);
             layout.Mappings.RemoveAll(x => !DeckPanelLayout.IsInputName(x.Input));
+            foreach (var mapping in layout.Mappings)
+            {
+                // A Deck button is a click command, not a held physical input.
+                // Gesture and long-press values would be displayed but could
+                // never execute, so repair stale/imported settings explicitly.
+                if (mapping.Kind == ActionKind.Gesture)
+                {
+                    mapping.Kind = ActionKind.None;
+                    mapping.Value = "";
+                }
+                mapping.LongPressKind = ActionKind.None;
+                mapping.LongPressValue = "";
+            }
             if (string.IsNullOrWhiteSpace(layout.Id) || !ids.Add(layout.Id))
             {
                 do
@@ -362,7 +531,14 @@ public sealed class ConfigService
         }
         ids = configuredIds(value.DeckLayouts);
         foreach (var profile in value.Profiles)
-            profile.DefaultDeckLayoutId = fallback;
+        {
+            bool valid = value.DeckLayouts.Any(layout => layout.Id.Equals(profile.DefaultDeckLayoutId, StringComparison.OrdinalIgnoreCase)
+                && (!layout.ProfileSwitchEnabled || layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase)));
+            if (!valid)
+                profile.DefaultDeckLayoutId = value.DeckLayouts.FirstOrDefault(layout => !layout.ProfileSwitchEnabled)?.Id
+                    ?? value.DeckLayouts.FirstOrDefault(layout => layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase))?.Id
+                    ?? fallback;
+        }
         value.SharedDefaultDeckLayoutId = fallback;
         value.UseSharedDeckPanel = false;
 
@@ -388,8 +564,9 @@ public sealed class ConfigService
 
     static Mapping CloneMapping(Mapping mapping) => mapping.Copy();
 
-    static void NormalizeMappings(IEnumerable<Mapping> mappings, int originalVersion)
+    static void NormalizeMappings(List<Mapping> mappings, int originalVersion)
     {
+        mappings.RemoveAll(map => map is null);
         foreach (var map in mappings)
         {
             map.Input ??= "";
@@ -402,6 +579,18 @@ public sealed class ConfigService
             map.Description ??= "";
             map.DeckColor ??= "";
             map.DeckFilePath ??= "";
+            map.DeckIcon ??= "";
+            map.DeckIconPath ??= "";
+            if (!Enum.IsDefined(map.Kind))
+            {
+                map.Kind = ActionKind.None;
+                map.Value = "";
+            }
+            if (!Enum.IsDefined(map.LongPressKind))
+            {
+                map.LongPressKind = ActionKind.None;
+                map.LongPressValue = "";
+            }
             if (!DeckPanelLayout.TryParseButtonColor(map.DeckColor, out _))
                 map.DeckColor = "";
             if (map.Input.Equals("F13", StringComparison.OrdinalIgnoreCase))
@@ -410,6 +599,7 @@ public sealed class ConfigService
                 map.Input = "CapsLock" + map.Input[3..];
             if (map.Layer.Equals("F13", StringComparison.OrdinalIgnoreCase))
                 map.Layer = "CapsLock";
+            map.Layer = CanonicalLayer(map.Input);
             if (originalVersion < ClearStaleLongPressValueMigrationVersion && map.LongPressKind == ActionKind.None)
                 map.LongPressValue = "";
             if (map.Kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse && ActionCatalog.TryNormalizeMouseAction(map.Value, out string mouseValue))
@@ -422,6 +612,8 @@ public sealed class ConfigService
                 map.LongPressKind = ActionKind.Mouse;
                 map.LongPressValue = longMouseValue;
             }
+            (map.Kind, map.Value) = RepairLegacyActionKind(map.Kind, map.Value, originalVersion);
+            (map.LongPressKind, map.LongPressValue) = RepairLegacyActionKind(map.LongPressKind, map.LongPressValue, originalVersion);
             if (originalVersion < GestureLongPressMigrationVersion && map.LongPressKind == ActionKind.Gesture && (map.Kind == ActionKind.None || string.IsNullOrWhiteSpace(map.Value)))
             {
                 map.Kind = ActionKind.Gesture;
@@ -430,6 +622,47 @@ public sealed class ConfigService
                 map.LongPressValue = "";
             }
         }
+        // Normal-layer left click is permanently reserved. Old or hand-edited
+        // settings must not bypass the UI guard and swallow every physical click.
+        mappings.RemoveAll(map => map.Input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
+            || map.Input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase));
+    }
+
+    static (ActionKind Kind, string Value) RepairLegacyActionKind(ActionKind kind, string value, int originalVersion)
+    {
+        if (originalVersion >= ActionKindRepairMigrationVersion
+            || kind is not (ActionKind.Key or ActionKind.Shortcut)
+            || string.IsNullOrWhiteSpace(value)
+            || InputEngine.IsRecognizedShortcut(value))
+            return (kind, value);
+
+        string repairedValue = value.Trim();
+        return (LooksLikeLaunchTarget(repairedValue) ? ActionKind.Launch : ActionKind.Text, repairedValue);
+    }
+
+    static bool LooksLikeLaunchTarget(string value)
+    {
+        if (Path.IsPathFullyQualified(value))
+            return true;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" or "file")
+            return true;
+        string extension = Path.GetExtension(value);
+        return extension.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".com", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".bat", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static AppConfig NormalizeForSave(AppConfig value) => Normalize(value);
+
+    static string CanonicalLayer(string input)
+    {
+        foreach (string layer in new[] { "Space", "CapsLock", "MouseRight", "MouseForward", "MouseBack", "Taskbar", DeckPanelLayout.Layer })
+            if (input.StartsWith(layer + "+", StringComparison.OrdinalIgnoreCase))
+                return layer;
+        return "通常";
     }
 
     public AppConfig ResetToDefaults()

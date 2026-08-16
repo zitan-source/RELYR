@@ -33,12 +33,13 @@ internal static class OverlayService
 
     static InputPanelOverlayWindow? inputPanel;
     static DeckPanelOverlayWindow? deckPanel;
+    static string deckPanelAction = "";
     static readonly List<ScreenOverlayWindow> screenOverlays = [];
     static Func<AppConfig>? configProvider;
     static Func<bool>? physicalInputDownProvider;
     static Action<Mapping>? deckActionRequested;
     static Action<double, double>? deckPositionChanged;
-    static Action<double, double>? deckSizeChanged;
+    static Action<string, double, double>? deckSizeChanged;
     static Action<string, bool>? deckPinnedChanged;
     static Action? deckLayoutChanged;
     static Action<string, int, int>? deckSlotsChanged;
@@ -47,13 +48,17 @@ internal static class OverlayService
     static int fullScreenClosing;
     static int fullScreenDismissArmed;
     static int deckRefreshQueued;
+    static int deckRefreshContentRequired;
     static System.Drawing.Point fullScreenStartCursor;
 #if !PRODUCTION_PUBLISH
     internal static Action<string>? ActionRequestedForTest;
+    internal static int DeckRefreshRequestCountForTest;
+    internal static DeckPanelOverlayWindow? DeckPanelInstanceForTest => deckPanel;
+    internal static void ResetDeckRefreshRequestCountForTest() => Interlocked.Exchange(ref DeckRefreshRequestCountForTest, 0);
 #endif
     internal static bool FullScreenVisible => Volatile.Read(ref fullScreenActive) != 0;
 
-    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
+    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
     {
         configProvider = provider;
         physicalInputDownProvider = inputDownProvider;
@@ -90,6 +95,18 @@ internal static class OverlayService
 
     internal static void RefreshDeckPanel()
     {
+#if !PRODUCTION_PUBLISH
+        Interlocked.Increment(ref DeckRefreshRequestCountForTest);
+#endif
+        Interlocked.Exchange(ref deckRefreshContentRequired, 1);
+        QueueDeckPanelRefresh();
+    }
+
+    internal static void RefreshDeckPanelForProfileChange()
+        => QueueDeckPanelRefresh();
+
+    static void QueueDeckPanelRefresh()
+    {
         var dispatcher = WpfApplication.Current?.Dispatcher;
         if (dispatcher == null || Interlocked.Exchange(ref deckRefreshQueued, 1) != 0)
             return;
@@ -98,10 +115,28 @@ internal static class OverlayService
             RunOverlayUiSafely(() =>
             {
                 Interlocked.Exchange(ref deckRefreshQueued, 0);
+                bool refreshContent = Interlocked.Exchange(ref deckRefreshContentRequired, 0) != 0;
                 if (deckPanel is not { } panel)
                     return;
                 var config = configProvider?.Invoke();
-                if (config != null)
+                if (config == null)
+                    return;
+                var layout = DeckPanelLayout.ResolveActionLayout(config, deckPanelAction);
+                if (layout?.Id.Equals(panel.LayoutId, StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    bool visible = panel.IsVisible;
+                    panel.Close();
+                    deckPanel = null;
+                    if (visible && layout != null)
+                    {
+                        deckPanel = new DeckPanelOverlayWindow(config, deckActionRequested, config.InputPanelOpacityPercent, deckPositionChanged, layout, deckSizeChanged, deckPinnedChanged);
+                        deckPanel.Closed += (_, _) => deckPanel = null;
+                        deckPanel.PrepareForShow();
+                        deckPanel.Show();
+                    }
+                    return;
+                }
+                if (refreshContent)
                     panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAutoHideAfterAction, config.DeckAutoHideOnPointerLeave);
             }, "refresh Deck panel");
         }));
@@ -170,6 +205,7 @@ internal static class OverlayService
     {
         if (DeckPanelLayout.IsDeckAction(action))
         {
+            deckPanelAction = action;
             inputPanel?.Close();
             inputPanel = null;
             AppConfig deckConfig = configProvider?.Invoke() ?? new AppConfig();

@@ -14,15 +14,15 @@ public static class EngineIntegrationTest
         var layerStarts = new List<string>();
         var layerEnds = new List<string>();
         var report = new VerificationReport(output);
-        bool rightWheelLayer = false, allWheelLayers = false, transientMiddleMapped = false, transientKeyMapped = false, spaceMappings = true, multiLayerMappings = false, plainMouseMappings = true, legacyMouseDrag = false, taskbarQualify = false, gestureMode = false, filmoraHomeGestureMode = false, rightSpaceGestureMode = false, normalRightGestureMode = false;
+        bool rightWheelLayer = false, allWheelLayers = false, transientMiddleMapped = false, transientKeyMapped = false, spaceMappings = true, multiLayerMappings = false, plainMouseMappings = true, legacyMouseDrag = false, taskbarQualify = false, taskbarRightMapped = false, gestureMode = false, filmoraHomeGestureMode = false, rightSpaceGestureMode = false, normalRightGestureMode = false;
         Action<bool, string> Check = report.Check;
         using var engine = new InputEngine
         {
             ExitOnEmergency = false,
             QualifyInput = input => taskbarQualify ? "Taskbar+" + input : input,
-            HasMapping = input => input == "A" || (gestureMode && input == "G") || (filmoraHomeGestureMode && input == "Home") || (rightSpaceGestureMode && (input is "MouseRight+*" or "MouseRight+Space")) || (normalRightGestureMode && (input is "MouseRight" or "MouseRight+*")) || (input is "Taskbar+E" or "Taskbar+Delete") || (spaceMappings && (input == "Space" || input == "Space+J" || input == "Space+K" || input == "Space+U" || input == "Space+MouseLeft" || input == "Space+*")) || input == "K" || input == "Esc" || (plainMouseMappings && (input == "MouseLeft" || input == "MouseRight")) || input == "CapsLock+J" || input == "CapsLock+U" || input == "CapsLock+*" || (transientKeyMapped && input == "B") || (transientMiddleMapped && input == "MouseMiddle") || (rightWheelLayer && (input == "MouseRight+*" || input == "MouseRight+WheelUp" || input == "MouseRight+WheelDown")) || (allWheelLayers && (input is "MouseRight+*" or "MouseRight+WheelUp" or "MouseRight+WheelDown" or "MouseBack+*" or "MouseBack+WheelUp" or "MouseBack+WheelDown" or "MouseForward+*" or "MouseForward+WheelUp" or "MouseForward+WheelDown")) || (multiLayerMappings && (input is "MouseLeft+*" or "MouseLeft+J" or "MouseMiddle+*" or "MouseMiddle+J" or "MouseBack+*" or "MouseBack+J" or "MouseForward+*" or "MouseForward+J" or "MouseForward+Up" or "MouseForward+MouseLeft" or "MouseForward+MouseRight")),
+            HasMapping = input => input == "A" || (gestureMode && input == "G") || (filmoraHomeGestureMode && input == "Home") || (rightSpaceGestureMode && (input is "MouseRight+*" or "MouseRight+Space")) || (normalRightGestureMode && (input is "MouseRight" or "MouseRight+*")) || (taskbarRightMapped && input == "Taskbar+MouseRight") || (input is "Taskbar+E" or "Taskbar+Delete") || (spaceMappings && (input == "Space" || input == "Space+J" || input == "Space+K" || input == "Space+U" || input == "Space+MouseLeft" || input == "Space+*")) || input == "K" || input == "Esc" || (plainMouseMappings && (input == "MouseLeft" || input == "MouseRight")) || input == "CapsLock+J" || input == "CapsLock+U" || input == "CapsLock+*" || (transientKeyMapped && input == "B") || (transientMiddleMapped && input == "MouseMiddle") || (rightWheelLayer && (input == "MouseRight+*" || input == "MouseRight+WheelUp" || input == "MouseRight+WheelDown")) || (allWheelLayers && (input is "MouseRight+*" or "MouseRight+WheelUp" or "MouseRight+WheelDown" or "MouseBack+*" or "MouseBack+WheelUp" or "MouseBack+WheelDown" or "MouseForward+*" or "MouseForward+WheelUp" or "MouseForward+WheelDown")) || (multiLayerMappings && (input is "MouseLeft+*" or "MouseLeft+J" or "MouseMiddle+*" or "MouseMiddle+J" or "MouseBack+*" or "MouseBack+J" or "MouseForward+*" or "MouseForward+J" or "MouseForward+Up" or "MouseForward+MouseLeft" or "MouseForward+MouseRight")),
             SuppressLayerTap = key => key == "CapsLock",
-            HasLongPress = input => input == "K" || input == "Esc" || input == "MouseRight" || input == "Taskbar+Delete",
+            HasLongPress = input => input == "K" || input == "Esc" || input == "MouseRight" || input == "Taskbar+Delete" || (taskbarRightMapped && input == "Taskbar+MouseRight"),
             IsGesturePress = input => (gestureMode && input == "G") || (filmoraHomeGestureMode && input == "Home") || (rightSpaceGestureMode && input == "MouseRight+Space") || (normalRightGestureMode && input == "MouseRight"),
             LongPressDuration = _ => 100,
             InputReceived = input => { lock (events) events.Add(input); return !input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase); }
@@ -388,6 +388,20 @@ public static class EngineIntegrationTest
             engine.DirectKeyForTest(0x2E, true);
             await Task.Delay(40);
             Check(events.Count(x => x == "Taskbar+Delete:Long") == 1 && !events.Contains("Taskbar+Delete") && !engine.HasCapturedStateForTest(), "taskbar long press executes once, suppresses its short action, and fully releases");
+            events.Clear();
+            layerStarts.Clear();
+            engine.ResetStateForTest();
+            rightWheelLayer = true;
+            taskbarRightMapped = true;
+            taskbarQualify = true;
+            engine.DirectMouseForTest(0x204, 0, 100, 100);
+            await Task.Delay(140);
+            taskbarQualify = false;
+            engine.DirectMouseForTest(0x205, 0, 100, 100);
+            await Task.Delay(40);
+            Check(events.Count(x => x == "Taskbar+MouseRight:Long") == 1 && !layerStarts.Contains("MouseRight") && !engine.HasCapturedStateForTest(), "taskbar right-button long press wins over the normal right-click layer and fully releases");
+            rightWheelLayer = false;
+            taskbarRightMapped = false;
             taskbarQualify = false;
             InputEngine.InjectKeyForTest("Space", false);
             InputEngine.InjectKeyForTest("J", false);
@@ -676,19 +690,23 @@ public static class EngineIntegrationTest
             events.Clear();
             engine.ResetStateForTest();
             var nativeRightDown = engine.DirectMouseForTest(0x204, 0, 100, 100);
-            var nativeRightMove = engine.DirectMouseForTest(0x200, 0, 120, 110);
+            var nativeRightTriggerMove = engine.DirectMouseForTest(0x200, 0, 120, 110);
+            SpinWait.SpinUntil(() => nativeRightDragFlags.Contains(8u), 500);
+            var nativeRightMove = engine.DirectMouseForTest(0x200, 0, 121, 111);
             var nativeRightUp = engine.DirectMouseForTest(0x205, 0, 120, 110);
             await Task.Delay(120);
-            Check(nativeRightDown == (IntPtr)1 && nativeRightMove == (IntPtr)0x4567 && nativeRightUp == (IntPtr)1 && nativeRightDragFlags.ToArray().SequenceEqual(new uint[] { 8, 16 }) && !events.Any(x => x.StartsWith("MouseRight+", StringComparison.OrdinalIgnoreCase)) && !InputEngine.HasInjectedInputForTest(), "moving the right button without another mapped input remains a native right-button drag and releases safely");
+            Check(nativeRightDown == (IntPtr)1 && nativeRightTriggerMove == (IntPtr)1 && nativeRightMove == (IntPtr)0x4567 && nativeRightUp == (IntPtr)1 && nativeRightDragFlags.ToArray().SequenceEqual(new uint[] { 8, 16 }) && !events.Any(x => x.StartsWith("MouseRight+", StringComparison.OrdinalIgnoreCase)) && !InputEngine.HasInjectedInputForTest(), "moving the right button starts native drag off the hook thread, suppresses only the movement that would overtake RightDown, and releases safely");
             nativeRightDragFlags.Clear();
             events.Clear();
             engine.ResetStateForTest();
             nativeRightDown = engine.DirectMouseForTest(0x204, 0, 100, 100);
-            nativeRightMove = engine.DirectMouseForTest(0x200, 0, 120, 110);
+            nativeRightTriggerMove = engine.DirectMouseForTest(0x200, 0, 120, 110);
+            SpinWait.SpinUntil(() => nativeRightDragFlags.Contains(8u), 500);
+            nativeRightMove = engine.DirectMouseForTest(0x200, 0, 121, 111);
             var nativeRightWheel = engine.DirectMouseForTest(0x20A, 120 << 16, 120, 110);
             nativeRightUp = engine.DirectMouseForTest(0x205, 0, 120, 110);
             await Task.Delay(120);
-            Check(nativeRightDown == (IntPtr)1 && nativeRightMove == (IntPtr)0x4567 && nativeRightWheel == (IntPtr)1 && nativeRightUp == (IntPtr)1 && nativeRightDragFlags.ToArray().SequenceEqual(new uint[] { 8, 16 }) && events.Contains("MouseRight+WheelUp") && !InputEngine.HasInjectedInputForTest(), "a mapped right-layer action still executes after pointer movement and safely ends native drag passthrough");
+            Check(nativeRightDown == (IntPtr)1 && nativeRightTriggerMove == (IntPtr)1 && nativeRightMove == (IntPtr)0x4567 && nativeRightWheel == (IntPtr)1 && nativeRightUp == (IntPtr)1 && nativeRightDragFlags.ToArray().SequenceEqual(new uint[] { 8, 16 }) && events.Contains("MouseRight+WheelUp") && !InputEngine.HasInjectedInputForTest(), "a mapped right-layer action still executes after the worker establishes native drag and safely ends passthrough");
             engine.NextHookForTest = null;
             InputEngine.MouseFlagOutputForTest = null;
             plainMouseMappings = true;
@@ -851,10 +869,46 @@ public static class EngineIntegrationTest
             InputEngine.KeyOutputForTest = (key, up) => { lock (nativeDragOutput) nativeDragOutput.Add($"K:{key}:{(up ? "U" : "D")}"); return true; };
             InputEngine.MouseFlagOutputForTest = (flag, _) => { lock (nativeDragOutput) nativeDragOutput.Add("M:" + flag); };
             var nativeDragQueue = new BlockingCollection<string>();
-            var nativeDragWorker = Task.Factory.StartNew(() => { foreach (var input in nativeDragQueue.GetConsumingEnumerable()) InputEngine.SendMouse(input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase) ? "CtrlDrag:Start" : "CtrlDrag:End"); }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            var nativeDragWorker = Task.Factory.StartNew(() =>
+            {
+                foreach (var input in nativeDragQueue.GetConsumingEnumerable())
+                {
+                    InputEngine.SendMouse(input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase) ? "CtrlDrag:Start" : "CtrlDrag:End");
+                    if (input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase))
+                        engine.NotifyNativeMouseDragStarted(input);
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             engine.IsNativeMouseDrag = input => input == "Space+MouseLeft";
             engine.InputReceived = input => { lock (events) events.Add(input); if (input is "Space+MouseLeft:PressStart" or "Space+MouseLeft:PressEnd") return nativeDragQueue.TryAdd(input); return !input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase); };
             engine.DragPixels = 1;
+            events.Clear();
+            ClearNativeDrag();
+            engine.ResetStateForTest();
+            engine.NextHookForTest = (_, _, _) => forwarded;
+            engine.InputReceived = input =>
+            {
+                lock (events) events.Add(input);
+                if (input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (input.EndsWith(":PressEnd", StringComparison.OrdinalIgnoreCase))
+                {
+                    InputEngine.SendMouse("CtrlDrag:End");
+                    return true;
+                }
+                return false;
+            };
+            InputEngine.InjectKeyForTest("Space", false);
+            var gatedDown = engine.DirectMouseForTest(0x201);
+            var moveBeforeStart = engine.DirectMouseForTest(0x200, 0, 120, 110);
+            InputEngine.SendMouse("CtrlDrag:Start");
+            engine.NotifyNativeMouseDragStarted("Space+MouseLeft:PressStart");
+            var moveAfterStart = engine.DirectMouseForTest(0x200, 0, 140, 120);
+            var gatedUp = engine.DirectMouseForTest(0x202, 0, 140, 120);
+            InputEngine.InjectKeyForTest("Space", true);
+            await Task.Delay(40);
+            Check(gatedDown == (IntPtr)1 && moveBeforeStart == (IntPtr)1 && moveAfterStart == forwarded && gatedUp == (IntPtr)1 && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2", "M:4", "K:17:U"]) && !InputEngine.HasInjectedInputForTest(), "mouse movement is held back until asynchronous Ctrl+LeftDown is ready, then mouse-up always releases Left before Ctrl");
+            engine.NextHookForTest = null;
+            engine.InputReceived = input => { lock (events) events.Add(input); if (input is "Space+MouseLeft:PressStart" or "Space+MouseLeft:PressEnd") return nativeDragQueue.TryAdd(input); return !input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase); };
             events.Clear();
             ClearNativeDrag();
             engine.ResetStateForTest();
@@ -864,9 +918,21 @@ public static class EngineIntegrationTest
             bool startedAtPhysicalDown = dragDownResult == (IntPtr)1 && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2"]);
             InputEngine.InjectMouseMoveForTest(20, 10);
             var dragUpResult = engine.DirectMouseForTest(0x202);
+            bool endQueuedBeforeHookReturned;
+            lock (events)
+                endQueuedBeforeHookReturned = events.Count(x => x == "Space+MouseLeft:PressEnd") == 1;
             InputEngine.InjectKeyForTest("Space", true);
             await Task.Delay(40);
-            Check(startedAtPhysicalDown && dragUpResult == (IntPtr)1 && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2", "M:4", "K:17:U"]) && events.Count(x => x == "Space+MouseLeft:PressStart") == 1 && events.Count(x => x == "Space+MouseLeft:PressEnd") == 1 && !InputEngine.HasInjectedInputForTest(), "AHK-style Ctrl drag runs off the hook thread and completes after mouse release");
+            Check(startedAtPhysicalDown && dragUpResult == (IntPtr)1 && !endQueuedBeforeHookReturned && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2", "M:4", "K:17:U"]) && events.Count(x => x == "Space+MouseLeft:PressStart") == 1 && events.Count(x => x == "Space+MouseLeft:PressEnd") == 1 && !InputEngine.HasInjectedInputForTest(), "AHK-style Ctrl drag releases immediately after the physical mouse-up hook returns so Office can finalize copy-on-drop");
+            events.Clear();
+            ClearNativeDrag();
+            engine.ResetStateForTest();
+            InputEngine.InjectKeyForTest("Space", false);
+            var rapidDownResult = engine.DirectMouseForTest(0x201);
+            var rapidUpResult = engine.DirectMouseForTest(0x202);
+            InputEngine.InjectKeyForTest("Space", true);
+            await Task.Delay(40);
+            Check(rapidDownResult == (IntPtr)1 && rapidUpResult == (IntPtr)1 && NativeDragSnapshot().SequenceEqual(["K:17:D", "M:2", "M:4", "K:17:U"]) && events.Count(x => x == "Space+MouseLeft:PressStart") == 1 && events.Count(x => x == "Space+MouseLeft:PressEnd") == 1, "a rapid Ctrl click keeps its ordered synthetic down/up pair instead of being discarded before the output worker wakes");
             events.Clear();
             ClearNativeDrag();
             engine.ResetStateForTest();
@@ -1005,7 +1071,7 @@ public static class EngineIntegrationTest
             Check(InputEngine.IsObservedPhysicalMouseButtonDownForTest(1), "physical left Down is tracked independently from generated mouse state");
             InputEngine.SendMouse("CtrlDrag:Start");
             engine.DirectMouseForTest(0x202);
-            await Task.Delay(40);
+            SpinWait.SpinUntil(() => !InputEngine.HasInjectedInputForTest(), 500);
             Check(!InputEngine.IsObservedPhysicalMouseButtonDownForTest(1) && !InputEngine.HasInjectedInputForTest() && modifierDragMouse.SequenceEqual([2u, 4u]) && modifierDragKeys.LastOrDefault() == ((ushort)0x11, true), "physical left Up immediately releases a generated drag even when its queued action end is lost");
             modifierDragKeys.Clear();
             modifierDragMouse.Clear();
@@ -1013,6 +1079,7 @@ public static class EngineIntegrationTest
             InputEngine.SendMouse("CtrlDrag:Start");
             engine.DirectMouseForTest(0x201);
             engine.DirectMouseForTest(0x202);
+            SpinWait.SpinUntil(() => !InputEngine.HasInjectedInputForTest(), 500);
             Check(!InputEngine.HasInjectedInputForTest() && modifierDragMouse.SequenceEqual([2u, 4u]) && modifierDragKeys.LastOrDefault() == ((ushort)0x11, true), "the next physical left Down recovers a drag after a lost physical Up instead of leaving both clicks blocked");
             plainMouseMappings = true;
             modifierDragKeys.Clear();
@@ -1111,6 +1178,8 @@ public static class EngineIntegrationTest
                 output.WriteLine("SKIP Windows real-hook test: explicitly disabled for this run");
             else
             {
+                await ModifierClickScenarioTest.RunAsync(Check);
+                engine.EnableDirectTestInput();
                 var hookEvents = new List<string>();
                 var hookDetected = new List<string>();
                 using var hookEngine = new InputEngine
@@ -1129,19 +1198,21 @@ public static class EngineIntegrationTest
                 Check(hookEvents.Count(x => x == "CapsLock+U") == 2 && hookEvents.Contains("Space+J") && hookEvents.Contains("MouseRight+WheelUp"), "dedicated hook thread keeps delayed CapsLock, Space and mouse layers active until actual release events=[" + string.Join(',', hookEvents) + "] detected=[" + string.Join(',', hookDetected.TakeLast(12)) + "]");
                 Check(hookEngine.HookTestStateCleanForTest && !InputEngine.HasInjectedInputForTest(), "hook thread leaves its own layer state and generated input released");
             }
-            InputEngine.InjectMouseForTest("Left", false);
+            engine.DirectMouseForTest(0x201);
             await Task.Delay(20);
-            InputEngine.InjectKeyForTest("Ctrl", false);
-            InputEngine.InjectKeyForTest("Alt", false);
-            InputEngine.InjectKeyForTest("Shift", false);
-            InputEngine.InjectKeyForTest("F12", false);
+            engine.DirectKeyForTest(0x11, false);
+            engine.DirectKeyForTest(0x12, false);
+            engine.DirectKeyForTest(0x10, false);
+            engine.DirectKeyForTest(0x7B, false);
             await Task.Delay(50);
             Check(!engine.Enabled, "emergency stop" + (engine.Enabled ? " [" + string.Join(",", detected.TakeLast(8)) + "]" : ""));
-            InputEngine.InjectKeyForTest("F12", true);
-            InputEngine.InjectKeyForTest("Shift", true);
-            InputEngine.InjectKeyForTest("Alt", true);
-            InputEngine.InjectKeyForTest("Ctrl", true);
-            await Task.Delay(50);
+            engine.DirectKeyForTest(0x7B, true);
+            engine.DirectKeyForTest(0x10, true);
+            engine.DirectKeyForTest(0x12, true);
+            engine.DirectKeyForTest(0x11, true);
+            for (int attempt = 0; attempt < 20 &&
+                (InputEngine.IsKeyDownForTest(0x11) || InputEngine.IsKeyDownForTest(0x10) || InputEngine.IsKeyDownForTest(0x12)); attempt++)
+                await Task.Delay(25);
             Check(!InputEngine.IsKeyDownForTest(0x11) && !InputEngine.IsKeyDownForTest(0x10) && !InputEngine.IsKeyDownForTest(0x12), "modifier release safety");
             for (int attempt = 0; attempt < 3 && InputEngine.IsKeyDownForTest(0x01); attempt++)
             {

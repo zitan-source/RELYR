@@ -108,22 +108,11 @@ public static class StartupService
         try
         {
             RequireElevated();
-            using var current = Process.GetCurrentProcess();
-            var targetIds = new List<int>();
-            foreach (var process in Process.GetProcessesByName("RELYR"))
+            var targetIds = FindOtherRelyrProcessIds(out var inaccessibleIds);
+            if (inaccessibleIds.Count > 0)
             {
-                using (process)
-                {
-                    if (process.Id == current.Id)
-                        continue;
-                    try
-                    {
-                        string? candidate = process.MainModule?.FileName;
-                        if (candidate != null && IsRelyrExecutable(candidate))
-                            targetIds.Add(process.Id);
-                    }
-                    catch { }
-                }
+                error = $"RELYR process identity could not be verified (PID {string.Join(", ", inaccessibleIds)}).";
+                return false;
             }
             foreach (int processId in targetIds)
             {
@@ -167,9 +156,12 @@ public static class StartupService
                         continue;
                     try
                     {
-                        string? executablePath = process.MainModule?.FileName;
-                        if (executablePath == null)
+                        if (!IpcProcessIdentity.TryGetProcessImagePath((uint)process.Id, out string executablePath))
+                        {
+                            if (!process.HasExited)
+                                inaccessibleOrphanIds.Add(process.Id);
                             continue;
+                        }
                         if (IsRelyrExecutable(executablePath))
                             orphanIds.Add(process.Id);
                     }
@@ -219,6 +211,41 @@ public static class StartupService
             return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
+    }
+
+    static List<int> FindOtherRelyrProcessIds(out List<int> inaccessibleIds)
+    {
+        inaccessibleIds = [];
+        var result = new List<int>();
+        foreach (var process in Process.GetProcessesByName("RELYR"))
+        {
+            using (process)
+            {
+                if (process.Id == Environment.ProcessId)
+                    continue;
+                if (!IpcProcessIdentity.TryGetProcessImagePath((uint)process.Id, out string executablePath))
+                {
+                    // A process can disappear between enumeration and inspection.
+                    // Only report an identity failure when it is still alive.
+                    try
+                    {
+                        if (!process.HasExited)
+                            inaccessibleIds.Add(process.Id);
+                    }
+                    catch (ArgumentException) { }
+                    catch (InvalidOperationException) { inaccessibleIds.Add(process.Id); }
+                    continue;
+                }
+                try
+                {
+                    if (IsRelyrExecutable(executablePath))
+                        result.Add(process.Id);
+                }
+                catch (IOException) { inaccessibleIds.Add(process.Id); }
+                catch (UnauthorizedAccessException) { inaccessibleIds.Add(process.Id); }
+            }
+        }
+        return result;
     }
 
     internal static bool IsRelyrExecutable(string executablePath)

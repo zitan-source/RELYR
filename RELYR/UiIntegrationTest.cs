@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,7 +24,7 @@ internal static class UiIntegrationTest
             Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", testConfigDirectory);
             new ConfigService().Save(new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false, ThemeMode = AppThemeMode.Dark });
             ThemeService.Apply(AppThemeMode.Dark);
-            window = new MainWindow(true) { Width = 1500, Height = 900 };
+            window = new MainWindow(true, startInputHooks: false) { Width = 1500, Height = 900 };
             System.Windows.Application.Current.MainWindow = window;
             window.Show();
             window.UpdateLayout();
@@ -37,6 +38,8 @@ internal static class UiIntegrationTest
             var mouseButtons = Descendants<System.Windows.Controls.Button>(window.MousePanel).Where(x => x.Tag is string).ToList();
             var leftClick = mouseButtons.First(x => Equals(x.Tag, "MouseLeft"));
             var rightClick = mouseButtons.First(x => Equals(x.Tag, "MouseRight"));
+            Check(!leftClick.IsEnabled && leftClick.Opacity < .6 && !window.RuntimeInterceptsInputForTest("MouseLeft"), "normal-layer left click is visibly disabled and cannot intercept Windows click or drag input even if an old mapping remains");
+            Check(DeckPanelLayout.ExternalFileDragEffects == System.Windows.DragDropEffects.Copy, "Deck file drags expose copy-only semantics so Explorer cannot move or delete the registered source file");
             var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
             var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
             var tiltLeft = mouseButtons.First(x => Equals(x.Tag, "TiltLeft"));
@@ -51,7 +54,7 @@ internal static class UiIntegrationTest
             double renderedAHeight = aKey.TransformToAncestor(window).TransformBounds(new Rect(0, 0, aKey.ActualWidth, aKey.ActualHeight)).Height;
             double renderedMouseKeyHeight = ordinary[0].TransformToAncestor(window).TransformBounds(new Rect(0, 0, ordinary[0].ActualWidth, ordinary[0].ActualHeight)).Height;
             Check(Math.Abs(renderedMouseKeyHeight - renderedAHeight) < .1, "ordinary mouse controls render at the same on-screen height as the A key");
-            Check(new[] { leftClick, rightClick }.All(x => Math.Abs(x.Width - aKey.Width) < .1 && Math.Abs(x.Height - (aKey.Height * 2 + 4)) < .1), "left and right click exactly match the two-row numpad Enter span");
+            Check(new[] { leftClick, rightClick }.All(x => Math.Abs(x.Width - aKey.Width) < .1 && Math.Abs(x.Height - (aKey.Height * 3 + 8)) < .1 && Math.Abs(Canvas.GetTop(x) + x.Height - (Canvas.GetTop(wheelDown) + wheelDown.Height)) < .1), "left and right click extend exactly to the wheel-down edge");
             Check(Canvas.GetTop(tiltLeft) > Canvas.GetTop(wheelDown) + wheelDown.Height && Math.Abs((Canvas.GetLeft(tiltLeft) + tiltLeft.Width + 2) - window.MousePanel.Width / 2) < .1 && Math.Abs((Canvas.GetLeft(tiltRight) - 2) - window.MousePanel.Width / 2) < .1, "tilt controls sit immediately below the wheel and share the horizontal center");
             Check(Math.Abs(Canvas.GetLeft(forward) - Canvas.GetLeft(back)) < .1 && Canvas.GetTop(forward) < Canvas.GetTop(back) && Canvas.GetLeft(x1) > Canvas.GetLeft(back) && Math.Abs(Canvas.GetTop(x1) - Canvas.GetTop(back)) < .1, "Forward and Back stay on the left while X1 occupies the lower right");
             Check(mouseButtons.SelectMany((button, index) => mouseButtons.Skip(index + 1).Select(other => !Bounds(button).IntersectsWith(Bounds(other)))).All(x => x), "mouse controls never overlap and preserve the keyboard gap system");
@@ -66,18 +69,6 @@ internal static class UiIntegrationTest
             Check(mouseButtons.All(x => x.Foreground is SolidColorBrush foreground && foreground.Color == ThemeService.Color("PrimaryText")) && window.MouseBody.BorderBrush is SolidColorBrush border && border.Color == ThemeService.Color("SubtleBorderBrush"), "light theme keeps every mouse label and the outer boundary visible");
             CaptureForReview(window, "mouse-layout-light.png");
 
-            var modifierDragOutput = new List<string>();
-            InputEngine.KeyOutputForTest = (key, up) => { modifierDragOutput.Add($"K:{key}:{(up ? "U" : "D")}"); return true; };
-            InputEngine.MouseFlagOutputForTest = (flag, _) => modifierDragOutput.Add("M:" + flag);
-            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Space+MouseLeft", StringComparison.OrdinalIgnoreCase));
-            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Space+MouseLeft", Layer = "Space", Kind = ActionKind.Mouse, Value = "ShiftDrag" });
-            window.SaveAndApplyForTest();
-            bool dragStartedImmediately = window.HandleInputForTest("Space+MouseLeft:PressStart") && modifierDragOutput.SequenceEqual(["K:16:D", "M:2"]);
-            bool dragEndedImmediately = window.HandleInputForTest("Space+MouseLeft:PressEnd") && modifierDragOutput.SequenceEqual(["K:16:D", "M:2", "M:4", "K:16:U"]);
-            InputEngine.KeyOutputForTest = null;
-            InputEngine.MouseFlagOutputForTest = null;
-            Check(dragStartedImmediately && dragEndedImmediately && !InputEngine.HasInjectedInputForTest(), "Space-layer Shift click releases before the following native click without queue delay");
-            Check(window.MouseWheelWatermark.Opacity is > .1 and < .25 && !window.MouseWheelWatermark.IsHitTestVisible, "a subtle non-interactive wheel watermark identifies the mouse");
             window.Width = 880;
             window.Height = 640;
             window.UpdateLayout();
@@ -98,7 +89,7 @@ internal static class UiIntegrationTest
             var pickerMouseButtons = picker.InputButtonsForTest.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight" or "MouseMiddle" or "MouseBack" or "MouseForward" or "MouseX" or "WheelUp" or "WheelDown" or "TiltLeft" or "TiltRight").ToList();
             var pickerOrdinary = pickerMouseButtons.Where(x => x.Tag?.ToString() is not "MouseLeft" and not "MouseRight").ToList();
             var pickerClicks = pickerMouseButtons.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight").ToList();
-            Check(pickerMouseButtons.Count == 10 && pickerOrdinary.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - pickerA.Height) < .1) && pickerClicks.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - (pickerA.Height * 2 + 4)) < .1), "keypad-input mouse mirrors the same A-key and two-row click dimensions");
+            Check(pickerMouseButtons.Count == 10 && pickerOrdinary.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - pickerA.Height) < .1) && pickerClicks.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - (pickerA.Height * 3 + 8)) < .1), "keypad-input mouse mirrors the same A-key and wheel-aligned click dimensions");
             CaptureForReview(picker, "mouse-layout-keypad-dark.png");
             ThemeService.Apply(AppThemeMode.Light);
             picker.UpdateLayout();
@@ -129,11 +120,63 @@ internal static class UiIntegrationTest
         try
         {
             new ConfigService().Save(new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false, Gestures = [new GestureDefinition { Name = "ウィンドウ操作", UpKind = ActionKind.Shortcut, UpValue = "Win+Up", CenterKind = ActionKind.Key, CenterValue = "Enter" }] });
-            window = new MainWindow(true) { Width = 800, Height = 620 };
+            // Exercise the main editor through the UI-host runtime role as well:
+            // RELYR's own foreground window must never disable normal mappings.
+            window = new MainWindow(true, runtimeRole: RuntimeRole.UiHost, startInputHooks: false) { Width = 800, Height = 620 };
             System.Windows.Application.Current.MainWindow = window;
             window.Show();
             window.UpdateLayout();
             Check(window.IsInputEngineReadyForTest, "input engine is ready when the main window and tray initialization complete");
+            var mainRuntimeProfile = window.CurrentProfileForTest;
+            string[] mainRuntimeInputs = ["F1", "Space+WheelDown", "Space+MouseForward", "CapsLock+U", "MouseBack+WheelDown", "MouseForward+WheelDown"];
+            mainRuntimeProfile.Mappings.RemoveAll(mapping => mainRuntimeInputs.Contains(mapping.Input, StringComparer.OrdinalIgnoreCase));
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "F1", Layer = "通常", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = OverlayService.DeckPanelAction, LongPressMs = 50 });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "Space+WheelDown", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+PageDown" });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "Space+MouseForward", Layer = "Space", Kind = ActionKind.Shortcut, Value = "LeftAlt+F4" });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "CapsLock+U", Layer = "CapsLock", Kind = ActionKind.Key, Value = "Enter" });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "MouseBack+WheelDown", Layer = "MouseBack", Kind = ActionKind.Key, Value = "Left" });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "MouseForward+WheelDown", Layer = "MouseForward", Kind = ActionKind.Key, Value = "Down" });
+            window.ConfigForTest.WindowActionTarget = WindowActionTarget.ActiveWindow;
+            window.SaveAndApplyForTest();
+            window.SetCapsLockRemapForTest(true);
+            var mainRuntimeDeckActions = new ConcurrentQueue<string>();
+            var mainRuntimeKeyActions = new ConcurrentQueue<(ushort Key, bool Up)>();
+            OverlayService.ActionRequestedForTest = mainRuntimeDeckActions.Enqueue;
+            InputEngine.KeyOutputForTest = (key, up) => { mainRuntimeKeyActions.Enqueue((key, up)); return true; };
+            var mainRuntimeResults = new List<IntPtr>
+            {
+                window.DirectPhysicalKeyForTest(0x70, false)
+            };
+            bool mainRuntimeDeckWorked = SpinWait.SpinUntil(() => mainRuntimeDeckActions.Count == 1, 500);
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x70, true));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x20, false));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x20, true));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x20, false));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x20, true));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x7C, false));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x55, false));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x55, true));
+            mainRuntimeResults.Add(window.DirectPhysicalKeyForTest(0x7C, true));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20B, 1 << 16, 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20C, 1 << 16, 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0));
+            mainRuntimeResults.Add(window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0));
+            bool mainRuntimeOutputsWorked = SpinWait.SpinUntil(() => mainRuntimeKeyActions.Count >= 15, 1000);
+            Check(window.ShouldInterceptPhysicalInputForTest && window.ShouldInterceptPhysicalMouseForTest
+                && mainRuntimeResults.All(result => result == (IntPtr)1)
+                && mainRuntimeDeckWorked && mainRuntimeOutputsWorked && !window.HasCapturedInputStateForTest
+                && mainRuntimeKeyActions.Count(action => action == (0x0D, false)) == 1 && mainRuntimeKeyActions.Count(action => action == (0x0D, true)) == 1
+                && mainRuntimeKeyActions.Count(action => action == (0x25, false)) == 1 && mainRuntimeKeyActions.Count(action => action == (0x25, true)) == 1
+                && mainRuntimeKeyActions.Count(action => action == (0x28, false)) == 1 && mainRuntimeKeyActions.Count(action => action == (0x28, true)) == 1,
+                "RELYR main screen runs normal F1, Space wheel/forward, CapsLock, Back, and Forward layer actions through the UI-host runtime without a foreground exception");
+            OverlayService.ActionRequestedForTest = null;
+            InputEngine.KeyOutputForTest = null;
+            window.SetCapsLockRemapForTest(false);
             int hiddenProfileOverlays = 0;
             for (int i = 0; i < 3; i++)
             {
@@ -170,10 +213,24 @@ internal static class UiIntegrationTest
             var persistedProfiles = new ConfigService().Load();
             Check(!persistedProfiles.AutoSave && persistedProfiles.AutoSwitchProfilesByCursor && persistedProfiles.Profiles.Any(x => x.Name == managedAutomatic.Name && x.AutoSwitchEnabled && x.AutoSwitchApplications.Contains("relyr-profile-test.exe")) && window.AppliedProfileNameForTest == managedStandard.Name, "Profile Manager Apply immediately saves and activates profile routing even when assignment auto-save is off");
             bool automaticProfileApplied = window.ApplyAutomaticProfileForTest(["relyr-profile-test"]);
-            Check(automaticProfileApplied && window.AppliedProfileNameForTest == managedAutomatic.Name && window.ProfileOverlayForTest is { IsVisible: true } appliedOverlay && appliedOverlay.ProfileNameText.Text == managedAutomatic.Name, "an applied target application switches the live profile and shows the enabled profile overlay end to end");
-            PumpFor(TimeSpan.FromMilliseconds(1250));
+            Check(automaticProfileApplied && window.AppliedProfileNameForTest == managedAutomatic.Name
+                && window.CurrentProfileForTest.Name == managedStandard.Name && Equals(window.ProfileBox.SelectedItem, managedStandard.Name)
+                && window.ProfileOverlayForTest is { IsVisible: true } appliedOverlay && appliedOverlay.ProfileNameText.Text == managedAutomatic.Name,
+                "automatic routing switches runtime behavior while the editor profile dropdown remains on the user's selection");
             bool automaticProfileReturned = window.ApplyAutomaticProfileForTest([]);
-            Check(automaticProfileReturned && window.AppliedProfileNameForTest == managedStandard.Name && window.ProfileOverlayForTest is { IsVisible: true } returnOverlay && returnOverlay.ProfileNameText.Text == managedStandard.Name, "leaving the target application returns to the standard profile and shows its overlay");
+            window.ResetAutomaticProfileCandidateForTest();
+            bool transientDefaultWasAccepted = window.ObserveAutomaticProfileCandidateForTest("標準", managedAutomatic.Name);
+            bool currentChromeWasAccepted = window.ObserveAutomaticProfileCandidateForTest(managedAutomatic.Name, managedAutomatic.Name);
+            bool secondTransientDefaultWasAccepted = window.ObserveAutomaticProfileCandidateForTest("標準", managedAutomatic.Name);
+            bool stableDefaultWasAccepted = window.ObserveAutomaticProfileCandidateForTest("標準", managedAutomatic.Name);
+            Check(!transientDefaultWasAccepted && currentChromeWasAccepted && !secondTransientDefaultWasAccepted && stableDefaultWasAccepted
+                && MainWindow.AutomaticProfileRequiredSamples(window.ProfilesForTest, managedAutomatic.Name) == 1
+                && MainWindow.AutomaticProfileRequiredSamples(window.ProfilesForTest, managedStandard.Name) == 2,
+                "cursor profile switching enters a matched app and its Deck immediately while requiring confirmation only before returning to the standard profile");
+            Check(automaticProfileReturned && window.AppliedProfileNameForTest == managedStandard.Name
+                && window.CurrentProfileForTest.Name == managedStandard.Name && Equals(window.ProfileBox.SelectedItem, managedStandard.Name)
+                && window.ProfileOverlayForTest is { IsVisible: true } returnOverlay && returnOverlay.ProfileNameText.Text == managedStandard.Name,
+                "cursor routing returns the runtime profile without moving the editor dropdown or requiring RELYR activation");
             PumpFor(TimeSpan.FromMilliseconds(1250));
             window.ApplyProfileManagerResultForTest([new Profile { Name = "標準" }], "標準", true);
             window.Width = 800;
@@ -198,7 +255,7 @@ internal static class UiIntegrationTest
             Check(compactProfileManager.ProfileListColumn.ActualWidth <= 170 && compactProfileManager.ApplicationManagementColumn.ActualWidth > compactProfileManager.ProfileListColumn.ActualWidth * 3 && compactProfileManager.RunningApplicationList.ActualWidth > 250 && compactProfileManager.RunningApplicationList.ActualHeight > 260, $"profile management keeps a compact profile pane and gives the application editor most of the available width and height (list={compactProfileManager.RunningApplicationList.ActualWidth:F0}x{compactProfileManager.RunningApplicationList.ActualHeight:F0}, profile={compactProfileManager.ProfileListColumn.ActualWidth:F0}, editor={compactProfileManager.ApplicationManagementColumn.ActualWidth:F0})");
             Check(ScrollViewer.GetHorizontalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Disabled && ScrollViewer.GetVerticalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Hidden, "running application list remains scrollable by wheel without displaying scrollbars");
             Check(Descendants<Border>(compactProfileManager.AssignedApplicationList).Any(border => border.CornerRadius.TopLeft == 8) && Descendants<Border>(compactProfileManager.RunningApplicationList).Any(border => border.CornerRadius.TopLeft == 8), "profile application lists use the shared eight-pixel control radius instead of square system borders");
-            Check(compactProfileManager.CursorProfileSwitchBox.IsChecked == true && compactProfileManager.CursorProfileSwitchBox.ToolTip?.ToString()?.Contains("RELYR自身") == true, "profile manager exposes cursor-based automatic switching and explains that RELYR windows are ignored");
+            Check(compactProfileManager.CursorProfileSwitchBox.IsChecked == true && compactProfileManager.CursorProfileSwitchBox.ToolTip?.ToString()?.Contains("対象アプリ") == true, "profile manager explains cursor-based automatic switching without editor-specific input behavior");
             var profileCommandButtons = new[] { compactProfileManager.AddProfileButton, compactProfileManager.RenameProfileButton, compactProfileManager.DeleteProfileButton };
             Check(profileCommandButtons.All(button => button.Content is Viewbox && Descendants<System.Windows.Shapes.Path>(button).Any(path => Equals(path.Stroke, button.Foreground))) && profileCommandButtons.All(button => !string.IsNullOrWhiteSpace(button.ToolTip?.ToString())), "profile add, rename, and delete commands use theme-aware vector icons with explanatory tooltips instead of cramped text");
             CaptureForReview(compactProfileManager, "profile-manager-compact.png");
@@ -397,7 +454,12 @@ internal static class UiIntegrationTest
             foreach (var deckButton in deckButtons)
                 deckButton.ApplyTemplate();
             Check(deckButtons.All(button => !Descendants<Border>(button).Any(border => Math.Abs(border.Height - 1) < .1)), "Deck buttons omit the decorative top highlight line");
-            Check(window.DeckEditorWorkspace.Visibility == Visibility.Visible && window.DeckLayoutListWorkspace.Visibility == Visibility.Collapsed && deckButtons.Length == standardDeck.Columns * standardDeck.Rows && deckButtons.All(x => Math.Abs(x.Width - 54) < .1 && Math.Abs(x.Height - 52) < .1), "opening a layout shows its A-key-sized grid in the editor");
+            var deckCells = deckButtons.Select(button => (StackPanel)button.Parent).ToArray();
+            Check(window.DeckEditorWorkspace.Visibility == Visibility.Visible && window.DeckLayoutListWorkspace.Visibility == Visibility.Collapsed && deckButtons.Length == standardDeck.Columns * standardDeck.Rows
+                && deckButtons.All(button => Math.Abs(button.Width - DeckPanelLayout.KeyWidth) < .1 && Math.Abs(button.Height - DeckPanelLayout.KeyHeight) < .1)
+                && deckCells.All(cell => Math.Abs(cell.Width - DeckPanelLayout.KeyWidth - DeckPanelLayout.ButtonGap) < .1 && Math.Abs(cell.Height - DeckPanelLayout.KeyHeight - DeckPanelLayout.ButtonGap) < .1)
+                && deckCells.All(cell => Descendants<TextBlock>(cell).Any(label => Math.Abs(label.Height - DeckPanelLayout.NameLabelHeight) < .1)),
+                "Deck editor keeps the 54x52 button and visible name below it while matching horizontal and vertical button gaps");
             Check(window.DeckKeypadInputButton.Visibility == Visibility.Visible && window.DetectInputButton.Visibility == Visibility.Collapsed && window.LongPressExpander.Visibility == Visibility.Collapsed && window.KindBox.Items.Cast<object>().All(x => !x.ToString()!.Contains("Gesture", StringComparison.Ordinal)) && window.KindBox.Items.Cast<object>().Select(x => x.GetType().GetProperty("Label")?.GetValue(x)?.ToString()).Contains("キーパッドから入力") && !window.KindBox.Items.Cast<object>().Select(x => x.GetType().GetProperty("Label")?.GetValue(x)?.ToString()).Contains("無効化"), "Deck editing keeps the inspector, replaces disable with keypad input, and excludes gestures and long press");
             bool deckDoubleClickOpenedActionPicker = false;
             window.ActionPickerRequestedForTest = (longPress, category) =>
@@ -484,6 +546,7 @@ internal static class UiIntegrationTest
             Mapping? deckExecuted = null;
             (double Left, double Top)? savedDeckPosition = null;
             (double Width, double Height)? savedDeckSize = null;
+            string? savedDeckSizeLayoutId = null;
             var overlayLayout = new DeckLayoutDefinition { Name = "標準Deck", Columns = 9, Rows = 5, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C", Description = "コピー" }] };
             var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 67, DeckAutoHideAfterAction = false, DeckAutoHideOnPointerLeave = false, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
@@ -494,7 +557,7 @@ internal static class UiIntegrationTest
             backdropProbe.Show();
             backdropProbe.UpdateLayout();
             var deckConstructionTime = System.Diagnostics.Stopwatch.StartNew();
-            var deckOverlay = new DeckPanelOverlayWindow(deckOverlayConfig, map => deckExecuted = map, 67, (left, top) => savedDeckPosition = (left, top), overlayLayout, (width, height) => savedDeckSize = (width, height));
+            var deckOverlay = new DeckPanelOverlayWindow(deckOverlayConfig, map => deckExecuted = map, 67, (left, top) => savedDeckPosition = (left, top), overlayLayout, (layoutId, width, height) => { savedDeckSizeLayoutId = layoutId; savedDeckSize = (width, height); });
             deckConstructionTime.Stop();
             bool deckReadyBeforeShow = deckOverlay.DeckButtons.Count == 45;
             var deckShowTime = System.Diagnostics.Stopwatch.StartNew();
@@ -503,6 +566,11 @@ internal static class UiIntegrationTest
             deckOverlay.UpdateLayout();
             Pump(window);
             PumpFor(TimeSpan.FromMilliseconds(150));
+            var overlayCells = deckOverlay.DeckButtons.Select(button => (StackPanel)button.Parent).ToArray();
+            Check(deckOverlay.DeckButtons.All(button => Math.Abs(button.Width - DeckPanelLayout.KeyWidth) < .1 && Math.Abs(button.Height - DeckPanelLayout.KeyHeight) < .1)
+                && overlayCells.All(cell => Math.Abs(cell.Width - DeckPanelLayout.KeyWidth - DeckPanelLayout.ButtonGap) < .1 && Math.Abs(cell.Height - DeckPanelLayout.KeyHeight - DeckPanelLayout.ButtonGap) < .1)
+                && overlayCells.All(cell => Descendants<TextBlock>(cell).Any(label => Math.Abs(label.Height - DeckPanelLayout.NameLabelHeight) < .1)),
+                "floating Deck keeps each name below its 54x52 button and matches the visible row and column gaps");
             deckOverlay.DeckButtons[2].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             int videoPreviewsBeforeHide = deckOverlay.VideoPreviewCountForTest;
@@ -540,7 +608,7 @@ internal static class UiIntegrationTest
             Check(savedDeckPosition is { Left: 180, Top: 210 }, "moving the Deck overlay persists its last display position when dragging ends");
             deckOverlay.ResizeAndPersistForTest(deckOverlay.Width + 40, deckOverlay.Height + 30);
             Pump(window);
-            Check(savedDeckSize is { } resizedDeck && Math.Abs(resizedDeck.Width - deckOverlay.ActualWidth) < .1 && Math.Abs(resizedDeck.Height - deckOverlay.ActualHeight) < .1 && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, "resizing the Deck overlay preserves its Deck aspect without blank bands and persists its new size");
+            Check(savedDeckSizeLayoutId == overlayLayout.Id && savedDeckSize is { } resizedDeck && Math.Abs(resizedDeck.Width - deckOverlay.ActualWidth) < .1 && Math.Abs(resizedDeck.Height - deckOverlay.ActualHeight) < .1 && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, "resizing the Deck overlay preserves its Deck aspect without blank bands and persists its new size under that layout only");
             deckOverlay.ResetSizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(deckOverlay.ResetSizeButton.ToolTip?.ToString() == "元の大きさに戻す" && deckOverlay.ResetSizeButton.Content is System.Windows.Shapes.Path && Math.Abs(deckOverlay.ActualWidth - deckOverlay.DefaultWidthForTest) < 1 && Math.Abs(deckOverlay.ActualHeight - deckOverlay.DefaultHeightForTest) < 1, $"the header reset icon restores the Deck overlay's fitted original size (actual={deckOverlay.ActualWidth:F2}x{deckOverlay.ActualHeight:F2}, default={deckOverlay.DefaultWidthForTest:F2}x{deckOverlay.DefaultHeightForTest:F2})");
@@ -567,6 +635,14 @@ internal static class UiIntegrationTest
             deckOverlay.CloseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!deckOverlay.IsVisible, "Deck overlay closes from its top-right X button");
+            var independentlySizedDeckA = new DeckLayoutDefinition { Name = "Deck A", Columns = 3, Rows = 3, PanelWidth = 320, PanelHeight = 320 };
+            var independentlySizedDeckB = new DeckLayoutDefinition { Name = "Deck B", Columns = 3, Rows = 3, PanelWidth = 520, PanelHeight = 520 };
+            var independentlySizedConfig = new AppConfig { DeckPanelWidth = 410, DeckPanelHeight = 410, DeckLayouts = [independentlySizedDeckA, independentlySizedDeckB] };
+            var independentlySizedOverlayA = new DeckPanelOverlayWindow(independentlySizedConfig, null, selectedLayout: independentlySizedDeckA);
+            var independentlySizedOverlayB = new DeckPanelOverlayWindow(independentlySizedConfig, null, selectedLayout: independentlySizedDeckB);
+            Check(independentlySizedOverlayB.Width - independentlySizedOverlayA.Width > 100, "different Deck layouts restore their own saved sizes instead of inheriting the most recently resized Deck");
+            independentlySizedOverlayA.Close();
+            independentlySizedOverlayB.Close();
             var narrowDeckLayout = new DeckLayoutDefinition { Name = "縦長Deck", Columns = 1, Rows = 18 };
             var narrowDeckOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [narrowDeckLayout] }, null, selectedLayout: narrowDeckLayout);
             narrowDeckOverlay.Show();
@@ -577,6 +653,24 @@ internal static class UiIntegrationTest
             Check(!narrowDeckOverlay.HeaderTitleVisibleForTest && !narrowDeckOverlay.HeaderGripVisibleForTest && narrowDeckOverlay.HeaderToolTipForTest == narrowDeckLayout.Name && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)narrowDeckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(narrowDeckOverlay.DeckButtons[0]) && !narrowDeckOverlay.ResetSizeButton.IsVisible && narrowDeckOverlay.MoreButton.IsVisible && narrowDeckOverlay.CloseButton.IsVisible && narrowDeckOverlay.MoreButton.ActualWidth <= 24.1 && narrowDeckOverlay.CloseButton.ActualWidth <= 24.1 && narrowResetTopLeft.X >= 0 && narrowCloseBottomRight.X <= narrowDeckOverlay.ActualWidth - 6 && narrowCloseBottomRight.Y <= narrowDeckOverlay.ActualHeight + .1 && narrowDeckOverlay.HeaderContextMenuForTest?.Items.Count == 2, "a 1-by-18 Deck replaces separate pin/reset controls with an overflow menu, keeps close fully inset, and remains draggable from every non-key surface");
             CaptureForReview(narrowDeckOverlay, "deck-overlay-1x18.png");
             narrowDeckOverlay.Close();
+            var changingDeckLayout = new DeckLayoutDefinition { Name = "サイズ変更Deck", Columns = 9, Rows = 5 };
+            var changingDeckOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [changingDeckLayout] }, null, selectedLayout: changingDeckLayout);
+            changingDeckOverlay.Show();
+            changingDeckOverlay.UpdateLayout();
+            Pump(window);
+            changingDeckLayout.Columns = 1;
+            changingDeckLayout.Rows = 9;
+            changingDeckOverlay.Refresh(96, true);
+            changingDeckOverlay.UpdateLayout();
+            Pump(window);
+            var changingDeckView = Descendants<Viewbox>(changingDeckOverlay).Single(view => view.Child is System.Windows.Controls.Primitives.UniformGrid);
+            var changingDeckRoot = (Grid)changingDeckView.Parent;
+            Check(changingDeckOverlay.ActualWidth < 120
+                  && Math.Abs(changingDeckView.ActualWidth - changingDeckRoot.ActualWidth) < 1
+                  && changingDeckOverlay.DeckButtons.Count == 9,
+                $"changing an existing Deck from 9-by-5 to 1-by-9 clears the old minimum width instead of persisting a blank right band (window={changingDeckOverlay.ActualWidth:F1}, grid={changingDeckView.ActualWidth:F1}, host={changingDeckRoot.ActualWidth:F1})");
+            CaptureForReview(changingDeckOverlay, "deck-overlay-resized-1x9.png");
+            changingDeckOverlay.Close();
             var autoHideLayout = new DeckLayoutDefinition { Name = "Auto hide", Columns = 3, Rows = 3, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }] };
             bool? savedPinned = null;
             Mapping? autoHideExecuted = null;
@@ -629,7 +723,7 @@ internal static class UiIntegrationTest
                 null,
                 positionChanged: (_, _) => throw new IOException("simulated position persistence failure"),
                 selectedLayout: maximumDeckLayout,
-                sizeChanged: (_, _) => throw new IOException("simulated size persistence failure"));
+                sizeChanged: (_, _, _) => throw new IOException("simulated size persistence failure"));
             Check(maximumDeckOverlay.Width <= SystemParameters.WorkArea.Width - 24 + .1 && maximumDeckOverlay.Height <= SystemParameters.WorkArea.Height - 24 + .1 && maximumDeckOverlay.MinWidth < maximumDeckOverlay.MaxWidth && maximumDeckOverlay.MinHeight < maximumDeckOverlay.MaxHeight, "an 18-by-18 Deck initially fits the work area and remains freely resizable");
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 0, "an all-video 18-by-18 Deck allocates no media player before hover");
             maximumDeckOverlay.Show();
@@ -653,8 +747,13 @@ internal static class UiIntegrationTest
                 maximumDeckOverlay.ToggleSafeMaximizeForTest();
                 maximumDeckOverlay.ToggleSafeMaximizeForTest();
             }
+            // The last loop iteration intentionally shows the Deck again. Hide
+            // once more before inspecting media ownership; a real pointer over
+            // a button may legitimately start a new preview after Show().
+            maximumDeckOverlay.HideForReuse();
             Pump(window);
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 0, "each cached Deck hide releases the active hover video player");
+            maximumDeckOverlay.Show();
             maximumDeckOverlay.DeckButtons[25].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
@@ -676,15 +775,77 @@ internal static class UiIntegrationTest
             maximumAnimatedOverlay.Close();
             backdropProbe.Close();
             window.ShowDeckLayoutListForTest();
-            string defaultDeckBeforeSwitch = DeckPanelLayout.DefaultLayout(window.ConfigForTest)!.Id;
             string originalProfileName = window.CurrentProfileForTest.Name;
             var anotherProfile = window.ProfilesForTest.FirstOrDefault(x => !x.Name.Equals(originalProfileName, StringComparison.OrdinalIgnoreCase));
+            Check(!window.ProfileBox.IsEnabled && window.ProfileBox.Opacity < .6, "the Deck list keeps the unrelated profile selector visibly disabled");
+            OverlayService.Configure(() => window.ConfigForTest);
+            OverlayService.TryShow(DeckPanelLayout.ActionValue(standardDeck.Id));
+            Pump(window);
+            var globalDeckPanelBeforeProfileSwitch = OverlayService.DeckPanelInstanceForTest;
+            if (anotherProfile != null)
+            {
+                window.SwitchProfileForTest(anotherProfile.Name);
+                Pump(window);
+                window.SwitchProfileForTest(originalProfileName);
+                Pump(window);
+            }
+            Check(globalDeckPanelBeforeProfileSwitch != null && ReferenceEquals(globalDeckPanelBeforeProfileSwitch, OverlayService.DeckPanelInstanceForTest), $"a profile switch keeps a profile-independent Deck overlay intact without blinking or rebuilding it (before={globalDeckPanelBeforeProfileSwitch?.LayoutId ?? "null"}, after={OverlayService.DeckPanelInstanceForTest?.LayoutId ?? "null"}, linked={standardDeck.ProfileSwitchEnabled})");
+            string runtimeProfileBeforeDeckEdit = window.AppliedProfileNameForTest;
+            string[] runtimeMappingsBeforeDeckEdit = window.AppliedMappingsForTest.Select(mapping => $"{mapping.Input}\u001f{mapping.Kind}\u001f{mapping.Value}").ToArray();
+            if (anotherProfile != null)
+            {
+                window.SwitchProfileForTest(anotherProfile.Name);
+                runtimeProfileBeforeDeckEdit = window.AppliedProfileNameForTest;
+                runtimeMappingsBeforeDeckEdit = window.AppliedMappingsForTest.Select(mapping => $"{mapping.Input}\u001f{mapping.Kind}\u001f{mapping.Value}").ToArray();
+                window.ConfigForTest.ActiveProfile = originalProfileName;
+            }
+            window.EditDeckLayoutForTest(standardDeck);
+            Pump(window);
+            Check(window.DeckProfileSwitchBox.IsChecked == false && !window.ProfileBox.IsEnabled && window.DeckLayoutNameBox.ActualWidth < window.DeckEditorWorkspace.ActualWidth * .6, "a global Deck keeps profile selection disabled and leaves half of the title row for its per-Deck profile switch");
+            window.DeckProfileSwitchBox.IsChecked = true;
+            Pump(window);
+            window.SaveAndApplyForTest();
+            Check(window.AppliedProfileNameForTest == runtimeProfileBeforeDeckEdit && window.AppliedMappingsForTest.Select(mapping => $"{mapping.Input}\u001f{mapping.Kind}\u001f{mapping.Value}").SequenceEqual(runtimeMappingsBeforeDeckEdit), "enabling Deck profile switching preserves the live runtime profile and every layer mapping while the editor is showing another profile");
+            string linkedGroup = standardDeck.ProfileGroupId;
+            var linkedVariants = window.ConfigForTest.DeckLayouts.Where(layout => layout.ProfileSwitchEnabled && layout.ProfileGroupId.Equals(linkedGroup, StringComparison.OrdinalIgnoreCase)).ToList();
+            Check(window.ProfileBox.IsEnabled && window.ProfileBox.Opacity == 1 && linkedVariants.Count == window.ProfilesForTest.Count && linkedVariants.All(layout => layout.Columns == standardDeck.Columns && layout.Rows == standardDeck.Rows) && linkedVariants.Where(layout => !ReferenceEquals(layout, standardDeck)).All(layout => layout.Mappings.Count == 0), "enabling one Deck creates an independent same-shaped blank Deck for every other profile and restores profile selection");
             if (anotherProfile != null)
                 window.SwitchProfileForTest(anotherProfile.Name);
             Pump(window);
-            Check(DeckPanelLayout.DefaultLayout(window.ConfigForTest)?.Id == defaultDeckBeforeSwitch && !window.ConfigForTest.UseSharedDeckPanel && !Descendants<System.Windows.Controls.CheckBox>(window).Any(x => x.Content?.ToString()?.Contains("すべてのプロファイルで共通のDeck", StringComparison.Ordinal) == true) && window.ProfileBox.IsEnabled, "Deck remains one global selection when profiles switch and no common-Deck checkbox is shown");
+            Check(anotherProfile == null || window.SelectedDeckLayoutForTest is { ProfileSwitchEnabled: true, Mappings.Count: 0 } selectedVariant && selectedVariant.ProfileGroupId == linkedGroup && selectedVariant.ProfileId == anotherProfile.Id && DeckPanelLayout.DefaultLayout(window.ConfigForTest)?.Id == selectedVariant.Id, "switching profiles in a linked Deck editor immediately selects that profile's independent blank Deck");
             if (anotherProfile != null)
                 window.SwitchProfileForTest(originalProfileName);
+            var bulkDeck = window.SelectedDeckLayoutForTest!;
+            var bulkDeckOriginalMappings = bulkDeck.Mappings.Where(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4).ToList();
+            bulkDeck.Mappings.RemoveAll(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4);
+            bulkDeck.Mappings.Add(new Mapping { Input = DeckPanelLayout.InputName(1), Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "Deck一括1" });
+            bulkDeck.Mappings.Add(new Mapping { Input = DeckPanelLayout.InputName(2), Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Ctrl+Shift+2" });
+            window.ColorButtonsForTest();
+            window.MultiSelectToggle.IsChecked = true;
+            window.DeckManagementButtonsForTest[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.MultiCopyButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[3].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.MultiPasteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(bulkDeck.Mappings.LastOrDefault(mapping => mapping.Input == DeckPanelLayout.InputName(3)) is { Kind: ActionKind.Text, Value: "Deck一括1" }
+                && bulkDeck.Mappings.LastOrDefault(mapping => mapping.Input == DeckPanelLayout.InputName(4)) is { Kind: ActionKind.Shortcut, Value: "Ctrl+Shift+2" }
+                && window.MultiSelectToggle.IsChecked == false,
+                "Deck top toolbar copies and pastes multiple selected button assignments in slot order");
+            window.MultiSelectToggle.IsChecked = true;
+            window.DeckManagementButtonsForTest[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.DeckManagementButtonsForTest[3].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.MultiDeleteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(!bulkDeck.Mappings.Any(mapping => mapping.Input is "Deck+03" or "Deck+04")
+                && MainWindow.DeckSelectionRange(5, 2).SequenceEqual(["Deck+02", "Deck+03", "Deck+04", "Deck+05"]),
+                "Deck top toolbar deletes a multi-selection and Shift-range selection covers every slot between anchor and target");
+            bulkDeck.Mappings.RemoveAll(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4);
+            bulkDeck.Mappings.AddRange(bulkDeckOriginalMappings);
+            window.ColorButtonsForTest();
             Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int dialogColumns, out int dialogRows) && dialogColumns == 18 && dialogRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && window.DeckSizePresetBox.Style == window.FindResource("ToolbarComboBoxStyle") && Math.Abs(window.DeckSizePresetBox.Height - 40) < .1, "Deck creation supports themed preset and custom 1x1 through 18x18 sizes");
             Check(deckOverlay.CloseButton.BorderThickness == new Thickness(0) && ReferenceEquals(deckOverlay.CloseButton.Background, System.Windows.Media.Brushes.Transparent), "Deck overlay close control renders only the X without a surrounding outline or surface");
             Check(!Descendants<TextBlock>(window).Any(x => x.Text is "一般権限" or "管理者モード"), "the obsolete process privilege label is absent from the main footer");
@@ -700,10 +861,11 @@ internal static class UiIntegrationTest
             string originalLargeDeckValue = window.ValueBox.Text;
             window.ValueBox.Clear();
             window.ResetDeckVisualUpdateCountForTest();
+            OverlayService.ResetDeckRefreshRequestCountForTest();
             const string largeDeckTyping = "Ctrl+Shift+K";
             foreach (char character in largeDeckTyping)
                 window.ValueBox.AppendText(character.ToString());
-            Check(window.DeckVisualUpdateCountForTest == largeDeckTyping.Length, $"18x18 Deck typing refreshes only the selected button instead of all 324 buttons (updates={window.DeckVisualUpdateCountForTest})");
+            Check(window.DeckVisualUpdateCountForTest == largeDeckTyping.Length && OverlayService.DeckRefreshRequestCountForTest == 0, $"18x18 Deck typing updates only the selected button and never rebuilds the 324-button overlay (buttonUpdates={window.DeckVisualUpdateCountForTest}, overlayRefreshes={OverlayService.DeckRefreshRequestCountForTest})");
             window.ValueBox.Text = originalLargeDeckValue;
             window.ApplyDeckSizeForTest(9, 5);
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -787,14 +949,14 @@ internal static class UiIntegrationTest
             var topToMainGap = 44 - (Canvas.GetTop(f1) + f1.ActualHeight);
             var mainToExtendedGap = Canvas.GetTop(extendedFunctions[0]) - (268 + 52);
             Check(!Descendants<TextBlock>(window.KeyboardPanel).Any(x => x.Text == "拡張ファンクションキー") && extendedFunctions.All(x => Math.Abs(x.Width - f1.Width) < .1 && Math.Abs(x.ActualHeight - f1.ActualHeight) < .1 && Math.Abs(Canvas.GetTop(x) - 328) < .1) && Math.Abs(topToMainGap - 8) < .1 && Math.Abs(mainToExtendedGap - 8) < .1, "upper and lower function rows use the same visible eight-pixel separation from the main keyboard");
-            Check(window.NormalLayerButton.ActualHeight is >= 48 and <= 54 && window.SpaceLayerButton.ActualHeight is >= 48 and <= 54, "layer cards retain readable two-line content at a compact height");
+            Check(window.NormalLayerButton.ActualHeight is >= 48 and <= 54 && window.SpaceLayerButton.ActualHeight is >= 48 and <= 54, "layer cards retain compact readable titles");
             window.Width = 1850;
             window.Height = 1000;
             window.UpdateLayout();
             var layerButtons = window.LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>().ToList();
             Check(ReferenceEquals(window.LayerButtonsPanel.Parent, window.LayerNavigationHost) && layerButtons.Select(x => Math.Round(x.TranslatePoint(new System.Windows.Point(), window.LayerButtonsPanel).Y)).Distinct().Count() == 7, "layer buttons stay vertically arranged in the left pane");
             Check(window.LayerButtonsPanel.Children.IndexOf(window.KeyboardLayerCategory) < window.LayerButtonsPanel.Children.IndexOf(window.NormalLayerButton) && window.LayerButtonsPanel.Children.IndexOf(window.MouseLayerCategory) < window.LayerButtonsPanel.Children.IndexOf(window.RightMouseLayerButton) && window.LayerButtonsPanel.Children.IndexOf(window.WindowsLayerCategory) < window.LayerButtonsPanel.Children.IndexOf(window.TaskbarLayerButton), "layer buttons are grouped into keyboard, mouse and Windows categories");
-            Check(layerButtons.All(x => x.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Stretch && x.Content is Grid && Descendants<Border>(x).Any(border => border.Style == window.FindResource("LayerIconFrame")) && Descendants<TextBlock>(x).Skip(1).Any(description => description.IsVisible)) && Descendants<TextBlock>(window.NormalLayerButton).Any(x => x.Text == "デフォルト") && Descendants<TextBlock>(window.SpaceLayerButton).Any(x => x.Text == "Space") && Descendants<TextBlock>(window.CapsLockLayerButton).Any(x => x.Text == "CapsLock") && Descendants<TextBlock>(window.RightMouseLayerButton).Any(x => x.Text == "右クリック") && Descendants<TextBlock>(window.ForwardMouseLayerButton).Any(x => x.Text == "進む") && Descendants<TextBlock>(window.BackMouseLayerButton).Any(x => x.Text == "戻る") && Descendants<TextBlock>(window.TaskbarLayerButton).Any(x => x.Text == "タスクバー") && window.KeyboardLayerCategory.Text == "KEY LAYER" && window.MouseLayerCategory.Text == "MOUSE LAYER" && window.WindowsLayerCategory.Text == "SYSTEM" && Descendants<System.Windows.Shapes.Ellipse>(window.NormalLayerButton).Any(x => Equals(x.Tag, "LayerActiveIndicator") && x.Visibility == Visibility.Visible), "layer cards stretch their content grid so every active status dot uses the same fixed right column");
+            Check(layerButtons.All(x => x.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Stretch && x.Content is Grid && Descendants<Border>(x).Any(border => border.Style == window.FindResource("LayerIconFrame")) && Descendants<TextBlock>(x).Count() == 1 && Descendants<TextBlock>(x).Single().VerticalAlignment == VerticalAlignment.Center) && Descendants<TextBlock>(window.NormalLayerButton).Any(x => x.Text == "デフォルト") && Descendants<TextBlock>(window.SpaceLayerButton).Any(x => x.Text == "Space") && Descendants<TextBlock>(window.CapsLockLayerButton).Any(x => x.Text == "CapsLock") && Descendants<TextBlock>(window.RightMouseLayerButton).Any(x => x.Text == "右クリック") && Descendants<TextBlock>(window.ForwardMouseLayerButton).Any(x => x.Text == "進む") && Descendants<TextBlock>(window.BackMouseLayerButton).Any(x => x.Text == "戻る") && Descendants<TextBlock>(window.TaskbarLayerButton).Any(x => x.Text == "タスクバー") && window.KeyboardLayerCategory.Text == "KEY LAYER" && window.MouseLayerCategory.Text == "MOUSE LAYER" && window.WindowsLayerCategory.Text == "SYSTEM" && Descendants<System.Windows.Shapes.Ellipse>(window.NormalLayerButton).Any(x => Equals(x.Tag, "LayerActiveIndicator") && x.Visibility == Visibility.Visible), "layer cards show one vertically centered title while every active status dot uses the same fixed right column");
             var layerDots = layerButtons.Select(button => Descendants<System.Windows.Shapes.Ellipse>(button).Single(dot => Equals(dot.Tag, "LayerActiveIndicator"))).ToArray();
             var layerDotCenters = new List<double>();
             foreach (var dot in layerDots)
@@ -893,7 +1055,7 @@ internal static class UiIntegrationTest
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(ReferenceEquals(window.MouseHost.Child, window.MousePanel), "mouse diagram is placed to the right of the lower keyboard block");
-            Check(Descendants<TextBlock>(window.CapsLockLayerButton).Any(x => x.Text.Contains("F13リマップ")), "CapsLock layer clearly shows the reliable F13 requirement");
+            Check(layerButtons.All(button => Descendants<TextBlock>(button).Count() == 1), "layer cards contain no secondary instruction text");
             window.SetCapsLockRemapForTest(true);
             window.CapsLockLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(window.CapsLockLayerButton.Background is SolidColorBrush capsActive && capsActive.Color == ThemeService.Color("LayerActiveBackground"), "CapsLock layer opens when the F13 remap is active");
@@ -926,7 +1088,7 @@ internal static class UiIntegrationTest
             var wheelControls = mouseButtons.Where(x => Equals(x.Tag, "WheelUp") || Equals(x.Tag, "WheelDown") || Equals(x.Tag, "MouseMiddle"));
             static Rect Bounds(System.Windows.Controls.Button b) => new(Canvas.GetLeft(b), Canvas.GetTop(b), b.Width, b.Height);
             var mainA = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "A"));
-            Check(Math.Abs(leftClick.Width - mainA.Width) < .1 && Math.Abs(rightClick.Width - mainA.Width) < .1 && Math.Abs(leftClick.Height - (mainA.Height * 2 + 4)) < .1 && Math.Abs(rightClick.Height - (mainA.Height * 2 + 4)) < .1 && wheelControls.All(x => !Bounds(x).IntersectsWith(Bounds(leftClick)) && !Bounds(x).IntersectsWith(Bounds(rightClick))), "left and right click match the two-row numpad Enter span and do not overlap wheel controls");
+            Check(Math.Abs(leftClick.Width - mainA.Width) < .1 && Math.Abs(rightClick.Width - mainA.Width) < .1 && Math.Abs(leftClick.Height - (mainA.Height * 3 + 8)) < .1 && Math.Abs(rightClick.Height - (mainA.Height * 3 + 8)) < .1 && wheelControls.All(x => !Bounds(x).IntersectsWith(Bounds(leftClick)) && !Bounds(x).IntersectsWith(Bounds(rightClick))), "left and right click extend through all three wheel controls and do not overlap them");
             Check(mouseButtons.Sum(x => x.Content?.ToString()?.Length ?? 0) <= 24, "mouse diagram uses concise labels");
             Check(window.Icon != null && window.Icon.Width > 0 && window.Icon.Height > 0, "main window explicitly uses the normal RELYR application icon instead of inheriting a macro-shortcut icon");
             CaptureForReview(window, "mouse-layout-main.png");
@@ -952,21 +1114,29 @@ internal static class UiIntegrationTest
             Check(capsSource.Opacity < .6, "CapsLock remains protected until an action field is explicitly selected");
             window.KindBox.SelectedValue = ActionKind.Key;
             Pump(window);
+            window.ValueBox.Text = "Left";
             window.ValueBox.Focus();
             System.Windows.Input.Keyboard.Focus(window.ValueBox);
             Check(window.DestinationClearButton.Visibility == Visibility.Visible && window.DestinationClearButton.Content?.ToString() == "削除" && window.DestinationConfirmButton.Visibility == Visibility.Visible && window.DestinationConfirmButton.Content?.ToString() == "確定" && window.DestinationClearButton.TranslatePoint(new System.Windows.Point(), window).X < window.DestinationConfirmButton.TranslatePoint(new System.Windows.Point(), window).X, "direct execution editing shows delete immediately to the left of confirmation");
-            Check(window.EnterPhysicalExecutionKeyForTest(System.Windows.Input.Key.CapsLock, System.Windows.Input.ModifierKeys.None), "physical keyboard input is accepted while execution content is being edited");
-            Pump(window);
-            Check(window.ValueBox.Text == "CapsLock" && Equals(window.KindBox.SelectedValue, ActionKind.Key), "CapsLock can be entered from the physical keyboard");
+            window.ValueBox.CaretIndex = 2;
+            string executionTextBeforePreview = window.ValueBox.Text;
+            int executionCaretBeforePreview = window.ValueBox.CaretIndex;
+            var previewSource = PresentationSource.FromVisual(window) ?? throw new InvalidOperationException("main-window presentation source is unavailable");
+            var previewLeft = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, previewSource, Environment.TickCount, System.Windows.Input.Key.Left)
+            {
+                RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent
+            };
+            window.ValueBox.RaiseEvent(previewLeft);
+            Check(!previewLeft.Handled && window.ValueBox.Text == executionTextBeforePreview && window.ValueBox.CaretIndex == executionCaretBeforePreview, "the Action content field is a normal TextBox and does not intercept PreviewKeyDown navigation before runtime mappings can reach it");
             window.DestinationClearButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.ValueBox.Text == "" && window.ValueBox.IsKeyboardFocusWithin && window.DestinationClearButton.Visibility == Visibility.Visible && window.DestinationConfirmButton.Visibility == Visibility.Visible, "delete clears only the current execution content and keeps it ready for re-entry");
             window.KindBox.SelectedIndex = -1;
+            window.ValueBox.Text = "Enter";
             window.ValueBox.Focus();
             System.Windows.Input.Keyboard.Focus(window.ValueBox);
-            Check(window.EnterPhysicalExecutionKeyForTest(System.Windows.Input.Key.Return, System.Windows.Input.ModifierKeys.None), "physical Enter is captured even when an empty execution field has no action kind yet");
             Pump(window);
-            Check(window.ValueBox.Text == "Enter" && Equals(window.KindBox.SelectedValue, ActionKind.Key), "physical Enter is stored as the Enter key action");
+            Check(window.ValueBox.Text == "Enter" && Equals(window.KindBox.SelectedValue, ActionKind.Key), "directly entered key names remain available without a physical-key PreviewKeyDown capture mode");
             window.WorkspaceGrid.RaiseEvent(BlankClick());
             Pump(window);
             Check(window.DestinationConfirmButton.Visibility == Visibility.Collapsed, "clicking outside commits direct input and hides confirmation");
@@ -1023,7 +1193,7 @@ internal static class UiIntegrationTest
             foreach (var mouseButton in mouseButtons)
                 mouseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.MultiSelectToggle.Content?.ToString() == "選択" && window.MultiSelectToggle.Template != null && window.MultiCopyButton.IsEnabled && !window.MultiPasteButton.IsEnabled && window.MultiDeleteButton.IsEnabled && multiA.BorderBrush is SolidColorBrush multiBorder && multiBorder.Color == ThemeService.Color("AccentBrush") && MainWindow.GetIsMultiSelected(multiA) && MainWindow.GetIsSelectionPulseActive(multiA) && mouseButtons.All(x => MainWindow.GetIsMultiSelected(x) && MainWindow.GetIsSelectionPulseActive(x)), "multi-select visibly marks keyboard keys and every mouse control and enables bulk deletion");
+            Check(window.MultiSelectToggle.Content?.ToString() == "選択" && window.MultiSelectToggle.Template != null && window.MultiCopyButton.IsEnabled && !window.MultiPasteButton.IsEnabled && window.MultiDeleteButton.IsEnabled && multiA.BorderBrush is SolidColorBrush multiBorder && multiBorder.Color == ThemeService.Color("AccentBrush") && MainWindow.GetIsMultiSelected(multiA) && MainWindow.GetIsSelectionPulseActive(multiA) && mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft")).All(x => MainWindow.GetIsMultiSelected(x) && MainWindow.GetIsSelectionPulseActive(x)) && !MainWindow.GetIsMultiSelected(leftClick), "multi-select visibly marks every assignable keyboard and mouse control while keeping protected normal left click disabled");
             foreach (var mouseButton in mouseButtons)
                 mouseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
@@ -1174,7 +1344,9 @@ internal static class UiIntegrationTest
             Check(editingProfileSwitch is { LongPressKind: ActionKind.Profile, LongPressValue: "プロファイル4", LongPressMs: 650 } && appliedProfileSwitch is { Kind: ActionKind.None, LongPressKind: ActionKind.Profile, LongPressValue: "プロファイル4", LongPressMs: 650 }, "a long-press profile action remains assigned when its timing is edited and after input completion");
             Check(appliedProfileSwitch != null && window.ExecuteMappingForTest(appliedProfileSwitch, "O:Long"), "the saved long-press profile action is accepted by the runtime executor");
             Pump(window);
-            Check(window.AppliedProfileNameForTest == "プロファイル4" && window.IsProfileOverlayVisibleForTest, "executing a profile action switches the runtime profile and briefly shows its name");
+            Check(window.AppliedProfileNameForTest == "プロファイル4" && window.IsProfileOverlayVisibleForTest
+                && window.CurrentProfileForTest.Name == "プロファイル4" && Equals(window.ProfileBox.SelectedItem, "プロファイル4"),
+                "an explicit profile action switches the editor and runtime together without a hidden mapping profile");
             window.SwitchProfileForTest("標準");
             Pump(window);
             window.WorkspaceGrid.RaiseEvent(BlankClick());
@@ -1397,7 +1569,6 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(actionPicker.ActionList.Items.Cast<CatalogAction>().Select(x => x.Value).Order().SequenceEqual(new[] { "ImeOff", "ImeOn", "ImeToggle" }.Order()), "action picker search finds all IME actions");
             actionPicker.Close();
-            Check(MainWindow.ShortcutTextForKey(System.Windows.Input.Key.LeftCtrl, System.Windows.Input.ModifierKeys.None) == "Ctrl" && MainWindow.ShortcutTextForKey(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control) == "Ctrl+C" && MainWindow.ShortcutTextForKey(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift | System.Windows.Input.ModifierKeys.Alt) == "Ctrl+Shift+Alt+C", "physical keyboard entry records normalized two-key and three-modifier shortcuts without duplicates");
             window.SpaceLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             var spaceMouseLeft = window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "MouseLeft"));
@@ -1413,6 +1584,50 @@ internal static class UiIntegrationTest
             Pump(window);
             var appliedShiftClick = window.AppliedMappingForTest("Space+MouseLeft");
             Check(appliedShiftClick is { Kind: ActionKind.Mouse, Value: "ShiftDrag" }, "Space-layer left click applies the Shift-click action through the native mouse-drag execution path");
+            var modifierKeys = new ConcurrentQueue<(ushort Key, bool Up)>();
+            var modifierMouse = new ConcurrentQueue<uint>();
+            InputEngine.KeyOutputForTest = (key, up) => { modifierKeys.Enqueue((key, up)); return true; };
+            InputEngine.MouseFlagOutputForTest = (flag, _) => modifierMouse.Enqueue(flag);
+            using (var physicalMouse = new InputEngine { Enabled = false })
+            {
+                bool allWorkerDragsCompleted = true;
+                foreach (var (value, modifierKey) in new[] { ("ShiftDrag", (ushort)0x10), ("CtrlDrag", (ushort)0x11) })
+                {
+                    while (modifierKeys.TryDequeue(out _)) { }
+                    while (modifierMouse.TryDequeue(out _)) { }
+                    physicalMouse.DirectMouseForTest(0x201);
+                    bool queued = window.QueueModifierDragForTest(value, true);
+                    bool started = SpinWait.SpinUntil(() => modifierKeys.Any(item => item == (modifierKey, false)) && modifierMouse.Contains(2u), 500);
+                    physicalMouse.DirectMouseForTest(0x202);
+                    bool ended = SpinWait.SpinUntil(() => modifierKeys.Any(item => item == (modifierKey, true)) && modifierMouse.Contains(4u), 500);
+                    allWorkerDragsCompleted &= queued && started && ended;
+                }
+                Check(allWorkerDragsCompleted, "the main-window modifier path starts and releases both Shift-drag and Ctrl-drag in order");
+            }
+            bool exactMainWindowPathPassed = true;
+            foreach (var (value, modifierKey) in new[] { ("ShiftDrag", (ushort)0x10), ("CtrlDrag", (ushort)0x11) })
+            {
+                window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Space+MouseLeft", StringComparison.OrdinalIgnoreCase));
+                window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Space+MouseLeft", Layer = "Space", Kind = ActionKind.Mouse, Value = value });
+                window.SaveAndApplyForTest();
+                while (modifierKeys.TryDequeue(out _)) { }
+                while (modifierMouse.TryDequeue(out _)) { }
+                var spaceDown = window.DirectPhysicalKeyForTest(0x20, false);
+                var mouseDown = window.DirectPhysicalMouseForTest(0x201, 100, 100);
+                bool startedBeforeFirstMove = modifierKeys.Any(item => item == (modifierKey, false)) && modifierMouse.Contains(2u);
+                var firstMove = window.DirectPhysicalMouseForTest(0x200, 170, 145);
+                bool started = SpinWait.SpinUntil(() => modifierKeys.Any(item => item == (modifierKey, false))
+                    && modifierMouse.Contains(2u)
+                    && window.NativeMouseDragReadyForTest("Space+MouseLeft"), 500);
+                var secondMove = window.DirectPhysicalMouseForTest(0x200, 190, 160);
+                var mouseUp = window.DirectPhysicalMouseForTest(0x202, 170, 145);
+                var spaceUp = window.DirectPhysicalKeyForTest(0x20, true);
+                bool completed = SpinWait.SpinUntil(() => modifierKeys.Any(item => item == (modifierKey, false)) && modifierKeys.Any(item => item == (modifierKey, true)) && modifierMouse.Contains(2u) && modifierMouse.Contains(4u), 500);
+                exactMainWindowPathPassed &= spaceDown == (IntPtr)1 && mouseDown == (IntPtr)1 && (startedBeforeFirstMove || firstMove == (IntPtr)1) && started && secondMove != (IntPtr)1 && mouseUp == (IntPtr)1 && spaceUp == (IntPtr)1 && completed;
+            }
+            Check(exactMainWindowPathPassed, "the installed-app path blocks any early movement until Ctrl/Shift plus synthetic LeftDown is ready, then releases after physical mouse-up");
+            InputEngine.KeyOutputForTest = null;
+            InputEngine.MouseFlagOutputForTest = null;
             spaceMouseLeft.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             window.KindBox.SelectedValue = ActionKind.Shortcut;
@@ -1582,7 +1797,7 @@ internal static class UiIntegrationTest
             {
                 foreach (string visualKey in visualKeys)
                 {
-                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space"))
+                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer == "通常"))
                         continue;
                     string input = layer == "通常" ? visualKey : layer + "+" + visualKey;
                     window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
@@ -1590,9 +1805,153 @@ internal static class UiIntegrationTest
                 }
                 layerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 Pump(window);
-                var missed = visualInputs.Where(x => (string)x.Tag != "CapsLock" && !((string)x.Tag == "Space" && layer is "通常" or "Space") && !HasBackgroundColor(x, replacementColor)).Select(x => (string)x.Tag).Distinct().ToArray();
+                var missed = visualInputs.Where(x => (string)x.Tag != "CapsLock" && !((string)x.Tag == "Space" && layer is "通常" or "Space") && !((string)x.Tag == "MouseLeft" && layer == "通常") && !HasBackgroundColor(x, replacementColor)).Select(x => (string)x.Tag).Distinct().ToArray();
                 Check(visualInputs.Count > 100 && missed.Length == 0, $"every assignable visual key is orange on the {layer} layer" + (missed.Length == 0 ? "" : " (missing: " + string.Join(",", missed) + ")"));
             }
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("F1", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("F24", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Space+J", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("CapsLock+K", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("MouseRight+L", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("MouseBack+M", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("MouseForward+N", StringComparison.OrdinalIgnoreCase));
+            var unassignedNormalMouseInputs = new[] { "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward" };
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => unassignedNormalMouseInputs.Contains(mapping.Input, StringComparer.OrdinalIgnoreCase)
+                || unassignedNormalMouseInputs.Any(input => mapping.Input.Equals("Taskbar+" + input, StringComparison.OrdinalIgnoreCase)));
+            window.CurrentProfileForTest.Mappings.Add(new Mapping
+            {
+                Input = "F1",
+                Layer = "通常",
+                Kind = ActionKind.None,
+                LongPressKind = ActionKind.Shortcut,
+                LongPressValue = OverlayService.DeckPanelAction,
+                LongPressMs = 50
+            });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping
+            {
+                Input = "Space+J",
+                Layer = "Space",
+                Kind = ActionKind.Key,
+                Value = "Left"
+            });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "CapsLock+K", Layer = "CapsLock", Kind = ActionKind.Key, Value = "Right" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "MouseRight+L", Layer = "MouseRight", Kind = ActionKind.Key, Value = "Up" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "MouseBack+M", Layer = "MouseBack", Kind = ActionKind.Key, Value = "Down" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "MouseForward+N", Layer = "MouseForward", Kind = ActionKind.Key, Value = "Enter" });
+            window.SaveAndApplyForTest();
+            var staleMouseLeftLayerMapping = new Mapping { Input = "MouseLeft+J", Layer = "MouseLeft", Kind = ActionKind.Key, Value = "A" };
+            window.AddAppliedMappingForTest(staleMouseLeftLayerMapping);
+            bool staleMouseLeftLayerMappingIgnored = ReferenceEquals(window.RuntimeMappingForTest("MouseLeft+J"), staleMouseLeftLayerMapping)
+                && !window.RuntimeInterceptsInputForTest("MouseLeft+J");
+            string runtimeProfileBeforeLayerSelection = window.AppliedProfileNameForTest;
+            window.SetCapsLockRemapForTest(true);
+            var requestedDeckActions = new ConcurrentQueue<string>();
+            var focusedEditorKeyActions = new ConcurrentQueue<(ushort Key, bool Up)>();
+            var ordinaryMouseClickBatches = new ConcurrentQueue<(uint Flag, uint Data)[]>();
+            OverlayService.ActionRequestedForTest = requestedDeckActions.Enqueue;
+            InputEngine.KeyOutputForTest = (key, up) => { focusedEditorKeyActions.Enqueue((key, up)); return true; };
+            InputEngine.MouseFlagOutputForTest = (_, _) => { };
+            InputEngine.MouseClickBatchOutputForTest = batch => ordinaryMouseClickBatches.Enqueue(batch);
+            bool everyRuntimeActionWorkedOnEveryLayerEditor = true;
+            var editorLayerButtons = new[] { window.NormalLayerButton, window.SpaceLayerButton, window.CapsLockLayerButton, window.RightMouseLayerButton, window.BackMouseLayerButton, window.ForwardMouseLayerButton };
+            foreach (var layerButton in editorLayerButtons)
+            {
+                layerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                Pump(window);
+                var layerF2 = visualInputs.First(button => Equals(button.Tag, "F2"));
+                layerF2.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                Pump(window);
+                window.ValueBox.Focus();
+                System.Windows.Input.Keyboard.Focus(window.ValueBox);
+                Pump(window);
+                int before = requestedDeckActions.Count;
+                var f1Down = window.DirectPhysicalKeyForTest(0x70, false);
+                bool requested = SpinWait.SpinUntil(() => requestedDeckActions.Count > before, 500);
+                var f1Up = window.DirectPhysicalKeyForTest(0x70, true);
+                var unassignedF24Down = window.DirectPhysicalKeyForTest(0x87, false);
+                var unassignedF24Up = window.DirectPhysicalKeyForTest(0x87, true);
+                int keyActionsBefore = focusedEditorKeyActions.Count;
+                var spaceDown = window.DirectPhysicalKeyForTest(0x20, false);
+                var jDown = window.DirectPhysicalKeyForTest(0x4A, false);
+                var jUp = window.DirectPhysicalKeyForTest(0x4A, true);
+                var spaceUp = window.DirectPhysicalKeyForTest(0x20, true);
+                bool spaceStateClean = !window.HasCapturedInputStateForTest;
+
+                var capsDown = window.DirectPhysicalKeyForTest(0x7C, false);
+                var kDown = window.DirectPhysicalKeyForTest(0x4B, false);
+                var kUp = window.DirectPhysicalKeyForTest(0x4B, true);
+                var capsUp = window.DirectPhysicalKeyForTest(0x7C, true);
+                bool capsStateClean = !window.HasCapturedInputStateForTest;
+
+                var rightDown = window.DirectPhysicalMouseForTest(0x204);
+                var lDown = window.DirectPhysicalKeyForTest(0x4C, false);
+                var lUp = window.DirectPhysicalKeyForTest(0x4C, true);
+                var rightUp = window.DirectPhysicalMouseForTest(0x205);
+                bool rightStateClean = !window.HasCapturedInputStateForTest;
+
+                var backDown = window.DirectPhysicalMouseForTest(0x20B, 1 << 16, 0, 0);
+                var mDown = window.DirectPhysicalKeyForTest(0x4D, false);
+                var mUp = window.DirectPhysicalKeyForTest(0x4D, true);
+                var backUp = window.DirectPhysicalMouseForTest(0x20C, 1 << 16, 0, 0);
+                bool backStateClean = !window.HasCapturedInputStateForTest;
+
+                var forwardDown = window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0);
+                var nDown = window.DirectPhysicalKeyForTest(0x4E, false);
+                var nUp = window.DirectPhysicalKeyForTest(0x4E, true);
+                var forwardUp = window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0);
+                bool forwardStateClean = !window.HasCapturedInputStateForTest;
+                bool allKeyActionsProduced = SpinWait.SpinUntil(() => focusedEditorKeyActions.Count >= keyActionsBefore + 10, 500);
+                int clickBatchesBeforePlainClicks = ordinaryMouseClickBatches.Count;
+                bool mappedChordsDidNotReplaySourceClicks = clickBatchesBeforePlainClicks == (Array.IndexOf(editorLayerButtons, layerButton) * 3);
+
+                var unassignedLeftDown = window.DirectPhysicalMouseForTest(0x201);
+                var unassignedLeftUp = window.DirectPhysicalMouseForTest(0x202);
+                bool unassignedLeftStateClean = !window.HasCapturedInputStateForTest;
+
+                var plainRightDown = window.DirectPhysicalMouseForTest(0x204);
+                var plainRightUp = window.DirectPhysicalMouseForTest(0x205);
+                bool plainRightStateClean = !window.HasCapturedInputStateForTest;
+                bool plainRightReplayed = SpinWait.SpinUntil(() => ordinaryMouseClickBatches.Count >= clickBatchesBeforePlainClicks + 1, 500);
+                var plainBackDown = window.DirectPhysicalMouseForTest(0x20B, 1 << 16, 0, 0);
+                var plainBackUp = window.DirectPhysicalMouseForTest(0x20C, 1 << 16, 0, 0);
+                bool plainBackStateClean = !window.HasCapturedInputStateForTest;
+                bool plainBackReplayed = SpinWait.SpinUntil(() => ordinaryMouseClickBatches.Count >= clickBatchesBeforePlainClicks + 2, 500);
+                var plainForwardDown = window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0);
+                var plainForwardUp = window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0);
+                bool plainForwardStateClean = !window.HasCapturedInputStateForTest;
+                bool plainForwardReplayed = SpinWait.SpinUntil(() => ordinaryMouseClickBatches.Count >= clickBatchesBeforePlainClicks + 3, 500);
+                var plainClickBatches = ordinaryMouseClickBatches.ToArray().Skip(clickBatchesBeforePlainClicks).Take(3).ToArray();
+                bool ordinaryClicksPreserved = unassignedLeftDown != (IntPtr)1 && unassignedLeftUp != (IntPtr)1
+                    && new[] { plainRightDown, plainRightUp, plainBackDown, plainBackUp, plainForwardDown, plainForwardUp }.All(result => result == (IntPtr)1)
+                    && plainRightReplayed && plainBackReplayed && plainForwardReplayed
+                    && plainClickBatches.Length == 3
+                    && plainClickBatches[0].SequenceEqual([(8u, 0u), (16u, 0u)])
+                    && plainClickBatches[1].SequenceEqual([(0x80u, 1u), (0x100u, 1u)])
+                    && plainClickBatches[2].SequenceEqual([(0x80u, 2u), (0x100u, 2u)]);
+                everyRuntimeActionWorkedOnEveryLayerEditor &= window.ValueBox.IsKeyboardFocusWithin
+                    && window.AppliedProfileNameForTest == runtimeProfileBeforeLayerSelection
+                    && staleMouseLeftLayerMappingIgnored
+                    && f1Down == (IntPtr)1 && f1Up == (IntPtr)1 && requested
+                    && unassignedF24Down != (IntPtr)1 && unassignedF24Up != (IntPtr)1
+                    && new[] { spaceDown, jDown, jUp, spaceUp, capsDown, kDown, kUp, capsUp, rightDown, lDown, lUp, rightUp, backDown, mDown, mUp, backUp, forwardDown, nDown, nUp, forwardUp }.All(result => result == (IntPtr)1)
+                    && allKeyActionsProduced && mappedChordsDidNotReplaySourceClicks && ordinaryClicksPreserved
+                    && spaceStateClean && capsStateClean && rightStateClean && backStateClean && forwardStateClean
+                    && unassignedLeftStateClean && plainRightStateClean && plainBackStateClean && plainForwardStateClean;
+            }
+            OverlayService.ActionRequestedForTest = null;
+            InputEngine.KeyOutputForTest = null;
+            InputEngine.MouseFlagOutputForTest = null;
+            InputEngine.MouseClickBatchOutputForTest = null;
+            window.RemoveAppliedMappingForTest(staleMouseLeftLayerMapping);
+            window.SetCapsLockRemapForTest(false);
+            Check(everyRuntimeActionWorkedOnEveryLayerEditor
+                && requestedDeckActions.All(action => action == OverlayService.DeckPanelAction)
+                && requestedDeckActions.Count == editorLayerButtons.Length
+                && new ushort[] { 0x25, 0x27, 0x26, 0x28, 0x0D }.All(key =>
+                    focusedEditorKeyActions.Count(action => action == (key, false)) == editorLayerButtons.Length
+                    && focusedEditorKeyActions.Count(action => action == (key, true)) == editorLayerButtons.Length)
+                && ordinaryMouseClickBatches.Count == editorLayerButtons.Length * 3,
+                "every layer editor keeps all runtime actions active, rejects stale MouseLeft layer mappings, passes physical left clicks through without capture, and preserves ordinary right, back, and forward clicks");
             string? pickedInput = null;
             var inputPicker = new MacroInputPickerWindow("JIS") { Owner = window, ShowInTaskbar = false };
             inputPicker.InputChosen += input => pickedInput = input;
@@ -1709,7 +2068,16 @@ internal static class UiIntegrationTest
             bool scissorsSnipIsRunning = animatedScissors is TextBlock { RenderTransform: TransformGroup scissorsTransforms }
                 && scissorsTransforms.Children.OfType<ScaleTransform>().Any(transform => transform.HasAnimatedProperties)
                 && scissorsTransforms.Children.OfType<RotateTransform>().Any(transform => transform.HasAnimatedProperties);
-            Check(lightDeckIconPicker.PresetCountForTest == 100 && lightDeckIconPicker.AnimatedPresetCountForTest == 100 && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && animatedPresetIsRunning && scissorsSnipIsRunning && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), $"Deck icon picker separates 100 theme-readable still presets from 100 continuously animated presets, including the scissors-specific two-part snip motion, and retains custom image browsing (still={lightDeckIconPicker.PresetCountForTest}, animated={lightDeckIconPicker.AnimatedPresetCountForTest}, running={animatedPresetIsRunning}, scissors={scissorsSnipIsRunning})");
+            Check(lightDeckIconPicker.PresetCountForTest == 200 && lightDeckIconPicker.AnimatedPresetCountForTest == 200 && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && animatedPresetIsRunning && scissorsSnipIsRunning && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), $"Deck icon picker separates 200 theme-readable still presets from 200 continuously animated presets, including software-oriented choices and the scissors-specific motion, and retains custom image browsing (still={lightDeckIconPicker.PresetCountForTest}, animated={lightDeckIconPicker.AnimatedPresetCountForTest}, running={animatedPresetIsRunning}, scissors={scissorsSnipIsRunning})");
+            var presetButtons = lightDeckIconPicker.PresetPanel.Children.Cast<System.Windows.Controls.Button>().Take(3).ToArray();
+            bool presetsFillAvailableWidth = lightDeckIconPicker.PresetPanel.ActualWidth >= lightDeckIconPicker.StaticPresetScroll.ViewportWidth - 1
+                && presetButtons.Length == 3
+                && Math.Abs(presetButtons[0].TranslatePoint(new System.Windows.Point(), lightDeckIconPicker).Y - presetButtons[2].TranslatePoint(new System.Windows.Point(), lightDeckIconPicker).Y) < 1;
+            var footerButtons = new[] { lightDeckIconPicker.BrowseButton, lightDeckIconPicker.ClearButton, lightDeckIconPicker.CancelButton, lightDeckIconPicker.ApplyButton };
+            bool compactFooter = footerButtons.Select(button => button.TranslatePoint(new System.Windows.Point(), lightDeckIconPicker).Y).DistinctBy(y => Math.Round(y)).Count() == 1
+                && footerButtons.All(button => Math.Abs(button.ActualHeight - 44) < 1)
+                && Math.Abs(lightDeckIconPicker.BrowseButton.ActualWidth - lightDeckIconPicker.ClearButton.ActualWidth) < 1;
+            Check(presetsFillAvailableWidth && compactFooter, "Deck icon picker uses the full list width without a preview gap and keeps Browse, None, Cancel, and Apply aligned in one equal-height row");
             string customGifPath = Path.Combine(testConfigDirectory, "custom-deck-icon.gif");
             var gifEncoder = new GifBitmapEncoder();
             foreach (byte red in new byte[] { 0, 255 })
@@ -1729,7 +2097,7 @@ internal static class UiIntegrationTest
             gifHost.Show();
             PumpFor(TimeSpan.FromMilliseconds(600));
             long gifAdvancesBefore = customGifIcon?.FrameAdvanceCountForTest ?? -1;
-            PumpFor(TimeSpan.FromMilliseconds(240));
+            PumpFor(TimeSpan.FromMilliseconds(500));
             Check(customGifIcon is { FrameCountForTest: >= 2, Source: not null } && customGifIcon.FrameAdvanceCountForTest > gifAdvancesBefore, $"a user-selected GIF is bounded, decoded off the UI path, and continuously advances through its loop (frames={customGifIcon?.FrameCountForTest ?? 0}, advances={customGifIcon?.FrameAdvanceCountForTest ?? 0})");
             gifHost.Close();
             CaptureForReview(lightDeckIconPicker, "deck-icon-picker-light.png");
@@ -1755,7 +2123,20 @@ internal static class UiIntegrationTest
             System.Windows.Input.Keyboard.Focus(window.DeckColumnsBox);
             Pump(window);
             Check(window.DeckColumnsBox.Width >= 64 && window.DeckColumnsBox.Height >= 40 && window.DeckRowsBox.Width >= 64 && window.DeckRowsBox.Height >= 40 && window.DeckColumnsBox.Text == "１２" && MainWindow.TryResolveDeckLayoutSize("custom", window.DeckColumnsBox.Text, window.DeckRowsBox.Text, out int lightColumns, out int lightRows) && lightColumns == 12 && lightRows == 18, "Deck dimension fields are large enough to read and accept full-width digits");
-            Check(window.DeckColumnsBox.IsKeyboardFocusWithin && !window.ShouldInterceptPhysicalInputForTest, $"physical keyboard input passes through RELYR while a Deck dimension field owns focus (visible={window.DeckColumnsBox.IsVisible}, enabled={window.DeckColumnsBox.IsEnabled}, focus={window.DeckColumnsBox.IsKeyboardFocusWithin}, focused={System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "none"}, intercept={window.ShouldInterceptPhysicalInputForTest})");
+            Check(window.DeckColumnsBox.IsKeyboardFocusWithin && window.ShouldInterceptPhysicalInputForTest && window.ShouldInterceptPhysicalMouseForTest, $"a focused Deck text field leaves normal keyboard and mouse mappings active while unassigned keys pass through (visible={window.DeckColumnsBox.IsVisible}, enabled={window.DeckColumnsBox.IsEnabled}, focus={window.DeckColumnsBox.IsKeyboardFocusWithin}, focused={System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "none"}, keyboardIntercept={window.ShouldInterceptPhysicalInputForTest}, mouseIntercept={window.ShouldInterceptPhysicalMouseForTest})");
+            var focusedEditorLayerEvents = new List<string>();
+            using (var focusedEditorLayerEngine = new InputEngine())
+            {
+                focusedEditorLayerEngine.ShouldInterceptInput = () => focusedEditorLayerEngine.HasCapturedPhysicalInput;
+                focusedEditorLayerEngine.ShouldInterceptMouseInput = () => true;
+                focusedEditorLayerEngine.HasMapping = input => input is "MouseRight+*" or "MouseRight+Space";
+                focusedEditorLayerEngine.InputReceived = input => { focusedEditorLayerEvents.Add(input); return input.Equals("MouseRight+Space", StringComparison.OrdinalIgnoreCase); };
+                var focusedRightDown = focusedEditorLayerEngine.DirectMouseForTest(0x204);
+                var focusedSpaceDown = focusedEditorLayerEngine.DirectKeyForTest(0x20, false);
+                var focusedSpaceUp = focusedEditorLayerEngine.DirectKeyForTest(0x20, true);
+                var focusedRightUp = focusedEditorLayerEngine.DirectMouseForTest(0x205);
+                Check(focusedRightDown == (IntPtr)1 && focusedSpaceDown == (IntPtr)1 && focusedSpaceUp == (IntPtr)1 && focusedRightUp == (IntPtr)1 && focusedEditorLayerEvents.SequenceEqual(["MouseRight+Space"]) && !focusedEditorLayerEngine.HasCapturedStateForTest(), "MouseRight+Space executes its Deck-capable layer chord once even while an active RELYR text editor receives standalone keys");
+            }
             var lightAudioButton = window.DeckManagementButtonsForTest[2];
             Check(Descendants<System.Windows.Shapes.Path>(lightAudioButton).Any(path => Equals(path.Fill, lightAudioButton.Foreground)), "Deck audio and play icons inherit readable button text color in the light theme");
             CaptureForReview(window, "deck-editor-light.png");

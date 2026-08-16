@@ -48,10 +48,12 @@ public partial class MainWindow : Window
     readonly Task actionWorker;
     readonly BlockingCollection<(Mapping? Map, string Input)> dragActionQueue = [];
     readonly Task dragActionWorker;
+    readonly BlockingCollection<string> taskbarClickReplayQueue = [];
+    readonly Task taskbarClickReplayWorker;
     readonly ConcurrentDictionary<string, InputMappingSnapshot> activeInputMappings = new(StringComparer.OrdinalIgnoreCase);
     readonly ConcurrentDictionary<string, LayerMappingSnapshot> activeLayerMappings = new(StringComparer.OrdinalIgnoreCase);
     readonly System.Windows.Threading.DispatcherTimer trayNumberTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
-    readonly System.Windows.Threading.DispatcherTimer profileSwitchTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    readonly System.Windows.Threading.DispatcherTimer profileSwitchTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     bool profileDropDownOpen;
     string explicitProfileSwitchProcess = "";
     string automaticProfileReturnName = "";
@@ -75,7 +77,6 @@ public partial class MainWindow : Window
     private bool allowClose;
     private readonly bool engineStarted;
     private bool editingSelectedInput;
-    bool textInputOwnsPhysicalKeys;
     private bool selectionPulseSuppressed;
     int exitRequested;
     int restartRequested;
@@ -92,7 +93,9 @@ public partial class MainWindow : Window
     string lastProfileOverlayName = "";
     Mapping? copiedMapping;
     Dictionary<string, Mapping?>? copiedMultiMappings;
+    bool copiedMultiMappingsAreDeck;
     readonly HashSet<string> multiSelectedInputs = new(StringComparer.OrdinalIgnoreCase);
+    int deckMultiSelectionAnchor;
     TextBox? destinationInputTarget;
     readonly List<System.Windows.Controls.Button> deckManagementButtons = [];
     readonly Dictionary<System.Windows.Controls.Button, TextBlock> deckManagementNameLabels = [];
@@ -110,6 +113,7 @@ public partial class MainWindow : Window
     readonly System.Windows.Forms.NotifyIcon tray = new();
     readonly bool suppressTray;
     readonly RuntimeRole runtimeRole;
+    readonly bool inputHooksRequired;
     int trayDisposed;
     Profile CurrentProfile => config.Profiles.First(x => x.Name == config.ActiveProfile);
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x => x.Name == appliedConfig.ActiveProfile) ?? appliedConfig.Profiles[0];
@@ -136,15 +140,18 @@ public partial class MainWindow : Window
         }
     }
 
-    public MainWindow(bool skipSetup = false, bool suppressTray = false, AppConfig? startupConfig = null, RuntimeRole runtimeRole = RuntimeRole.Standard)
+    public MainWindow(bool skipSetup = false, bool suppressTray = false, AppConfig? startupConfig = null, RuntimeRole runtimeRole = RuntimeRole.Standard, bool startInputHooks = true)
     {
         this.suppressTray = suppressTray;
         this.runtimeRole = runtimeRole;
+        inputHooksRequired = startInputHooks;
         loading = true;
         InitializeComponent();
-        AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(UpdateTextInputFocus), true);
-        AddHandler(Keyboard.LostKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(UpdateTextInputFocus), true);
-        Loaded += (_, _) => { EnsureUpdateCheckStarted(); Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea); };
+        Loaded += (_, _) =>
+        {
+            EnsureUpdateCheckStarted();
+            Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea);
+        };
         IsVisibleChanged += (_, _) => { if (IsVisible) EnsureUpdateCheckStarted(); };
         StateChanged += (_, _) => { if (IsVisible && WindowState != WindowState.Minimized) EnsureUpdateCheckStarted(); };
         SourceInitialized += (_, _) =>
@@ -180,7 +187,7 @@ public partial class MainWindow : Window
         engine.TreatF13AsCapsLock = capsLockRemapped;
         appliedConfig = store.Clone(config);
         OverlayService.Configure(
-            () => config,
+            DeckOverlayConfig,
             () => engine.HasCapturedPhysicalInput,
             mapping => { try { if (!actionQueue.IsAddingCompleted) actionQueue.TryAdd((mapping, mapping.Input, true)); } catch (InvalidOperationException) { } },
             PersistDeckPanelPosition,
@@ -201,6 +208,7 @@ public partial class MainWindow : Window
         deckExecutor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", DeckExecutionConfig, null, ipcShortcut, ipcText, ipcMouse, uiOverlayRequest, isDeckExecution: true, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
         actionWorker = Task.Run(ProcessActions);
         dragActionWorker = Task.Factory.StartNew(ProcessDragActions, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        taskbarClickReplayWorker = Task.Factory.StartNew(ProcessTaskbarClickReplays, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         AutoSaveToggle.IsChecked = config.AutoSave;
         UpdateAutoSaveToggleText();
         KeyboardLayoutBox.SelectedIndex = config.KeyboardLayout == "US" ? 1 : 0;
@@ -232,16 +240,15 @@ public partial class MainWindow : Window
         // press until its physical release is received.
         engine.ShouldInterceptInput = runtimeRole == RuntimeRole.ElevatedHelper
             ? () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated())
-            : runtimeRole == RuntimeRole.UiHost
-                ? () => engine.HasCapturedPhysicalInput || (!Volatile.Read(ref textInputOwnsPhysicalKeys) && ShouldUiHostInterceptInput(false, ConditionMatcher.IsForegroundVirtualMachineConsole(), WindowMonitorService.IsForegroundWindowElevated(), IpcRuntime.IsConnected))
-                : () => engine.HasCapturedPhysicalInput || !Volatile.Read(ref textInputOwnsPhysicalKeys);
-        engine.IsNativeMouseDrag = input => FindMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
-        engine.HasLegacyMouseDrag = input => FindMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
+            : null;
+        engine.ShouldInterceptMouseInput = engine.ShouldInterceptInput;
+        engine.IsNativeMouseDrag = input => FindCapturedInputMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
+        engine.HasLegacyMouseDrag = input => FindCapturedInputMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
         engine.SuppressLayerTap = key => key.Equals("CapsLock", StringComparison.OrdinalIgnoreCase);
-        engine.HasLongPress = input => HasConfiguredLongPress(FindMapping(input));
-        engine.IsGesturePress = input => FindMapping(input)?.Kind == ActionKind.Gesture;
-        engine.IsGestureLongPress = input => FindMapping(input)?.LongPressKind == ActionKind.Gesture;
-        engine.LongPressDuration = input => FindMapping(input)?.LongPressMs ?? 500;
+        engine.HasLongPress = input => HasConfiguredLongPress(FindCapturedInputMapping(input));
+        engine.IsGesturePress = input => FindCapturedInputMapping(input)?.Kind == ActionKind.Gesture;
+        engine.IsGestureLongPress = input => FindCapturedInputMapping(input)?.LongPressKind == ActionKind.Gesture;
+        engine.LongPressDuration = input => FindCapturedInputMapping(input)?.LongPressMs ?? 500;
         engine.DragPixels = config.MouseDragPixels;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
         engine.Detected += text => Dispatcher.BeginInvoke(() => HandleDetectedInput(text));
@@ -250,7 +257,15 @@ public partial class MainWindow : Window
         // The UI hook remains medium integrity so Explorer can drop files onto
         // Deck. The elevated helper has a second, filtered hook which handles
         // configured key and shortcut mappings while an elevated window is foreground.
-        if (runtimeRole == RuntimeRole.ElevatedHelper)
+        if (!startInputHooks)
+        {
+            // UI integration tests use the exact engine callbacks and workers,
+            // but must never register a second system-wide hook beside the
+            // user's running RELYR. Treat the direct-event backend as ready.
+            engineStarted = true;
+            engine.Enabled = config.EngineEnabled;
+        }
+        else if (runtimeRole == RuntimeRole.ElevatedHelper)
         {
             try
             {
@@ -346,6 +361,12 @@ public partial class MainWindow : Window
         => InputEngine.SendMouse(value);
     void QueueAutomaticProfileCheck()
     {
+        // PointerMoved is raised from the low-level hook. When automatic routing
+        // is already settled, avoid allocating a dispatcher operation for every
+        // physical mouse packet.
+        if (!appliedConfig.AutoSwitchProfilesByCursor
+            && appliedConfig.ActiveProfile.Equals(config.ActiveProfile, StringComparison.OrdinalIgnoreCase))
+            return;
         if (Interlocked.Exchange(ref automaticProfileCheckQueued, 1) != 0)
             return;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
@@ -469,9 +490,6 @@ public partial class MainWindow : Window
         if (engine != null)
             UpdateStatus();
     }
-
-    void UpdateTextInputFocus(object sender, KeyboardFocusChangedEventArgs e)
-        => Volatile.Write(ref textInputOwnsPhysicalKeys, e.NewFocus is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox);
 
     internal static bool IsWindowsAppDarkMode()
     {
@@ -704,7 +722,7 @@ public partial class MainWindow : Window
         const double gap = SecondaryKeyGap, keyHeight = SecondaryKeyHeight, padding = 10;
         const double top = 10, tiltLabelTop = 181, tiltTop = 200, forwardTop = 270, backTop = 326, panelHeight = 390;
         double unit = SecondaryKeyWidth;
-        double doubleHeight = keyHeight * 2 + gap;
+        double doubleHeight = keyHeight * 3 + gap * 2;
         double centerX = padding + unit + gap;
         double rightX = centerX + unit + gap;
         double panelWidth = padding * 2 + unit * 3 + gap * 2;
@@ -713,7 +731,6 @@ public partial class MainWindow : Window
 
         MousePanel.Width = MouseCanvas.Width = MouseBody.Width = panelWidth;
         MousePanel.Height = MouseCanvas.Height = MouseBody.Height = panelHeight;
-        Canvas.SetLeft(MouseWheelWatermark, (panelWidth - MouseWheelWatermark.Width) / 2);
         SetMouseBounds(MouseLeftVisual, padding, top, unit, doubleHeight);
         SetMouseBounds(MouseRightVisual, rightX, top, unit, doubleHeight);
         SetMouseBounds(WheelUpVisual, centerX, top, unit, keyHeight);
@@ -861,6 +878,11 @@ public partial class MainWindow : Window
     }
     void SelectVisualInput(string key)
     {
+        if (IsProtectedNormalLeftClick(key))
+        {
+            ShowInlineError("通常レイヤーの左クリックは変更すると危険なため設定できません");
+            return;
+        }
         if (key == "Space" && currentLayer is "通常" or "Space")
         {
             ShowInlineNotice("SpaceキーはSpaceレイヤー専用のため、このレイヤーでは変更できません");
@@ -886,6 +908,8 @@ public partial class MainWindow : Window
     {
         if (MultiSelectToggle.IsChecked == true)
             return;
+        if (IsProtectedNormalLeftClick(key))
+            return;
         if (key == "Space" && currentLayer is "通常" or "Space")
             return;
         if (key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null)
@@ -898,6 +922,16 @@ public partial class MainWindow : Window
         if (sender is System.Windows.Controls.Button { Tag: string key })
             SelectVisualInput(key);
     }
+    void MouseCanvas_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!IsProtectedNormalLeftClick("MouseLeft"))
+            return;
+        var hit = MouseCanvas.InputHitTest(e.GetPosition(MouseCanvas)) as DependencyObject;
+        if (hit == null || !IsDescendantOf(hit, MouseLeftVisual))
+            return;
+        e.Handled = true;
+        ShowInlineError("通常レイヤーの左クリックは変更すると危険なため設定できません");
+    }
     void InputButton_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is System.Windows.Controls.Button { Tag: string key })
@@ -905,15 +939,6 @@ public partial class MainWindow : Window
             e.Handled = true;
             OpenShortcutForVisualInput(key);
         }
-    }
-    void ExecutionValue_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (sender is not TextBox target)
-            return;
-        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (!ApplyPhysicalExecutionKey(target, key, Keyboard.Modifiers))
-            return;
-        e.Handled = true;
     }
     void ExecutionValue_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
@@ -923,35 +948,14 @@ public partial class MainWindow : Window
         editingSelectedInput = true;
         UpdateExecutionEditButtons(target);
     }
-    bool ApplyPhysicalExecutionKey(TextBox target, Key key, ModifierKeys modifiers)
-    {
-        bool modifierKey = key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
-        bool enterKey = key is Key.Return;
-        var kindBox = ReferenceEquals(target, LongValueBox) ? LongKindBox : KindBox;
-        var editorKind = kindBox.SelectedValue is ActionKind kind ? kind : ActionKind.None;
-        bool capturesSingleKey = editorKind is ActionKind.Key or ActionKind.Shortcut;
-        if (!modifierKey && !enterKey && modifiers == ModifierKeys.None && !capturesSingleKey)
-            return false;
-        string value = ShortcutTextForKey(key, modifiers);
-        if (value.Length == 0)
-            return false;
-        target.Text = value;
-        target.CaretIndex = target.Text.Length;
-        kindBox.SelectedValue = modifierKey || modifiers != ModifierKeys.None || editorKind == ActionKind.Shortcut ? ActionKind.Shortcut : ActionKind.Key;
-        return true;
-    }
     internal static string ShortcutTextForKey(Key key, ModifierKeys modifiers)
     {
         bool modifierKey = key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
         var parts = new List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0 || key is Key.LeftCtrl or Key.RightCtrl)
-            parts.Add("Ctrl");
-        if ((modifiers & ModifierKeys.Shift) != 0 || key is Key.LeftShift or Key.RightShift)
-            parts.Add("Shift");
-        if ((modifiers & ModifierKeys.Alt) != 0 || key is Key.LeftAlt or Key.RightAlt)
-            parts.Add("Alt");
-        if ((modifiers & ModifierKeys.Windows) != 0 || key is Key.LWin or Key.RWin)
-            parts.Add("Win");
+        if ((modifiers & ModifierKeys.Control) != 0 || key is Key.LeftCtrl or Key.RightCtrl) parts.Add("Ctrl");
+        if ((modifiers & ModifierKeys.Shift) != 0 || key is Key.LeftShift or Key.RightShift) parts.Add("Shift");
+        if ((modifiers & ModifierKeys.Alt) != 0 || key is Key.LeftAlt or Key.RightAlt) parts.Add("Alt");
+        if ((modifiers & ModifierKeys.Windows) != 0 || key is Key.LWin or Key.RWin) parts.Add("Win");
         if (!modifierKey)
         {
             string token = ShortcutTokenForKey(key);
@@ -960,58 +964,36 @@ public partial class MainWindow : Window
         }
         return string.Join("+", parts);
     }
+
     internal static string ShortcutTokenForKey(Key key)
     {
-        if (key is >= Key.A and <= Key.Z)
-            return key.ToString();
-        if (key is >= Key.D0 and <= Key.D9)
-            return ((int)key - (int)Key.D0).ToString();
-        if (key is >= Key.NumPad0 and <= Key.NumPad9)
-            return "NumPad" + ((int)key - (int)Key.NumPad0);
-        if (key is >= Key.F1 and <= Key.F24)
-            return key.ToString();
+        if (key is >= Key.A and <= Key.Z) return key.ToString();
+        if (key is >= Key.D0 and <= Key.D9) return ((int)key - (int)Key.D0).ToString();
+        if (key is >= Key.NumPad0 and <= Key.NumPad9) return "NumPad" + ((int)key - (int)Key.NumPad0);
+        if (key is >= Key.F1 and <= Key.F24) return key.ToString();
         return key switch
         {
-            Key.CapsLock => "CapsLock",
-            Key.Return => "Enter",
-            Key.Escape => "Esc",
-            Key.Back => "Backspace",
-            Key.Delete => "Delete",
-            Key.Space => "Space",
-            Key.Tab => "Tab",
-            Key.Insert => "Insert",
-            Key.Home => "Home",
-            Key.End => "End",
-            Key.PageUp => "PageUp",
-            Key.PageDown => "PageDown",
-            Key.Up => "Up",
-            Key.Down => "Down",
-            Key.Left => "Left",
-            Key.Right => "Right",
-            Key.OemPlus => "+",
-            Key.OemMinus => "-",
-            Key.OemComma => ",",
-            Key.OemPeriod => ".",
-            Key.OemQuestion => "/",
-            Key.OemSemicolon => ";",
-            Key.OemQuotes => "'",
-            Key.OemOpenBrackets => "[",
-            Key.OemCloseBrackets => "]",
-            Key.OemPipe => "\\",
-            Key.OemTilde => "^",
-            Key.Multiply => "Multiply",
-            Key.Divide => "Divide",
-            Key.Add => "Add",
-            Key.Subtract => "Subtract",
-            Key.Decimal => "Decimal",
-            _ => key.ToString()
+            Key.CapsLock => "CapsLock", Key.Return => "Enter", Key.Escape => "Esc", Key.Back => "Backspace",
+            Key.Delete => "Delete", Key.Space => "Space", Key.Tab => "Tab", Key.Insert => "Insert", Key.Home => "Home",
+            Key.End => "End", Key.PageUp => "PageUp", Key.PageDown => "PageDown", Key.Up => "Up", Key.Down => "Down",
+            Key.Left => "Left", Key.Right => "Right", Key.OemPlus => "+", Key.OemMinus => "-", Key.OemComma => ",",
+            Key.OemPeriod => ".", Key.OemQuestion => "/", Key.OemSemicolon => ";", Key.OemQuotes => "'",
+            Key.OemOpenBrackets => "[", Key.OemCloseBrackets => "]", Key.OemPipe => "\\", Key.OemTilde => "^",
+            Key.Multiply => "Multiply", Key.Divide => "Divide", Key.Add => "Add", Key.Subtract => "Subtract",
+            Key.Decimal => "Decimal", _ => key.ToString()
         };
     }
+
     void InputButton_RightClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not System.Windows.Controls.Button { Tag: string key })
             return;
         e.Handled = true;
+        if (IsProtectedNormalLeftClick(key))
+        {
+            ShowInlineError("通常レイヤーの左クリックは変更すると危険なため設定できません");
+            return;
+        }
         if (MultiSelectToggle.IsChecked == true && multiSelectedInputs.Count > 0)
         {
             var multiMenu = CreateMultiSelectionContextMenu();
@@ -1032,7 +1014,7 @@ public partial class MainWindow : Window
             return;
         }
         var button = (System.Windows.Controls.Button)sender;
-        var menu = CreateInputContextMenu(key, KeyboardPanel.Children.Contains(button));
+        var menu = CreateInputContextMenu(key, KeyboardPanel.Children.Contains(button) || InputButtons(MousePanel).Contains(button));
         menu.PlacementTarget = (System.Windows.Controls.Button)sender;
         menu.IsOpen = true;
     }
@@ -1111,7 +1093,7 @@ public partial class MainWindow : Window
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = "選択した割り当てをコピー", IsEnabled = multiSelectedInputs.Count > 0 };
         copy.Click += (_, _) => CopyMultiSelection();
-        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMultiMappings is { Count: > 0 } };
+        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode };
         paste.Click += (_, _) => PasteMultiSelection();
         var delete = new MenuItem { Header = "選択した割り当てを削除", IsEnabled = multiSelectedInputs.Count > 0, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => DeleteMultiSelection();
@@ -1133,19 +1115,24 @@ public partial class MainWindow : Window
     {
         if (multiSelectedInputs.Count == 0)
             return;
+        var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
         copiedMultiMappings = multiSelectedInputs.ToDictionary(key => key, key =>
         {
-            var mapping = CurrentProfile.Mappings.LastOrDefault(x => x.Input.Equals(InputForCurrentLayer(key), StringComparison.OrdinalIgnoreCase));
+            string input = MultiSelectionInput(key);
+            var mapping = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
             return mapping == null ? null : CloneMapping(mapping);
         }, StringComparer.OrdinalIgnoreCase);
+        copiedMultiMappingsAreDeck = deckManagementMode;
         UpdateMultiSelectControls();
         ShowInlineNotice($"{copiedMultiMappings.Count}入力の割り当てをコピーしました");
     }
     void PasteMultiSelection()
     {
-        if (copiedMultiMappings is not { Count: > 0 } || multiSelectedInputs.Count == 0)
+        if (copiedMultiMappings is not { Count: > 0 } || copiedMultiMappingsAreDeck != deckManagementMode || multiSelectedInputs.Count == 0)
             return;
-        var targets = multiSelectedInputs.Where(copiedMultiMappings.ContainsKey).Select(key => (Input: InputForCurrentLayer(key), Source: copiedMultiMappings[key])).ToList();
+        var selectedKeys = multiSelectedInputs.OrderBy(MultiSelectionOrder).ThenBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray();
+        var sources = copiedMultiMappings.OrderBy(pair => MultiSelectionOrder(pair.Key)).ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).Select(pair => pair.Value).ToArray();
+        var targets = selectedKeys.Select((key, index) => (Input: MultiSelectionInput(key), Source: sources.Length == 1 ? sources[0] : index < sources.Length ? sources[index] : null)).ToList();
         if (targets.Count == 0)
             return;
         foreach (var (Input, Source) in targets)
@@ -1153,13 +1140,14 @@ public partial class MainWindow : Window
                 return;
         foreach (var (Input, Source) in targets)
         {
-            CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(Input, StringComparison.OrdinalIgnoreCase));
+            var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
+            mappings.RemoveAll(x => x.Input.Equals(Input, StringComparison.OrdinalIgnoreCase));
             if (Source == null)
                 continue;
             var mapping = CloneMapping(Source);
             mapping.Input = Input;
-            mapping.Layer = currentLayer;
-            CurrentProfile.Mappings.Add(mapping);
+            mapping.Layer = deckManagementMode ? DeckPanelLayout.Layer : currentLayer;
+            mappings.Add(mapping);
         }
         MarkDirty();
         UpdateLayerButtons();
@@ -1171,8 +1159,9 @@ public partial class MainWindow : Window
     void DeleteMultiSelection()
     {
         int removed = 0;
+        var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
         foreach (var key in multiSelectedInputs)
-            removed += CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(InputForCurrentLayer(key), StringComparison.OrdinalIgnoreCase));
+            removed += mappings.RemoveAll(x => x.Input.Equals(MultiSelectionInput(key), StringComparison.OrdinalIgnoreCase));
         if (removed == 0)
         {
             ShowInlineNotice("削除する割り当てはありません");
@@ -1184,6 +1173,8 @@ public partial class MainWindow : Window
         ShowInlineNotice($"{removed}件の割り当てを削除しました");
     }
     string InputForCurrentLayer(string key) => currentLayer == "通常" ? key : currentLayer + "+" + key;
+    string MultiSelectionInput(string key) => deckManagementMode ? key : InputForCurrentLayer(key);
+    static int MultiSelectionOrder(string key) => DeckPanelLayout.IsInputName(key) ? DeckPanelLayout.SlotNumber(key) : int.MaxValue;
     void MultiSelectChanged(object sender, RoutedEventArgs e)
     {
         if (MultiSelectToggle.IsChecked == true)
@@ -1191,11 +1182,13 @@ public partial class MainWindow : Window
             if (destinationInputTarget != null || editingSelectedInput)
                 CompleteDestinationInput(MultiSelectToggle);
             multiSelectedInputs.Clear();
-            ShowInlineNotice("複数選択: キーやマウスボタンをクリックして選択します");
+            deckMultiSelectionAnchor = 0;
+            ShowInlineNotice(deckManagementMode ? "複数選択: Deckボタンをクリックして選択します" : "複数選択: キーやマウスボタンをクリックして選択します");
         }
         else
         {
             multiSelectedInputs.Clear();
+            deckMultiSelectionAnchor = 0;
             ShowInlineNotice("複数選択を終了しました");
         }
         UpdateMultiSelectControls();
@@ -1207,11 +1200,13 @@ public partial class MainWindow : Window
             return;
         bool active = MultiSelectToggle.IsChecked == true;
         MultiCopyButton.IsEnabled = active && multiSelectedInputs.Count > 0;
-        MultiPasteButton.IsEnabled = active && multiSelectedInputs.Count > 0 && copiedMultiMappings is { Count: > 0 };
+        MultiPasteButton.IsEnabled = active && multiSelectedInputs.Count > 0 && copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode;
         MultiDeleteButton.IsEnabled = active ? multiSelectedInputs.Count > 0 : HasDeletableSingleSelection();
         if (!active)
             return;
-        LastInput.Text = multiSelectedInputs.Count == 0 ? "複数選択: キーやマウスボタンをクリックして選択します" : $"複数選択: {multiSelectedInputs.Count}入力を選択中";
+        LastInput.Text = multiSelectedInputs.Count == 0
+            ? deckManagementMode ? "複数選択: Deckボタンをクリックして選択します" : "複数選択: キーやマウスボタンをクリックして選択します"
+            : $"複数選択: {multiSelectedInputs.Count}入力を選択中";
         LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
     bool HasDeletableSingleSelection()
@@ -1576,9 +1571,11 @@ public partial class MainWindow : Window
     }
     void ApplyProfileManagerResult(IReadOnlyList<Profile> profiles, string activeProfile, bool autoSwitch)
     {
+        string editingProfile = config.ActiveProfile;
         config.Profiles = [.. profiles];
+        SyncDeckProfileVariants();
         EnsureProfileDeckDefaults();
-        config.ActiveProfile = activeProfile;
+        config.ActiveProfile = config.Profiles.Any(profile => profile.Name.Equals(editingProfile, StringComparison.OrdinalIgnoreCase)) ? editingProfile : config.Profiles[0].Name;
         config.AutoSwitchProfilesByCursor = autoSwitch;
         automaticProfileReturnName = "";
         explicitProfileSwitchProcess = "";
@@ -1841,12 +1838,28 @@ public partial class MainWindow : Window
         }
         else
             MappingCollectionForInput(selected.Input).Remove(selected);
+        bool continuousTextEdit = ReferenceEquals(sender, ValueBox)
+            || ReferenceEquals(sender, LongValueBox)
+            || ReferenceEquals(sender, LongPressBox);
         UpdateBrowseButtons();
-        UpdateLayerButtons();
-        UpdateMultiSelectControls();
-        MarkDirty();
-        RefreshSelectedInputVisual(selected.Input);
-        AnimateAssignmentCommit(selected.Input);
+        if (continuousTextEdit)
+        {
+            // An 18x18 Deck contains 324 controls. Rebuilding the Deck overlay,
+            // recoloring the complete keyboard, and restarting an animation for
+            // every typed character makes the editor lag behind the caret. Keep
+            // the draft only; CompleteDestinationInput/SaveAndApply performs one
+            // complete visual and runtime refresh after confirmation.
+            MarkDirty(refreshDeckPanel: false);
+            RefreshSelectedInputVisual(selected.Input);
+        }
+        else
+        {
+            UpdateLayerButtons();
+            UpdateMultiSelectControls();
+            MarkDirty();
+            RefreshSelectedInputVisual(selected.Input);
+            AnimateAssignmentCommit(selected.Input);
+        }
         if (ReferenceEquals(sender, KindBox))
             FocusExecutionValue(ValueBox);
         else if (ReferenceEquals(sender, LongKindBox))
@@ -1956,32 +1969,32 @@ public partial class MainWindow : Window
         {
             if (dragEnd || pressEnd)
             {
-                // A physical left-button Up must clear a possible modifier
-                // drag before the next native click reaches the target app.
-                // Queueing this release leaves a visible range-selection lag.
-                InputEngine.EndModifierDrag();
+                if (!QueueDragAction(null, input))
+                    _ = Task.Run(InputEngine.EndModifierDrag);
                 return true;
             }
             return false;
         }
+        // A taskbar long-press-only mouse mapping must not consume the normal
+        // short click. Replay that physical click only after ProcessPress has
+        // confirmed it was not promoted to the long action.
+        if (TaskbarShortClickReplay(map, baseInput, longPress, dragStart, dragEnd, pressStart, pressEnd) is { } replayClick)
+        {
+            // ProcessPress calls HandleInput while the low-level hook owns the
+            // engine state lock. SendInput here can stall Explorer and make
+            // Windows silently retire the hook. Preserve order on a dedicated
+            // worker and let this physical Up callback return immediately.
+            if (!taskbarClickReplayQueue.IsAddingCompleted)
+                taskbarClickReplayQueue.TryAdd(replayClick);
+            return true;
+        }
         var snapshot = CloneMapping(map);
         if ((pressStart || pressEnd || dragStart || dragEnd) && MappingExecutor.IsModifierDrag(snapshot.Value))
         {
-            // Modifier clicks are the one mapped action whose physical timing
-            // matters: start and end must be emitted in this hook callback.
-            // The former background queue could start/end a Shift click after
-            // the user's next ordinary click, leaving range selection active.
-            string phase = pressStart || dragStart ? ":Start" : ":End";
-            try
-            {
-                InputEngine.SendMouse(snapshot.Value + phase);
+            bool queued = QueueDragAction(snapshot, input);
+            if (queued)
                 RecordMappedAction(snapshot, input);
-            }
-            catch
-            {
-                InputEngine.ReleaseAll();
-            }
-            return true;
+            return queued;
         }
         if (pressStart || pressEnd)
             return false;
@@ -2015,8 +2028,14 @@ public partial class MainWindow : Window
             ?? appliedConfig.Profiles.FirstOrDefault();
         if (profile == null)
             return;
+        string foregroundProcess = profile.Mappings.Any(mapping => !string.IsNullOrWhiteSpace(mapping.Application))
+            ? ConditionMatcher.ForegroundProcessName()
+            : "";
         activeLayerMappings[layer] = new LayerMappingSnapshot(
-            profile.Mappings.Where(x => AppMatches(x.Application)).Select(CloneMapping).ToArray());
+            profile.Mappings
+                .Where(mapping => MappingApplicationMatches(mapping, foregroundProcess))
+                .Select(CloneMapping)
+                .ToArray());
     }
     void ReleaseLayerMappings(string layer) => activeLayerMappings.TryRemove(layer, out _);
     internal static (ActionKind Kind, string Value) GestureAction(GestureDefinition gesture, string direction) => direction switch
@@ -2051,7 +2070,9 @@ public partial class MainWindow : Window
     }
     void ProcessDragActions()
     {
+        Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
         foreach (var (Map, Input) in dragActionQueue.GetConsumingEnumerable())
+        {
             try
             {
                 if (Map == null)
@@ -2059,54 +2080,103 @@ public partial class MainWindow : Window
                     InputEngine.EndModifierDrag();
                     continue;
                 }
+                // A fast physical click can be released before this dedicated
+                // output worker wakes. Keep the queued Start/End pair intact so
+                // Ctrl/Shift click is never silently discarded.
                 bool result = executor.Execute(Map, Input, out var value);
+                if (result
+                    && !value.StartsWith("エラー:", StringComparison.Ordinal)
+                    && Input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase))
+                    engine.NotifyNativeMouseDragStarted(Input);
                 if (result)
                     Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }
             catch (Exception ex) { InputEngine.ReleaseAll(); Dispatcher.BeginInvoke(() => { LastInput.Text = "ドラッグ実行エラー: " + ex.Message; LastInput.Foreground = ThemeService.Brush("DangerBrush"); }); }
+        }
+    }
+    void ProcessTaskbarClickReplays()
+    {
+        Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
+        ProcessTaskbarClickReplays(taskbarClickReplayQueue.GetConsumingEnumerable(), InputEngine.SendMouse);
+    }
+    internal static void ProcessTaskbarClickReplays(IEnumerable<string> clicks, Action<string> sendClick)
+    {
+        foreach (string click in clicks)
+            try { sendClick(click); }
+            catch { InputEngine.ReleaseAll(); }
+    }
+    internal static string? TaskbarShortClickReplay(Mapping? map, string baseInput, bool longPress = false, bool dragStart = false, bool dragEnd = false, bool pressStart = false, bool pressEnd = false)
+    {
+        if (longPress || dragStart || dragEnd || pressStart || pressEnd
+            || map is not { Kind: ActionKind.None }
+            || map.LongPressKind == ActionKind.None
+            || !baseInput.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (baseInput.EndsWith("MouseLeft", StringComparison.OrdinalIgnoreCase))
+            return "MouseLeft";
+        return baseInput.EndsWith("MouseRight", StringComparison.OrdinalIgnoreCase) ? "MouseRight" : null;
     }
     bool QueueDragAction(Mapping? map, string input)
     {
         try
         {
-            return !dragActionQueue.IsAddingCompleted && dragActionQueue.TryAdd((map, input));
+            if (dragActionQueue.IsAddingCompleted)
+                return false;
+            // Do not wait here: HandleInput runs while the low-level hook owns
+            // the engine state lock. Waiting for SendInput would make the
+            // generated hook notification wait on that same lock and cancel the
+            // drag on timeout. The dedicated worker preserves start/end order;
+            // physical left-button Up remains the authoritative safety release.
+            return dragActionQueue.TryAdd((map, input));
         }
         catch (InvalidOperationException) { return false; }
     }
     string QualifyInput(string input)
     {
-        if (input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) || !ConditionMatcher.IsCursorOverTaskbar())
+        if (input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
             return input;
         string taskbarInput = "Taskbar+" + input;
-        return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, taskbarInput, x => MappingInterceptsInput(x) && AppMatches(x.Application)) != null ? taskbarInput : input;
+        // Cursor inspection crosses into user32. Only pay that cost when the
+        // active profile actually has an applicable taskbar mapping.
+        return FindApplicableProfileMapping(taskbarInput, MappingInterceptsInput) != null
+            && ConditionMatcher.IsCursorOverTaskbar() ? taskbarInput : input;
     }
     Mapping? FindMapping(string input)
     {
         if (TryGetLayerMappingSnapshot(input, out var layerSnapshot))
         {
-            if (!input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) && ConditionMatcher.IsCursorOverTaskbar())
+            if (!input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
             {
                 string taskbarInput = "Taskbar+" + input;
-                if (layerSnapshot.Mappings.LastOrDefault(x => x.Input.Equals(taskbarInput, StringComparison.OrdinalIgnoreCase)) is { } taskbarMapping)
+                var taskbarMapping = layerSnapshot.Mappings.LastOrDefault(x => x.Input.Equals(taskbarInput, StringComparison.OrdinalIgnoreCase));
+                if (taskbarMapping != null && ConditionMatcher.IsCursorOverTaskbar())
                     return taskbarMapping;
             }
             return layerSnapshot.Mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
         }
         if (input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
-            return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, input, x => MappingInterceptsInput(x) && AppMatches(x.Application));
+            return FindApplicableProfileMapping(input, MappingInterceptsInput);
         string qualified = QualifyInput(input);
         if (!qualified.Equals(input, StringComparison.OrdinalIgnoreCase))
-            return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, qualified, x => MappingInterceptsInput(x) && AppMatches(x.Application));
-        return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, input, x => MappingInterceptsInput(x) && AppMatches(x.Application));
+            return FindApplicableProfileMapping(qualified, MappingInterceptsInput);
+        return FindApplicableProfileMapping(input, MappingInterceptsInput);
     }
+    Mapping? FindCapturedInputMapping(string input)
+        => activeInputMappings.TryGetValue(input, out var captured) ? captured.Mapping : FindMapping(input);
     bool HasMapping(string input)
     {
+        // A profile created by an older build may still contain this mapping.
+        // Never intercept the system's primary click outside explicit layers
+        // such as Space+MouseLeft or Taskbar+MouseLeft.
+        if (input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
+            || input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase))
+            return false;
         if (input.EndsWith("+*", StringComparison.Ordinal))
         {
             string prefix = input[..^1];
             if (TryGetLayerMappingSnapshot(input, out var layerSnapshot))
                 return layerSnapshot.Mappings.Any(x => MappingInterceptsInput(x) && x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-            return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, null, x => MappingInterceptsInput(x) && x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && AppMatches(x.Application)) != null;
+            return FindApplicableProfileMapping(null, x => MappingInterceptsInput(x) && x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) != null;
         }
         return MappingInterceptsInput(FindMapping(input));
     }
@@ -2114,12 +2184,15 @@ public partial class MainWindow : Window
     {
         if (!WindowMonitorService.IsForegroundWindowElevated())
             return false;
+        if (input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
+            || input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase))
+            return false;
         if (input.EndsWith("+*", StringComparison.Ordinal))
         {
             string prefix = input[..^1];
             if (TryGetLayerMappingSnapshot(input, out var layerSnapshot))
                 return layerSnapshot.Mappings.Any(x => x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && IsElevatedInputMapping(x));
-            return FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, null, x => x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && AppMatches(x.Application) && IsElevatedInputMapping(x)) != null;
+            return FindApplicableProfileMapping(null, x => x.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && IsElevatedInputMapping(x)) != null;
         }
         return IsElevatedInputMapping(FindMapping(input));
     }
@@ -2129,8 +2202,6 @@ public partial class MainWindow : Window
         => MappingInterceptsInput(map)
             && (map!.Kind is ActionKind.Key or ActionKind.Shortcut
                 || map.LongPressKind is ActionKind.Key or ActionKind.Shortcut);
-    internal static bool ShouldUiHostInterceptInput(bool hasCapturedInput, bool virtualMachineConsoleForeground, bool foregroundElevated, bool helperConnected)
-        => hasCapturedInput || (!virtualMachineConsoleForeground && (!foregroundElevated || !helperConnected));
     bool TryGetLayerMappingSnapshot(string input, out LayerMappingSnapshot snapshot)
     {
         string candidate = input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) ? input["Taskbar+".Length..] : input;
@@ -2159,8 +2230,31 @@ public partial class MainWindow : Window
         var active = profiles.FirstOrDefault(x => x.Name == activeName) ?? profiles[0];
         return active.Mappings.LastOrDefault(x => (exactInput == null || x.Input.Equals(exactInput, StringComparison.OrdinalIgnoreCase)) && (predicate?.Invoke(x) ?? true));
     }
-    static bool AppMatches(string app) => ConditionMatcher.ForegroundProcessMatches(app);
-
+    Mapping? FindApplicableProfileMapping(string? exactInput, Func<Mapping, bool>? predicate = null)
+    {
+        string? foregroundProcess = null;
+        var mappings = AppliedProfile.Mappings;
+        for (int index = mappings.Count - 1; index >= 0; index--)
+        {
+            var mapping = mappings[index];
+            if ((exactInput != null && !mapping.Input.Equals(exactInput, StringComparison.OrdinalIgnoreCase))
+                || !(predicate?.Invoke(mapping) ?? true))
+                continue;
+            if (string.IsNullOrWhiteSpace(mapping.Application))
+                return mapping;
+            if (foregroundProcess == null)
+            {
+                foregroundProcess = ConditionMatcher.ForegroundProcessName();
+            }
+            if (MappingApplicationMatches(mapping, foregroundProcess))
+                return mapping;
+        }
+        return null;
+    }
+    internal static bool MappingApplicationMatches(Mapping mapping, string foregroundProcess)
+        => IsOwnProcess(foregroundProcess)
+            || string.IsNullOrWhiteSpace(mapping.Application)
+            || ConditionMatcher.Matches(mapping.Application, foregroundProcess);
     void RefreshProfiles()
     {
         loading = true;
@@ -2174,36 +2268,41 @@ public partial class MainWindow : Window
     {
         var keyboardButtons = InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).ToHashSet();
         foreach (var b in VisualInputButtons())
-        {
-            bool reserved = ((string)b.Tag == "Space" && currentLayer is "通常" or "Space") ||
-                          ((string)b.Tag == "CapsLock" && !editingSelectedInput && destinationInputTarget == null);
-            string input = currentLayer == "通常" ? (string)b.Tag : currentLayer + "+" + (string)b.Tag;
-            var assigned = FindProfileMapping(config.Profiles, CurrentProfile.Name, input, MappingInterceptsInput);
-            bool currentSelected = selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true;
-            bool multiSelected = MultiSelectToggle.IsChecked == true && multiSelectedInputs.Contains((string)b.Tag);
-            bool pulsing = multiSelected || (currentSelected && !selectionPulseSuppressed);
-            System.Windows.Media.Brush pulseBrush = ThemeService.Brush("AccentBrush");
-            b.Background = reserved ? ThemeService.Brush("ReservedKeyBackground") : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
-            b.BorderBrush = currentSelected || multiSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
-            b.BorderThickness = pulsing ? new Thickness(2) : new Thickness(1);
-            b.Foreground = assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
-            b.Opacity = reserved ? 0.48 : 1;
-            bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
-            bool pulseStateChanged = GetIsSelectionPulseActive(b) != pulsing;
-            SetIsMultiSelected(b, multiSelected);
-            SetIsCurrentSelected(b, currentSelected);
-            if (currentSelectionChanged)
-                SetCurrentSelectionVisual(b, currentSelected);
-            SetIsSelectionPulseActive(b, pulsing);
-            SetSelectionPulseBrush(b, pulseBrush);
-            if (pulseStateChanged)
-                SetSelectionPulseVisual(b, pulsing, pulseBrush);
-            b.ToolTip = assigned != null ? CreateAssignmentToolTip(assigned) : keyboardButtons.Contains(b) ? null : DefaultMouseToolTip((string)b.Tag);
-            ToolTipService.SetInitialShowDelay(b, 250);
-            ToolTipService.SetBetweenShowDelay(b, 80);
-            ToolTipService.SetShowDuration(b, 20000);
-        }
+            UpdateInputButtonVisual(b, keyboardButtons.Contains(b));
         ColorDeckManagementButtons();
+    }
+    void UpdateInputButtonVisual(System.Windows.Controls.Button b, bool keyboardButton)
+    {
+        bool protectedLeftClick = IsProtectedNormalLeftClick((string)b.Tag);
+        bool reserved = protectedLeftClick || ((string)b.Tag == "Space" && currentLayer is "通常" or "Space") ||
+                      ((string)b.Tag == "CapsLock" && !editingSelectedInput && destinationInputTarget == null);
+        string input = currentLayer == "通常" ? (string)b.Tag : currentLayer + "+" + (string)b.Tag;
+        var assigned = protectedLeftClick ? null : FindProfileMapping(config.Profiles, CurrentProfile.Name, input, MappingInterceptsInput);
+        bool currentSelected = selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true;
+        bool multiSelected = MultiSelectToggle.IsChecked == true && multiSelectedInputs.Contains((string)b.Tag);
+        bool pulsing = multiSelected || (currentSelected && !selectionPulseSuppressed);
+        System.Windows.Media.Brush pulseBrush = ThemeService.Brush("AccentBrush");
+        b.Background = reserved ? ThemeService.Brush("ReservedKeyBackground") : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
+        b.BorderBrush = currentSelected || multiSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
+        b.BorderThickness = pulsing ? new Thickness(2) : new Thickness(1);
+        b.Foreground = assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
+        b.Opacity = reserved ? 0.48 : 1;
+        b.IsEnabled = !protectedLeftClick;
+        bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
+        bool pulseStateChanged = GetIsSelectionPulseActive(b) != pulsing;
+        SetIsMultiSelected(b, multiSelected);
+        SetIsCurrentSelected(b, currentSelected);
+        if (currentSelectionChanged)
+            SetCurrentSelectionVisual(b, currentSelected);
+        SetIsSelectionPulseActive(b, pulsing);
+        SetSelectionPulseBrush(b, pulseBrush);
+        if (pulseStateChanged)
+            SetSelectionPulseVisual(b, pulsing, pulseBrush);
+        b.ToolTip = protectedLeftClick ? "通常レイヤーでは変更できません" : assigned != null ? CreateAssignmentToolTip(assigned) : keyboardButton ? null : DefaultMouseToolTip((string)b.Tag);
+        ToolTipService.SetShowOnDisabled(b, true);
+        ToolTipService.SetInitialShowDelay(b, 250);
+        ToolTipService.SetBetweenShowDelay(b, 80);
+        ToolTipService.SetShowDuration(b, 20000);
     }
     void AnimateAssignmentCommit(string input)
     {
@@ -2267,7 +2366,9 @@ public partial class MainWindow : Window
                 UpdateDeckManagementButtonVisual(button);
             return;
         }
-        ColorButtons();
+        var selectedButton = VisualInputButtons().FirstOrDefault(x => string.Equals(x.Tag?.ToString(), selectedBaseInput, StringComparison.OrdinalIgnoreCase));
+        if (selectedButton != null)
+            UpdateInputButtonVisual(selectedButton, IsDescendantOf(selectedButton, KeyboardPanel) || IsDescendantOf(selectedButton, SecondaryKeyboardPanel));
     }
     void UpdateDeckManagementButtonVisual(System.Windows.Controls.Button button)
     {
@@ -2278,15 +2379,17 @@ public partial class MainWindow : Window
         var assigned = MappingInterceptsInput(mapping) ? mapping : null;
         bool hasCustomColor = DeckPanelLayout.TryGetButtonColor(mapping, out var customColor);
         bool currentSelected = selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true;
+        bool multiSelected = MultiSelectToggle.IsChecked == true && multiSelectedInputs.Contains(input);
         System.Windows.Media.Brush pulseBrush = ThemeService.Brush("AccentBrush");
         button.Background = hasCustomColor ? new SolidColorBrush(customColor) : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
-        button.BorderBrush = currentSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
-        button.BorderThickness = currentSelected ? new Thickness(2) : new Thickness(1);
+        button.BorderBrush = currentSelected || multiSelected ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SubtleBorderBrush");
+        button.BorderThickness = currentSelected || multiSelected ? new Thickness(2) : new Thickness(1);
         button.Foreground = hasCustomColor ? new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor)) : assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
-        bool pulsing = currentSelected && !selectionPulseSuppressed;
+        bool pulsing = multiSelected || currentSelected && !selectionPulseSuppressed;
         bool currentSelectionChanged = GetIsCurrentSelected(button) != currentSelected;
         bool pulseStateChanged = GetIsSelectionPulseActive(button) != pulsing;
         SetIsCurrentSelected(button, currentSelected);
+        SetIsMultiSelected(button, multiSelected);
         if (currentSelectionChanged)
             SetCurrentSelectionVisual(button, currentSelected);
         SetIsSelectionPulseActive(button, pulsing);
@@ -2300,8 +2403,8 @@ public partial class MainWindow : Window
         if (deckManagementNameLabels.TryGetValue(button, out var nameLabel))
         {
             nameLabel.Text = mapping?.Description ?? "";
-            if (hasCustomColor)
-                nameLabel.Foreground = new SolidColorBrush(DeckPanelLayout.TextColorFor(customColor));
+            if (hasCustomColor || assigned != null)
+                nameLabel.Foreground = button.Foreground;
             else
                 nameLabel.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
         }
@@ -2407,6 +2510,8 @@ public partial class MainWindow : Window
         _ => null
     };
     IEnumerable<System.Windows.Controls.Button> VisualInputButtons() => InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).Concat(InputButtons(MousePanel));
+    bool IsProtectedNormalLeftClick(string key)
+        => currentLayer == "通常" && key.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase);
     static IEnumerable<System.Windows.Controls.Button> InputButtons(System.Windows.Controls.Panel panel)
     {
         foreach (UIElement child in panel.Children)
@@ -2451,6 +2556,11 @@ public partial class MainWindow : Window
     {
         LastInput.Text = "ⓘ " + message;
         LastInput.Foreground = ThemeService.Brush("WarningBrush");
+    }
+    void ShowInlineError(string message)
+    {
+        LastInput.Text = "⚠ " + message;
+        LastInput.Foreground = ThemeService.Brush("DangerBrush");
     }
     void UpdateLayerButtons()
     {
@@ -2785,6 +2895,7 @@ public partial class MainWindow : Window
         suppressAutomaticProfileSwitchUntil = DateTime.UtcNow.AddSeconds(2);
         explicitProfileSwitchProcess = ConditionMatcher.ProcessUnderCursor();
         automaticProfileReturnName = "";
+        string? selectedDeckGroup = deckManagementMode && selectedDeckLayout?.ProfileSwitchEnabled == true ? selectedDeckLayout.ProfileGroupId : null;
         config.ActiveProfile = name;
         if (appliedConfig.Profiles.Any(x => x.Name == name))
         {
@@ -2800,6 +2911,15 @@ public partial class MainWindow : Window
             }
         }
         ClearSelectedInput();
+        if (selectedDeckGroup != null)
+        {
+            var profile = DeckPanelLayout.ActiveProfile(config);
+            var variant = config.DeckLayouts.FirstOrDefault(layout => layout.ProfileSwitchEnabled
+                && layout.ProfileGroupId.Equals(selectedDeckGroup, StringComparison.OrdinalIgnoreCase)
+                && profile != null && layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase));
+            if (variant != null)
+                EditDeckLayout(variant);
+        }
         if (IsMouseLayerBlockedByDirectGesture(config.Profiles, CurrentProfile.Name, currentLayer))
             currentLayer = "通常";
         if (refresh)
@@ -2810,7 +2930,16 @@ public partial class MainWindow : Window
         if (runtimeRole == RuntimeRole.UiHost && changed)
             IpcRuntime.RequestReload();
         if (changed)
+        {
+            OverlayService.RefreshDeckPanelForProfileChange();
             ShowProfileOverlay(name);
+        }
+    }
+    AppConfig DeckOverlayConfig()
+    {
+        var snapshot = store.Clone(config);
+        snapshot.ActiveProfile = appliedConfig.ActiveProfile;
+        return snapshot;
     }
     void ShowProfileOverlay(string profileName)
     {
@@ -2847,6 +2976,7 @@ public partial class MainWindow : Window
                 if (runtimeRole == RuntimeRole.UiHost)
                     IpcRuntime.RequestReload();
                 RebuildTrayMenu();
+                OverlayService.RefreshDeckPanelForProfileChange();
                 ShowProfileOverlay(appliedConfig.ActiveProfile);
             }
             return;
@@ -2869,14 +2999,14 @@ public partial class MainWindow : Window
         var processesAtCursor = ConditionMatcher.ProcessesUnderCursor()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        // RELYR windows (the editor, profile notification, dialogs, etc.) are
-        // neutral UI surfaces. Treating them as "no matching application"
-        // feeds back into the auto switcher and can repeatedly return to the
-        // default profile while the notification itself is under the pointer.
+        // Deck, profile notifications, and other RELYR-owned overlay windows are
+        // neutral surfaces for application auto-routing. Rebuilding the Deck that
+        // is currently dispatching an action can otherwise tear down its own WPF
+        // event route during a virtual-desktop transition.
         if (processesAtCursor.Any(process => IsOwnProcess(process)))
         {
             ResetAutomaticProfileCandidate();
-            LogAutomaticProfileSwitch($"own-window processes={string.Join(",", processesAtCursor)} runtime={appliedConfig.ActiveProfile}");
+            LogAutomaticProfileSwitch($"own-overlay processes={string.Join(",", processesAtCursor)} runtime={appliedConfig.ActiveProfile}");
             return;
         }
         var processes = processesAtCursor.Where(process => !IsOwnProcess(process)).ToArray();
@@ -2884,14 +3014,13 @@ public partial class MainWindow : Window
         // Chromium or Qt application. Stabilize the resolved profile rather
         // than requiring the raw process list to be byte-for-byte identical.
         var (Target, ReturnProfile) = ResolveAutomaticProfileTarget(appliedConfig.Profiles, appliedConfig.ActiveProfile, automaticProfileReturnName, processes, cursorOverTaskbar);
-        bool stable = ObserveAutomaticProfileCandidate(Target, 1);
-        LogAutomaticProfileSwitch($"observe processes={string.Join(",", processes)} candidate={Target} samples={automaticProfileCandidateSamples}/1 stable={stable} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
+        int requiredSamples = AutomaticProfileRequiredSamples(appliedConfig.Profiles, Target);
+        bool stable = ObserveAutomaticProfileCandidate(Target, requiredSamples);
+        LogAutomaticProfileSwitch($"observe processes={string.Join(",", processes)} candidate={Target} samples={automaticProfileCandidateSamples}/{requiredSamples} stable={stable} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
         if (!stable)
             return;
+        ResetAutomaticProfileCandidate();
         string process = processes.FirstOrDefault() ?? "";
-        // RELYR itself is never an automatic-switch target. Treat it like an
-        // unmatched application so the runtime profile cannot remain stuck on
-        // the application from another virtual desktop.
         if (ShouldKeepExplicitProfile(explicitProfileSwitchProcess, process, cursorOverTaskbar))
         {
             LogAutomaticProfileSwitch($"manual-hold original={explicitProfileSwitchProcess} current={process}");
@@ -2913,6 +3042,7 @@ public partial class MainWindow : Window
         RebuildTrayMenu();
         if (runtimeRole == RuntimeRole.UiHost)
             IpcRuntime.RequestReload();
+        OverlayService.RefreshDeckPanelForProfileChange();
         ShowProfileOverlay(target);
         return true;
     }
@@ -2945,6 +3075,8 @@ public partial class MainWindow : Window
         automaticProfileCandidateSamples = Math.Min(requiredSamples, automaticProfileCandidateSamples + 1);
         return automaticProfileCandidateSamples >= requiredSamples;
     }
+    internal static int AutomaticProfileRequiredSamples(IEnumerable<Profile> profiles, string target)
+        => profiles.FirstOrDefault(profile => profile.Name.Equals(target, StringComparison.OrdinalIgnoreCase))?.AutoSwitchEnabled == true ? 1 : 2;
     internal static bool TryApplyAutomaticProfile(AppConfig editingConfig, AppConfig runtimeConfig, string targetName, Func<bool> prepare)
     {
         if (runtimeConfig.ActiveProfile == targetName || !runtimeConfig.Profiles.Any(x => x.Name == targetName))
@@ -3003,7 +3135,9 @@ public partial class MainWindow : Window
     static string? ValidManualReturnProfile(IReadOnlyList<Profile> profiles, string profileName)
         => profiles.FirstOrDefault(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase) && !x.AutoSwitchEnabled)?.Name;
     internal static bool ShouldKeepExplicitProfile(string originalProcess, string currentProcess, bool cursorOverTaskbar) => cursorOverTaskbar || (!string.IsNullOrWhiteSpace(originalProcess) && ConditionMatcher.Matches(originalProcess, currentProcess));
-    internal static bool IsOwnProcess(string process, string? executablePath = null) => !string.IsNullOrWhiteSpace(process) && ConditionMatcher.Matches(System.IO.Path.GetFileNameWithoutExtension(executablePath ?? Environment.ProcessPath ?? "RELYR"), process);
+    internal static bool IsOwnProcess(string process, string? executablePath = null)
+        => !string.IsNullOrWhiteSpace(process)
+            && ConditionMatcher.Matches(Path.GetFileNameWithoutExtension(executablePath ?? Environment.ProcessPath ?? "RELYR"), process);
     void NewProfile_Click(object s, RoutedEventArgs e)
     {
         var name = PromptText("新しいプロファイル", "新しいプロファイル名", $"プロファイル {config.Profiles.Count + 1}");
@@ -3017,7 +3151,8 @@ public partial class MainWindow : Window
         if (cancelled)
             return;
         config.Profiles.Add(new Profile { Name = name, Mappings = source?.Mappings.Select(CloneMapping).ToList() ?? [], DefaultDeckLayoutId = source?.DefaultDeckLayoutId ?? DeckPanelLayout.DefaultLayout(config)?.Id ?? config.DeckLayouts[0].Id });
-        config.ActiveProfile = name;
+        SyncDeckProfileVariants();
+        EnsureProfileDeckDefaults();
         RefreshProfiles();
         MarkDirty();
         UpdateStatus();
@@ -3031,7 +3166,8 @@ public partial class MainWindow : Window
             name = source.Name + $" のコピー {i++}";
         var copy = new Profile { Name = name, Mappings = [.. source.Mappings.Select(CloneMapping)], DefaultDeckLayoutId = source.DefaultDeckLayoutId };
         config.Profiles.Add(copy);
-        config.ActiveProfile = name;
+        SyncDeckProfileVariants();
+        EnsureProfileDeckDefaults();
         RefreshProfiles();
         MarkDirty();
         UpdateStatus();
@@ -3110,6 +3246,8 @@ public partial class MainWindow : Window
         if (WpfMessageBox.Show($"「{CurrentProfile.Name}」を削除しますか？", "確認", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
         config.Profiles.Remove(CurrentProfile);
+        SyncDeckProfileVariants();
+        EnsureProfileDeckDefaults();
         config.ActiveProfile = config.Profiles[0].Name;
         RefreshProfiles();
         MarkDirty();
@@ -3121,7 +3259,12 @@ public partial class MainWindow : Window
     void Save_Click(object s, RoutedEventArgs e) => SaveAndApply("設定を保存し、エンジンへ反映しました");
     void SaveAndApply(string message)
     {
+        string runtimeProfileBeforeSave = appliedConfig.ActiveProfile;
         EnsureProfileDeckDefaults();
+        // Upgrade old, valid user intent before strict validation. In particular,
+        // old releases could store literal text and executable paths as Key or
+        // Shortcut actions, which must not block every unrelated layer change.
+        config = ConfigService.NormalizeForSave(config);
         var errors = ConfigValidator.Validate(config);
         if (errors.Count > 0)
         {
@@ -3130,6 +3273,8 @@ public partial class MainWindow : Window
         }
         store.Save(config);
         appliedConfig = store.Clone(config);
+        if (deckManagementMode && appliedConfig.Profiles.Any(profile => profile.Name.Equals(runtimeProfileBeforeSave, StringComparison.OrdinalIgnoreCase)))
+            appliedConfig.ActiveProfile = runtimeProfileBeforeSave;
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
@@ -3145,10 +3290,15 @@ public partial class MainWindow : Window
     {
         if (config.DeckLayouts.Count == 0)
             config.DeckLayouts.Add(new DeckLayoutDefinition());
-        string fallback = DeckPanelLayout.DefaultLayout(config)?.Id ?? config.DeckLayouts[0].Id;
+        string fallback = config.DeckLayouts.FirstOrDefault(layout => !layout.ProfileSwitchEnabled)?.Id
+            ?? DeckPanelLayout.DefaultLayout(config)?.Id ?? config.DeckLayouts[0].Id;
         config.DefaultDeckLayoutId = fallback;
         foreach (var profile in config.Profiles)
-            profile.DefaultDeckLayoutId = fallback;
+        {
+            var current = config.DeckLayouts.FirstOrDefault(layout => layout.Id.Equals(profile.DefaultDeckLayoutId, StringComparison.OrdinalIgnoreCase));
+            if (current == null || current.ProfileSwitchEnabled && !current.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase))
+                profile.DefaultDeckLayoutId = config.DeckLayouts.FirstOrDefault(layout => layout.ProfileSwitchEnabled && layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase))?.Id ?? fallback;
+        }
         config.SharedDefaultDeckLayoutId = fallback;
         config.UseSharedDeckPanel = false;
     }
@@ -3314,6 +3464,8 @@ public partial class MainWindow : Window
         {
         } while (dragActionQueue.TryTake(out _))
         {
+        } while (taskbarClickReplayQueue.TryTake(out _))
+        {
         }
         InputEngine.EndModifierDrag();
         MacroPlayer.StopAll();
@@ -3425,6 +3577,7 @@ public partial class MainWindow : Window
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
         engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
+        OverlayService.RefreshDeckPanel();
     }
     static void CopyApplicationOptions(AppConfig source, AppConfig destination)
     {
@@ -3569,9 +3722,10 @@ public partial class MainWindow : Window
         ClearPendingActions();
         actionQueue.CompleteAdding();
         dragActionQueue.CompleteAdding();
+        taskbarClickReplayQueue.CompleteAdding();
         try
         {
-            Task.WaitAll([actionWorker, dragActionWorker], 2000);
+            Task.WaitAll([actionWorker, dragActionWorker, taskbarClickReplayWorker], 2000);
         }
         catch { }
         InputEngine.ReleaseAll();

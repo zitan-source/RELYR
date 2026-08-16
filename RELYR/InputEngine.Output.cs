@@ -275,8 +275,10 @@ public sealed partial class InputEngine
             return Enum.TryParse<WindowMonitorService.Direction>(value[17..], true, out _);
         if (value.StartsWith("Desktop", StringComparison.OrdinalIgnoreCase))
             return int.TryParse(value[7..], out int desktop) && desktop is >= 1 and <= 8;
-        var names = value.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return names.Length > 0 && names.All(name => ParseKey(name) != 0 || name.StartsWith("Mouse", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Wheel", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Tilt", StringComparison.OrdinalIgnoreCase));
+        var names = SplitShortcut(value);
+        return names.Length > 0 && names.All(name => ParseKey(name) != 0
+            || ActionCatalog.TryNormalizeMouseAction(name, out string mouseAction)
+                && !MappingExecutor.IsModifierDrag(mouseAction));
     }
     internal static bool TryGetDirectDesktopStep(string value, out int offset)
     {
@@ -812,7 +814,12 @@ public sealed partial class InputEngine
         if ((mouseDown && InjectedMouseButtonsDown.Contains(1)) || (key != 0 && InjectedKeysDown.Contains(key)))
             ReleaseAll();
     }
-    static ushort ParseKey(string s) => s.ToUpperInvariant() switch { "半角/全角" => 0xF3, "無変換" => 0x1D, "変換" => 0x1C, "カタカナ" => 0x15, "PRINTSCREEN" => 0x2C, "SCROLLLOCK" => 0x91, "CTRL" => 0x11, "SHIFT" => 0x10, "ALT" => 0x12, "WIN" => 0x5B, "CAPSLOCK" => 0x14, "NUMPADENTER" => 0x0D, "LEFT" => 0x25, "UP" => 0x26, "RIGHT" => 0x27, "DOWN" => 0x28, "ENTER" => 0x0D, "ESC" => 0x1B, "SPACE" => 0x20, "BACK" or "BACKSPACE" => 8, "DELETE" => 0x2E, _ when s.Length == 1 => (ushort)(VkKeyScan(s[0]) & 0xff), _ => (ushort)KeyInterop.VirtualKeyFromKey(Enum.TryParse<Key>(s, true, out var k) ? k : Key.None) };
+    static ushort ParseKey(string s) => s.ToUpperInvariant() switch { "半角/全角" => 0xF3, "無変換" => 0x1D, "変換" => 0x1C, "カタカナ" => 0x15, "PRINTSCREEN" => 0x2C, "SCROLLLOCK" => 0x91, "CTRL" => 0x11, "SHIFT" => 0x10, "ALT" => 0x12, "WIN" => 0x5B, "CAPSLOCK" => 0x14, "NUMPADENTER" => 0x0D, "LEFT" => 0x25, "UP" => 0x26, "RIGHT" => 0x27, "DOWN" => 0x28, "ENTER" => 0x0D, "ESC" => 0x1B, "SPACE" => 0x20, "BACK" or "BACKSPACE" => 8, "DELETE" => 0x2E, _ when s.Length == 1 => ParseSingleCharacterKey(s[0]), _ => (ushort)KeyInterop.VirtualKeyFromKey(Enum.TryParse<Key>(s, true, out var k) ? k : Key.None) };
+    static ushort ParseSingleCharacterKey(char value)
+    {
+        short mapped = VkKeyScan(value);
+        return mapped == -1 ? (ushort)0 : (ushort)(mapped & 0xff);
+    }
     static bool SendKey(ushort vk, bool up)
     {
         lock (OutputLock)

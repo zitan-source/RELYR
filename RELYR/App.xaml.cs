@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     internal static string UiTestReportPath => VerificationPaths.GetFile("ui-test-last.log");
     internal static string MouseUiTestReportPath => VerificationPaths.GetFile("mouse-ui-test-last.log");
     internal static string SelfTestReportPath => VerificationPaths.GetFile("self-test-last.log");
+    internal static string ConfigurationMatrixTestReportPath => VerificationPaths.GetFile("configuration-matrix-last.log");
 #endif
     internal const string InstanceMutexName = @"Local\RELYR.SingleInstance.v2";
     internal const string HelperMutexName = @"Local\RELYR.ElevatedHelper.v1";
@@ -101,7 +102,7 @@ public partial class App : System.Windows.Application
             if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者ヘルパーを管理者権限で起動できません。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
             StartElevatedHelper(args);return;
         }
-        else if(!StartupService.IsProcessElevated())
+        else if(ShouldRelayToSingleElevatedHost(StartupService.IsProcessElevated()))
         {
             args=AttachMacroShortcutTarget(args,WindowMonitorService.GetActiveWindowForShortcut);
             // The process launched by the taskbar owns the foreground permission that
@@ -129,7 +130,9 @@ public partial class App : System.Windows.Application
                 }
                 ExitImmediately(0);return;
             }
-            args=args.Concat(["--ui-host"]).ToArray();
+            if(!StartupService.TryRunElevated(args,out string elevatedLaunchError))
+                AppDialog.Show(elevatedLaunchError,"RELYRを起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+            ExitImmediately(0);return;
         }
 #endif
 #if PRODUCTION_PUBLISH
@@ -318,6 +321,16 @@ public partial class App : System.Windows.Application
             ShutdownWithExitCode(result);
             return;
         }
+        if (e.Args.Contains("--configuration-matrix-test", StringComparer.OrdinalIgnoreCase))
+        {
+            try { File.Delete(ConfigurationMatrixTestReportPath); } catch { }
+            int result;
+            using (var matrixLog = new StreamWriter(ConfigurationMatrixTestReportPath, false, Encoding.UTF8) { AutoFlush = true })
+                result = ConfigurationMatrixTest.Run(matrixLog);
+            try { Console.Out.Write(File.ReadAllText(ConfigurationMatrixTestReportPath)); } catch { }
+            ShutdownWithExitCode(result);
+            return;
+        }
         if (e.Args.Contains("--engine-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--engine-test-no-real", StringComparer.OrdinalIgnoreCase))
         {
             bool includeRealHook = !e.Args.Contains("--engine-test-no-real", StringComparer.OrdinalIgnoreCase);
@@ -354,7 +367,12 @@ public partial class App : System.Windows.Application
 #endif
         bool uiHost = args.Contains("--ui-host", StringComparer.OrdinalIgnoreCase);
         IpcRuntime.IsUiHost = uiHost;
-        instanceMutex = new Mutex(true, InstanceMutexName, out ownsMutex);
+        string instanceMutexName = InstanceMutexName;
+#if !PRODUCTION_PUBLISH
+        if (args.Contains("--tray-exit-regression-host", StringComparer.OrdinalIgnoreCase))
+            instanceMutexName += ".ShutdownTest." + Environment.ProcessId;
+#endif
+        instanceMutex = new Mutex(true, instanceMutexName, out ownsMutex);
         if (!ownsMutex)
         {
             if (NotifyExistingInstance() && ShouldExplainDuplicate(args))
@@ -383,7 +401,11 @@ public partial class App : System.Windows.Application
         showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, SignalName);
         showAcknowledgement = new EventWaitHandle(false, EventResetMode.AutoReset, AcknowledgementName);
         shutdownSignal = new EventWaitHandle(false, EventResetMode.ManualReset, BuildShutdownSignalName(Environment.ProcessPath));
-        var window = new MainWindow(args.Contains("--skip-setup", StringComparer.OrdinalIgnoreCase), startupConfig: loadedStartupConfig, runtimeRole: uiHost ? RuntimeRole.UiHost : RuntimeRole.Standard);
+        bool startInputHooks = true;
+#if !PRODUCTION_PUBLISH
+        startInputHooks = !args.Contains("--no-input-hooks", StringComparer.OrdinalIgnoreCase);
+#endif
+        var window = new MainWindow(args.Contains("--skip-setup", StringComparer.OrdinalIgnoreCase), startupConfig: loadedStartupConfig, runtimeRole: uiHost ? RuntimeRole.UiHost : RuntimeRole.Standard, startInputHooks: startInputHooks);
         MainWindow = window;
         StartStartupMaintenance(loadedStartupConfig);
         bool needsSetup = window.NeedsFirstRunSetup;
@@ -400,6 +422,11 @@ public partial class App : System.Windows.Application
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(window.ExecuteTrayExitMenuItemForTest));
 #endif
     }
+    // Production uses one elevated resident process. Splitting input hooks
+    // between a medium UI host and an elevated helper creates an ownership gap:
+    // the UI yields all input over elevated windows while the helper accepts
+    // only a subset of actions, disabling complete Space/CapsLock layers.
+    internal static bool ShouldRelayToSingleElevatedHost(bool processElevated) => !processElevated;
     static string[] WaitForRestartParent(string[] args)
     {
         int marker = Array.FindIndex(args, value => value.Equals("--restart-after-pid", StringComparison.OrdinalIgnoreCase));
@@ -795,6 +822,7 @@ public partial class App : System.Windows.Application
         }
         instanceMutex?.Dispose();
         signalStop.Dispose();
+        HookDiagnosticsTrace.Stop();
         base.OnExit(e);
     }
     [DllImport("kernel32.dll")]

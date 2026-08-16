@@ -91,7 +91,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly Border dragArea;
     readonly Action<Mapping>? execute;
     readonly Action<double, double>? savePosition;
-    readonly Action<double, double>? saveSize;
+    readonly Action<string, double, double>? saveSize;
     readonly Action<string, bool>? savePinned;
     bool hoverPreviewsEnabled;
     bool autoHideAfterAction;
@@ -191,7 +191,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     WpfColor panelTone;
 
-    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
+    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
     {
         execute = executeAction;
         savePosition = positionChanged;
@@ -205,7 +205,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         layout = selectedLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
         Title = "RELYR Deck - " + layout.Name;
         deckGrid = new UniformGrid();
-        UpdateDeckDimensions(config.DeckPanelWidth, config.DeckPanelHeight);
+        UpdateDeckDimensions(layout.PanelWidth ?? config.DeckPanelWidth, layout.PanelHeight ?? config.DeckPanelHeight);
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResize;
         AllowsTransparency = true;
@@ -259,7 +259,7 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
     {
-        naturalGridWidth = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns) * (DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap);
+        naturalGridWidth = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns) * DeckPanelLayout.CellWidth;
         naturalGridHeight = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows) * DeckPanelLayout.CellHeight;
         double availableWidth = Math.Max(1, SystemParameters.WorkArea.Width - 48 - OverlayChromeWidth);
         double availableHeight = Math.Max(1, SystemParameters.WorkArea.Height - 48 - OverlayChromeHeight);
@@ -275,14 +275,23 @@ internal sealed class DeckPanelOverlayWindow : Window
         var requested = preferredWidth is double savedWidth && preferredHeight is double savedHeight && double.IsFinite(savedWidth) && double.IsFinite(savedHeight)
             ? AspectLockedSize(savedWidth, savedHeight, fittedScale, false)
             : fitted;
-        Width = requested.Width;
-        Height = requested.Height;
         var minimum = WindowSizeForScale(minimumDeckScale);
         var maximum = WindowSizeForScale(maximumDeckScale);
+
+        // A live Deck can change from a wide grid to a narrow grid while this
+        // window is cached.  Clear the previous layout's constraints before
+        // assigning the new size; otherwise WPF clamps Width to the old
+        // MinWidth and persists a large empty band beside the narrow grid.
+        MinWidth = 0;
+        MinHeight = 0;
+        MaxWidth = double.PositiveInfinity;
+        MaxHeight = double.PositiveInfinity;
         MinWidth = minimum.Width;
         MaxWidth = maximum.Width;
         MinHeight = minimum.Height;
         MaxHeight = maximum.Height;
+        Width = requested.Width;
+        Height = requested.Height;
         deckGrid.Rows = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows);
         deckGrid.Columns = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns);
         deckGrid.Width = naturalGridWidth;
@@ -345,12 +354,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         fileDragButton = null;
         ClearDeckReorderTarget();
         StopDragPreview();
+        PersistPosition();
+        PersistSize();
+        // Hide first so a pointer that is still over a Deck button cannot raise
+        // another MouseEnter and recreate a media preview during teardown.
+        Hide();
         ClearVideoPreviews();
         CancelPendingHoverAudio();
         StopHoverAudio();
-        PersistPosition();
-        PersistSize();
-        Hide();
     }
 
     internal void PrepareForShow()
@@ -375,7 +386,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             Height = DeckPanelLayout.KeyHeight,
             MinWidth = 0,
             MinHeight = 0,
-            Margin = new Thickness(DeckPanelLayout.Gap / 2, 0, DeckPanelLayout.Gap / 2, 0),
+            Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0),
             Padding = new Thickness(3),
             Focusable = false,
             IsEnabled = true,
@@ -411,9 +422,12 @@ internal sealed class DeckPanelOverlayWindow : Window
         button.MouseEnter += DeckButtonFileAvailability_MouseEnter;
         if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredFilePreview(mapping)))
             ConfigureHoverPreview(button, mapping);
-        var cell = new StackPanel { Width = DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap, Height = DeckPanelLayout.CellHeight };
+        var nameLabel = DeckPanelLayout.CreateNameLabel(mapping);
+        if (DeckPanelLayout.TryGetButtonColor(mapping, out _) || MainWindow.MappingInterceptsInput(mapping))
+            nameLabel.Foreground = button.Foreground;
+        var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
         cell.Children.Add(button);
-        cell.Children.Add(DeckPanelLayout.CreateNameLabel(mapping));
+        cell.Children.Add(nameLabel);
         return (button, cell);
     }
     void DeckButtonFileAvailability_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
@@ -1560,7 +1574,10 @@ internal sealed class DeckPanelOverlayWindow : Window
             try
             {
                 internalDeckDragActive = true;
-                System.Windows.DragDrop.DoDragDrop(button, data, System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
+                // Exposing Move lets Explorer relocate the registered source file.
+                // Deck is a launcher/reference surface, so external drops are
+                // copy-only and never change or delete the registered source.
+                System.Windows.DragDrop.DoDragDrop(button, data, DeckPanelLayout.ExternalFileDragEffects);
             }
             finally { internalDeckDragActive = false; StopDragPreview(); }
         }
@@ -1788,7 +1805,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (double.IsFinite(ActualWidth) && double.IsFinite(ActualHeight) && ActualWidth > 0 && ActualHeight > 0)
         {
-            try { saveSize?.Invoke(ActualWidth, ActualHeight); } catch { }
+            try { saveSize?.Invoke(layout.Id, ActualWidth, ActualHeight); } catch { }
         }
     }
     void ResetToDefaultSize()
@@ -1862,7 +1879,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             UpdateLayout();
             positionDirty = false;
             try { savePosition?.Invoke(Left, Top); } catch { }
-            try { saveSize?.Invoke(ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height); } catch { }
+            try { saveSize?.Invoke(layout.Id, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height); } catch { }
         }
         finally { changingWindowState = false; }
     }

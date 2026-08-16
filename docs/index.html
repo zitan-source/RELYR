@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111513">
+  <meta name="description" content="RELYRは、キーボードとマウスにレイヤー、ショートカット、マクロ、Deckを割り当てられる無料のWindowsアプリです。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="RELYR — キー操作を、自分の手に合わせる。">
+  <meta property="og:description" content="Space、CapsLock、マウスを押している間だけ、もう一つの操作レイヤーへ。無料のWindowsアプリ。">
+  <meta property="og:image" content="assets/og-image.png">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://zitan-source.github.io/RELYR/">
+  <link rel="icon" href="assets/relyr-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <title>RELYR — キー操作を、自分の手に合わせる。</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+  <div class="page-progress" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="RELYR ホーム">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5L16 14 6 8.5Zm0 7L16 21l10-5.5M6 22.5 16 28l10-5.5"/></svg>
+      </span>
+      <span class="brand-type"><b>RELYR</b><small>Key Layers &amp; Actions</small></span>
+    </a>
+    <nav aria-label="メインナビゲーション">
+      <a href="#concept">コンセプト</a>
+      <a href="#features">機能</a>
+      <a href="#deck">Deck</a>
+      <a href="#start">はじめ方</a>
+    </nav>
+    <a class="header-cta" href="https://github.com/zitan-source/RELYR/releases/latest">無料で使う <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-orbit hero-orbit-a" aria-hidden="true"></div>
+      <div class="hero-orbit hero-orbit-b" aria-hidden="true"></div>
+      <div class="hero-copy reveal">
+        <p class="kicker"><span></span>Windows 10 / 11 ・ Free</p>
+        <h1 class="hero-title">
+          <span class="line">キー操作を、</span>
+          <span class="line accent-line">自分の手に</span>
+          <span class="line">合わせる。</span>
+        </h1>
+        <p class="hero-lead">Space、CapsLock、マウスを押している間だけ、もう一つの操作レイヤーへ。ショートカットも、マクロも、Deckも、ひとつに。</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/zitan-source/RELYR/releases/latest">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 19h14"/></svg>
+            Windows版をダウンロード
+          </a>
+          <a class="inline-link" href="#concept">何ができる？ <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="version-line"><span>v0.1.231</span> .NET Desktop Runtime同梱</p>
+      </div>
+
+      <div class="hero-visual reveal" data-tilt>
+        <div class="window-label"><span></span> actual RELYR screen</div>
+        <figure class="product-window">
+          <img src="assets/relyr-main.png" width="1600" height="980" alt="RELYRの実際のメイン画面。左にレイヤー、中央にキーボード、右にインスペクターが表示されている。">
+        </figure>
+        <div class="action-toast" aria-hidden="true">
+          <span class="toast-dot"></span>
+          <p><small>LAYER ACTION</small><b>Space + J</b></p>
+          <i>→</i>
+          <strong>Ctrl + C</strong>
+        </div>
+        <div class="engine-badge" aria-hidden="true"><i></i> エンジン稼働中</div>
+      </div>
+    </section>
+
+    <section class="fact-strip" aria-label="RELYRの特徴">
+      <p><span>01</span>無料で利用可能</p>
+      <p><span>02</span>入力内容を外部送信しない</p>
+      <p><span>03</span>ライト・ダーク対応</p>
+      <p><span>04</span>ソースコード公開</p>
+    </section>
+
+    <section class="manifesto" id="concept">
+      <p class="kicker reveal"><span></span>Why RELYR</p>
+      <div class="manifesto-grid">
+        <h2 class="reveal">ショートカットを<br>覚えるのではなく、<br><em>置く場所を決める。</em></h2>
+        <div class="manifesto-copy reveal">
+          <p>RELYRは、キーボードを別物に置き換えるアプリではありません。普段の入力はそのままに、押している間だけ使える操作面を重ねます。</p>
+          <p>手を大きく動かさず、いま使っているキーやマウスから、必要な操作へ直接つなげます。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-story" id="features">
+      <article class="story-row story-layer">
+        <div class="story-copy reveal">
+          <p class="story-index">01 / LAYERS</p>
+          <h2><span>押している間だけ、</span><span>キーの役割が変わる。</span></h2>
+          <p>Space、CapsLock、右クリック、進む、戻る。使いやすいボタンをレイヤーキーにして、いつもの操作へもう一段を追加できます。</p>
+          <ul class="clean-list">
+            <li>通常入力には影響しない</li>
+            <li>レイヤーごとに個別設定</li>
+            <li>全レイヤーへの一括割り当て</li>
+          </ul>
+        </div>
+        <figure class="screen-crop screen-crop-layer reveal">
+          <img src="assets/relyr-main.png" width="1600" height="980" alt="RELYRのレイヤー選択部分とキーボード画面">
+          <figcaption><b>レイヤーを選ぶ</b><span>左の一覧から操作面を切り替え</span></figcaption>
+        </figure>
+      </article>
+
+      <article class="story-row story-keyboard">
+        <figure class="screen-crop screen-crop-keyboard reveal">
+          <img src="assets/relyr-main.png" width="1600" height="980" alt="RELYRの画面キーボードとマウス操作部">
+          <figcaption><b>割り当てるキーを選ぶ</b><span>実際の配列を見ながら設定</span></figcaption>
+        </figure>
+        <div class="story-copy reveal">
+          <p class="story-index">02 / VISUAL EDITOR</p>
+          <h2><span>見たまま選び、</span><span>その場で割り当てる。</span></h2>
+          <p>JIS・US配列のメインキーボード、テンキー、ナビゲーション、カーソルキー、マウスをひとつの画面に整理しました。</p>
+          <ul class="clean-list">
+            <li>キー・ショートカット・文字列</li>
+            <li>アプリ・ファイル・URL</li>
+            <li>マクロ・ジェスチャー・マウス操作</li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <section class="deck-showcase" id="deck">
+      <div class="deck-heading reveal">
+        <p class="kicker"><span></span>Deck panel</p>
+        <h2><span>必要なものを、</span><span>画面の上に並べる。</span></h2>
+        <p>アプリ、素材、URL、画像、GIF、動画をボタンへ。用途ごとのDeckを作り、必要なときだけ呼び出せます。</p>
+      </div>
+      <div class="deck-stage reveal">
+        <div class="deck-stage-grid" aria-hidden="true"></div>
+        <figure class="deck-window-shot">
+          <img src="assets/relyr-deck-overlay.png" width="548" height="419" alt="RELYRで作成した実際のDeckオーバーレイ。45個のボタンが並んでいる。">
+        </figure>
+        <div class="deck-note deck-note-a" aria-hidden="true"><span>01</span><b>自由なレイアウト</b><small>1×1から18×18まで</small></div>
+        <div class="deck-note deck-note-b" aria-hidden="true"><span>02</span><b>画像・GIF・動画</b><small>プレビューを保ったまま操作</small></div>
+        <div class="deck-note deck-note-c" aria-hidden="true"><span>03</span><b>ピン留め / 自動非表示</b><small>狭い画面でも邪魔をしない</small></div>
+      </div>
+    </section>
+
+    <section class="capabilities" aria-label="対応する操作">
+      <div class="capability-title reveal">
+        <p class="kicker"><span></span>One app</p>
+        <h2>ひとつの割り当てから、<br>PCの操作へ。</h2>
+      </div>
+      <div class="capability-list">
+        <article class="reveal"><span>KEY</span><h3>キーとショートカット</h3><p>単一キーから複数キーの組み合わせまで。</p></article>
+        <article class="reveal"><span>APP</span><h3>アプリ・ファイル・URL</h3><p>よく使う場所へ迷わずアクセス。</p></article>
+        <article class="reveal"><span>MACRO</span><h3>マクロ</h3><p>キーとマウスの流れを記録・編集・再生。</p></article>
+        <article class="reveal"><span>PROFILE</span><h3>プロファイル</h3><p>使用中のアプリに合わせて自動切り替え。</p></article>
+        <article class="reveal"><span>GESTURE</span><h3>ジェスチャー</h3><p>カーソルの方向へ操作を割り当て。</p></article>
+        <article class="reveal"><span>UTILITY</span><h3>Windows操作と便利機能</h3><p>仮想デスクトップや自動解凍もまとめて。</p></article>
+      </div>
+    </section>
+
+    <section class="trust" id="safety">
+      <div class="trust-copy reveal">
+        <p class="kicker"><span></span>Local first</p>
+        <h2><span>設定は、</span><span>あなたのPCの中に。</span></h2>
+        <p>RELYRは入力内容を外部サーバーへ送信しません。設定とマクロはローカルに保存し、マクロ記録もユーザーが開始した間だけ動作します。</p>
+      </div>
+      <div class="trust-details">
+        <article class="reveal"><b>LOCAL</b><h3>外部送信なし</h3><p>操作設定はPC内で完結します。</p></article>
+        <article class="reveal"><b>RECOVERY</b><h3>バックアップと復元</h3><p>カスタマイズした環境を保存できます。</p></article>
+        <article class="reveal"><b>STOP</b><h3>緊急停止</h3><p>Ctrl + Alt + Shift + F12で入力処理を停止。</p></article>
+        <article class="reveal"><b>OPEN</b><h3>ソース公開</h3><p>MIT License。SHA-256も配布します。</p></article>
+      </div>
+    </section>
+
+    <section class="getting-started" id="start">
+      <div class="start-heading reveal">
+        <p class="kicker"><span></span>Getting started</p>
+        <h2>3つの手順で、<br>自分の操作環境へ。</h2>
+      </div>
+      <ol class="steps">
+        <li class="reveal"><span>01</span><div><h3>インストール</h3><p>GitHub ReleasesからSetup版をダウンロードします。</p></div></li>
+        <li class="reveal"><span>02</span><div><h3>キーを選ぶ</h3><p>画面のキーボード、マウス、Deckから対象を選びます。</p></div></li>
+        <li class="reveal"><span>03</span><div><h3>アクションを決める</h3><p>実行したい操作を選んで保存すれば完了です。</p></div></li>
+      </ol>
+    </section>
+
+    <section class="final-cta">
+      <div class="final-grid" aria-hidden="true"></div>
+      <div class="final-content reveal">
+        <span class="brand-mark brand-mark-large" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5L16 14 6 8.5Zm0 7L16 21l10-5.5M6 22.5 16 28l10-5.5"/></svg></span>
+        <p>RELYR FOR WINDOWS</p>
+        <h2><span>使うキーを、</span><span>使いたい場所へ。</span></h2>
+        <div class="final-actions">
+          <a class="button button-light" href="https://github.com/zitan-source/RELYR/releases/latest">無料でダウンロード</a>
+          <a href="https://github.com/zitan-source/RELYR">GitHubでソースを見る ↗</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5L16 14 6 8.5Zm0 7L16 21l10-5.5M6 22.5 16 28l10-5.5"/></svg></span><span class="brand-type"><b>RELYR</b><small>Key Layers &amp; Actions</small></span></a>
+    <div class="footer-links">
+      <a href="https://github.com/zitan-source/RELYR/releases/latest">Download</a>
+      <a href="https://github.com/zitan-source/RELYR">GitHub</a>
+      <a href="https://ko-fi.com/relyr">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/zitan-source/RELYR/blob/main/LICENSE">License</a>
+    </div>
+    <p>© 2026 RELYR / ZITAN</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -71,7 +71,9 @@ public partial class MainWindow
         }
         else
             MappingCollectionForInput(selected.Input).Remove(selected);
-        MarkDirty();
+        // Keep typing independent of the potentially 324-button live overlay.
+        // Update only the selected editor button so its label remains live.
+        MarkDirty(refreshDeckPanel: false);
         RefreshSelectedInputVisual(selected.Input);
     }
     static bool HasDeckButtonContent(Mapping? mapping) => MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping?.Description) || !string.IsNullOrWhiteSpace(mapping?.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
@@ -176,7 +178,7 @@ public partial class MainWindow
         if (updatingDeckEditor || config == null)
             return;
         config.DeckHoverPreviewsEnabled = DeckHoverPreviewBox.IsChecked == true;
-        MarkDirty();
+        MarkDirty(refreshDeckPanel: false);
     }
     internal void SetDeckButtonNameForTest(string input, string name) => SetDeckButtonName(input, name);
     internal ContextMenu CreateDeckInputContextMenu(string input)
@@ -373,7 +375,7 @@ public partial class MainWindow
             return;
         DeckManagementGrid.Rows = layout.Rows;
         DeckManagementGrid.Columns = layout.Columns;
-        DeckManagementGrid.Width = layout.Columns * (DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap);
+        DeckManagementGrid.Width = layout.Columns * DeckPanelLayout.CellWidth;
         DeckManagementGrid.Height = layout.Rows * DeckPanelLayout.CellHeight;
         for (int slot = 1; slot <= DeckPanelLayout.VisibleSlotCount(layout); slot++)
         {
@@ -404,9 +406,10 @@ public partial class MainWindow
             button.PreviewDrop += DeckButtonDropped;
             button.Width = DeckPanelLayout.KeyWidth;
             button.Height = DeckPanelLayout.KeyHeight;
-            button.Margin = new Thickness(2, 0, 2, 0);
+            button.Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0);
+            button.Padding = new Thickness(3);
             var nameLabel = DeckPanelLayout.CreateNameLabel(null);
-            var cell = new StackPanel { Width = DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap, Height = DeckPanelLayout.CellHeight };
+            var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
             cell.Children.Add(button);
             cell.Children.Add(nameLabel);
             DeckManagementGrid.Children.Add(cell);
@@ -427,6 +430,24 @@ public partial class MainWindow
     }
     void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input)
     {
+        if (MultiSelectToggle.IsChecked == true)
+        {
+            int slot = DeckPanelLayout.SlotNumber(input);
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 && deckMultiSelectionAnchor > 0)
+            {
+                foreach (string selectedInput in DeckSelectionRange(deckMultiSelectionAnchor, slot))
+                    multiSelectedInputs.Add(selectedInput);
+            }
+            else
+            {
+                if (!multiSelectedInputs.Add(input))
+                    multiSelectedInputs.Remove(input);
+                deckMultiSelectionAnchor = slot;
+            }
+            UpdateMultiSelectControls();
+            ColorDeckManagementButtons();
+            return;
+        }
         SelectInput(input);
         CloseDeckEditorMediaPreview();
         var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
@@ -437,6 +458,13 @@ public partial class MainWindow
             PlayDeckEditorAudio(mapping.DeckFilePath);
         else if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) || DeckPanelLayout.IsVideoFile(mapping.DeckFilePath))
             ShowDeckEditorThumbnail(source, mapping.DeckFilePath);
+    }
+    internal static IEnumerable<string> DeckSelectionRange(int anchorSlot, int targetSlot)
+    {
+        int first = Math.Min(anchorSlot, targetSlot);
+        int last = Math.Max(anchorSlot, targetSlot);
+        for (int slot = first; slot <= last; slot++)
+            yield return DeckPanelLayout.InputName(slot);
     }
     void DeckManagementButton_DoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -526,6 +554,8 @@ public partial class MainWindow
     }
     void DeckButtonReorderStarted(object sender, MouseButtonEventArgs e)
     {
+        if (MultiSelectToggle.IsChecked == true)
+            return;
         if (sender is not System.Windows.Controls.Button { Tag: string input } || !DeckPanelLayout.IsInputName(input))
             return;
         deckReorderSource = (System.Windows.Controls.Button)sender;
@@ -573,7 +603,9 @@ public partial class MainWindow
                 var cursor = System.Windows.Forms.Cursor.Position;
                 preview.MoveToPhysical(cursor.X, cursor.Y);
             }
-            DragDrop.DoDragDrop(button, data, System.Windows.DragDropEffects.Move | System.Windows.DragDropEffects.Copy);
+            // Copy-only also protects a registered source file when this drag
+            // leaves the Deck editor and is dropped into Explorer/Desktop.
+            DragDrop.DoDragDrop(button, data, DeckPanelLayout.ExternalFileDragEffects);
         }
         finally
         {
@@ -594,7 +626,7 @@ public partial class MainWindow
         bool file = !DeckPanelLayout.IsInternalFileDrag(e.Data) && DeckPanelLayout.GetDroppedFile(e.Data) != null;
         bool validSlot = slot && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && !source.Equals(input, StringComparison.OrdinalIgnoreCase);
         SetDeckReorderTarget(validSlot ? (System.Windows.Controls.Button)sender : null);
-        e.Effects = validSlot ? System.Windows.DragDropEffects.Move : file ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        e.Effects = validSlot || file ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
         e.Handled = true;
     }
     void DeckButtonDragLeave(object sender, System.Windows.DragEventArgs e)
@@ -692,8 +724,9 @@ public partial class MainWindow
     {
         if (ProfileBox == null)
             return;
-        ProfileBox.IsEnabled = true;
-        ProfileBox.Opacity = 1;
+        bool enabled = deckManagementMode && selectedDeckLayout?.ProfileSwitchEnabled == true;
+        ProfileBox.IsEnabled = !deckManagementMode || enabled;
+        ProfileBox.Opacity = ProfileBox.IsEnabled ? 1 : .45;
     }
     void ShowDeckLayoutList()
     {
@@ -702,7 +735,7 @@ public partial class MainWindow
         DeckLayoutListWorkspace.Visibility = Visibility.Visible;
         DeckEditorWorkspace.Visibility = Visibility.Collapsed;
         ToolbarSaveButton.Visibility = Visibility.Visible;
-        WorkspaceSubtitle.Text = $"{config.DeckLayouts.Count}個のレイアウト";
+        WorkspaceSubtitle.Text = $"{DeckPanelLayout.LayoutsForActiveProfile(config).Count()}個のレイアウト";
         RefreshDeckLayoutCards();
         UpdateDeckScopeUi();
     }
@@ -711,7 +744,7 @@ public partial class MainWindow
         if (DeckLayoutCardsPanel == null)
             return;
         DeckLayoutCardsPanel.Children.Clear();
-        foreach (var layout in config.DeckLayouts)
+        foreach (var layout in DeckPanelLayout.LayoutsForActiveProfile(config))
             DeckLayoutCardsPanel.Children.Add(CreateDeckLayoutCard(layout));
         var add = new System.Windows.Controls.Button
         {
@@ -737,7 +770,7 @@ public partial class MainWindow
             cell.SetResourceReference(Border.BackgroundProperty, "DeckPreviewCellBackground");
             preview.Children.Add(cell);
         }
-        bool isDefault = config.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
+        bool isDefault = CurrentProfile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
         var content = new StackPanel();
         content.Children.Add(new Grid { Height = 88, Margin = new Thickness(0, 0, 0, 12), Children = { preview } });
         content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
@@ -905,6 +938,7 @@ public partial class MainWindow
         ToolbarSaveButton.Visibility = Visibility.Collapsed;
         updatingDeckEditor = true;
         DeckLayoutNameBox.Text = layout.Name;
+        DeckProfileSwitchBox.IsChecked = layout.ProfileSwitchEnabled;
         DeckColumnsBox.Text = layout.Columns.ToString();
         DeckRowsBox.Text = layout.Rows.ToString();
         DeckOpacitySlider.Value = config.InputPanelOpacityPercent;
@@ -917,6 +951,7 @@ public partial class MainWindow
         DeckSizePresetBox.SelectedItem = DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x => Equals(x.Tag, preset));
         DeckCustomSizePanel.Visibility = preset == "custom" ? Visibility.Visible : Visibility.Collapsed;
         updatingDeckEditor = false;
+        UpdateDeckScopeUi();
         BuildDeckManagementPanel();
         ClearSelectedInput();
         WorkspaceSubtitle.Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン";
@@ -941,7 +976,101 @@ public partial class MainWindow
         if (name.Length == 0)
             return;
         selectedDeckLayout.Name = name;
+        MarkDirty(refreshDeckPanel: false);
+    }
+    void DeckProfileSwitchChanged(object sender, RoutedEventArgs e)
+    {
+        if (updatingDeckEditor || selectedDeckLayout == null)
+            return;
+        if (DeckProfileSwitchBox.IsChecked == true)
+            EnableDeckProfileSwitch(selectedDeckLayout);
+        else if (!DisableDeckProfileSwitch(selectedDeckLayout))
+        {
+            updatingDeckEditor = true;
+            DeckProfileSwitchBox.IsChecked = true;
+            updatingDeckEditor = false;
+        }
+        UpdateDeckScopeUi();
+    }
+    void EnableDeckProfileSwitch(DeckLayoutDefinition layout)
+    {
+        var active = DeckPanelLayout.ActiveProfile(config) ?? config.Profiles[0];
+        string groupId = Guid.NewGuid().ToString("N");
+        layout.ProfileSwitchEnabled = true;
+        layout.ProfileGroupId = groupId;
+        layout.ProfileId = active.Id;
+        bool wasDefault = config.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
+        foreach (var profile in config.Profiles)
+        {
+            var variant = ReferenceEquals(profile, active) ? layout : CreateDeckProfileVariant(layout, profile, blank: true);
+            if (!ReferenceEquals(variant, layout))
+                config.DeckLayouts.Add(variant);
+            if (wasDefault || profile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase))
+                profile.DefaultDeckLayoutId = variant.Id;
+        }
         MarkDirty();
+        ShowInlineNotice("各プロファイルに同じレイアウトの空のDeckを作成しました");
+    }
+    bool DisableDeckProfileSwitch(DeckLayoutDefinition layout)
+    {
+        var group = config.DeckLayouts.Where(candidate => candidate.ProfileSwitchEnabled
+            && candidate.ProfileGroupId.Equals(layout.ProfileGroupId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var standard = group.FirstOrDefault(candidate => candidate.ProfileId.Equals(config.Profiles[0].Id, StringComparison.OrdinalIgnoreCase)) ?? layout;
+        if (group.Count > 1 && WpfMessageBox.Show("プロファイル切替を無効にすると、標準プロファイルのDeckが全プロファイル共通のDeckとして設定されます。\n\n続行しますか？", "Deckのプロファイル切替", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return false;
+        foreach (var variant in group.Where(candidate => !ReferenceEquals(candidate, standard)).ToList())
+        {
+            RemoveDeckLayoutReferences(config, variant, standard);
+            config.DeckLayouts.Remove(variant);
+        }
+        standard.ProfileSwitchEnabled = false;
+        standard.ProfileGroupId = "";
+        standard.ProfileId = "";
+        config.DefaultDeckLayoutId = standard.Id;
+        config.SharedDefaultDeckLayoutId = standard.Id;
+        foreach (var profile in config.Profiles)
+            profile.DefaultDeckLayoutId = standard.Id;
+        selectedDeckLayout = standard;
+        if (!ReferenceEquals(layout, standard))
+            EditDeckLayout(standard);
+        MarkDirty();
+        ShowInlineNotice("標準プロファイルのDeckを全プロファイル共通に設定しました");
+        return true;
+    }
+    static DeckLayoutDefinition CreateDeckProfileVariant(DeckLayoutDefinition source, Profile profile, bool blank) => new()
+    {
+        Name = source.Name,
+        Columns = source.Columns,
+        Rows = source.Rows,
+        PanelColor = source.PanelColor,
+        PanelPinned = source.PanelPinned,
+        PanelWidth = source.PanelWidth,
+        PanelHeight = source.PanelHeight,
+        ProfileSwitchEnabled = true,
+        ProfileGroupId = source.ProfileGroupId,
+        ProfileId = profile.Id,
+        Mappings = blank ? [] : [.. source.Mappings.Select(CloneMapping)]
+    };
+    void SyncDeckProfileVariants()
+    {
+        var profileIds = config.Profiles.Select(profile => profile.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var orphan in config.DeckLayouts.Where(layout => layout.ProfileSwitchEnabled && !profileIds.Contains(layout.ProfileId)).ToList())
+        {
+            var fallback = config.DeckLayouts.FirstOrDefault(layout => !ReferenceEquals(layout, orphan)
+                && layout.ProfileSwitchEnabled
+                && layout.ProfileGroupId.Equals(orphan.ProfileGroupId, StringComparison.OrdinalIgnoreCase)
+                && profileIds.Contains(layout.ProfileId))
+                ?? config.DeckLayouts.FirstOrDefault(layout => !ReferenceEquals(layout, orphan) && !layout.ProfileSwitchEnabled);
+            if (fallback != null)
+                RemoveDeckLayoutReferences(config, orphan, fallback);
+            config.DeckLayouts.Remove(orphan);
+        }
+        foreach (var group in config.DeckLayouts.Where(layout => layout.ProfileSwitchEnabled).GroupBy(layout => layout.ProfileGroupId, StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            var template = group.First();
+            foreach (var profile in config.Profiles.Where(profile => !group.Any(layout => layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase))))
+                config.DeckLayouts.Add(CreateDeckProfileVariant(template, profile, blank: true));
+        }
     }
     void DeckSizePresetChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -1055,7 +1184,9 @@ public partial class MainWindow
     }
     void SetDefaultDeckLayout(DeckLayoutDefinition layout, bool refresh = true)
     {
-        config.DefaultDeckLayoutId = layout.Id;
+        CurrentProfile.DefaultDeckLayoutId = layout.Id;
+        if (!layout.ProfileSwitchEnabled)
+            config.DefaultDeckLayoutId = layout.Id;
         MarkDirty();
         if (refresh)
             RefreshDeckLayoutCards();
@@ -1066,7 +1197,7 @@ public partial class MainWindow
         int suffix = 2;
         while (config.DeckLayouts.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             name = source.Name + $" のコピー {suffix++}";
-        var copy = new DeckLayoutDefinition { Name = name, Columns = source.Columns, Rows = source.Rows, PanelColor = source.PanelColor, Mappings = [.. source.Mappings.Select(CloneMapping)] };
+        var copy = new DeckLayoutDefinition { Name = name, Columns = source.Columns, Rows = source.Rows, PanelColor = source.PanelColor, PanelWidth = source.PanelWidth, PanelHeight = source.PanelHeight, Mappings = [.. source.Mappings.Select(CloneMapping)] };
         config.DeckLayouts.Add(copy);
         MarkDirty();
         RefreshDeckLayoutCards();
@@ -1183,19 +1314,25 @@ public partial class MainWindow
         }
         catch { }
     }
-    void PersistDeckPanelSize(double width, double height)
+    void PersistDeckPanelSize(string layoutId, double width, double height)
     {
         if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
             return;
-        config.DeckPanelWidth = width;
-        config.DeckPanelHeight = height;
-        appliedConfig.DeckPanelWidth = width;
-        appliedConfig.DeckPanelHeight = height;
+        static void Apply(IEnumerable<DeckLayoutDefinition> layouts, string id, double w, double h)
+        {
+            var target = layouts.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.PanelWidth = w;
+                target.PanelHeight = h;
+            }
+        }
+        Apply(config.DeckLayouts, layoutId, width, height);
+        Apply(appliedConfig.DeckLayouts, layoutId, width, height);
         try
         {
             var persisted = store.Load();
-            persisted.DeckPanelWidth = width;
-            persisted.DeckPanelHeight = height;
+            Apply(persisted.DeckLayouts, layoutId, width, height);
             store.Save(persisted);
         }
         catch { }

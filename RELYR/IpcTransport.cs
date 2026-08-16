@@ -183,6 +183,27 @@ internal sealed class IpcProcessIdentity : IDisposable
         catch { handle.Dispose(); return null; }
     }
 
+    internal static bool TryGetProcessImagePath(uint processId, out string imagePath)
+    {
+        const uint ProcessQueryLimitedInformation = 0x1000;
+        using var handle = new SafeProcessHandle(OpenProcess(ProcessQueryLimitedInformation, false, processId), true);
+        if (handle.IsInvalid)
+        {
+            imagePath = "";
+            return false;
+        }
+        try
+        {
+            imagePath = QueryImagePath(handle);
+            return !string.IsNullOrWhiteSpace(imagePath);
+        }
+        catch
+        {
+            imagePath = "";
+            return false;
+        }
+    }
+
     static string QueryImagePath(SafeProcessHandle handle)
     {
         var buffer = new StringBuilder(1024);

@@ -93,11 +93,6 @@ public partial class DeckIconPickerWindow : Window
 
     void UpdateSelectionPreview()
     {
-        var mapping = new Mapping { DeckIcon = selectedPresetId, DeckIconPath = selectedCustomPath };
-        SelectedPreview.Child = DeckIconCatalog.CreateVisual(mapping, 26, false);
-        string plainPresetId = DeckIconCatalog.IsAnimatedPreset(selectedPresetId) ? selectedPresetId[DeckIconCatalog.AnimatedPrefix.Length..] : selectedPresetId;
-        string presetName = DeckIconCatalog.Presets.FirstOrDefault(x => x.Id == plainPresetId)?.Name ?? "アイコンなし";
-        SelectedNameText.Text = selectedCustomPath.Length > 0 ? Path.GetFileName(selectedCustomPath) : DeckIconCatalog.IsAnimatedPreset(selectedPresetId) ? presetName + "（GIFアニメ）" : presetName;
         foreach (System.Windows.Controls.Button button in PresetPanel.Children.Cast<System.Windows.Controls.Button>().Concat(AnimatedPresetPanel.Children.Cast<System.Windows.Controls.Button>()))
         {
             bool selected = button.Tag is string id && id == selectedPresetId && selectedCustomPath.Length == 0;

@@ -1,6 +1,8 @@
-﻿param([string]$Configuration="Release",[switch]$SkipRealHookTest)
+﻿param([string]$Configuration="Release",[switch]$SkipRealHookTest,[switch]$SkipInputEngineTest=$true)
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
+
+& (Join-Path $root "verify-source-safety.ps1")
 
 [xml]$project=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Encoding UTF8
 $version=($project.Project.PropertyGroup.Version|Where-Object{$_}|Select-Object -First 1)
@@ -49,13 +51,16 @@ if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
 if($installerText -notmatch '(?im)^PrivilegesRequired=admin\s*$'){
   throw "Installer must require administrator privileges"
 }
-if($installerText -notmatch '(?im)^CloseApplications=yes\s*$' -or $installerText -notmatch '(?im)^CloseApplicationsFilter=RELYR\.exe,InputCustomizer\.exe\s*$'){
-  throw "Installer must use Windows Restart Manager for RELYR executables before replacement"
+if($installerText -notmatch '(?im)^CloseApplications=force\s*$' -or $installerText -notmatch '(?im)^CloseApplicationsFilter=RELYR\.exe,InputCustomizer\.exe\s*$'){
+  throw "Installer must force-close only RELYR executables through Windows Restart Manager before replacement"
 }
-if($installerText -notmatch '(?im)^ApplicationsFound=.*メイン画面.*管理者入力ヘルパー.*2件表示.*正常.*$'){
-  throw "Installer must explain the two expected RELYR processes without changing shutdown behavior"
+if($installerText -notmatch '(?is)function\s+PrepareToInstall.*?\{app\}\\\{#AppExe\}.*?--shutdown-existing.*?Sleep\(4500\)'){
+  throw "Installer upgrades must gracefully stop the installed RELYR and wait for its native exit watchdog before replacement"
 }
-if($installerText -notmatch '(?is)#ifdef\s+IncludeRuntime.*?Compression=none.*?SolidCompression=no.*?#else.*?Compression=lzma2/ultra64.*?SolidCompression=yes.*?#endif'){
+if($installerText -match '(?im)^ApplicationsFound=.*(?:2件表示|管理者入力ヘルパー).*$' -or $installerText -notmatch '(?im)^ApplicationsFound=.*実行中のRELYRを自動終了.*$'){
+  throw "Installer must describe the single-process RELYR shutdown flow"
+}
+if($installerText -notmatch '(?is)#ifdef\s+IncludeRuntime.*?Compression=none.*?SolidCompression=no.*?#else.*?Compression=lzma2/normal.*?SolidCompression=no.*?#endif'){
   throw "Full setup must stay transparent while the lightweight update uses the Defender-safe compressed container"
 }
 if($installerText -notmatch '(?im)^UninstallDisplayName=\{#AppName\}\s*$' -or $installerText -notmatch '(?im)^Name:.*\{uninstallexe\}'){
@@ -112,7 +117,7 @@ if($installerText -notmatch '(?im)^Source:\s*"\{#DistributionSourceDir\}\\\*".*r
   throw "Installer must distribute the complete framework-dependent application"
 }
 
-& (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest -OutputDirectory $payloadDirectory
+& (Join-Path $root "build-production.ps1") -Configuration $Configuration -SkipRealHookTest:$SkipRealHookTest -SkipInputEngineTest:$SkipInputEngineTest -OutputDirectory $payloadDirectory
 if($LASTEXITCODE -ne 0){throw "Production build failed"}
 
 $iscc=@(
@@ -169,6 +174,25 @@ $updateLength=(Get-Item -LiteralPath $installers[1]).Length
 $runtimeLength=(Get-Item -LiteralPath $runtimeInstaller).Length
 if($setupLength -le $runtimeLength){throw "Full setup does not contain the bundled .NET Desktop Runtime."}
 if($updateLength -ge 25MB){throw "Update installer unexpectedly contains a large runtime payload."}
+
+# Scan the isolated, fully validated installer pair before replacing the retained
+# production release. A failed/disabled Defender scan must leave the old release
+# untouched instead of publishing an unchecked executable.
+$defenderStatus=Get-MpComputerStatus -ErrorAction Stop
+if(-not $defenderStatus.AntivirusEnabled -or -not $defenderStatus.RealTimeProtectionEnabled){
+  throw "Microsoft Defender antivirus and real-time protection must be enabled before replacing production installers."
+}
+$scanStarted=Get-Date
+Start-MpScan -ScanType CustomScan -ScanPath $installerOutputDirectory -ErrorAction Stop
+$installerPatterns=@($installers|ForEach-Object{[regex]::Escape([System.IO.Path]::GetFullPath($_))})
+$matchingDetections=@(Get-MpThreatDetection -ErrorAction SilentlyContinue|Where-Object{
+  $resources=($_.Resources -join "`n")
+  $_.InitialDetectionTime -ge $scanStarted.AddMinutes(-1) -and @($installerPatterns|Where-Object{$resources -match $_}).Count -gt 0
+})
+if($matchingDetections.Count -ne 0){
+  throw "Microsoft Defender detected a threat in the staged RELYR installers. Production installers were not replaced."
+}
+Write-Host "Microsoft Defender staged-installer scan: 0 detections"
 
 $productionDirectory=Join-Path $root 'artifacts\production'
 New-Item -ItemType Directory -Force -Path $productionDirectory|Out-Null

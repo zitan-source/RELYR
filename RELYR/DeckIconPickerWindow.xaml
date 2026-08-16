@@ -5,37 +5,30 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}">
   <Grid Margin="20">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel Margin="0,0,0,14">
       <TextBlock Text="アイコン変更" FontSize="20" FontWeight="SemiBold"/>
       <TextBlock Text="プリセットを選ぶか、画像ファイルを参照してください" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}"/>
       <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-        <Button x:Name="StaticPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="静止アイコン 100" Click="StaticPresetTab_Click" MinWidth="132"/>
-        <Button x:Name="AnimatedPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="GIFアニメ 100" Click="AnimatedPresetTab_Click" MinWidth="132" Margin="8,0,0,0"/>
+        <Button x:Name="StaticPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="静止アイコン" Click="StaticPresetTab_Click" MinWidth="132"/>
+        <Button x:Name="AnimatedPresetTabButton" Style="{StaticResource AppButtonStyle}" Content="GIFアニメ" Click="AnimatedPresetTab_Click" MinWidth="132" Margin="8,0,0,0"/>
       </StackPanel>
     </StackPanel>
     <Border Grid.Row="1" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10">
       <Grid>
-        <ScrollViewer x:Name="StaticPresetScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <WrapPanel x:Name="PresetPanel" HorizontalAlignment="Left"/>
+        <ScrollViewer x:Name="StaticPresetScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+          <WrapPanel x:Name="PresetPanel" HorizontalAlignment="Stretch" Width="{Binding ViewportWidth, ElementName=StaticPresetScroll}"/>
         </ScrollViewer>
-        <ScrollViewer x:Name="AnimatedPresetScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <WrapPanel x:Name="AnimatedPresetPanel" HorizontalAlignment="Left"/>
+        <ScrollViewer x:Name="AnimatedPresetScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+          <WrapPanel x:Name="AnimatedPresetPanel" HorizontalAlignment="Stretch" Width="{Binding ViewportWidth, ElementName=AnimatedPresetScroll}"/>
         </ScrollViewer>
       </Grid>
     </Border>
-    <Grid Grid.Row="2" Margin="0,14,0,0">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border x:Name="SelectedPreview" Width="48" Height="48" CornerRadius="8" Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="8"/>
-      <TextBlock x:Name="SelectedNameText" Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="アイコンなし" TextTrimming="CharacterEllipsis"/>
-      <StackPanel Grid.Column="2" Orientation="Horizontal">
-        <Button x:Name="BrowseButton" Style="{StaticResource AppButtonStyle}" Content="参照…" Click="Browse_Click" ToolTip="好きな画像ファイルを選択"/>
-        <Button x:Name="ClearButton" Style="{StaticResource AppButtonStyle}" Content="なし" Click="Clear_Click" ToolTip="設定したアイコンを外す" Margin="8,0,0,0"/>
-      </StackPanel>
-    </Grid>
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-      <Button Style="{StaticResource AppButtonStyle}" Content="キャンセル" IsCancel="True" Width="104"/>
-      <Button Style="{StaticResource AccentAppButtonStyle}" Content="適用" Click="Apply_Click" IsDefault="True" Width="104" Margin="8,0,0,0"/>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+      <Button x:Name="BrowseButton" Style="{StaticResource AppButtonStyle}" Content="参照…" Click="Browse_Click" ToolTip="好きな画像ファイルを選択" Width="104" Height="44"/>
+      <Button x:Name="ClearButton" Style="{StaticResource AppButtonStyle}" Content="なし" Click="Clear_Click" ToolTip="設定したアイコンを外す" Width="104" Height="44" Margin="8,0,0,0"/>
+      <Button x:Name="CancelButton" Style="{StaticResource AppButtonStyle}" Content="キャンセル" IsCancel="True" Width="104" Height="44" Margin="8,0,0,0"/>
+      <Button x:Name="ApplyButton" Style="{StaticResource AccentAppButtonStyle}" Content="適用" Click="Apply_Click" IsDefault="True" Width="104" Height="44" Margin="8,0,0,0"/>
     </StackPanel>
   </Grid>
 </Window>

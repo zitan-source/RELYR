@@ -27,10 +27,18 @@ internal static class DeckPanelLayout
     internal const double KeyWidth = 54;
     internal const double KeyHeight = 52;
     internal const double Gap = 4;
-    internal const double CellHeight = 70;
+    internal const double NameLabelHeight = 13;
+    internal const double NameLabelAreaHeight = 14;
+    // The name lives below the 54x52 button.  Match the visible horizontal
+    // button gap to the vertical button-to-button distance, which includes
+    // both the name row and the ordinary four-pixel gutter.
+    internal const double ButtonGap = NameLabelAreaHeight + Gap;
+    internal const double CellWidth = KeyWidth + ButtonGap;
+    internal const double CellHeight = KeyHeight + ButtonGap;
     internal const string ActionPrefix = "ShowDeckPanelOverlay:";
     internal const string SlotDragFormat = "RELYR.DeckSlot";
     internal const string FileSourceDragFormat = "RELYR.DeckFileSource";
+    internal const System.Windows.DragDropEffects ExternalFileDragEffects = System.Windows.DragDropEffects.Copy;
 
     static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -67,13 +75,46 @@ internal static class DeckPanelLayout
     internal static DeckLayoutDefinition? FindLayout(AppConfig config, string? id)
         => string.IsNullOrWhiteSpace(id) ? null : config.DeckLayouts.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
+    internal static Profile? ActiveProfile(AppConfig config)
+        => config.Profiles.FirstOrDefault(x => x.Name.Equals(config.ActiveProfile, StringComparison.OrdinalIgnoreCase)) ?? config.Profiles.FirstOrDefault();
+
+    internal static bool IsAvailableToProfile(DeckLayoutDefinition layout, Profile? profile)
+        => !layout.ProfileSwitchEnabled || profile != null && layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase);
+
+    internal static IEnumerable<DeckLayoutDefinition> LayoutsForActiveProfile(AppConfig config)
+    {
+        var profile = ActiveProfile(config);
+        return config.DeckLayouts.Where(layout => IsAvailableToProfile(layout, profile));
+    }
+
+    internal static DeckLayoutDefinition? VariantForProfile(AppConfig config, DeckLayoutDefinition layout, Profile? profile)
+    {
+        if (!layout.ProfileSwitchEnabled)
+            return layout;
+        return profile == null ? null : config.DeckLayouts.FirstOrDefault(candidate => candidate.ProfileSwitchEnabled
+            && candidate.ProfileGroupId.Equals(layout.ProfileGroupId, StringComparison.OrdinalIgnoreCase)
+            && candidate.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase));
+    }
+
     internal static DeckLayoutDefinition? DefaultLayout(AppConfig config)
-        => FindLayout(config, config.DefaultDeckLayoutId) ?? config.DeckLayouts.FirstOrDefault();
+    {
+        var profile = ActiveProfile(config);
+        var preferred = FindLayout(config, profile?.DefaultDeckLayoutId);
+        if (preferred != null && IsAvailableToProfile(preferred, profile))
+            return preferred;
+        var global = FindLayout(config, config.DefaultDeckLayoutId);
+        if (global != null && IsAvailableToProfile(global, profile))
+            return global;
+        return LayoutsForActiveProfile(config).FirstOrDefault();
+    }
 
     internal static DeckLayoutDefinition? ResolveActionLayout(AppConfig config, string? action)
     {
         if (action?.StartsWith(ActionPrefix, StringComparison.OrdinalIgnoreCase) == true)
-            return FindLayout(config, action[ActionPrefix.Length..]);
+        {
+            var requested = FindLayout(config, action[ActionPrefix.Length..]);
+            return requested == null ? null : VariantForProfile(config, requested, ActiveProfile(config));
+        }
         return action?.Equals(OverlayService.DeckPanelAction, StringComparison.OrdinalIgnoreCase) == true ? DefaultLayout(config) : null;
     }
 
@@ -329,9 +370,11 @@ internal static class DeckPanelLayout
         var label = new TextBlock
         {
             Text = mapping?.Description ?? "",
-            Height = 13,
+            Height = NameLabelHeight,
+            Width = KeyWidth,
             FontSize = 8,
-            Margin = new Thickness(1, 1, 1, 0),
+            Margin = new Thickness(0, 1, 0, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Top,

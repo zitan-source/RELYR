@@ -83,6 +83,57 @@ public static class SelfTest
             File.WriteAllText(Path.Combine(gestureMigrationDir, "settings.json"), "{\"Version\":19,\"Gestures\":[{\"Name\":\"ウィンドウ操作\"}],\"Profiles\":[{\"Name\":\"標準\",\"Mappings\":[{\"Input\":\"MouseRight+Space\",\"Kind\":\"None\",\"Value\":\"\",\"LongPressKind\":\"Gesture\",\"LongPressValue\":\"ウィンドウ操作\"}]}]}");
             var migratedGesture = new ConfigService(gestureMigrationDir).Load();
             Check(migratedGesture.Version == ConfigService.CurrentVersion && migratedGesture.Profiles[0].Mappings[0] is { Kind: ActionKind.Gesture, Value: "ウィンドウ操作", LongPressKind: ActionKind.None, LongPressValue: "" }, "v19 long-press-only gestures migrate to immediate short-press gestures without losing the reference");
+            string profileScopedMappingDir = Path.Combine(dir, "legacy-profile-scoped-mappings-v28");
+            var profileScopedMappingService = new ConfigService(profileScopedMappingDir);
+            profileScopedMappingService.Save(new AppConfig
+            {
+                Version = 28,
+                ActiveProfile = "標準",
+                Profiles =
+                [
+                    new Profile
+                    {
+                        Name = "標準",
+                        Mappings =
+                        [
+                            new Mapping { Input = "F8", Kind = ActionKind.Key, Value = "A", Application = "" },
+                            new Mapping { Input = "F8", Kind = ActionKind.Key, Value = "B", Application = "notepad.exe" },
+                            new Mapping { Input = "Space+J", Kind = ActionKind.Key, Value = "Left", Application = "code.exe" }
+                        ]
+                    }
+                ]
+            });
+            var migratedProfileScopedMappings = profileScopedMappingService.Load();
+            var migratedProfileMappings = migratedProfileScopedMappings.Profiles[0].Mappings;
+            Check(migratedProfileScopedMappings.Version == ConfigService.CurrentVersion
+                && migratedProfileMappings.Count == 3
+                && migratedProfileMappings.Single(mapping => mapping.Input.Equals("F8", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(mapping.Application)) is { Value: "A" }
+                && migratedProfileMappings.Single(mapping => mapping.Input.Equals("F8", StringComparison.OrdinalIgnoreCase) && mapping.Application.Equals("notepad.exe", StringComparison.OrdinalIgnoreCase)) is { Value: "B" }
+                && migratedProfileMappings.Single(mapping => mapping.Input.Equals("Space+J", StringComparison.OrdinalIgnoreCase)) is { Value: "Left", Application: "code.exe" }
+                && ConfigValidator.Validate(migratedProfileScopedMappings).Count == 0,
+                "v28 per-mapping application conditions and same-input application variants are preserved");
+            string protectedLeftClickDir = Path.Combine(dir, "protected-normal-left-click");
+            var protectedLeftClickService = new ConfigService(protectedLeftClickDir);
+            protectedLeftClickService.Save(new AppConfig
+            {
+                Version = ConfigService.CurrentVersion,
+                Profiles =
+                [
+                    new Profile
+                    {
+                        Mappings =
+                        [
+                            new Mapping { Input = "MouseLeft", Kind = ActionKind.Disabled },
+                            new Mapping { Input = "MouseLeft+J", Kind = ActionKind.Key, Value = "A" },
+                            new Mapping { Input = "Space+MouseLeft", Kind = ActionKind.Key, Value = "B" },
+                            new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Key, Value = "C" }
+                        ]
+                    }
+                ]
+            });
+            var protectedLeftClickMappings = protectedLeftClickService.Load().Profiles[0].Mappings;
+            Check(protectedLeftClickMappings.Select(mapping => mapping.Input).SequenceEqual(["Space+MouseLeft", "Taskbar+MouseLeft"]),
+                "normal MouseLeft and MouseLeft-started chords are removed while explicit Space and Taskbar left-click layer inputs remain available");
             var pendingCaps = new AppConfig { CapsLockRemapPendingRestart = true, CapsLockRemapChangedAtUtcTicks = DateTime.UtcNow.AddMinutes(-1).Ticks };
             Check(LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromHours(1).TotalMilliseconds) && !LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromSeconds(10).TotalMilliseconds), "CapsLock remap distinguishes the current boot from a completed restart");
             Check(!App.UninstallRestartNeeded(new AppConfig(), false, false) && App.UninstallRestartNeeded(new AppConfig(), true, false) && !App.UninstallRestartNeeded(new AppConfig { CapsLockLayerEnabled = true }, false, false) && App.UninstallRestartNeeded(new AppConfig(), false, true), "normal updates and a saved CapsLock preference do not request a restart; only an active or pending system remap does");
@@ -110,13 +161,21 @@ public static class SelfTest
             Check(ConfigValidator.Validate(blankAction).Count == 0, "blank execution value can be left unfinished without a validation error");
             Check(!MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.None, Value = "stale" }) && !MainWindow.MappingInterceptsInput(new Mapping { Input = "M", Kind = ActionKind.Shortcut, Value = "" }) && MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.Disabled }) && MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "Enter" }), "unfinished mappings do not look assigned or block native input while disabled and long-only mappings still intercept");
             Check(MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = OverlayService.DeckPanelAction }) && !MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Launch, LongPressValue = "notepad.exe" }), "elevated foreground capture includes long-press key and shortcut actions without expanding to unrelated action kinds");
-            Check(MainWindow.ShouldUiHostInterceptInput(false, false, true, false) && !MainWindow.ShouldUiHostInterceptInput(false, false, true, true) && MainWindow.ShouldUiHostInterceptInput(true, false, true, true), "the UI input hook falls back for an elevated foreground when the helper is unavailable and retains captured layers through release");
-            Check(ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBoxVM.exe") && ConditionMatcher.IsVirtualMachineConsoleProcess("virtualboxvm") && !ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBox.exe") && !MainWindow.ShouldUiHostInterceptInput(false, true, false, false) && MainWindow.ShouldUiHostInterceptInput(true, true, false, false), "the host passes fresh input through a foreground VirtualBox VM while still completing any layer captured before the focus change");
+            Check(ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBoxVM.exe") && ConditionMatcher.IsVirtualMachineConsoleProcess("virtualboxvm") && !ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBox.exe"), "VirtualBox VM console process detection remains available to the elevated helper without restricting the normal UI runtime");
             Check(MainWindow.ShouldFocusExecutionForSelectedInput(null) && !MainWindow.ShouldFocusExecutionForSelectedInput(new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }), "only an unassigned key automatically focuses the execution-value editor");
             var hoverMapping = new Mapping { Input = "Space+K", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Launch, LongPressValue = @"C:\Apps\Sample.exe", LongPressMs = 600 };
             string? hoverText = MainWindow.AssignmentToolTipText(hoverMapping);
             Check(MainWindow.AssignmentToolTipText(null) == null && hoverText?.Contains("アクション：ショートカット") == true && hoverText.Contains("実行内容：") && hoverText.Contains("長押し（600 ms）") && hoverText.Contains("アクション：アプリ・ファイル・URL") && hoverText.Contains(@"C:\Apps\Sample.exe"), "assigned keyboard hover shows short and long actions while unassigned keys show no popup");
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
+            var taskbarLongOnly = new Mapping { Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
+            var taskbarReplayEvents = new List<string>();
+            MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], taskbarReplayEvents.Add);
+            Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
+                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
+                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
+                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft", longPress: true) == null
+                && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"]),
+                "taskbar long-press-only short clicks replay in order on a worker instead of sending input inside the hook");
             var mouseDisplayCases = new Dictionary<string, string> { { "MouseLeft", "マウス：左クリック" }, { "MouseRight", "マウス：右クリック" }, { "MouseMiddle", "マウス：ホイールクリック" }, { "MouseBack", "マウス：戻る" }, { "MouseForward", "マウス：進む" }, { "MouseX", "マウス：追加ボタン" }, { "WheelUp", "マウス：ホイール上" }, { "WheelDown", "マウス：ホイール下" }, { "TiltLeft", "マウス：チルト左" }, { "TiltRight", "マウス：チルト右" }, { "ShiftDrag", "マウス：Shift + 左クリック" }, { "CtrlDrag", "マウス：Ctrl + 左クリック" }, { "AltDrag", "マウス：Alt + 左クリック" } };
             Check(mouseDisplayCases.All(x => MainWindow.DisplayActionValue(ActionKind.Mouse, x.Key) == x.Value && MainWindow.NormalizeEditorAction(ActionKind.Shortcut, x.Value, ActionKind.Mouse, x.Key) == (ActionKind.Mouse, x.Key)), "every mouse execution value is readable in the editor and safely converts back to its compatible internal name");
             config.Profiles.Add(new Profile { Name = "アプリ用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] });
@@ -307,13 +366,16 @@ public static class SelfTest
             loaded.Profiles[0].Mappings.Add(new Mapping { Input = "A", Kind = ActionKind.Key, Value = "C" });
             Check(ConfigValidator.Validate(loaded).Any(x => x.Contains("競合")), "conflict detection");
             Check(InputEngineSmokeTest(), "input engine construct/dispose");
+            Check(!InputEngine.HookMissedRawTransitions(10, 10) && InputEngine.HookMissedRawTransitions(11, 10), "hook recovery requires proven Raw Input transitions missing from the low-level hook");
             TestMappingActions(Check);
             Check(ConditionMatcher.Matches("notepad.exe", "NOTEPAD"), "application condition matching");
             var autoProfiles = new[] { new Profile { Name = "標準" }, new Profile { Name = "メモ帳", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] } };
             Check(MainWindow.SelectAutomaticProfile(autoProfiles, "notepad").Name == "メモ帳" && MainWindow.SelectAutomaticProfile(autoProfiles, "explorer").Name == "標準", "cursor application profile selection");
             Check(MainWindow.SelectAutomaticProfileNameForLocation(autoProfiles, "メモ帳", "explorer", true) == "メモ帳" && MainWindow.SelectAutomaticProfileNameForLocation(autoProfiles, "メモ帳", "explorer", false) == "標準", "taskbar keeps the previously selected application profile");
             Check(MainWindow.ShouldKeepExplicitProfile("chrome.exe", "chrome", false) && MainWindow.ShouldKeepExplicitProfile("chrome.exe", "explorer", true) && !MainWindow.ShouldKeepExplicitProfile("chrome.exe", "notepad", false), "an explicit profile action remains active over the current app and yields only after the pointer moves to another app");
-            Check(MainWindow.IsOwnProcess("RELYR", @"C:\Program Files\RELYR\RELYR.exe") && !MainWindow.IsOwnProcess("chrome", @"C:\Program Files\RELYR\RELYR.exe"), "profile auto-switch ignores the RELYR settings window");
+            Check(MainWindow.IsOwnProcess("RELYR", @"C:\Program Files\RELYR\RELYR.exe")
+                && !MainWindow.IsOwnProcess("chrome", @"C:\Program Files\RELYR\RELYR.exe"),
+                "RELYR-owned Deck and notification windows remain neutral to application profile routing");
             var editingProfileConfig = new AppConfig { ActiveProfile = "メモ帳", Profiles = [.. autoProfiles] };
             var runtimeProfileConfig = service.Clone(editingProfileConfig);
             Check(MainWindow.ApplyAutomaticProfile(editingProfileConfig, runtimeProfileConfig, "標準") && editingProfileConfig.ActiveProfile == "メモ帳" && runtimeProfileConfig.ActiveProfile == "標準", "automatic profile switching changes runtime behavior without moving the profile being edited");
@@ -325,8 +387,7 @@ public static class SelfTest
             var (Target, ReturnProfile) = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "標準", "", ["QtWebEngineProcess", "Wondershare Filmora"], false);
             var leaveFilmora = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "Filmora", "Chrome", "explorer.exe", false);
             var filmoraOnOtherDesktop = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "Filmora", "", "explorer.exe", false);
-            var pointerOverRelyrAfterFilmora = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "Filmora", "", "", false);
-            Check(keepChrome == ("Chrome", "") && enterFilmora == ("Filmora", "Chrome") && Target == "Filmora" && leaveFilmora == ("Chrome", "") && filmoraOnOtherDesktop == ("標準", "") && pointerOverRelyrAfterFilmora == ("標準", ""), "cursor auto-switch recognizes a host app behind its render child, preserves a manual profile, and returns when the app is absent or on another desktop");
+            Check(keepChrome == ("Chrome", "") && enterFilmora == ("Filmora", "Chrome") && Target == "Filmora" && leaveFilmora == ("Chrome", "") && filmoraOnOtherDesktop == ("標準", ""), "cursor auto-switch recognizes a host app behind its render child, preserves a manual profile, and returns when the app is absent or on another desktop");
             var runtimeAutoConfig = new AppConfig { ActiveProfile = "標準", Profiles = [.. mixedAutoProfiles] };
             var editingAutoConfig = service.Clone(runtimeAutoConfig);
             string deferredReturn = "";
@@ -343,7 +404,17 @@ public static class SelfTest
             var overrideMapping = new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" };
             var independentProfiles = new[] { new Profile { Name = "標準", Mappings = [baseMapping] }, new Profile { Name = "Chrome", Mappings = [overrideMapping] } };
             Check(MainWindow.FindProfileMapping(independentProfiles, "Chrome", "CapsLock+U", MainWindow.MappingInterceptsInput) == null && ReferenceEquals(MainWindow.FindProfileMapping(independentProfiles, "Chrome", "A", MainWindow.MappingInterceptsInput), overrideMapping) && ReferenceEquals(MainWindow.FindProfileMapping(independentProfiles, "標準", "CapsLock+U", MainWindow.MappingInterceptsInput), baseMapping), "profiles are independent so no-copy creation and assignment deletion never reveal standard-profile mappings");
+            var universalMapping = new Mapping { Input = "F8", Kind = ActionKind.Key, Value = "A" };
+            var applicationMapping = new Mapping { Input = "F8", Kind = ActionKind.Key, Value = "B", Application = "notepad.exe" };
+            var profileScopedMappings = new Profile { Name = "標準", Mappings = [universalMapping, applicationMapping] };
+            var reversedProfileScopedMappings = new Profile { Name = "標準", Mappings = [applicationMapping, universalMapping] };
+            var lastProfileMapping = MainWindow.FindProfileMapping([profileScopedMappings], "標準", "F8", MainWindow.MappingInterceptsInput);
+            var reversedLastProfileMapping = MainWindow.FindProfileMapping([reversedProfileScopedMappings], "標準", "F8", MainWindow.MappingInterceptsInput);
+            Check(ReferenceEquals(lastProfileMapping, applicationMapping) && ReferenceEquals(reversedLastProfileMapping, universalMapping),
+                "per-application mapping variants remain separate while editor lookup keeps deterministic last-visible precedence");
             Check(!ConditionMatcher.Matches("notepad.exe", "excel"), "application condition rejection");
+            string ownProcessName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "RELYR");
+            Check(MainWindow.MappingApplicationMatches(applicationMapping, ownProcessName), "RELYR main window does not suppress application-scoped mappings");
             Check(ConditionMatcher.IsTaskbarClass("Shell_TrayWnd") && ConditionMatcher.IsTaskbarClass("Shell_SecondaryTrayWnd"), "taskbar class detection");
             Check(ActionCatalog.Items.Any(x => x.Name == "コピー" && x.Value == "Ctrl+C"), "action catalog copy preset");
             var windowsApps = ActionCatalog.Items.Where(x => x.MajorCategory == "Windowsアプリ").ToList();
@@ -405,6 +476,18 @@ public static class SelfTest
             Check(Math.Abs(Width - 190) < .01 && Math.Abs(Height - 190d / 12) < .01 && Math.Abs(squarePreview.Width - 88) < .01 && Math.Abs(squarePreview.Height - 88) < .01, "Deck thumbnails preserve each layout's grid aspect ratio");
             var explicitDeckAction = DeckPanelLayout.ActionValue(migratedDeck.Id);
             Check(DeckPanelLayout.ResolveActionLayout(deckClone, explicitDeckAction)?.Id == migratedDeck.Id && InputEngine.IsRecognizedShortcut(explicitDeckAction), "Deck actions use stable layout IDs and remain valid after a layout rename");
+            var standardDeckProfile = new Profile { Name = "標準" };
+            var workDeckProfile = new Profile { Name = "作業" };
+            string linkedDeckGroup = Guid.NewGuid().ToString("N");
+            var standardLinkedDeck = new DeckLayoutDefinition { Name = "連動Deck", ProfileSwitchEnabled = true, ProfileGroupId = linkedDeckGroup, ProfileId = standardDeckProfile.Id, Columns = 3, Rows = 3, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A" }] };
+            var workLinkedDeck = new DeckLayoutDefinition { Name = "連動Deck", ProfileSwitchEnabled = true, ProfileGroupId = linkedDeckGroup, ProfileId = workDeckProfile.Id, Columns = 8, Rows = 2 };
+            standardDeckProfile.DefaultDeckLayoutId = standardLinkedDeck.Id;
+            workDeckProfile.DefaultDeckLayoutId = workLinkedDeck.Id;
+            var linkedDeckConfig = new AppConfig { ActiveProfile = "標準", Profiles = [standardDeckProfile, workDeckProfile], DeckLayouts = [standardLinkedDeck, workLinkedDeck], DefaultDeckLayoutId = standardLinkedDeck.Id };
+            string linkedDeckAction = DeckPanelLayout.ActionValue(standardLinkedDeck.Id);
+            bool standardDeckResolved = DeckPanelLayout.ResolveActionLayout(linkedDeckConfig, linkedDeckAction) == standardLinkedDeck && DeckPanelLayout.DefaultLayout(linkedDeckConfig) == standardLinkedDeck;
+            linkedDeckConfig.ActiveProfile = "作業";
+            Check(standardDeckResolved && DeckPanelLayout.ResolveActionLayout(linkedDeckConfig, linkedDeckAction) == workLinkedDeck && DeckPanelLayout.DefaultLayout(linkedDeckConfig) == workLinkedDeck && DeckPanelLayout.VisibleSlotCount(workLinkedDeck) == 16 && workLinkedDeck.Mappings.Count == 0, "profile-linked Deck actions switch to the active profile's independent blank layout and preserve different grid sizes");
             var referencedLayout = new DeckLayoutDefinition { Name = "参照中" };
             var fallbackLayout = new DeckLayoutDefinition { Name = "移行先" };
             string referencedAction = DeckPanelLayout.ActionValue(referencedLayout.Id);

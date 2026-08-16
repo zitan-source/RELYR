@@ -39,7 +39,7 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-CloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 ; Normal installs and upgrades never require a Windows restart.  The only
 ; restart prompt RELYR owns is the conditional CapsLock restoration prompt
@@ -64,8 +64,8 @@ ChangesAssociations=yes
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Messages]
-ApplicationsFound=RELYRは「メイン画面」と「管理者入力ヘルパー」の2つで動作します。下にRELYRが2件表示されるのは正常です。セットアップに両方を自動終了させることを推奨します。
-ApplicationsFound2=RELYRは「メイン画面」と「管理者入力ヘルパー」の2つで動作します。下にRELYRが2件表示されるのは正常です。セットアップに両方を自動終了させることを推奨します。
+ApplicationsFound=RELYRを更新するため、実行中のRELYRを自動終了します。編集中の設定がある場合は、先にRELYRで保存してください。
+ApplicationsFound2=RELYRを更新するため、実行中のRELYRを自動終了します。編集中の設定がある場合は、先にRELYRで保存してください。
 UninstalledAndNeedsRestart=CapsLockを標準の動作に戻す変更を反映するには、Windowsの再起動が必要です。%n%n今すぐ再起動しますか？
 YesRadio=今すぐ再起動する(&Y)
 NoRadio=後で再起動する(&N)
@@ -235,6 +235,16 @@ var
   TaskXml: String;
 begin
   Result := '';
+  { Ask the installed copy to release hooks and exit before Restart Manager
+    begins replacing files.  The app has an independent three-second native
+    watchdog, so even a blocked WPF dispatcher cannot leave RELYR.exe behind. }
+  if FileExists(ExpandConstant('{app}\{#AppExe}')) then
+  begin
+    WizardForm.StatusLabel.Caption := '起動中のRELYRを終了しています…';
+    Exec(ExpandConstant('{app}\{#AppExe}'), '--shutdown-existing', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode);
+    Sleep(4500);
+  end;
 #ifdef IncludeRuntime
   if not IsDotNetDesktopRuntimeInstalled then
   begin
@@ -264,7 +274,7 @@ begin
     '</Task>';
   if not SaveStringToFile(TaskXmlPath, TaskXml, False) then
   begin
-    Result := '管理者入力ヘルパーの設定ファイルを作成できませんでした。セットアップはRELYRを変更していません。';
+    Result := '管理者起動タスクの設定ファイルを作成できませんでした。セットアップはRELYRを変更していません。';
     Exit;
   end;
   if not Exec(ExpandConstant('{sys}\schtasks.exe'),
@@ -273,7 +283,7 @@ begin
   begin
     Log(Format('RELYR Elevated Launcher registration failed. schtasks exit code: %d', [ResultCode]));
     DeleteFile(TaskXmlPath);
-    Result := '管理者入力ヘルパーを設定できませんでした。セットアップはRELYRを変更していません。';
+    Result := '管理者起動タスクを設定できませんでした。セットアップはRELYRを変更していません。';
     Exit;
   end;
   DeleteFile(TaskXmlPath);

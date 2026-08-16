@@ -20,6 +20,7 @@ public static class StartupIntegrationTest
             Check(!encoded.Any(char.IsWhiteSpace), "scheduled-task argument payload contains no command-line whitespace");
             Check(StartupService.MultipleInstancePolicy(true) == 2 && StartupService.MultipleInstancePolicy(false) == 0, "logon startup ignores duplicate launches while command launcher remains available for macro actions");
             Check(App.IsMainUiLaunch([]) && App.IsMainUiLaunch(["--tray"]) && !App.IsMainUiLaunch(["--macro-id", "abc"]), "single-instance guard applies only to the resident main application");
+            Check(App.ShouldRelayToSingleElevatedHost(false) && !App.ShouldRelayToSingleElevatedHost(true), "production launches one elevated resident input owner instead of a competing UI/helper pair");
             Check(!App.ShouldScanForOrphans(["--tray"]) && App.ShouldScanForOrphans([]), "logon startup skips the blocking orphan-process scan");
             Check(StartupService.SameExecutablePath(executable, executable.ToUpperInvariant()) && !StartupService.SameExecutablePath(executable, @"C:\Temp\RELYR.exe"), "executable path comparison remains case-insensitive");
             Check(StartupService.IsRelyrExecutableIdentity("RELYR.exe", "RELYR", "RELYR.dll"),
@@ -27,6 +28,9 @@ public static class StartupIntegrationTest
             Check(!StartupService.IsRelyrExecutableIdentity("RELYR.exe", "Other product", "RELYR.dll")
                 && !StartupService.IsRelyrExecutableIdentity("Other.exe", "RELYR", "RELYR.dll"),
                 "unrelated processes are never treated as RELYR remnants");
+            Check(IpcProcessIdentity.TryGetProcessImagePath((uint)Environment.ProcessId, out string currentImagePath)
+                && File.Exists(currentImagePath),
+                "stale-process recovery reads an executable path through the limited-information process API");
             using (var show = new EventWaitHandle(false, EventResetMode.AutoReset))
             using (var acknowledgement = new EventWaitHandle(false, EventResetMode.AutoReset))
             {

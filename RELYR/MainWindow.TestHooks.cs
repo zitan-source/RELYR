@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Input;
 
 namespace RELYR;
 
@@ -14,13 +13,18 @@ public partial class MainWindow
     internal bool HasDestinationInputTargetForTest => destinationInputTarget != null;
     internal bool IsEditingSelectedInputForTest => editingSelectedInput;
     internal bool ShouldInterceptPhysicalInputForTest => engine.ShouldInterceptInput?.Invoke() ?? true;
+    internal bool ShouldInterceptPhysicalMouseForTest => (engine.ShouldInterceptMouseInput ?? engine.ShouldInterceptInput)?.Invoke() ?? true;
     internal void ColorButtonsForTest() => ColorButtons();
     internal Profile CurrentProfileForTest => CurrentProfile;
     internal AppConfig ConfigForTest => config;
     internal IList<Profile> ProfilesForTest => config.Profiles;
     internal string AppliedProfileNameForTest => AppliedProfile.Name;
+    internal IReadOnlyList<Mapping> AppliedMappingsForTest => AppliedProfile.Mappings;
     internal Mapping? AppliedMappingForTest(string input) => FindProfileMapping(appliedConfig.Profiles, AppliedProfile.Name, input, MappingInterceptsInput);
     internal Mapping? RuntimeMappingForTest(string input) => FindMapping(input);
+    internal bool RuntimeInterceptsInputForTest(string input) => HasMapping(input);
+    internal void AddAppliedMappingForTest(Mapping mapping) => AppliedProfile.Mappings.Add(mapping);
+    internal void RemoveAppliedMappingForTest(Mapping mapping) => AppliedProfile.Mappings.Remove(mapping);
     internal void BeginLayerMappingScopeForTest(string layer) => CaptureLayerMappings(layer);
     internal void EndLayerMappingScopeForTest(string layer) => ReleaseLayerMappings(layer);
     internal bool ExecuteMappingForTest(Mapping mapping, string input) => executor.Execute(mapping, input, out _);
@@ -29,6 +33,9 @@ public partial class MainWindow
         => ApplyProfileManagerResult(profiles, activeProfile, autoSwitch);
     internal bool ApplyAutomaticProfileForTest(IReadOnlyCollection<string> processes)
         => TryApplyAutomaticProfileForProcesses(processes, false, out _);
+    internal void ResetAutomaticProfileCandidateForTest() => ResetAutomaticProfileCandidate();
+    internal bool ObserveAutomaticProfileCandidateForTest(string candidate, string activeProfile)
+        => ObserveAutomaticProfileCandidate(candidate, AutomaticProfileRequiredSamples(appliedConfig.Profiles, candidate));
     internal bool IsProfileOverlayVisibleForTest => profileOverlay?.IsVisible == true;
     internal ProfileSwitchOverlay? ProfileOverlayForTest => profileOverlay;
     internal void ShowProfileOverlayForTest(string name) => ShowProfileOverlay(name);
@@ -96,9 +103,14 @@ public partial class MainWindow
     internal void RefreshLayerButtonsForTest() => UpdateLayerButtons();
     internal void SaveAndApplyForTest() => SaveAndApply("テスト：設定を保存し、エンジンへ反映しました");
     internal bool HandleInputForTest(string input) => HandleInput(input);
+    internal bool QueueModifierDragForTest(string value, bool start)
+        => QueueDragAction(new Mapping { Input = "Space+MouseLeft", Layer = "Space", Kind = ActionKind.Mouse, Value = value }, "Space+MouseLeft:" + (start ? "PressStart" : "PressEnd"));
+    internal IntPtr DirectPhysicalKeyForTest(ushort virtualKey, bool up) => engine.DirectKeyForTest(virtualKey, up);
+    internal IntPtr DirectPhysicalMouseForTest(int message, int x = 0, int y = 0) => engine.DirectMouseForTest(message, 0, x, y);
+    internal IntPtr DirectPhysicalMouseForTest(int message, int mouseData, int x, int y) => engine.DirectMouseForTest(message, mouseData, x, y);
+    internal bool HasCapturedInputStateForTest => engine.HasCapturedStateForTest();
+    internal bool NativeMouseDragReadyForTest(string input) => engine.IsNativeMouseDragReadyForTest(input);
 
-    internal bool EnterPhysicalExecutionKeyForTest(Key key, ModifierKeys modifiers, bool longPress = false)
-        => ApplyPhysicalExecutionKey(longPress ? LongValueBox : ValueBox, key, modifiers);
     internal void OpenKeypadInputForTest(bool longPress = false)
         => KeypadInput_Click(longPress ? LongKindBox : KindBox, new RoutedEventArgs());
 

@@ -1,14 +1,19 @@
-param([string]$Configuration="Release",[switch]$SkipRealHookTest,[string]$OutputDirectory="")
+param([string]$Configuration="Release",[switch]$SkipRealHookTest,[switch]$SkipInputEngineTest=$true,[string]$OutputDirectory="")
 $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 $project=Join-Path $root "RELYR\RELYR.csproj"
 $nugetConfig=Join-Path $root "NuGet.Config"
 $env:APPDATA=Join-Path $root ".verification\appdata"
 New-Item -ItemType Directory -Force -Path $env:APPDATA|Out-Null
-$buildDirectory=Join-Path $root "RELYR\bin\$Configuration\net10.0-windows\win-x64"
+$isolatedBuildRoot=Join-Path $root ".verification\build-$Configuration"
+$baseOutputPath=(Join-Path $isolatedBuildRoot "bin")+[System.IO.Path]::DirectorySeparatorChar
+$buildProperties=@("-p:BaseOutputPath=$baseOutputPath")
+$buildDirectory=Join-Path $baseOutputPath "$Configuration\net10.0-windows\win-x64"
 $dll=Join-Path $buildDirectory "RELYR.dll"
 $output=if([string]::IsNullOrWhiteSpace($OutputDirectory)){Join-Path $root "artifacts\production"}else{[System.IO.Path]::GetFullPath($OutputDirectory)}
 $productionExecutable=Join-Path $output "RELYR.exe"
+
+& (Join-Path $root "verify-source-safety.ps1")
 
 function Stop-ProductionInstance([string]$executable) {
     if(-not (Test-Path -LiteralPath $executable)){return}
@@ -49,25 +54,39 @@ Stop-ProductionInstance $productionExecutable
 
 $assetsFile=Join-Path $root "RELYR\obj\project.assets.json"
 if(-not (Test-Path -LiteralPath $assetsFile)){
-    dotnet restore $project --configfile $nugetConfig
+    dotnet restore $project --configfile $nugetConfig @buildProperties
     if($LASTEXITCODE -ne 0){throw "Restore failed"}
 }
 
 # WPF incremental markup output can retain or lose individual BAML files after
 # a forced test shutdown. Production validation must always compile every XAML
 # resource from a clean intermediate state.
-dotnet clean $project -c $Configuration
+dotnet clean $project -c $Configuration @buildProperties
 if($LASTEXITCODE -ne 0){throw "Clean failed"}
-dotnet restore $project --configfile $nugetConfig
+dotnet restore $project --configfile $nugetConfig @buildProperties
 if($LASTEXITCODE -ne 0){throw "Restore after clean failed"}
-dotnet build $project -c $Configuration -warnaserror --no-restore
+dotnet build $project -c $Configuration -warnaserror --no-restore @buildProperties
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 
 dotnet $dll --self-test
 if($LASTEXITCODE -ne 0){throw "Self-test failed"}
-$engineTestArgument=if($SkipRealHookTest){"--engine-test-no-real"}else{"--engine-test"}
-dotnet $dll $engineTestArgument
-if($LASTEXITCODE -ne 0){throw "Engine test failed"}
+dotnet $dll --configuration-matrix-test
+if($LASTEXITCODE -ne 0){throw "Configuration matrix test failed"}
+if(-not $SkipInputEngineTest){
+    # Let the previous WPF test host fully tear down before the input-safety test
+    # samples the global Windows modifier state.
+    Start-Sleep -Milliseconds 750
+    $engineTestArgument=if($SkipRealHookTest){"--engine-test-no-real"}else{"--engine-test"}
+    $engineTestPassed=$false
+    for($engineAttempt=1;$engineAttempt -le 2 -and -not $engineTestPassed;$engineAttempt++){
+        dotnet $dll $engineTestArgument
+        $engineTestPassed=($LASTEXITCODE -eq 0)
+        if(-not $engineTestPassed -and $engineAttempt -lt 2){Start-Sleep -Seconds 1}
+    }
+    if(-not $engineTestPassed){throw "Engine test failed twice"}
+}else{
+    Write-Host "Input engine test skipped: it can inject real Windows input."
+}
 dotnet $dll --ui-test
 if($LASTEXITCODE -ne 0){throw "UI test failed"}
 dotnet $dll --startup-test
@@ -79,7 +98,7 @@ Stop-ProductionInstance $productionExecutable
 Remove-OutputDirectoryWithRetry $output
 dotnet publish $project -c $Configuration --no-restore --no-self-contained `
   -p:ProductionPublish=true -p:PublishSingleFile=false `
-  -p:DebugType=None -p:DebugSymbols=false -o $output
+  -p:DebugType=None -p:DebugSymbols=false @buildProperties -o $output
 if($LASTEXITCODE -ne 0){throw "Publish failed"}
 
 foreach($requiredFile in @("RELYR.exe","RELYR.dll","RELYR.runtimeconfig.json","LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){

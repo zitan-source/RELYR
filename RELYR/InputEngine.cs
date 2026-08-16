@@ -7,6 +7,7 @@ namespace RELYR;
 
 public sealed partial class InputEngine : IDisposable
 {
+    enum NativeRightDragCommand { Start, End }
     const int GestureIdleSafetyMs = 30000;
     const int GestureStopDelayMs = 110;
     static readonly BlockingCollection<Action> DesktopActions = [];
@@ -53,6 +54,11 @@ public sealed partial class InputEngine : IDisposable
     Thread? hookThread;
     uint hookThreadId;
     volatile bool rawInputMonitorStarted;
+#if HOOK_DIAGNOSTICS
+    readonly System.Threading.Timer hookDiagnosticsHeartbeatTimer;
+#endif
+    long rawKeyboardTransitions, lowLevelKeyboardTransitions;
+    long rawMouseTransitions, lowLevelMouseTransitions;
     readonly int[] lowLevelMouseUpsPendingRaw = new int[6];
     readonly int[] rawMouseUpsAwaitingLowLevel = new int[6];
     readonly ManualResetEventSlim hookReady = new(false);
@@ -72,6 +78,9 @@ public sealed partial class InputEngine : IDisposable
     bool layerUsed;
     int mouseLayerStartX, mouseLayerStartY;
     bool nativeRightLayerDrag;
+    bool nativeRightLayerDragStarting;
+    readonly BlockingCollection<NativeRightDragCommand> nativeRightDragOutputQueue = [];
+    readonly Task nativeRightDragOutputWorker;
     System.Threading.Timer? nativeRightDragSafetyTimer;
     System.Threading.Timer? layerRepeatTimer; volatile bool layerRepeatActive;
     long lastSpaceTapTick;
@@ -99,6 +108,14 @@ public sealed partial class InputEngine : IDisposable
     // different integrity boundary. Returning false leaves the event entirely
     // untouched so another hook (or Windows) can handle it.
     public Func<bool>? ShouldInterceptInput
+    {
+        get; set;
+    }
+    // Text editors need ordinary keyboard input, but a mouse button can still
+    // be the source of a layer chord (for example MouseRight+Space). Keep the
+    // mouse policy independent; callers that do not set it retain the legacy
+    // shared policy through the fallback in MouseCallbackCore.
+    public Func<bool>? ShouldInterceptMouseInput
     {
         get; set;
     }
@@ -188,6 +205,10 @@ public sealed partial class InputEngine : IDisposable
     {
         keyboardProc = KeyboardCallback;
         mouseProc = MouseCallback;
+#if HOOK_DIAGNOSTICS
+        hookDiagnosticsHeartbeatTimer = new(_ => RecordHookDiagnosticsHeartbeat(), null, 1000, 1000);
+#endif
+        nativeRightDragOutputWorker = Task.Factory.StartNew(ProcessNativeRightDragOutput, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
     public void Start()
     {
@@ -212,12 +233,17 @@ public sealed partial class InputEngine : IDisposable
     void HookLoop()
     {
         hookThreadId = GetCurrentThreadId();
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.HookThreadStarted, value1: hookThreadId);
         HwndSource? rawInputSource = null;
         try
         {
             IntPtr module = GetModuleHandle(null);
             keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, keyboardProc, module, 0);
+            int keyboardError = keyboardHook == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardHookRegistered, keyboardHook: keyboardHook, mouseHook: mouseHook, replacementHook: keyboardHook, result: keyboardHook != IntPtr.Zero ? 1 : 0, win32Error: keyboardError);
             mouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseProc, module, 0);
+            int mouseError = mouseHook == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseHookRegistered, keyboardHook: keyboardHook, mouseHook: mouseHook, replacementHook: mouseHook, result: mouseHook != IntPtr.Zero ? 1 : 0, win32Error: mouseError);
             if (keyboardHook == IntPtr.Zero || mouseHook == IntPtr.Zero)
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             // Raw Input is independent from the low-level hook chain. It supplies an
@@ -225,6 +251,7 @@ public sealed partial class InputEngine : IDisposable
             // one hook instance from seeing the matching WH_MOUSE_LL release.
             rawInputSource = CreateRawMouseInputSource();
             rawInputMonitorStarted = true;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputMonitorStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: rawInputSource.Handle.ToInt64(), result: 1);
             hookReady.Set();
             while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
             {
@@ -242,22 +269,35 @@ public sealed partial class InputEngine : IDisposable
                 finally { hookTestCompleted.Set(); }
             }
         }
-        catch (Exception ex) { hookStartException = ex; hookReady.Set(); }
+        catch (Exception ex)
+        {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.HookThreadFault, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: ex.HResult, value2: HookDiagnosticsTrace.ExceptionCode(ex), result: 0, win32Error: Marshal.GetLastWin32Error());
+            hookStartException = ex;
+            hookReady.Set();
+        }
         finally
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.HookThreadStopping, keyboardHook: keyboardHook, mouseHook: mouseHook);
             rawInputMonitorStarted = false;
             rawInputSource?.Dispose();
             if (keyboardHook != IntPtr.Zero)
             {
-                UnhookWindowsHookEx(keyboardHook);
+                IntPtr previous = keyboardHook;
+                bool unhooked = UnhookWindowsHookEx(previous);
+                int error = unhooked ? 0 : Marshal.GetLastWin32Error();
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardHookFinalUnhook, keyboardHook: keyboardHook, mouseHook: mouseHook, previousHook: previous, result: unhooked ? 1 : 0, win32Error: error);
                 keyboardHook = IntPtr.Zero;
             }
             if (mouseHook != IntPtr.Zero)
             {
-                UnhookWindowsHookEx(mouseHook);
+                IntPtr previous = mouseHook;
+                bool unhooked = UnhookWindowsHookEx(previous);
+                int error = unhooked ? 0 : Marshal.GetLastWin32Error();
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseHookFinalUnhook, keyboardHook: keyboardHook, mouseHook: mouseHook, previousHook: previous, result: unhooked ? 1 : 0, win32Error: error);
                 mouseHook = IntPtr.Zero;
             }
             hookThreadId = 0;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.HookThreadStopped);
         }
     }
 
@@ -293,23 +333,43 @@ public sealed partial class InputEngine : IDisposable
 
     IntPtr KeyboardCallback(int n, IntPtr w, IntPtr l)
     {
+#if HOOK_DIAGNOSTICS
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        HookDiagnosticsTrace.EnterHookCallback();
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackEnter, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: n, value2: w.ToInt64());
+#endif
         try
         {
             lock (stateLock)
+            {
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardStateLockAcquired, keyboardHook: keyboardHook, mouseHook: mouseHook);
                 return KeyboardCallbackCore(n, w, l);
+            }
         }
         catch
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackFault, keyboardHook: keyboardHook, mouseHook: mouseHook);
             return RecoverFromHookFault(n, w, l);
         }
+#if HOOK_DIAGNOSTICS
+        finally
+        {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackExit, System.Diagnostics.Stopwatch.GetTimestamp() - started, keyboardHook, mouseHook);
+            HookDiagnosticsTrace.ExitHookCallback();
+        }
+#endif
     }
 
     IntPtr KeyboardCallbackCore(int n, IntPtr w, IntPtr l)
     {
         if (n < 0)
             return Next(n, w, l);
-        if (ShouldInterceptInput is { } shouldIntercept && !shouldIntercept())
+        bool intercept = ShouldInterceptInput?.Invoke() ?? true;
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardInterceptEvaluated, keyboardHook: keyboardHook, mouseHook: mouseHook, result: intercept ? 1 : 0);
+        if (!intercept)
+        {
             return Next(n, w, l);
+        }
         var d = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(l);
         // 自分で生成した入力は再マッピングしないが、Windowsと後続フックへは必ず渡す。
         if (d.dwExtraInfo == (UIntPtr)Marker)
@@ -317,6 +377,7 @@ public sealed partial class InputEngine : IDisposable
         bool down = w == (IntPtr)WM_KEYDOWN || w == (IntPtr)WM_SYSKEYDOWN, up = w == (IntPtr)WM_KEYUP || w == (IntPtr)WM_SYSKEYUP;
         if (!down && !up)
             return Next(n, w, l);
+        Interlocked.Increment(ref lowLevelKeyboardTransitions);
         if (OverlayService.FullScreenVisible)
         {
             ResetCapturedState(false, true);
@@ -362,9 +423,18 @@ public sealed partial class InputEngine : IDisposable
             return ProcessPress(key, true, false, n, w, l);
 
         bool reliableCapsLayer = key == "CapsLock" && TreatF13AsCapsLock && vk == 0x7C;
-        if (deferredLayer is null && down && ((key != "CapsLock" && HasLayerMappings(key)) || reliableCapsLayer || (key == "Space" && SpaceHoldRepeatEnabled)))
+#if HOOK_DIAGNOSTICS
+        long layerLookupStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardLayerLookupStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: vk, result: down ? 1 : 0);
+#endif
+        bool hasKeyboardLayerMappings = down && key != "CapsLock" && HasLayerMappings(key);
+#if HOOK_DIAGNOSTICS
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardLayerLookupCompleted, System.Diagnostics.Stopwatch.GetTimestamp() - layerLookupStarted, keyboardHook, mouseHook, value1: vk, result: hasKeyboardLayerMappings ? 1 : 0);
+#endif
+        if (deferredLayer is null && down && (hasKeyboardLayerMappings || reliableCapsLayer || (key == "Space" && SpaceHoldRepeatEnabled)))
         {
             deferredLayer = key;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardLayerStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: vk);
             LayerStarted?.Invoke(key);
             ArmLayerSafety();
             layerUsed = false;
@@ -395,25 +465,7 @@ public sealed partial class InputEngine : IDisposable
         if (deferredLayer != null && (key.Equals(deferredLayer, StringComparison.OrdinalIgnoreCase) || IsLayerRelease(deferredLayer, vk, d.scanCode, up)))
         {
             if (up)
-            {
-                string releasedLayer = deferredLayer;
-                bool repeated = layerRepeatActive;
-                EndImmediateLayerPresses(releasedLayer);
-                CancelLayerRepeat();
-                CancelLayerSafety();
-                if (!layerUsed && !repeated && SuppressLayerTap?.Invoke(releasedLayer) != true)
-                {
-                    if (HasMapping?.Invoke(releasedLayer) == true)
-                        InputReceived?.Invoke(releasedLayer);
-                    else
-                        _ = Task.Run(() => SendShortcut(releasedLayer));
-                    if (releasedLayer == "Space")
-                        lastSpaceTapTick = Environment.TickCount64;
-                }
-                deferredLayer = null;
-                layerUsed = false;
-                LayerEnded?.Invoke(releasedLayer);
-            }
+                EndDeferredKeyboardLayer(deferredLayer);
             return (IntPtr)1;
         }
         bool layerChord = deferredLayer != null && !layerRepeatActive;
@@ -436,17 +488,56 @@ public sealed partial class InputEngine : IDisposable
         return ProcessPress(input, down, up, n, w, l, fireOnDown: fireLayerActionOnDown, repeatWhileHeld: repeatLayerAction);
     }
 
+    void EndDeferredKeyboardLayer(string releasedLayer)
+    {
+        bool repeated = layerRepeatActive;
+        EndImmediateLayerPresses(releasedLayer);
+        CancelLayerRepeat();
+        CancelLayerSafety();
+        if (!layerUsed && !repeated && SuppressLayerTap?.Invoke(releasedLayer) != true)
+        {
+            if (HasMapping?.Invoke(releasedLayer) == true)
+                InputReceived?.Invoke(releasedLayer);
+            else
+                _ = Task.Run(() => SendShortcut(releasedLayer));
+            if (releasedLayer == "Space")
+                lastSpaceTapTick = Environment.TickCount64;
+        }
+        deferredLayer = null;
+        layerUsed = false;
+        LayerEnded?.Invoke(releasedLayer);
+    }
+
     IntPtr MouseCallback(int n, IntPtr w, IntPtr l)
     {
+#if HOOK_DIAGNOSTICS
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool traceTransition = w.ToInt32() != 0x200;
+        HookDiagnosticsTrace.EnterHookCallback();
+        if (traceTransition)
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseCallbackEnter, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: n, value2: w.ToInt64());
+#endif
         try
         {
             lock (stateLock)
+            {
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseStateLockAcquired, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: w.ToInt64());
                 return MouseCallbackCore(n, w, l);
+            }
         }
         catch
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseCallbackFault, keyboardHook: keyboardHook, mouseHook: mouseHook);
             return RecoverFromHookFault(n, w, l);
         }
+#if HOOK_DIAGNOSTICS
+        finally
+        {
+            if (traceTransition)
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseCallbackExit, System.Diagnostics.Stopwatch.GetTimestamp() - started, keyboardHook, mouseHook);
+            HookDiagnosticsTrace.ExitHookCallback();
+        }
+#endif
     }
 
     IntPtr RecoverFromHookFault(int n, IntPtr w, IntPtr l)
@@ -472,13 +563,23 @@ public sealed partial class InputEngine : IDisposable
     {
         if (n < 0)
             return Next(n, w, l);
-        if (ShouldInterceptInput is { } shouldIntercept && !shouldIntercept())
+        var interceptPolicy = ShouldInterceptMouseInput ?? ShouldInterceptInput;
+        bool intercept = interceptPolicy?.Invoke() ?? true;
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseInterceptEvaluated, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: w.ToInt64(), result: intercept ? 1 : 0);
+        if (!intercept)
+        {
             return Next(n, w, l);
+        }
         var d = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l);
         int msg = w.ToInt32();
         if (d.dwExtraInfo == (UIntPtr)Marker)
+        {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseGeneratedMarker, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: msg, value2: d.mouseData);
             return Next(n, w, l);
-        if (ObservePhysicalMouseTransition(msg))
+        }
+        if (msg is 0x201 or 0x202 or 0x204 or 0x205 or 0x207 or 0x208 or 0x20B or 0x20C)
+            Interlocked.Increment(ref lowLevelMouseTransitions);
+        if (ObservePhysicalMouseTransition(msg, d.mouseData))
             return (IntPtr)1;
         if (OverlayService.FullScreenVisible)
         {
@@ -495,6 +596,12 @@ public sealed partial class InputEngine : IDisposable
             // Keep the hook callback lightweight: consumers only enqueue work and
             // resolve the application under the pointer later on the UI thread.
             PointerMoved?.Invoke();
+            // Modifier-click Start is emitted by a dedicated worker so the
+            // low-level hook never calls SendInput while holding stateLock.
+            // Do not let an early physical move reach Office before that worker
+            // has established Ctrl/Shift + synthetic LeftDown.
+            if (presses.Values.Any(state => state.IsDown && state.NativeMouseDrag && !state.NativeMouseDragReady))
+                return (IntPtr)1;
             if (CaptureMouseMoves && Environment.TickCount64 - lastRecordedMove >= 50)
             {
                 lastRecordedMove = Environment.TickCount64;
@@ -530,15 +637,13 @@ public sealed partial class InputEngine : IDisposable
                 state.GestureMotionTimer.Change(GestureStopDelayMs, System.Threading.Timeout.Infinite);
                 return LockCursorDuringGesture ? (IntPtr)1 : Next(n, w, l);
             }
-            if (Enabled && deferredLayer == "MouseRight" && !layerUsed && !nativeRightLayerDrag && Distance(mouseLayerStartX, mouseLayerStartY, d.pt.x, d.pt.y) >= DragPixels)
-            {
-                nativeRightLayerDrag = SendMouseFlag(8);
-                if (nativeRightLayerDrag)
-                {
-                    ArmNativeRightDragSafety();
-                    Detected?.Invoke("MouseRight Native Drag");
-                }
-            }
+            if (Enabled && deferredLayer == "MouseRight" && !layerUsed && !nativeRightLayerDrag && !nativeRightLayerDragStarting
+                && Distance(mouseLayerStartX, mouseLayerStartY, d.pt.x, d.pt.y) >= DragPixels)
+                QueueNativeRightDragStart();
+            // RightDown is emitted by a serial output worker. Do not let the
+            // triggering movement overtake it and reach the target first.
+            if (nativeRightLayerDragStarting)
+                return (IntPtr)1;
             // Pointer movement must not turn an ordinary layer+click assignment into a
             // legacy drag event. Only old mappings that explicitly contain drag actions
             // use the distance based DragStart/DragEnd path. Modifier-click actions use
@@ -580,7 +685,7 @@ public sealed partial class InputEngine : IDisposable
             Detected?.Invoke(name + (rawDown ? " Down" : rawUp ? " Up" : ""));
             return Next(n, w, l);
         }
-        if (nativeRightLayerDrag && !currentLayerRelease)
+        if ((nativeRightLayerDrag || nativeRightLayerDragStarting) && !currentLayerRelease)
         {
             string rightLayerInput = "MouseRight+" + name;
             if (rawDown && HasMapping?.Invoke(rightLayerInput) == true)
@@ -591,6 +696,17 @@ public sealed partial class InputEngine : IDisposable
                 return Next(n, w, l);
             }
         }
+        // A taskbar-specific button mapping must win over a mouse layer with the
+        // same physical button. Otherwise Taskbar+MouseRight long-press is
+        // captured as the MouseRight layer before its own timer can start.
+        string directInput = QualifyInput?.Invoke(name) ?? name;
+        if (deferredLayer is null && buttonDown
+            && !directInput.Equals(name, StringComparison.OrdinalIgnoreCase)
+            && HasMapping?.Invoke(directInput) == true)
+        {
+            Detected?.Invoke(directInput + " Down");
+            return ProcessPress(directInput, true, false, n, w, l, d.pt.x, d.pt.y);
+        }
         // A gesture on a normal mouse button takes precedence over using the same
         // button as a layer source, because both interactions begin with a hold.
         if (deferredLayer is null && buttonDown && HasMapping?.Invoke(name) == true && IsGesturePress?.Invoke(name) == true)
@@ -598,13 +714,28 @@ public sealed partial class InputEngine : IDisposable
             Detected?.Invoke(name + " Down");
             return ProcessPress(name, true, false, n, w, l, d.pt.x, d.pt.y);
         }
-        if (deferredLayer is null && buttonDown && HasLayerMappings(name))
+        // MouseLeft is the system's primary click and is never a layer source.
+        // Reject stale or hand-edited MouseLeft+... mappings here as a final
+        // runtime guard so one malformed assignment cannot swallow every click.
+#if HOOK_DIAGNOSTICS
+        long mouseLayerLookupStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseLayerLookupStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: msg, value2: d.mouseData, result: buttonDown ? 1 : 0);
+#endif
+        bool hasMouseLayerMappings = buttonDown && !name.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase) && HasLayerMappings(name);
+#if HOOK_DIAGNOSTICS
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseLayerLookupCompleted, System.Diagnostics.Stopwatch.GetTimestamp() - mouseLayerLookupStarted, keyboardHook, mouseHook, value1: msg, value2: d.mouseData, result: hasMouseLayerMappings ? 1 : 0);
+#endif
+        if (deferredLayer is null && buttonDown
+            && !name.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
+            && hasMouseLayerMappings)
         {
             deferredLayer = name;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseLayerStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: msg, value2: d.mouseData);
             LayerStarted?.Invoke(name);
             mouseLayerStartX = d.pt.x;
             mouseLayerStartY = d.pt.y;
             nativeRightLayerDrag = false;
+            nativeRightLayerDragStarting = false;
             ArmLayerSafety();
             layerUsed = false;
             Detected?.Invoke(name + " Layer Down");
@@ -646,7 +777,7 @@ public sealed partial class InputEngine : IDisposable
 
     void EndDeferredMouseLayer(string releasedLayer)
     {
-        bool used = layerUsed, nativeDrag = nativeRightLayerDrag;
+        bool used = layerUsed, nativeDrag = nativeRightLayerDrag || nativeRightLayerDragStarting;
         Detected?.Invoke(releasedLayer + " Layer Up");
         EndImmediateLayerPresses(releasedLayer);
         CancelLayerSafety();
@@ -654,7 +785,10 @@ public sealed partial class InputEngine : IDisposable
         deferredLayer = null;
         layerUsed = false;
         nativeRightLayerDrag = false;
-        if (nativeDrag || used)
+        nativeRightLayerDragStarting = false;
+        if (nativeDrag)
+            QueueNativeRightDragEnd();
+        else if (used)
             QueueMouseLayerRelease(releasedLayer);
         else if (HasMapping?.Invoke(releasedLayer) == true)
         {
@@ -671,6 +805,7 @@ public sealed partial class InputEngine : IDisposable
         int button = MouseButtonNumber(physicalInput);
         if (button == 0)
             return;
+        Interlocked.Or(ref physicalMouseButtonsDownMask, 1 << (button - 1));
         lock (stateLock)
         {
             lowLevelMouseUpsPendingRaw[button] = 0;
@@ -680,33 +815,47 @@ public sealed partial class InputEngine : IDisposable
 
     void ReconcileRawMouseButtonUp(string physicalInput)
     {
+        int rawButton = MouseButtonNumber(physicalInput);
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: rawButton);
+        if (rawButton != 0)
+            Interlocked.And(ref physicalMouseButtonsDownMask, ~(1 << (rawButton - 1)));
         lock (stateLock)
         {
-            int button = MouseButtonNumber(physicalInput);
+            int button = rawButton;
             if (button != 0 && lowLevelMouseUpsPendingRaw[button] > 0)
             {
                 lowLevelMouseUpsPendingRaw[button]--;
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileLowLevelMatched, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
                 return;
             }
             if (deferredLayer != null && deferredLayer.Equals(physicalInput, StringComparison.OrdinalIgnoreCase))
             {
                 Detected?.Invoke(physicalInput + " Raw Release Recovery");
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileLayerEndStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
                 EndDeferredMouseLayer(deferredLayer);
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileLayerEndCompleted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
                 if (button != 0)
                     rawMouseUpsAwaitingLowLevel[button]++;
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileCounterUpdated, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
                 return;
             }
 
             string? pending = PendingLayerInput(physicalInput);
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcilePendingLookup, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button, result: pending == null ? 0 : 1);
             if (pending == null || !presses.TryGetValue(pending, out var state))
                 return;
             Detected?.Invoke(pending + " Raw Release Recovery");
             if (state.Handled)
+            {
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcilePressEndStarted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
                 ProcessPress(pending, false, true, 0, IntPtr.Zero, IntPtr.Zero);
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcilePressEndCompleted, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
+            }
             else
                 presses.Remove(pending);
             if (button != 0)
                 rawMouseUpsAwaitingLowLevel[button]++;
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.RawReconcileCounterUpdated, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: button);
         }
     }
 
@@ -788,6 +937,7 @@ public sealed partial class InputEngine : IDisposable
         bool mapped = HasMapping?.Invoke(input) == true;
         if (down && !presses.ContainsKey(input))
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.PressDownCreated, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase));
             var state = new PressState { IsDown = true, Handled = mapped, X = x, Y = y, GestureActionCommitted = committedGesture };
             presses[input] = state;
             if (mapped)
@@ -830,12 +980,14 @@ public sealed partial class InputEngine : IDisposable
         }
         else if (down && presses.TryGetValue(input, out var existing))
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.PressDownExisting, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase), result: existing.Handled ? 1 : 0);
             if (existing.Handled && existing.FireOnDown && repeatWhileHeld)
                 InputReceived?.Invoke(input);
             return existing.Handled ? (IntPtr)1 : Next(n, w, l);
         }
         if (up && presses.Remove(input, out var current))
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.PressUpRemoved, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase), result: current.Handled ? 1 : 0);
             committedGesture |= current.GestureActionCommitted;
             committedGestureSources.Remove(gestureSource);
             current.IsDown = false;
@@ -844,6 +996,9 @@ public sealed partial class InputEngine : IDisposable
             current.GestureMotionTimer?.Dispose();
             if (current.NativeMouseDrag)
             {
+                // Let the physical Up hook return before emitting the synthetic
+                // mouse-up/modifier-up pair. Office finalizes Ctrl-drag copy at
+                // that boundary.
                 current.ReleaseSignal?.TrySetResult();
                 return (IntPtr)1;
             }
@@ -892,7 +1047,10 @@ public sealed partial class InputEngine : IDisposable
         }
         if (up)
         {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.PressUpMissing, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase));
             committedGestureSources.Remove(gestureSource);
+            if (gestureSource.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase) && Volatile.Read(ref modifierDragMouseDown))
+                _ = Task.Run(EndModifierDrag);
             return Next(n, w, l);
         }
         return mapped ? (IntPtr)1 : Next(n, w, l);
@@ -1034,16 +1192,87 @@ public sealed partial class InputEngine : IDisposable
     {
         var callback = InputReceived;
         var ended = InputEnded;
-        _ = Task.Run(async () => { try { if (state.ReleaseSignal != null) await state.ReleaseSignal.Task.WaitAsync(TimeSpan.FromSeconds(10)); await Task.Delay(5); } catch (TimeoutException) { } finally { try { if (Interlocked.Exchange(ref state.Ended, 1) == 0) callback?.Invoke(input + ":PressEnd"); } finally { ended?.Invoke(input); } } });
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (state.ReleaseSignal != null)
+                    await state.ReleaseSignal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                // Yield beyond the physical low-level hook callback without a
+                // visible delay, preserving Office drop/copy ordering.
+                await Task.Delay(4);
+            }
+            catch (TimeoutException) { }
+            finally
+            {
+                if (Interlocked.Exchange(ref state.Ended, 1) == 0)
+                {
+                    try { callback?.Invoke(input + ":PressEnd"); }
+                    finally { ended?.Invoke(input); }
+                }
+            }
+        });
     }
     void EndNativeRightDragForMappedChord()
     {
-        if (!nativeRightLayerDrag)
+        if (!nativeRightLayerDrag && !nativeRightLayerDragStarting)
             return;
         CancelNativeRightDragSafety();
-        SendMouseUpWithRetry(16);
         nativeRightLayerDrag = false;
+        nativeRightLayerDragStarting = false;
+        QueueNativeRightDragEnd();
         Detected?.Invoke("MouseRight Native Drag End");
+    }
+    void QueueNativeRightDragStart()
+    {
+        if (nativeRightDragOutputQueue.IsAddingCompleted)
+            return;
+        nativeRightLayerDragStarting = true;
+        try
+        {
+            if (!nativeRightDragOutputQueue.TryAdd(NativeRightDragCommand.Start))
+                nativeRightLayerDragStarting = false;
+        }
+        catch (InvalidOperationException) { nativeRightLayerDragStarting = false; }
+    }
+    void QueueNativeRightDragEnd()
+    {
+        if (nativeRightDragOutputQueue.IsAddingCompleted)
+            return;
+        try { nativeRightDragOutputQueue.TryAdd(NativeRightDragCommand.End); }
+        catch (InvalidOperationException) { }
+    }
+    void ProcessNativeRightDragOutput()
+    {
+        foreach (var command in nativeRightDragOutputQueue.GetConsumingEnumerable())
+        {
+            if (command == NativeRightDragCommand.End)
+            {
+                ReleaseMouseLayerButtonIfInjected("MouseRight");
+                continue;
+            }
+
+            bool sent = false;
+            try { sent = SendMouseFlag(8); }
+            catch { }
+            bool accepted;
+            lock (stateLock)
+            {
+                accepted = sent && !disposed && nativeRightLayerDragStarting
+                    && deferredLayer == "MouseRight" && !layerUsed;
+                nativeRightLayerDragStarting = false;
+                nativeRightLayerDrag = accepted;
+                if (accepted)
+                    ArmNativeRightDragSafety();
+            }
+            if (!accepted)
+            {
+                if (sent)
+                    ReleaseMouseLayerButtonIfInjected("MouseRight");
+                continue;
+            }
+            Detected?.Invoke("MouseRight Native Drag");
+        }
     }
     void EndImmediateLayerPresses(string layer)
     {
@@ -1138,8 +1367,26 @@ public sealed partial class InputEngine : IDisposable
         layerSafetyTimer = null;
         layerSafetyExpired = false;
     }
+    internal void NotifyNativeMouseDragStarted(string input)
+    {
+        const string startSuffix = ":PressStart";
+        if (input.EndsWith(startSuffix, StringComparison.OrdinalIgnoreCase))
+            input = input[..^startSuffix.Length];
+        lock (stateLock)
+            if (presses.TryGetValue(input, out var state) && state.NativeMouseDrag && state.IsDown)
+                state.NativeMouseDragReady = true;
+    }
 
-    bool ObservePhysicalMouseTransition(int message)
+    internal bool IsNativeMouseDragReadyForTest(string input)
+    {
+        lock (stateLock)
+            return presses.TryGetValue(input, out var state)
+                && state.NativeMouseDrag
+                && state.IsDown
+                && state.NativeMouseDragReady;
+    }
+
+    bool ObservePhysicalMouseTransition(int message, int mouseData)
     {
         (int button, bool down, bool up) = message switch
         {
@@ -1149,8 +1396,8 @@ public sealed partial class InputEngine : IDisposable
             0x205 => (2, false, true),
             0x207 => (3, true, false),
             0x208 => (3, false, true),
-            0x20B => (4, true, false),
-            0x20C => (4, false, true),
+            0x20B => (((mouseData >> 16) & 0xffff) == 1 ? 4 : 5, true, false),
+            0x20C => (((mouseData >> 16) & 0xffff) == 1 ? 4 : 5, false, true),
             _ => (0, false, false)
         };
         if (button == 0)
@@ -1160,12 +1407,12 @@ public sealed partial class InputEngine : IDisposable
         if (down)
         {
             int previous = Interlocked.Or(ref physicalMouseButtonsDownMask, bit);
-            // Mouse buttons do not auto-repeat.  A second physical left Down
-            // without an observed Up means that the Up was lost while the hook
-            // or UI was changing state.  Release RELYR's old synthetic drag
-            // before Windows receives this new click.
+            // Mouse buttons do not auto-repeat. A repeated physical Down means
+            // an earlier Up was lost. Never inject a recovery Up while this
+            // callback owns stateLock: SendInput re-enters the low-level hook
+            // and can stall Windows input until the hook timeout.
             if (button == 1 && (previous & bit) != 0 && Volatile.Read(ref modifierDragMouseDown))
-                EndModifierDrag();
+                _ = Task.Run(EndModifierDrag);
         }
         else if (up)
         {
@@ -1182,11 +1429,8 @@ public sealed partial class InputEngine : IDisposable
             }
         }
 
-        // The physical left Up is the authoritative end of every modifier drag.
-        // Do this on the hook thread itself; the UI action queue may be busy or
-        // may have lost its corresponding PressEnd notification.
-        if (button == 1 && up && Volatile.Read(ref modifierDragMouseDown))
-            EndModifierDrag();
+        // ProcessPress signals the ordered PressEnd below. Never inject from
+        // here while the hook owns stateLock; doing so stalls Windows input.
         return suppressUpAlreadyRecoveredByRawInput;
     }
 
@@ -1195,12 +1439,16 @@ public sealed partial class InputEngine : IDisposable
 
     internal static bool IsObservedPhysicalMouseButtonDownForTest(int button)
         => IsObservedPhysicalMouseButtonDown(button);
+    internal static bool IsPhysicalLeftButtonDown => IsObservedPhysicalMouseButtonDown(1);
     void ArmNativeRightDragSafety()
     {
         CancelNativeRightDragSafety();
         nativeRightDragSafetyTimer = new System.Threading.Timer(_ =>
         {
-            bool rightButtonIsDown = PhysicalKeyDownForTest?.Invoke(0x02) ?? ((GetAsyncKeyState(0x02) & 0x8000) != 0);
+            // GetAsyncKeyState also reports RELYR's synthetic RightDown and can
+            // therefore keep its own stuck state alive forever.  Observe only
+            // unmarked low-level/Raw Input physical transitions.
+            bool rightButtonIsDown = PhysicalKeyDownForTest?.Invoke(0x02) ?? IsObservedPhysicalMouseButtonDown(2);
             if (!rightButtonIsDown)
                 ResetCapturedState(false, true);
         }, null, 100, 25);
@@ -1215,9 +1463,11 @@ public sealed partial class InputEngine : IDisposable
     {
         string? releasedLayer;
         string[] endedInputs;
+        bool endNativeRightDrag;
         lock (stateLock)
         {
             releasedLayer = deferredLayer;
+            endNativeRightDrag = nativeRightLayerDrag || nativeRightLayerDragStarting;
             endedInputs = [.. presses.Where(x => x.Value.Handled).Select(x => x.Key)];
             foreach (var state in presses.Values)
             {
@@ -1238,6 +1488,7 @@ public sealed partial class InputEngine : IDisposable
             deferredLayer = null;
             layerUsed = false;
             nativeRightLayerDrag = false;
+            nativeRightLayerDragStarting = false;
             Volatile.Write(ref physicalMouseButtonsDownMask, 0);
             if (clearGestureSuppressions)
                 committedGestureSources.Clear();
@@ -1246,11 +1497,14 @@ public sealed partial class InputEngine : IDisposable
             InputEnded?.Invoke(input);
         if (!string.IsNullOrWhiteSpace(releasedLayer))
             LayerEnded?.Invoke(releasedLayer);
-        QueueMouseLayerRelease(releasedLayer ?? "");
+        if (endNativeRightDrag)
+            QueueNativeRightDragEnd();
+        else
+            QueueMouseLayerRelease(releasedLayer ?? "");
         if (release)
             ReleaseAll();
         else
-            EndModifierDrag();
+            _ = Task.Run(EndModifierDrag);
     }
     void StopAndRelease()
     {
@@ -1512,6 +1766,46 @@ public sealed partial class InputEngine : IDisposable
     internal bool HookTestStateCleanForTest => hookTestStateClean;
     internal bool RawInputMonitorStartedForTest => rawInputMonitorStarted;
     internal void SetRawInputMonitorStartedForTest(bool started) => rawInputMonitorStarted = started;
+    internal static bool HookMissedRawTransitions(long rawTransitions, long lowLevelTransitions)
+        => rawTransitions > lowLevelTransitions;
+    void ObserveRawHookTransition(bool keyboard, int count = 1)
+    {
+        if (keyboard)
+            Interlocked.Add(ref rawKeyboardTransitions, count);
+        else
+            Interlocked.Add(ref rawMouseTransitions, count);
+    }
+#if HOOK_DIAGNOSTICS
+    void RecordHookDiagnosticsHeartbeat()
+    {
+        Thread? thread = hookThread;
+        long rawKeyboard = Volatile.Read(ref rawKeyboardTransitions);
+        long rawMouse = Volatile.Read(ref rawMouseTransitions);
+        long lowKeyboard = Volatile.Read(ref lowLevelKeyboardTransitions);
+        long lowMouse = Volatile.Read(ref lowLevelMouseTransitions);
+        HookDiagnosticsTrace.Record(
+            HookDiagnosticStage.IndependentMonitorHeartbeat,
+            keyboardHook: keyboardHook,
+            mouseHook: mouseHook,
+            value1: rawKeyboard,
+            value2: lowKeyboard,
+            result: thread?.IsAlive == true ? 1 : 0);
+        HookDiagnosticsTrace.Record(
+            HookDiagnosticStage.IndependentMonitorMouseCounters,
+            keyboardHook: keyboardHook,
+            mouseHook: mouseHook,
+            value1: rawMouse,
+            value2: lowMouse,
+            result: rawInputMonitorStarted ? 1 : 0);
+        HookDiagnosticsTrace.Record(
+            HookDiagnosticStage.IndependentMonitorState,
+            keyboardHook: keyboardHook,
+            mouseHook: mouseHook,
+            value1: Volatile.Read(ref hookThreadId),
+            value2: 0,
+            result: disposed ? 0 : 1);
+    }
+#endif
     internal bool HasCapturedPhysicalInput
     {
         get
@@ -1541,6 +1835,8 @@ public sealed partial class InputEngine : IDisposable
     public void ResetForSessionTransition()
     {
         ResetCapturedState(true, true);
+        Array.Clear(lowLevelMouseUpsPendingRaw);
+        Array.Clear(rawMouseUpsAwaitingLowLevel);
         lastSpaceTapTick = 0;
     }
     public void Dispose()
@@ -1552,6 +1848,12 @@ public sealed partial class InputEngine : IDisposable
         if (ReferenceEquals(directTestTarget, this))
             directTestTarget = null;
         ResetCapturedState(true, true);
+        nativeRightDragOutputQueue.CompleteAdding();
+#if HOOK_DIAGNOSTICS
+        hookDiagnosticsHeartbeatTimer.Dispose();
+#endif
+        try { nativeRightDragOutputWorker.Wait(1000); }
+        catch { }
         if (keyboardHook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(keyboardHook);

@@ -60,8 +60,8 @@ internal static class ShutdownIntegrationTest
             string processPath = Environment.ProcessPath ?? throw new InvalidOperationException("トレイ終了テスト実行プロセスを取得できません。");
             string assemblyPath = Environment.GetCommandLineArgs()[0];
             string hostArguments = Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-                ? $"\"{assemblyPath}\" --tray --tray-exit-regression-host"
-                : "--tray --tray-exit-regression-host";
+                ? $"\"{assemblyPath}\" --tray --tray-exit-regression-host --no-input-hooks"
+                : "--tray --tray-exit-regression-host --no-input-hooks";
             using var trayHost = Process.Start(new ProcessStartInfo(processPath, hostArguments) { UseShellExecute = false })
                 ?? throw new InvalidOperationException("トレイ終了テストプロセスを起動できません。");
             string normalizedPath = Path.GetFullPath(processPath);
@@ -75,7 +75,9 @@ internal static class ShutdownIntegrationTest
                     {
                         try
                         {
-                            return process.Id != Process.GetCurrentProcess().Id && Path.GetFullPath(process.MainModule?.FileName ?? "").Equals(normalizedPath, StringComparison.OrdinalIgnoreCase);
+                            return process.Id != Environment.ProcessId
+                                && IpcProcessIdentity.TryGetProcessImagePath((uint)process.Id, out string imagePath)
+                                && Path.GetFullPath(imagePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase);
                         }
                         catch { return false; }
                         finally { process.Dispose(); }

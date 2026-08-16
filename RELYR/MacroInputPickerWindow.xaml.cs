@@ -159,14 +159,13 @@ public partial class MacroInputPickerWindow : Window
         double bodyX = x + (width - bodyWidth) / 2, bodyY = y + 26;
         double centerX = bodyX + padding + unit + gap;
         double rightX = centerX + unit + gap;
-        double doubleHeight = keyHeight * 2 + gap;
+        double doubleHeight = keyHeight * 3 + gap * 2;
         double tiltWidth = unit * 2 + gap;
         double tiltLeft = bodyX + (bodyWidth - tiltWidth) / 2;
         var body = new Border { Width = bodyWidth, Height = bodyHeight, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = ThemeService.Brush("SubtleBorderBrush"), Background = System.Windows.Media.Brushes.Transparent, IsHitTestVisible = false };
         Canvas.SetLeft(body, bodyX);
         Canvas.SetTop(body, bodyY);
         InputCanvas.Children.Add(body);
-        AddMouseWheelWatermark(bodyX + (bodyWidth - 42) / 2, bodyY + 278);
 
         AddButton("MouseLeft", "左", bodyX + padding, bodyY + 10, unit, doubleHeight);
         AddButton("MouseRight", "右", rightX, bodyY + 10, unit, doubleHeight);
@@ -185,39 +184,6 @@ public partial class MacroInputPickerWindow : Window
         AddButton("MouseX", "X1", rightX, bodyY + 326, unit, keyHeight);
     }
 
-    void AddMouseWheelWatermark(double x, double y)
-    {
-        var watermark = new Canvas { Width = 42, Height = 88, Opacity = .18, IsHitTestVisible = false };
-        var outline = new Border
-        {
-            Width = 34,
-            Height = 76,
-            CornerRadius = new CornerRadius(17),
-            BorderThickness = new Thickness(1.4),
-            BorderBrush = ThemeService.Brush("MutedText"),
-            Background = System.Windows.Media.Brushes.Transparent
-        };
-        Canvas.SetLeft(outline, 4);
-        Canvas.SetTop(outline, 2);
-        watermark.Children.Add(outline);
-        var wheel = new Border
-        {
-            Width = 11,
-            Height = 28,
-            CornerRadius = new CornerRadius(5.5),
-            BorderThickness = new Thickness(1.3),
-            BorderBrush = ThemeService.Brush("MutedText"),
-            Background = ThemeService.Brush("AppBackground")
-        };
-        Canvas.SetLeft(wheel, 15.5);
-        Canvas.SetTop(wheel, 11);
-        watermark.Children.Add(wheel);
-        var centerLine = new System.Windows.Shapes.Line { X1 = 21, Y1 = 39, X2 = 21, Y2 = 76, Stroke = ThemeService.Brush("MutedText"), StrokeThickness = 1 };
-        watermark.Children.Add(centerLine);
-        Canvas.SetLeft(watermark, x);
-        Canvas.SetTop(watermark, y);
-        InputCanvas.Children.Add(watermark);
-    }
 
     void AddFrame(string title, double x, double y, double width, double height)
     {

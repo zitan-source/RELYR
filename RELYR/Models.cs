@@ -81,6 +81,7 @@ public sealed class Mapping
 
 public sealed class Profile
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "標準";
     public List<Mapping> Mappings { get; set; } = [];
     public string DefaultDeckLayoutId { get; set; } = "";
@@ -92,10 +93,15 @@ public sealed class DeckLayoutDefinition
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "標準Deck";
+    public bool ProfileSwitchEnabled { get; set; }
+    public string ProfileGroupId { get; set; } = "";
+    public string ProfileId { get; set; } = "";
     public int Columns { get; set; } = 9;
     public int Rows { get; set; } = 5;
     public string PanelColor { get; set; } = "";
     public bool PanelPinned { get; set; }
+    public double? PanelWidth { get; set; }
+    public double? PanelHeight { get; set; }
     public List<Mapping> Mappings { get; set; } = [];
 }
 

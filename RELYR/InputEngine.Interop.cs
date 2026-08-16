@@ -17,6 +17,7 @@ public sealed partial class InputEngine
         public bool Dragged;
         public bool Immediate;
         public bool NativeMouseDrag;
+        public bool NativeMouseDragReady;
         public bool FireOnDown;
         public bool Cancelled;
         public bool IsGesture;
