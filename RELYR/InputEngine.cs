@@ -371,9 +371,13 @@ public sealed partial class InputEngine : IDisposable
             return Next(n, w, l);
         }
         var d = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(l);
+        HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackDecoded, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: d.vkCode, value2: unchecked((long)d.dwExtraInfo.ToUInt64()), result: unchecked((int)d.flags));
         // 自分で生成した入力は再マッピングしないが、Windowsと後続フックへは必ず渡す。
         if (d.dwExtraInfo == (UIntPtr)Marker)
+        {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardGeneratedMarker, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: d.vkCode, value2: w.ToInt64(), result: unchecked((int)d.flags));
             return Next(n, w, l);
+        }
         bool down = w == (IntPtr)WM_KEYDOWN || w == (IntPtr)WM_SYSKEYDOWN, up = w == (IntPtr)WM_KEYUP || w == (IntPtr)WM_SYSKEYUP;
         if (!down && !up)
             return Next(n, w, l);

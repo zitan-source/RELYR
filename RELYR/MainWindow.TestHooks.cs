@@ -38,6 +38,7 @@ public partial class MainWindow
         => ObserveAutomaticProfileCandidate(candidate, AutomaticProfileRequiredSamples(appliedConfig.Profiles, candidate));
     internal bool IsProfileOverlayVisibleForTest => profileOverlay?.IsVisible == true;
     internal ProfileSwitchOverlay? ProfileOverlayForTest => profileOverlay;
+    internal AppConfig DeckOverlayConfigForTest => DeckOverlayConfig();
     internal void ShowProfileOverlayForTest(string name) => ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest => VisualInputButtons().ToList();
     internal IReadOnlyList<System.Windows.Controls.Button> DeckManagementButtonsForTest => deckManagementButtons;

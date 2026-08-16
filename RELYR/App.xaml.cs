@@ -10,6 +10,7 @@ namespace RELYR;
 
 public partial class App : System.Windows.Application
 {
+    internal const string RestartLauncherArgument = "--restart-launcher";
 #if !PRODUCTION_PUBLISH
     internal static string EngineTestReportPath => VerificationPaths.GetFile("engine-test-last.log");
     internal static string UiTestReportPath => VerificationPaths.GetFile("ui-test-last.log");
@@ -97,10 +98,16 @@ public partial class App : System.Windows.Application
             try{args=StartupService.DecodeElevatedArguments(args[1]);}
             catch(Exception ex){AppDialog.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
         }
+        if (IsRestartLauncher(args))
+            args = RestartTargetArguments(args);
         if(args.Contains("--elevated-helper",StringComparer.OrdinalIgnoreCase))
         {
             if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者ヘルパーを管理者権限で起動できません。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
             StartElevatedHelper(args);return;
+        }
+        else if (ShouldStartMediumUiHost(StartupService.IsProcessElevated(), args))
+        {
+            args = EnsureUiHostArgument(args);
         }
         else if(ShouldRelayToSingleElevatedHost(StartupService.IsProcessElevated()))
         {
@@ -143,6 +150,20 @@ public partial class App : System.Windows.Application
         if(args.Length>=2&&args[0].Equals("--recover-stale-instance",StringComparison.OrdinalIgnoreCase))
         {
             RunStaleInstanceRecovery(args[1]);
+            return;
+        }
+#endif
+#if PRODUCTION_PUBLISH
+        if (IsRestartLauncher(args))
+        {
+            string[] restartArguments = RestartTargetArguments(args);
+            if (!StartupService.TryRunElevated(restartArguments, out string restartError))
+            {
+                AppDialog.Show(restartError, "RELYRを再起動できません", MessageBoxButton.OK, MessageBoxImage.Error);
+                ExitImmediately(1);
+                return;
+            }
+            ExitImmediately(0);
             return;
         }
 #endif
@@ -422,11 +443,19 @@ public partial class App : System.Windows.Application
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(window.ExecuteTrayExitMenuItemForTest));
 #endif
     }
-    // Production uses one elevated resident process. Splitting input hooks
-    // between a medium UI host and an elevated helper creates an ownership gap:
-    // the UI yields all input over elevated windows while the helper accepts
-    // only a subset of actions, disabling complete Space/CapsLock layers.
+    internal static bool ShouldStartMediumUiHost(bool processElevated, IReadOnlyList<string> args)
+        => !processElevated && IsMainUiLaunch(args);
+    internal static string[] EnsureUiHostArgument(IEnumerable<string> args)
+        => args.Contains("--ui-host", StringComparer.OrdinalIgnoreCase) ? args.ToArray() : [.. args, "--ui-host"];
+    // Privileged one-shot commands still use the registered elevated launcher.
+    // The visible main UI stays at the same integrity level as ordinary apps.
     internal static bool ShouldRelayToSingleElevatedHost(bool processElevated) => !processElevated;
+    internal static string[] RestartChildArguments(int parentProcessId)
+        => ["--restart-after-pid", parentProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), RestartLauncherArgument];
+    internal static bool IsRestartLauncher(IReadOnlyList<string> args)
+        => args.Contains(RestartLauncherArgument, StringComparer.OrdinalIgnoreCase);
+    internal static string[] RestartTargetArguments(IEnumerable<string> args)
+        => args.Where(value => !value.Equals(RestartLauncherArgument, StringComparison.OrdinalIgnoreCase)).ToArray();
     static string[] WaitForRestartParent(string[] args)
     {
         int marker = Array.FindIndex(args, value => value.Equals("--restart-after-pid", StringComparison.OrdinalIgnoreCase));

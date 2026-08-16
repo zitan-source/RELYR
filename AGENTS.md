@@ -20,6 +20,7 @@
 # Fast Stability Workflow
 
 - Before changing input, Deck layout, startup, shutdown, or installer code, read `docs/stability-contract.md` and use its change map to keep investigation narrow.
+- Before reporting any input, Deck, profile-routing, startup, shutdown, or installer change complete, re-read the `Regression prevention contract` in `docs/stability-contract.md` and explicitly check the permanent regression set. Do not treat mocked callbacks as proof of physical input, process-integrity routing, persistence, or cross-process Deck synchronization.
 - Run `verify-source-safety.ps1` after those changes. It is a fast static guard, not a replacement for the required non-input tests.
 
 # Installer Gate

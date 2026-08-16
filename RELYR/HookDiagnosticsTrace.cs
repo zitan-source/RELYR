@@ -13,8 +13,8 @@ internal enum HookDiagnosticStage
     RawInputEnter, RawInputSizeRead, RawInputDataCopied, RawInputDecoded, RawInputReconciled, RawInputFault, RawInputExit,
     RawReconcileStarted, RawReconcileLowLevelMatched, RawReconcileLayerEndStarted, RawReconcileLayerEndCompleted,
     RawReconcilePendingLookup, RawReconcilePressEndStarted, RawReconcilePressEndCompleted, RawReconcileCounterUpdated,
-    RawKeyboardTransition, RawMouseTransition, KeyboardCallbackEnter, KeyboardCallbackExit, KeyboardCallbackFault,
-    KeyboardStateLockAcquired, KeyboardInterceptEvaluated, KeyboardLayerLookupStarted, KeyboardLayerLookupCompleted,
+    RawKeyboardTransition, RawKeyboardDecoded, RawMouseTransition, KeyboardCallbackEnter, KeyboardCallbackExit, KeyboardCallbackFault,
+    KeyboardStateLockAcquired, KeyboardInterceptEvaluated, KeyboardCallbackDecoded, KeyboardGeneratedMarker, KeyboardLayerLookupStarted, KeyboardLayerLookupCompleted,
     KeyboardLayerStarted, MouseCallbackEnter, MouseCallbackExit, MouseCallbackFault, MouseStateLockAcquired,
     MouseInterceptEvaluated, MouseGeneratedMarker, MouseLayerLookupStarted, MouseLayerLookupCompleted, MouseLayerStarted,
     PressDownCreated, PressDownExisting, PressUpRemoved, PressUpMissing,
@@ -137,7 +137,7 @@ internal static class HookDiagnosticsTrace
     static void WriteLoop()
     {
         string path = Environment.GetEnvironmentVariable("RELYR_HOOK_DIAGNOSTIC_LOG") ?? "";
-        if (string.IsNullOrWhiteSpace(path)) path = Path.Combine(AppContext.BaseDirectory, $"hook-diagnostic-{Environment.ProcessId}.tsv");
+        if (string.IsNullOrWhiteSpace(path)) path = Path.Combine(ConfigService.DefaultDirectoryPath, $"hook-diagnostic-{Environment.ProcessId}.tsv");
         try
         {
             string? directory = Path.GetDirectoryName(Path.GetFullPath(path));

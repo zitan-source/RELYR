@@ -20,7 +20,16 @@ public static class StartupIntegrationTest
             Check(!encoded.Any(char.IsWhiteSpace), "scheduled-task argument payload contains no command-line whitespace");
             Check(StartupService.MultipleInstancePolicy(true) == 2 && StartupService.MultipleInstancePolicy(false) == 0, "logon startup ignores duplicate launches while command launcher remains available for macro actions");
             Check(App.IsMainUiLaunch([]) && App.IsMainUiLaunch(["--tray"]) && !App.IsMainUiLaunch(["--macro-id", "abc"]), "single-instance guard applies only to the resident main application");
-            Check(App.ShouldRelayToSingleElevatedHost(false) && !App.ShouldRelayToSingleElevatedHost(true), "production launches one elevated resident input owner instead of a competing UI/helper pair");
+            Check(App.ShouldStartMediumUiHost(false, []) && App.ShouldStartMediumUiHost(false, ["--tray"])
+                && !App.ShouldStartMediumUiHost(true, []) && !App.ShouldStartMediumUiHost(false, ["--macro-id", "abc"])
+                && App.EnsureUiHostArgument(["--tray"]).SequenceEqual(["--tray", "--ui-host"])
+                && App.EnsureUiHostArgument(["--ui-host"]).SequenceEqual(["--ui-host"]),
+                "the visible main UI stays at ordinary integrity while privileged one-shot commands remain separate");
+            string[] restartChildArguments = App.RestartChildArguments(1234);
+            Check(restartChildArguments.SequenceEqual(["--restart-after-pid", "1234", App.RestartLauncherArgument])
+                && App.IsRestartLauncher(restartChildArguments)
+                && App.RestartTargetArguments([App.RestartLauncherArgument]).Length == 0,
+                "tray restart waits for the old process and then re-enters through the ordinary UI-host launch path");
             Check(!App.ShouldScanForOrphans(["--tray"]) && App.ShouldScanForOrphans([]), "logon startup skips the blocking orphan-process scan");
             Check(StartupService.SameExecutablePath(executable, executable.ToUpperInvariant()) && !StartupService.SameExecutablePath(executable, @"C:\Temp\RELYR.exe"), "executable path comparison remains case-insensitive");
             Check(StartupService.IsRelyrExecutableIdentity("RELYR.exe", "RELYR", "RELYR.dll"),

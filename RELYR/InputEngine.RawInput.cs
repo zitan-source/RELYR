@@ -42,18 +42,32 @@ public sealed partial class InputEngine
         HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputEnter, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: lParam.ToInt64());
         try
         {
-            return ProcessRawInput(lParam);
-        }
-        catch (Exception exception)
-        {
-            HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputFault, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: exception.HResult, value2: HookDiagnosticsTrace.ExceptionCode(exception));
-            throw;
+            return ProcessRawInputSafely(lParam);
         }
         finally
         {
             HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputExit, System.Diagnostics.Stopwatch.GetTimestamp() - started, keyboardHook, mouseHook);
         }
     }
+
+    IntPtr ProcessRawInputSafely(IntPtr lParam, Func<IntPtr, IntPtr>? processor = null)
+    {
+        try
+        {
+            return (processor ?? ProcessRawInput)(lParam);
+        }
+        catch (Exception exception)
+        {
+            HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputFault, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: exception.HResult, value2: HookDiagnosticsTrace.ExceptionCode(exception));
+            // WM_INPUT is supplementary release reconciliation. A malformed or
+            // transient packet must not escape DispatchMessage: doing so terminates
+            // HookLoop and removes both low-level hooks while the UI stays alive.
+            return IntPtr.Zero;
+        }
+    }
+
+    internal bool RawInputFaultIsContainedForTest()
+        => ProcessRawInputSafely(IntPtr.Zero, _ => throw new InvalidOperationException("raw input test fault")) == IntPtr.Zero;
 
     IntPtr ProcessRawInput(IntPtr lParam)
     {
@@ -73,6 +87,11 @@ public sealed partial class InputEngine
             HookDiagnosticsTrace.Record(HookDiagnosticStage.RawInputDecoded, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: header.dwType, value2: header.dwSize);
             if (header.dwType == 1)
             {
+                IntPtr keyboard = IntPtr.Add(buffer, checked((int)headerSize));
+                ushort keyboardFlags = unchecked((ushort)Marshal.ReadInt16(keyboard, 2));
+                ushort virtualKey = unchecked((ushort)Marshal.ReadInt16(keyboard, 6));
+                uint message = unchecked((uint)Marshal.ReadInt32(keyboard, 8));
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.RawKeyboardDecoded, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: virtualKey, value2: message, result: keyboardFlags);
                 HookDiagnosticsTrace.Record(HookDiagnosticStage.RawKeyboardTransition, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: Volatile.Read(ref rawKeyboardTransitions) + 1, value2: Volatile.Read(ref lowLevelKeyboardTransitions));
                 ObserveRawHookTransition(true);
                 return IntPtr.Zero;

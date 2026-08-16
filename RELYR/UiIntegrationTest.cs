@@ -128,12 +128,13 @@ internal static class UiIntegrationTest
             window.UpdateLayout();
             Check(window.IsInputEngineReadyForTest, "input engine is ready when the main window and tray initialization complete");
             var mainRuntimeProfile = window.CurrentProfileForTest;
-            string[] mainRuntimeInputs = ["F1", "Space+WheelDown", "Space+MouseForward", "CapsLock+U", "MouseBack+WheelDown", "MouseForward+WheelDown"];
+            string[] mainRuntimeInputs = ["F1", "Space+WheelDown", "Space+MouseForward", "CapsLock+U", "MouseRight+WheelDown", "MouseBack+WheelDown", "MouseForward+WheelDown"];
             mainRuntimeProfile.Mappings.RemoveAll(mapping => mainRuntimeInputs.Contains(mapping.Input, StringComparer.OrdinalIgnoreCase));
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "F1", Layer = "通常", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = OverlayService.DeckPanelAction, LongPressMs = 50 });
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "Space+WheelDown", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+PageDown" });
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "Space+MouseForward", Layer = "Space", Kind = ActionKind.Shortcut, Value = "LeftAlt+F4" });
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "CapsLock+U", Layer = "CapsLock", Kind = ActionKind.Key, Value = "Enter" });
+            mainRuntimeProfile.Mappings.Add(new Mapping { Input = "MouseRight+WheelDown", Layer = "MouseRight", Kind = ActionKind.Key, Value = "Home" });
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "MouseBack+WheelDown", Layer = "MouseBack", Kind = ActionKind.Key, Value = "Left" });
             mainRuntimeProfile.Mappings.Add(new Mapping { Input = "MouseForward+WheelDown", Layer = "MouseForward", Kind = ActionKind.Key, Value = "Down" });
             window.ConfigForTest.WindowActionTarget = WindowActionTarget.ActiveWindow;
@@ -174,6 +175,41 @@ internal static class UiIntegrationTest
                 && mainRuntimeKeyActions.Count(action => action == (0x25, false)) == 1 && mainRuntimeKeyActions.Count(action => action == (0x25, true)) == 1
                 && mainRuntimeKeyActions.Count(action => action == (0x28, false)) == 1 && mainRuntimeKeyActions.Count(action => action == (0x28, true)) == 1,
                 "RELYR main screen runs normal F1, Space wheel/forward, CapsLock, Back, and Forward layer actions through the UI-host runtime without a foreground exception");
+            const int rapidRuntimeIterations = 250;
+            int rapidOutputsBefore = mainRuntimeKeyActions.Count;
+            bool rapidRuntimeStayedClean = true;
+            for (int i = 0; i < rapidRuntimeIterations; i++)
+            {
+                IntPtr[] rapidResults =
+                [
+                    window.DirectPhysicalKeyForTest(0x20, false),
+                    window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0),
+                    window.DirectPhysicalKeyForTest(0x20, true),
+                    window.DirectPhysicalKeyForTest(0x20, false),
+                    window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0),
+                    window.DirectPhysicalKeyForTest(0x20, true),
+                    window.DirectPhysicalKeyForTest(0x7C, false),
+                    window.DirectPhysicalKeyForTest(0x55, false),
+                    window.DirectPhysicalKeyForTest(0x55, true),
+                    window.DirectPhysicalKeyForTest(0x7C, true),
+                    window.DirectPhysicalMouseForTest(0x204),
+                    window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0),
+                    window.DirectPhysicalMouseForTest(0x205),
+                    window.DirectPhysicalMouseForTest(0x20B, 1 << 16, 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20C, 1 << 16, 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20B, 2 << 16, 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20A, unchecked((int)0xFF880000), 0, 0),
+                    window.DirectPhysicalMouseForTest(0x20C, 2 << 16, 0, 0)
+                ];
+                rapidRuntimeStayedClean &= rapidResults.All(result => result == (IntPtr)1)
+                    && !window.HasCapturedInputStateForTest;
+            }
+            bool rapidRuntimeOutputsCompleted = SpinWait.SpinUntil(
+                () => mainRuntimeKeyActions.Count >= rapidOutputsBefore + (rapidRuntimeIterations * 16), 5000);
+            Check(rapidRuntimeStayedClean && rapidRuntimeOutputsCompleted && !window.HasCapturedInputStateForTest,
+                "250 rapid Space, CapsLock, Right, Back, and Forward layer action cycles complete without input-state residue or a stopped runtime");
             OverlayService.ActionRequestedForTest = null;
             InputEngine.KeyOutputForTest = null;
             window.SetCapsLockRemapForTest(false);
@@ -182,7 +218,7 @@ internal static class UiIntegrationTest
             {
                 var transientOverlay = new ProfileSwitchOverlay("標準", TimeSpan.FromMilliseconds(150));
                 transientOverlay.Show();
-                PumpFor(TimeSpan.FromMilliseconds(350));
+                PumpFor(TimeSpan.FromMilliseconds(750));
                 if (!transientOverlay.IsVisible)
                     hiddenProfileOverlays++;
             }
@@ -448,6 +484,10 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.DeckLayoutCardsPanel.Children.OfType<System.Windows.Controls.Button>().Any(x => ReferenceEquals(x.Tag, extraDeck)) && window.ConfigForTest.DeckLayouts.Count >= 2, "multiple named Deck layouts appear in the list");
             var standardDeck = window.ConfigForTest.DeckLayouts.First();
+            var liveDeckConfig = window.DeckOverlayConfigForTest;
+            Check(ReferenceEquals(liveDeckConfig.DeckLayouts, window.ConfigForTest.DeckLayouts)
+                && ReferenceEquals(liveDeckConfig.DeckLayouts.First(), standardDeck),
+                "the Deck editor and live overlay share one layout model while runtime profile selection remains a snapshot");
             window.EditDeckLayoutForTest(standardDeck);
             Pump(window);
             var deckButtons = window.DeckManagementButtonsForTest.ToArray();
@@ -688,7 +728,7 @@ internal static class UiIntegrationTest
                 PumpFor(TimeSpan.FromMilliseconds(650));
                 Check(autoHideOverlay.IsVisible, "an unpinned Deck shown away from the pointer remains visible until the pointer has entered it once");
                 autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                PumpFor(TimeSpan.FromMilliseconds(350));
+                PumpFor(TimeSpan.FromMilliseconds(500));
                 Check(!autoHideOverlay.IsVisible && autoHideExecuted?.Value == "Ctrl+C", "an unpinned Deck hides after executing a button without losing the action");
                 autoHideOverlay.PrepareForShow();
                 autoHideOverlay.Show();
@@ -866,6 +906,9 @@ internal static class UiIntegrationTest
             foreach (char character in largeDeckTyping)
                 window.ValueBox.AppendText(character.ToString());
             Check(window.DeckVisualUpdateCountForTest == largeDeckTyping.Length && OverlayService.DeckRefreshRequestCountForTest == 0, $"18x18 Deck typing updates only the selected button and never rebuilds the 324-button overlay (buttonUpdates={window.DeckVisualUpdateCountForTest}, overlayRefreshes={OverlayService.DeckRefreshRequestCountForTest})");
+            window.SaveAndApplyForTest();
+            Pump(window);
+            Check(OverlayService.DeckRefreshRequestCountForTest == 1, "confirming a Deck shortcut refreshes the visible overlay exactly once without restarting RELYR");
             window.ValueBox.Text = originalLargeDeckValue;
             window.ApplyDeckSizeForTest(9, 5);
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));

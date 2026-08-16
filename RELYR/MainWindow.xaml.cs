@@ -238,9 +238,12 @@ public partial class MainWindow : Window
         // Each physical input is owned by one hook. The UI skips an elevated
         // foreground window, while either hook retains an already captured
         // press until its physical release is received.
-        engine.ShouldInterceptInput = runtimeRole == RuntimeRole.ElevatedHelper
-            ? () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated())
-            : null;
+        engine.ShouldInterceptInput = runtimeRole switch
+        {
+            RuntimeRole.UiHost => () => engine.HasCapturedPhysicalInput || !WindowMonitorService.IsForegroundWindowElevated(),
+            RuntimeRole.ElevatedHelper => () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated()),
+            _ => null
+        };
         engine.ShouldInterceptMouseInput = engine.ShouldInterceptInput;
         engine.IsNativeMouseDrag = input => FindCapturedInputMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
         engine.HasLegacyMouseDrag = input => FindCapturedInputMapping(input) is { } map && (!string.IsNullOrWhiteSpace(map.DragValue) || !string.IsNullOrWhiteSpace(map.DragEndValue));
@@ -2199,9 +2202,7 @@ public partial class MainWindow : Window
     static bool IsElevatedInputMapping(Mapping? map)
         => IsElevatedInputMappingForTest(map);
     internal static bool IsElevatedInputMappingForTest(Mapping? map)
-        => MappingInterceptsInput(map)
-            && (map!.Kind is ActionKind.Key or ActionKind.Shortcut
-                || map.LongPressKind is ActionKind.Key or ActionKind.Shortcut);
+        => MappingInterceptsInput(map);
     bool TryGetLayerMappingSnapshot(string input, out LayerMappingSnapshot snapshot)
     {
         string candidate = input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase) ? input["Taskbar+".Length..] : input;
@@ -2939,6 +2940,11 @@ public partial class MainWindow : Window
     {
         var snapshot = store.Clone(config);
         snapshot.ActiveProfile = appliedConfig.ActiveProfile;
+        // The active profile is runtime state, but Deck editing must use one
+        // shared model. Cloning the layouts here made the editor and the live
+        // overlay modify different objects until the process was rebuilt.
+        snapshot.DeckLayouts = config.DeckLayouts;
+        snapshot.SharedDeckMappings = config.SharedDeckMappings;
         return snapshot;
     }
     void ShowProfileOverlay(string profileName)
@@ -2999,17 +3005,23 @@ public partial class MainWindow : Window
         var processesAtCursor = ConditionMatcher.ProcessesUnderCursor()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        // Deck, profile notifications, and other RELYR-owned overlay windows are
-        // neutral surfaces for application auto-routing. Rebuilding the Deck that
-        // is currently dispatching an action can otherwise tear down its own WPF
-        // event route during a virtual-desktop transition.
-        if (processesAtCursor.Any(process => IsOwnProcess(process)))
+        bool ownProcessUnderCursor = processesAtCursor.Any(process => IsOwnProcess(process));
+        IntPtr mainHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        bool mainWindowUnderCursor = mainHandle != IntPtr.Zero
+            && ConditionMatcher.RootWindowUnderCursor() == mainHandle;
+        // Owned overlays are neutral so they cannot switch themselves while an
+        // action is running. The RELYR main window is an ordinary application
+        // target and therefore resolves to its assigned profile or the standard
+        // profile, exactly like Chrome, Filmora, or any other foreground app.
+        if (ShouldTreatOwnSurfaceAsNeutral(ownProcessUnderCursor, mainWindowUnderCursor))
         {
             ResetAutomaticProfileCandidate();
             LogAutomaticProfileSwitch($"own-overlay processes={string.Join(",", processesAtCursor)} runtime={appliedConfig.ActiveProfile}");
             return;
         }
-        var processes = processesAtCursor.Where(process => !IsOwnProcess(process)).ToArray();
+        var processes = mainWindowUnderCursor
+            ? processesAtCursor
+            : processesAtCursor.Where(process => !IsOwnProcess(process)).ToArray();
         // Child/owner windows can change while the pointer remains inside one
         // Chromium or Qt application. Stabilize the resolved profile rather
         // than requiring the raw process list to be byte-for-byte identical.
@@ -3135,6 +3147,8 @@ public partial class MainWindow : Window
     static string? ValidManualReturnProfile(IReadOnlyList<Profile> profiles, string profileName)
         => profiles.FirstOrDefault(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase) && !x.AutoSwitchEnabled)?.Name;
     internal static bool ShouldKeepExplicitProfile(string originalProcess, string currentProcess, bool cursorOverTaskbar) => cursorOverTaskbar || (!string.IsNullOrWhiteSpace(originalProcess) && ConditionMatcher.Matches(originalProcess, currentProcess));
+    internal static bool ShouldTreatOwnSurfaceAsNeutral(bool ownProcessUnderCursor, bool mainWindowUnderCursor)
+        => ownProcessUnderCursor && !mainWindowUnderCursor;
     internal static bool IsOwnProcess(string process, string? executablePath = null)
         => !string.IsNullOrWhiteSpace(process)
             && ConditionMatcher.Matches(Path.GetFileNameWithoutExtension(executablePath ?? Environment.ProcessPath ?? "RELYR"), process);
@@ -3283,6 +3297,10 @@ public partial class MainWindow : Window
         RebuildTrayMenu();
         if (runtimeRole == RuntimeRole.UiHost)
             IpcRuntime.RequestReload();
+        // Text and shortcut editors deliberately defer Deck refreshes while the
+        // user is typing.  Apply the completed mapping to an already visible
+        // overlay once saving has committed the full value.
+        OverlayService.RefreshDeckPanel();
         LastInput.Text = message;
         LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
     }
@@ -3818,8 +3836,11 @@ public partial class MainWindow : Window
         {
             string executable = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所を確認できません。");
             var start = new ProcessStartInfo(executable) { UseShellExecute = true };
-            start.ArgumentList.Add("--restart-after-pid");
-            start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // Re-enter through the registered elevated launcher after this
+            // process has fully released its hooks.  This is the same ownership
+            // path used by a normal Windows/taskbar launch.
+            foreach (string argument in App.RestartChildArguments(Environment.ProcessId))
+                start.ArgumentList.Add(argument);
             if (Process.Start(start) == null)
                 throw new InvalidOperationException("再起動プロセスを開始できません。");
         }

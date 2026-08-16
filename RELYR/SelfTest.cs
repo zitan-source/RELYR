@@ -160,7 +160,7 @@ public static class SelfTest
             blankAction.Profiles[0].Mappings.Add(new Mapping { Input = "Q", Kind = ActionKind.Shortcut, Value = "" });
             Check(ConfigValidator.Validate(blankAction).Count == 0, "blank execution value can be left unfinished without a validation error");
             Check(!MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.None, Value = "stale" }) && !MainWindow.MappingInterceptsInput(new Mapping { Input = "M", Kind = ActionKind.Shortcut, Value = "" }) && MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.Disabled }) && MainWindow.MappingInterceptsInput(new Mapping { Input = "MouseBack", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "Enter" }), "unfinished mappings do not look assigned or block native input while disabled and long-only mappings still intercept");
-            Check(MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = OverlayService.DeckPanelAction }) && !MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Launch, LongPressValue = "notepad.exe" }), "elevated foreground capture includes long-press key and shortcut actions without expanding to unrelated action kinds");
+            Check(MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = OverlayService.DeckPanelAction }) && MainWindow.IsElevatedInputMappingForTest(new Mapping { Input = "F1", Kind = ActionKind.None, LongPressKind = ActionKind.Launch, LongPressValue = "notepad.exe" }), "the elevated helper owns every configured action kind while the ordinary UI host yields elevated foreground input");
             Check(ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBoxVM.exe") && ConditionMatcher.IsVirtualMachineConsoleProcess("virtualboxvm") && !ConditionMatcher.IsVirtualMachineConsoleProcess("VirtualBox.exe"), "VirtualBox VM console process detection remains available to the elevated helper without restricting the normal UI runtime");
             Check(MainWindow.ShouldFocusExecutionForSelectedInput(null) && !MainWindow.ShouldFocusExecutionForSelectedInput(new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }), "only an unassigned key automatically focuses the execution-value editor");
             var hoverMapping = new Mapping { Input = "Space+K", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Launch, LongPressValue = @"C:\Apps\Sample.exe", LongPressMs = 600 };
@@ -367,6 +367,8 @@ public static class SelfTest
             Check(ConfigValidator.Validate(loaded).Any(x => x.Contains("競合")), "conflict detection");
             Check(InputEngineSmokeTest(), "input engine construct/dispose");
             Check(!InputEngine.HookMissedRawTransitions(10, 10) && InputEngine.HookMissedRawTransitions(11, 10), "hook recovery requires proven Raw Input transitions missing from the low-level hook");
+            using (var rawInputFaultEngine = new InputEngine())
+                Check(rawInputFaultEngine.RawInputFaultIsContainedForTest(), "a Raw Input decode fault is contained instead of terminating both low-level hooks");
             TestMappingActions(Check);
             Check(ConditionMatcher.Matches("notepad.exe", "NOTEPAD"), "application condition matching");
             var autoProfiles = new[] { new Profile { Name = "標準" }, new Profile { Name = "メモ帳", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] } };
@@ -376,6 +378,10 @@ public static class SelfTest
             Check(MainWindow.IsOwnProcess("RELYR", @"C:\Program Files\RELYR\RELYR.exe")
                 && !MainWindow.IsOwnProcess("chrome", @"C:\Program Files\RELYR\RELYR.exe"),
                 "RELYR-owned Deck and notification windows remain neutral to application profile routing");
+            Check(!MainWindow.ShouldTreatOwnSurfaceAsNeutral(true, true)
+                && MainWindow.ShouldTreatOwnSurfaceAsNeutral(true, false)
+                && !MainWindow.ShouldTreatOwnSurfaceAsNeutral(false, false),
+                "RELYR main window uses ordinary profile routing while owned overlays remain neutral");
             var editingProfileConfig = new AppConfig { ActiveProfile = "メモ帳", Profiles = [.. autoProfiles] };
             var runtimeProfileConfig = service.Clone(editingProfileConfig);
             Check(MainWindow.ApplyAutomaticProfile(editingProfileConfig, runtimeProfileConfig, "標準") && editingProfileConfig.ActiveProfile == "メモ帳" && runtimeProfileConfig.ActiveProfile == "標準", "automatic profile switching changes runtime behavior without moving the profile being edited");
