@@ -29,8 +29,8 @@ public partial class MainWindow
     internal void EndLayerMappingScopeForTest(string layer) => ReleaseLayerMappings(layer);
     internal bool ExecuteMappingForTest(Mapping mapping, string input) => executor.Execute(mapping, input, out _);
     internal void SwitchProfileForTest(string name) => SwitchProfile(name, true, false);
-    internal void ApplyProfileManagerResultForTest(IReadOnlyList<Profile> profiles, string activeProfile, bool autoSwitch)
-        => ApplyProfileManagerResult(profiles, activeProfile, autoSwitch);
+    internal void ApplyProfileManagerResultForTest(IReadOnlyList<Profile> profiles, string activeProfile)
+        => ApplyProfileManagerResult(profiles, activeProfile);
     internal bool ApplyAutomaticProfileForTest(IReadOnlyCollection<string> processes)
         => TryApplyAutomaticProfileForProcesses(processes, false, out _);
     internal void ResetAutomaticProfileCandidateForTest() => ResetAutomaticProfileCandidate();

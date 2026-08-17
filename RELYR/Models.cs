@@ -133,7 +133,9 @@ public sealed class AppConfig
 
     public int Version { get; set; } = ConfigService.CurrentVersion;
     public string ActiveProfile { get; set; } = "標準";
-    public bool AutoSwitchProfilesByCursor { get; set; } = true;
+    // Retained only so older settings files can be read without migration loss.
+    // Automatic profile routing now always follows the foreground application.
+    public bool AutoSwitchProfilesByCursor { get; set; }
     public bool ShowProfileSwitchOverlay { get; set; } = true;
     public bool EngineEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }

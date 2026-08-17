@@ -33,7 +33,7 @@
   </Window.Resources>
   <Grid Margin="12">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <Grid Margin="0,0,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="CursorProfileSwitchBox" Grid.Column="1" Content="カーソル下のアプリに合わせて自動切替" VerticalAlignment="Center" ToolTip="登録した対象アプリ上にカーソルがあるときだけ自動切替します"/></Grid>
+    <TextBlock Margin="0,0,0,8" Text="プロファイルはアクティブな対象アプリに合わせて自動切替します" Foreground="{DynamicResource SecondaryText}"/>
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions><ColumnDefinition x:Name="ProfileListColumn" Width="165"/><ColumnDefinition Width="14"/><ColumnDefinition x:Name="ApplicationManagementColumn"/></Grid.ColumnDefinitions>
       <Border Grid.Column="0" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10">
@@ -59,7 +59,7 @@
       </Border>
       <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="12">
         <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="SelectedProfileTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/><ToggleButton x:Name="AutoSwitchBox" Grid.Column="1" Style="{StaticResource AutoSwitchToggle}" Content="自動切替 オフ" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="マウスカーソルが対象アプリ上にあるとき、このプロファイルへ切り替えます"/></Grid>
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="SelectedProfileTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/><ToggleButton x:Name="AutoSwitchBox" Grid.Column="1" Style="{StaticResource AutoSwitchToggle}" Content="自動切替 オフ" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="対象アプリがアクティブなとき、このプロファイルへ切り替えます"/></Grid>
           <Grid Grid.Row="1" Margin="0,10,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="現在起動中のアプリ" FontWeight="SemiBold"/></Grid>
           <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
             <ListBox x:Name="AssignedApplicationList" MouseDoubleClick="RemoveAutoSwitchApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><TextBlock Text="{Binding}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>

@@ -222,7 +222,7 @@ public static class SelfTest
             service.Save(config);
             var loaded = service.Load();
             Check(loaded.ActiveProfile == "アプリ用", "JSON roundtrip");
-            Check(!loaded.AutoSwitchProfilesByCursor, "cursor profile auto-switch option roundtrip");
+            Check(!loaded.AutoSwitchProfilesByCursor, "legacy cursor profile option remains disabled after roundtrip");
             Check(!loaded.ShowProfileSwitchOverlay, "profile switch overlay option roundtrip");
             Check(loaded.ShowDesktopNumberInTray, "tray desktop number setting roundtrip");
             Check(!loaded.CheckForUpdates && loaded.DismissedUpdateVersion == "9.9.9", "update-check and dismissed-version settings roundtrip");
@@ -372,16 +372,12 @@ public static class SelfTest
             TestMappingActions(Check);
             Check(ConditionMatcher.Matches("notepad.exe", "NOTEPAD"), "application condition matching");
             var autoProfiles = new[] { new Profile { Name = "標準" }, new Profile { Name = "メモ帳", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] } };
-            Check(MainWindow.SelectAutomaticProfile(autoProfiles, "notepad").Name == "メモ帳" && MainWindow.SelectAutomaticProfile(autoProfiles, "explorer").Name == "標準", "cursor application profile selection");
+            Check(MainWindow.SelectAutomaticProfile(autoProfiles, "notepad").Name == "メモ帳" && MainWindow.SelectAutomaticProfile(autoProfiles, "explorer").Name == "標準", "foreground application profile selection");
             Check(MainWindow.SelectAutomaticProfileNameForLocation(autoProfiles, "メモ帳", "explorer", true) == "メモ帳" && MainWindow.SelectAutomaticProfileNameForLocation(autoProfiles, "メモ帳", "explorer", false) == "標準", "taskbar keeps the previously selected application profile");
-            Check(MainWindow.ShouldKeepExplicitProfile("chrome.exe", "chrome", false) && MainWindow.ShouldKeepExplicitProfile("chrome.exe", "explorer", true) && !MainWindow.ShouldKeepExplicitProfile("chrome.exe", "notepad", false), "an explicit profile action remains active over the current app and yields only after the pointer moves to another app");
+            Check(MainWindow.ShouldKeepExplicitProfile("chrome.exe", "chrome", false) && MainWindow.ShouldKeepExplicitProfile("chrome.exe", "explorer", true) && !MainWindow.ShouldKeepExplicitProfile("chrome.exe", "notepad", false), "an explicit profile action remains active for the current foreground app and yields after foreground changes");
             Check(MainWindow.IsOwnProcess("RELYR", @"C:\Program Files\RELYR\RELYR.exe")
                 && !MainWindow.IsOwnProcess("chrome", @"C:\Program Files\RELYR\RELYR.exe"),
                 "RELYR-owned Deck and notification windows remain neutral to application profile routing");
-            Check(!MainWindow.ShouldTreatOwnSurfaceAsNeutral(true, true)
-                && MainWindow.ShouldTreatOwnSurfaceAsNeutral(true, false)
-                && !MainWindow.ShouldTreatOwnSurfaceAsNeutral(false, false),
-                "RELYR main window uses ordinary profile routing while owned overlays remain neutral");
             var editingProfileConfig = new AppConfig { ActiveProfile = "メモ帳", Profiles = [.. autoProfiles] };
             var runtimeProfileConfig = service.Clone(editingProfileConfig);
             Check(MainWindow.ApplyAutomaticProfile(editingProfileConfig, runtimeProfileConfig, "標準") && editingProfileConfig.ActiveProfile == "メモ帳" && runtimeProfileConfig.ActiveProfile == "標準", "automatic profile switching changes runtime behavior without moving the profile being edited");
@@ -393,7 +389,7 @@ public static class SelfTest
             var (Target, ReturnProfile) = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "標準", "", ["QtWebEngineProcess", "Wondershare Filmora"], false);
             var leaveFilmora = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "Filmora", "Chrome", "explorer.exe", false);
             var filmoraOnOtherDesktop = MainWindow.ResolveAutomaticProfileTarget(mixedAutoProfiles, "Filmora", "", "explorer.exe", false);
-            Check(keepChrome == ("Chrome", "") && enterFilmora == ("Filmora", "Chrome") && Target == "Filmora" && leaveFilmora == ("Chrome", "") && filmoraOnOtherDesktop == ("標準", ""), "cursor auto-switch recognizes a host app behind its render child, preserves a manual profile, and returns when the app is absent or on another desktop");
+            Check(keepChrome == ("Chrome", "") && enterFilmora == ("Filmora", "Chrome") && Target == "Filmora" && leaveFilmora == ("Chrome", "") && filmoraOnOtherDesktop == ("標準", ""), "automatic profile resolution recognizes a host app behind its render child, preserves a manual profile, and returns when the app is absent");
             var runtimeAutoConfig = new AppConfig { ActiveProfile = "標準", Profiles = [.. mixedAutoProfiles] };
             var editingAutoConfig = service.Clone(runtimeAutoConfig);
             string deferredReturn = "";
@@ -593,6 +589,38 @@ public static class SelfTest
                 () => { cursorTargetCalls++; return (IntPtr)11; },
                 () => { activeTargetCalls++; return (IntPtr)22; });
             Check(normalCursorTarget == (IntPtr)11 && cursorTargetCalls == 1 && activeTargetCalls == 0, "normal actions without a taskbar shortcut target still use the window under the cursor");
+            int shortcutActivationCalls = 0;
+            IntPtr activeShortcutTarget = (IntPtr)22;
+            Check(WindowMonitorService.EnsureShortcutTargetActive(
+                      (IntPtr)11,
+                      () => activeShortcutTarget,
+                      handle => { shortcutActivationCalls++; activeShortcutTarget = handle; return true; })
+                  && activeShortcutTarget == (IntPtr)11
+                  && shortcutActivationCalls == 1,
+                "cursor-targeted shortcuts activate their resolved window before SendInput");
+            Check(WindowMonitorService.EnsureShortcutTargetActive(
+                      (IntPtr)11,
+                      () => activeShortcutTarget,
+                      _ => { shortcutActivationCalls++; return true; })
+                  && shortcutActivationCalls == 1,
+                "cursor-targeted shortcuts do not reactivate an already active target");
+            int delayedActivationPolls = 0;
+            Check(WindowMonitorService.EnsureShortcutTargetActive(
+                      (IntPtr)44,
+                      () => ++delayedActivationPolls >= 3 ? (IntPtr)44 : (IntPtr)11,
+                      _ => true,
+                      _ => { },
+                      300),
+                "cursor-targeted actions wait for an asynchronously acknowledged foreground transition");
+            Check(!WindowMonitorService.EnsureShortcutTargetActive(
+                      (IntPtr)33,
+                      () => activeShortcutTarget,
+                      _ => false),
+                "cursor-targeted shortcuts fail closed when the resolved window cannot be activated");
+            var hookReturnBarrier = InputEngine.CreateHookReturnBarrierForTest();
+            Check(hookReturnBarrier.Barrier is { IsCompleted: false }, "desktop actions queued by a low-level callback wait for that callback to return");
+            hookReturnBarrier.Complete();
+            Check(hookReturnBarrier.Barrier?.Wait(1000) == true, "desktop action callback barrier is released without delaying the hook thread");
             IntPtr cursorFallbackTarget = WindowMonitorService.SelectResolvedTarget(
                 WindowActionTarget.WindowUnderCursor,
                 (IntPtr)9999,

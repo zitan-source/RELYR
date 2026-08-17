@@ -22,6 +22,10 @@ Every change must preserve already-working behavior. A feature request does not 
 - Prefer reverting the change that introduced the regression. Do not add foreground-app exceptions, own-process exceptions, fallback input paths, or action-specific workarounds unless the specification explicitly requires them.
 - The visible RELYR main window is an ordinary application surface. It must run at ordinary user integrity and accept the same normal-profile keyboard and mouse layer input as Notepad, Word, Chrome, Filmora, and other applications. Only privileged operations use the elevated helper.
 - RELYR foreground state, focus, text fields, Deck editing mode, and the selected layer editor page must not disable standard, Space, CapsLock, MouseRight, MouseBack, or MouseForward layer processing.
+- Automatic profile routing follows only the foreground application. Moving the pointer over an inactive application must not change the runtime profile. RELYR's main window and owned management dialogs are ordinary foreground application surfaces, resolving to a specifically assigned RELYR profile or otherwise the standard profile.
+- A close action targeting the window under the cursor requests activation and immediately posts `SC_CLOSE` to the same already-resolved target without waiting for foreground acknowledgement. An inactive target must receive the close request on the first invocation, and the action must never be discarded or fall back to another window.
+- Key and shortcut actions targeting the window under the cursor activate that resolved window immediately before `SendInput`. This includes keyboard and wheel zoom shortcuts. Activation failure must never fall back to the previously active window.
+- A virtual-desktop action queued from a low-level callback must not begin until that originating callback has returned. The output worker waits on the callback-return barrier; the hook thread never waits on the desktop worker. This preserves the matching mouse-button Up and prevents a layer from retaining normal clicks across a desktop change.
 - The Deck editor and the live Deck overlay use the same `DeckLayoutDefinition` objects. Runtime-profile selection may use a snapshot, but `DeckLayouts` and `SharedDeckMappings` must not be deep-cloned or allowed to diverge.
 - A file, name, icon, color, assignment, reorder, deletion, row/column change, or profile-linked Deck change made in either the editor or overlay must appear in the other immediately and persist across restart.
 - Do not replace the retained known-good installer until the candidate passes the required gates and the user has approved replacement. Record version and SHA-256 for every candidate supplied for user verification.
@@ -33,7 +37,7 @@ Before reporting completion, explicitly review this permanent regression set:
 1. RELYR main window: standard, Space, CapsLock, MouseRight, MouseBack, and MouseForward layers remain active.
 2. Ordinary applications: the same layers retain their existing behavior.
 3. Normal left click is never assigned, replaced, or captured; ordinary right/back/forward clicks still replay correctly.
-4. Profile auto-switching remains stable and does not change the editor dropdown unless the user selects it.
+4. Profile auto-switching follows the foreground application only, remains stable, and does not change the editor dropdown unless the user selects it. Opening an owned RELYR management dialog must not preserve an unrelated application's runtime profile, and the dialog's title-bar close command remains usable.
 5. Deck editor and live overlay synchronize in both directions without restart, including profile-linked layouts with different dimensions.
 6. Tray restart preserves input ownership, profile state, mappings, and Deck synchronization.
 7. Repeated actions and virtual-desktop changes do not leave captured keys/buttons, double-execute actions, or stop the hooks.

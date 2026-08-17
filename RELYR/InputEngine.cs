@@ -11,6 +11,8 @@ public sealed partial class InputEngine : IDisposable
     const int GestureIdleSafetyMs = 30000;
     const int GestureStopDelayMs = 110;
     static readonly BlockingCollection<Action> DesktopActions = [];
+    [ThreadStatic] static int hookCallbackDepth;
+    [ThreadStatic] static TaskCompletionSource? pendingHookReturn;
     static InputEngine? directTestTarget;
     static readonly object OutputLock = new();
     static readonly Lock CoordinateCaptureLock = new();
@@ -333,6 +335,7 @@ public sealed partial class InputEngine : IDisposable
 
     IntPtr KeyboardCallback(int n, IntPtr w, IntPtr l)
     {
+        EnterHookCallbackBarrier();
 #if HOOK_DIAGNOSTICS
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         HookDiagnosticsTrace.EnterHookCallback();
@@ -351,13 +354,14 @@ public sealed partial class InputEngine : IDisposable
             HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackFault, keyboardHook: keyboardHook, mouseHook: mouseHook);
             return RecoverFromHookFault(n, w, l);
         }
-#if HOOK_DIAGNOSTICS
         finally
         {
+#if HOOK_DIAGNOSTICS
             HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackExit, System.Diagnostics.Stopwatch.GetTimestamp() - started, keyboardHook, mouseHook);
             HookDiagnosticsTrace.ExitHookCallback();
-        }
 #endif
+            ExitHookCallbackBarrier();
+        }
     }
 
     IntPtr KeyboardCallbackCore(int n, IntPtr w, IntPtr l)
@@ -514,6 +518,7 @@ public sealed partial class InputEngine : IDisposable
 
     IntPtr MouseCallback(int n, IntPtr w, IntPtr l)
     {
+        EnterHookCallbackBarrier();
 #if HOOK_DIAGNOSTICS
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         bool traceTransition = w.ToInt32() != 0x200;
@@ -534,14 +539,41 @@ public sealed partial class InputEngine : IDisposable
             HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseCallbackFault, keyboardHook: keyboardHook, mouseHook: mouseHook);
             return RecoverFromHookFault(n, w, l);
         }
-#if HOOK_DIAGNOSTICS
         finally
         {
+#if HOOK_DIAGNOSTICS
             if (traceTransition)
                 HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseCallbackExit, System.Diagnostics.Stopwatch.GetTimestamp() - started, keyboardHook, mouseHook);
             HookDiagnosticsTrace.ExitHookCallback();
-        }
 #endif
+            ExitHookCallbackBarrier();
+        }
+    }
+
+    static void EnterHookCallbackBarrier() => hookCallbackDepth++;
+
+    static void ExitHookCallbackBarrier()
+    {
+        if (--hookCallbackDepth != 0)
+            return;
+        TaskCompletionSource? completion = pendingHookReturn;
+        pendingHookReturn = null;
+        completion?.TrySetResult();
+    }
+
+    static Task? CaptureHookReturnBarrier()
+    {
+        if (hookCallbackDepth == 0)
+            return null;
+        pendingHookReturn ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return pendingHookReturn.Task;
+    }
+
+    internal static (Task? Barrier, Action Complete) CreateHookReturnBarrierForTest()
+    {
+        EnterHookCallbackBarrier();
+        Task? barrier = CaptureHookReturnBarrier();
+        return (barrier, ExitHookCallbackBarrier);
     }
 
     IntPtr RecoverFromHookFault(int n, IntPtr w, IntPtr l)

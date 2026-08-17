@@ -63,6 +63,11 @@ public sealed partial class InputEngine
         }
         lock (OutputLock)
         {
+            // SendInput is delivered to the foreground queue. For cursor-targeted
+            // shortcuts (including Ctrl+wheel zoom), activate the resolved window
+            // immediately before injection and fail closed if activation is denied.
+            if (windowTarget == WindowActionTarget.WindowUnderCursor)
+                WindowMonitorService.ActivateShortcutTargetUnderCursor(preferredActiveWindow);
             if (mouse?.StartsWith("Wheel", StringComparison.OrdinalIgnoreCase) == true || mouse?.StartsWith("Tilt", StringComparison.OrdinalIgnoreCase) == true)
             {
                 long wait = 4 - (Environment.TickCount64 - lastWheelOutput);
@@ -369,7 +374,16 @@ public sealed partial class InputEngine
             testOutput(action);
             return;
         }
-        DesktopActions.Add(action);
+        // Switching virtual desktops before the originating low-level mouse
+        // callback has returned can lose the matching button Up at the desktop
+        // boundary and leave a layer captured. Only the output worker waits;
+        // the hook callback itself always returns immediately.
+        Task? hookReturn = CaptureHookReturnBarrier();
+        DesktopActions.Add(() =>
+        {
+            hookReturn?.GetAwaiter().GetResult();
+            action();
+        });
     }
     internal static void MoveWindowAndFollowForTest(IntPtr window, int offset)
     {

@@ -17,21 +17,19 @@ public partial class ProfileManagerWindow : Window
 
     internal IReadOnlyList<Profile> ResultProfiles => profiles;
     internal string ResultActiveProfile => activeProfile;
-    internal bool ResultAutoSwitchProfilesByCursor => CursorProfileSwitchBox.IsChecked == true;
     internal bool TitleBarUsesDarkMode
     {
         get; private set;
     }
     Profile? SelectedProfile => ProfileList.SelectedItem as Profile;
 
-    internal ProfileManagerWindow(IReadOnlyList<Profile> source, string selectedProfile, bool autoSwitchProfilesByCursor = true)
+    internal ProfileManagerWindow(IReadOnlyList<Profile> source, string selectedProfile)
     {
         profiles = [.. source.Select(CloneProfile)];
         if (profiles.Count == 0)
             profiles.Add(new Profile { Name = "標準" });
         activeProfile = profiles.Any(x => x.Name == selectedProfile) ? selectedProfile : profiles[0].Name;
         InitializeComponent();
-        CursorProfileSwitchBox.IsChecked = autoSwitchProfilesByCursor;
         MainWindow.FollowWindowsTitleBarTheme(this, value => TitleBarUsesDarkMode = value);
         RefreshProfiles(activeProfile);
         RefreshRunningApplications();

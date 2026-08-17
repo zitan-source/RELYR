@@ -128,6 +128,36 @@ internal static class WindowMonitorService
             VirtualDesktopService.ActivateWindow(window);
     }
 
+    internal static void ActivateShortcutTargetUnderCursor(IntPtr? preferredActiveWindow = null)
+    {
+        IntPtr target = ResolveTarget(WindowActionTarget.WindowUnderCursor, preferredActiveWindow);
+        if (!EnsureShortcutTargetActive(target, VirtualDesktopService.GetForegroundRootWindow, VirtualDesktopService.ActivateWindow))
+            throw new InvalidOperationException("マウスカーソル下のウィンドウをアクティブにできなかったため、Actionを中止しました。");
+    }
+
+    internal static bool EnsureShortcutTargetActive(IntPtr target, Func<IntPtr> activeWindow, Func<IntPtr, bool> activateWindow, Action<int>? wait = null, int timeoutMs = 300)
+    {
+        if (target == IntPtr.Zero)
+            return false;
+        if (activeWindow() == target)
+            return true;
+        _ = activateWindow(target);
+        // SetForegroundWindow may accept the request before the target's input
+        // queue becomes foreground. This runs only on the action worker, never
+        // in a low-level hook callback, so wait briefly for the acknowledged
+        // transition instead of making the user invoke the action twice.
+        wait ??= Thread.Sleep;
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        do
+        {
+            if (activeWindow() == target)
+                return true;
+            wait(10);
+        }
+        while (elapsed.ElapsedMilliseconds < timeoutMs);
+        return activeWindow() == target;
+    }
+
     internal static void Minimize(WindowActionTarget target) => Minimize(ResolveTarget(target));
     internal static void Minimize(IntPtr window) => ShowWindow(ValidateTarget(window), 6);
 
@@ -165,8 +195,10 @@ internal static class WindowMonitorService
     internal static void Close(IntPtr window)
     {
         ValidateTarget(window);
-        // Posting SC_CLOSE matches Alt+F4 without changing focus and avoids a blocking
-        // cross-process SendMessage call (which previously caused input-sync errors).
+        // Match the known-good cursor-target path: request activation and post to
+        // the same already-resolved handle immediately. Do not wait for foreground
+        // acknowledgement and do not discard the first close request.
+        _ = VirtualDesktopService.ActivateWindow(window);
         if (!PostMessage(window, 0x0112, (IntPtr)0xF060, IntPtr.Zero))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "ウィンドウを閉じる命令を送れませんでした。");
     }

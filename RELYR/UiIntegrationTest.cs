@@ -245,9 +245,9 @@ internal static class UiIntegrationTest
             window.SaveAndApplyForTest();
             var managedStandard = new Profile { Name = "標準" };
             var managedAutomatic = new Profile { Name = "自動切替テスト", AutoSwitchEnabled = true, AutoSwitchApplications = ["relyr-profile-test.exe"] };
-            window.ApplyProfileManagerResultForTest([managedStandard, managedAutomatic], managedStandard.Name, true);
+            window.ApplyProfileManagerResultForTest([managedStandard, managedAutomatic], managedStandard.Name);
             var persistedProfiles = new ConfigService().Load();
-            Check(!persistedProfiles.AutoSave && persistedProfiles.AutoSwitchProfilesByCursor && persistedProfiles.Profiles.Any(x => x.Name == managedAutomatic.Name && x.AutoSwitchEnabled && x.AutoSwitchApplications.Contains("relyr-profile-test.exe")) && window.AppliedProfileNameForTest == managedStandard.Name, "Profile Manager Apply immediately saves and activates profile routing even when assignment auto-save is off");
+            Check(!persistedProfiles.AutoSave && !persistedProfiles.AutoSwitchProfilesByCursor && persistedProfiles.Profiles.Any(x => x.Name == managedAutomatic.Name && x.AutoSwitchEnabled && x.AutoSwitchApplications.Contains("relyr-profile-test.exe")) && window.AppliedProfileNameForTest == managedStandard.Name, "Profile Manager Apply immediately saves foreground-based profile routing even when assignment auto-save is off");
             bool automaticProfileApplied = window.ApplyAutomaticProfileForTest(["relyr-profile-test"]);
             Check(automaticProfileApplied && window.AppliedProfileNameForTest == managedAutomatic.Name
                 && window.CurrentProfileForTest.Name == managedStandard.Name && Equals(window.ProfileBox.SelectedItem, managedStandard.Name)
@@ -262,13 +262,13 @@ internal static class UiIntegrationTest
             Check(!transientDefaultWasAccepted && currentChromeWasAccepted && !secondTransientDefaultWasAccepted && stableDefaultWasAccepted
                 && MainWindow.AutomaticProfileRequiredSamples(window.ProfilesForTest, managedAutomatic.Name) == 1
                 && MainWindow.AutomaticProfileRequiredSamples(window.ProfilesForTest, managedStandard.Name) == 2,
-                "cursor profile switching enters a matched app and its Deck immediately while requiring confirmation only before returning to the standard profile");
+                "foreground profile switching enters a matched app and its Deck immediately while requiring confirmation only before returning to the standard profile");
             Check(automaticProfileReturned && window.AppliedProfileNameForTest == managedStandard.Name
                 && window.CurrentProfileForTest.Name == managedStandard.Name && Equals(window.ProfileBox.SelectedItem, managedStandard.Name)
                 && window.ProfileOverlayForTest is { IsVisible: true } returnOverlay && returnOverlay.ProfileNameText.Text == managedStandard.Name,
-                "cursor routing returns the runtime profile without moving the editor dropdown or requiring RELYR activation");
+                "foreground routing returns the runtime profile without moving the editor dropdown");
             PumpFor(TimeSpan.FromMilliseconds(1250));
-            window.ApplyProfileManagerResultForTest([new Profile { Name = "標準" }], "標準", true);
+            window.ApplyProfileManagerResultForTest([new Profile { Name = "標準" }], "標準");
             window.Width = 800;
             window.Height = 620;
             window.UpdateLayout();
@@ -285,17 +285,19 @@ internal static class UiIntegrationTest
             window.Height = 620;
             window.UpdateLayout();
             Pump(window);
-            var compactProfileManager = new ProfileManagerWindow([new Profile { Name = "標準" }, new Profile { Name = "編集用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] }], "編集用", true) { Owner = window, ShowInTaskbar = false, Width = 820, Height = 560 };
+            var compactProfileManager = new ProfileManagerWindow([new Profile { Name = "標準" }, new Profile { Name = "編集用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] }], "編集用") { Owner = window, ShowInTaskbar = false, Width = 820, Height = 560 };
             compactProfileManager.Show();
             compactProfileManager.UpdateLayout();
             Check(compactProfileManager.ProfileListColumn.ActualWidth <= 170 && compactProfileManager.ApplicationManagementColumn.ActualWidth > compactProfileManager.ProfileListColumn.ActualWidth * 3 && compactProfileManager.RunningApplicationList.ActualWidth > 250 && compactProfileManager.RunningApplicationList.ActualHeight > 260, $"profile management keeps a compact profile pane and gives the application editor most of the available width and height (list={compactProfileManager.RunningApplicationList.ActualWidth:F0}x{compactProfileManager.RunningApplicationList.ActualHeight:F0}, profile={compactProfileManager.ProfileListColumn.ActualWidth:F0}, editor={compactProfileManager.ApplicationManagementColumn.ActualWidth:F0})");
             Check(ScrollViewer.GetHorizontalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Disabled && ScrollViewer.GetVerticalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Hidden, "running application list remains scrollable by wheel without displaying scrollbars");
             Check(Descendants<Border>(compactProfileManager.AssignedApplicationList).Any(border => border.CornerRadius.TopLeft == 8) && Descendants<Border>(compactProfileManager.RunningApplicationList).Any(border => border.CornerRadius.TopLeft == 8), "profile application lists use the shared eight-pixel control radius instead of square system borders");
-            Check(compactProfileManager.CursorProfileSwitchBox.IsChecked == true && compactProfileManager.CursorProfileSwitchBox.ToolTip?.ToString()?.Contains("対象アプリ") == true, "profile manager explains cursor-based automatic switching without editor-specific input behavior");
+            Check(Descendants<TextBlock>(compactProfileManager).Any(text => text.Text.Contains("アクティブな対象アプリ", StringComparison.Ordinal)) && compactProfileManager.AutoSwitchBox.ToolTip?.ToString()?.Contains("アクティブ", StringComparison.Ordinal) == true, "profile manager clearly explains foreground-based automatic switching");
             var profileCommandButtons = new[] { compactProfileManager.AddProfileButton, compactProfileManager.RenameProfileButton, compactProfileManager.DeleteProfileButton };
             Check(profileCommandButtons.All(button => button.Content is Viewbox && Descendants<System.Windows.Shapes.Path>(button).Any(path => Equals(path.Stroke, button.Foreground))) && profileCommandButtons.All(button => !string.IsNullOrWhiteSpace(button.ToolTip?.ToString())), "profile add, rename, and delete commands use theme-aware vector icons with explanatory tooltips instead of cramped text");
             CaptureForReview(compactProfileManager, "profile-manager-compact.png");
-            compactProfileManager.Close();
+            SystemCommands.CloseWindow(compactProfileManager);
+            Pump(window);
+            Check(!compactProfileManager.IsVisible, "the profile manager always accepts the standard title-bar close command");
             Check(window.VersionText.Text == "v" + MainWindow.DisplayVersion && window.Title.Contains(window.VersionText.Text), "running version is always visible");
             using (var darkTrayMenu = TrayMenuTheme.Create(true))
             using (var lightTrayMenu = TrayMenuTheme.Create(false))
@@ -1815,7 +1817,7 @@ internal static class UiIntegrationTest
                     System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)mainCenter.X, (int)mainCenter.Y);
                     queuedCursorAction?.Invoke();
                     Pump(window);
-                    Check(queuedCursorAction != null && !cursorTargetWindow.IsVisible && window.IsVisible, "LeftAlt+F4 closes the window captured under the cursor instead of the active window");
+                    Check(queuedCursorAction != null && !cursorTargetWindow.IsVisible && window.IsVisible, "LeftAlt+F4 closes the inactive window captured under the cursor on the first invocation without targeting the active window");
                 }
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("カーソルの位置")) { output.WriteLine("SKIP queued close under cursor: test session does not expose cursor position"); }

@@ -59,8 +59,6 @@ public partial class MainWindow : Window
     string automaticProfileReturnName = "";
     string automaticProfileCandidateSignature = "";
     int automaticProfileCandidateSamples;
-    int automaticProfileCheckQueued;
-    IntPtr automaticProfilePointerWindow;
     DateTime suppressAutomaticProfileSwitchUntil = DateTime.MinValue;
     readonly string automaticProfileDiagnosticLog = Environment.GetEnvironmentVariable("RELYR_PROFILE_SWITCH_LOG") ?? "";
     readonly System.Windows.Threading.DispatcherTimer autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
@@ -255,7 +253,6 @@ public partial class MainWindow : Window
         engine.DragPixels = config.MouseDragPixels;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
         engine.Detected += text => Dispatcher.BeginInvoke(() => HandleDetectedInput(text));
-        engine.PointerMoved += QueueAutomaticProfileCheck;
         engine.Enabled = false;
         // The UI hook remains medium integrity so Explorer can drop files onto
         // Deck. The elevated helper has a second, filtered hook which handles
@@ -362,27 +359,6 @@ public partial class MainWindow : Window
         => InputEngine.SendText(value, config.KeyboardLayout == "US");
     internal void ExecuteMouseForIpc(string value)
         => InputEngine.SendMouse(value);
-    void QueueAutomaticProfileCheck()
-    {
-        // PointerMoved is raised from the low-level hook. When automatic routing
-        // is already settled, avoid allocating a dispatcher operation for every
-        // physical mouse packet.
-        if (!appliedConfig.AutoSwitchProfilesByCursor
-            && appliedConfig.ActiveProfile.Equals(config.ActiveProfile, StringComparison.OrdinalIgnoreCase))
-            return;
-        if (Interlocked.Exchange(ref automaticProfileCheckQueued, 1) != 0)
-            return;
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
-        {
-            Interlocked.Exchange(ref automaticProfileCheckQueued, 0);
-            IntPtr pointerWindow = ConditionMatcher.RootWindowUnderCursor();
-            if (pointerWindow == automaticProfilePointerWindow)
-                return;
-            automaticProfilePointerWindow = pointerWindow;
-            AutoSwitchProfile();
-        }));
-    }
-
     void ArrangeInputWorkspace()
     {
         if (!ReferenceEquals(LayerNavigationPane.Parent, ShellDock))
@@ -1567,19 +1543,19 @@ public partial class MainWindow : Window
     void OpenMacros_Click(object sender, RoutedEventArgs e) => ShowMacroWindow(false, false);
     void OpenProfileManager_Click(object sender, RoutedEventArgs e)
     {
-        var window = new ProfileManagerWindow(config.Profiles, config.ActiveProfile, config.AutoSwitchProfilesByCursor) { Owner = this };
+        var window = new ProfileManagerWindow(config.Profiles, config.ActiveProfile) { Owner = this };
         if (window.ShowDialog() != true)
             return;
-        ApplyProfileManagerResult(window.ResultProfiles, window.ResultActiveProfile, window.ResultAutoSwitchProfilesByCursor);
+        ApplyProfileManagerResult(window.ResultProfiles, window.ResultActiveProfile);
     }
-    void ApplyProfileManagerResult(IReadOnlyList<Profile> profiles, string activeProfile, bool autoSwitch)
+    void ApplyProfileManagerResult(IReadOnlyList<Profile> profiles, string activeProfile)
     {
         string editingProfile = config.ActiveProfile;
         config.Profiles = [.. profiles];
         SyncDeckProfileVariants();
         EnsureProfileDeckDefaults();
         config.ActiveProfile = config.Profiles.Any(profile => profile.Name.Equals(editingProfile, StringComparison.OrdinalIgnoreCase)) ? editingProfile : config.Profiles[0].Name;
-        config.AutoSwitchProfilesByCursor = autoSwitch;
+        config.AutoSwitchProfilesByCursor = false;
         automaticProfileReturnName = "";
         explicitProfileSwitchProcess = "";
         ResetAutomaticProfileCandidate();
@@ -2894,7 +2870,7 @@ public partial class MainWindow : Window
             return;
         bool changed = !config.ActiveProfile.Equals(name, StringComparison.OrdinalIgnoreCase) || !appliedConfig.ActiveProfile.Equals(name, StringComparison.OrdinalIgnoreCase);
         suppressAutomaticProfileSwitchUntil = DateTime.UtcNow.AddSeconds(2);
-        explicitProfileSwitchProcess = ConditionMatcher.ProcessUnderCursor();
+        explicitProfileSwitchProcess = ConditionMatcher.ForegroundProcessName();
         automaticProfileReturnName = "";
         string? selectedDeckGroup = deckManagementMode && selectedDeckLayout?.ProfileSwitchEnabled == true ? selectedDeckLayout.ProfileGroupId : null;
         config.ActiveProfile = name;
@@ -2973,10 +2949,10 @@ public partial class MainWindow : Window
             LogAutomaticProfileSwitch($"paused dropdown={profileDropDownOpen} suppressUntil={suppressAutomaticProfileSwitchUntil:O}");
             return;
         }
-        if (!appliedConfig.AutoSwitchProfilesByCursor)
+        if (!appliedConfig.Profiles.Skip(1).Any(x => x.AutoSwitchEnabled))
         {
             bool changed = TryApplyAutomaticProfile(config, appliedConfig, config.ActiveProfile, engine.TryPrepareForProfileChange);
-            LogAutomaticProfileSwitch($"disabled editor={config.ActiveProfile} runtime={appliedConfig.ActiveProfile} changed={changed}");
+            LogAutomaticProfileSwitch($"no-enabled-profiles editor={config.ActiveProfile} runtime={appliedConfig.ActiveProfile} changed={changed}");
             if (changed)
             {
                 if (runtimeRole == RuntimeRole.UiHost)
@@ -2987,60 +2963,23 @@ public partial class MainWindow : Window
             }
             return;
         }
-        if (!appliedConfig.Profiles.Skip(1).Any(x => x.AutoSwitchEnabled))
-        {
-            LogAutomaticProfileSwitch("no-enabled-profiles");
-            return;
-        }
-        // The taskbar is an input location, not an application profile target.
-        // Keep the profile of the application that the pointer just left so its
-        // Taskbar+... mappings remain available.
-        bool cursorOverTaskbar = ConditionMatcher.IsCursorOverTaskbar();
-        if (cursorOverTaskbar)
-        {
-            ResetAutomaticProfileCandidate();
-            LogAutomaticProfileSwitch($"taskbar runtime={appliedConfig.ActiveProfile}");
-            return;
-        }
-        var processesAtCursor = ConditionMatcher.ProcessesUnderCursor()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        bool ownProcessUnderCursor = processesAtCursor.Any(process => IsOwnProcess(process));
-        IntPtr mainHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        bool mainWindowUnderCursor = mainHandle != IntPtr.Zero
-            && ConditionMatcher.RootWindowUnderCursor() == mainHandle;
-        // Owned overlays are neutral so they cannot switch themselves while an
-        // action is running. The RELYR main window is an ordinary application
-        // target and therefore resolves to its assigned profile or the standard
-        // profile, exactly like Chrome, Filmora, or any other foreground app.
-        if (ShouldTreatOwnSurfaceAsNeutral(ownProcessUnderCursor, mainWindowUnderCursor))
-        {
-            ResetAutomaticProfileCandidate();
-            LogAutomaticProfileSwitch($"own-overlay processes={string.Join(",", processesAtCursor)} runtime={appliedConfig.ActiveProfile}");
-            return;
-        }
-        var processes = mainWindowUnderCursor
-            ? processesAtCursor
-            : processesAtCursor.Where(process => !IsOwnProcess(process)).ToArray();
-        // Child/owner windows can change while the pointer remains inside one
-        // Chromium or Qt application. Stabilize the resolved profile rather
-        // than requiring the raw process list to be byte-for-byte identical.
-        var (Target, ReturnProfile) = ResolveAutomaticProfileTarget(appliedConfig.Profiles, appliedConfig.ActiveProfile, automaticProfileReturnName, processes, cursorOverTaskbar);
+        string process = ConditionMatcher.ForegroundProcessName();
+        string[] processes = string.IsNullOrWhiteSpace(process) ? [] : [process];
+        var (Target, ReturnProfile) = ResolveAutomaticProfileTarget(appliedConfig.Profiles, appliedConfig.ActiveProfile, automaticProfileReturnName, processes, false);
         int requiredSamples = AutomaticProfileRequiredSamples(appliedConfig.Profiles, Target);
         bool stable = ObserveAutomaticProfileCandidate(Target, requiredSamples);
-        LogAutomaticProfileSwitch($"observe processes={string.Join(",", processes)} candidate={Target} samples={automaticProfileCandidateSamples}/{requiredSamples} stable={stable} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
+        LogAutomaticProfileSwitch($"observe foreground={process} candidate={Target} samples={automaticProfileCandidateSamples}/{requiredSamples} stable={stable} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
         if (!stable)
             return;
         ResetAutomaticProfileCandidate();
-        string process = processes.FirstOrDefault() ?? "";
-        if (ShouldKeepExplicitProfile(explicitProfileSwitchProcess, process, cursorOverTaskbar))
+        if (ShouldKeepExplicitProfile(explicitProfileSwitchProcess, process, false))
         {
             LogAutomaticProfileSwitch($"manual-hold original={explicitProfileSwitchProcess} current={process}");
             return;
         }
         explicitProfileSwitchProcess = "";
         string before = appliedConfig.ActiveProfile;
-        if (TryApplyAutomaticProfileForProcesses(processes, cursorOverTaskbar, out string target))
+        if (TryApplyAutomaticProfileForProcesses(processes, false, out string target))
         {
             LogAutomaticProfileSwitch($"applied before={before} target={target} runtime={appliedConfig.ActiveProfile} return={automaticProfileReturnName}");
         }
@@ -3147,8 +3086,6 @@ public partial class MainWindow : Window
     static string? ValidManualReturnProfile(IReadOnlyList<Profile> profiles, string profileName)
         => profiles.FirstOrDefault(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase) && !x.AutoSwitchEnabled)?.Name;
     internal static bool ShouldKeepExplicitProfile(string originalProcess, string currentProcess, bool cursorOverTaskbar) => cursorOverTaskbar || (!string.IsNullOrWhiteSpace(originalProcess) && ConditionMatcher.Matches(originalProcess, currentProcess));
-    internal static bool ShouldTreatOwnSurfaceAsNeutral(bool ownProcessUnderCursor, bool mainWindowUnderCursor)
-        => ownProcessUnderCursor && !mainWindowUnderCursor;
     internal static bool IsOwnProcess(string process, string? executablePath = null)
         => !string.IsNullOrWhiteSpace(process)
             && ConditionMatcher.Matches(Path.GetFileNameWithoutExtension(executablePath ?? Environment.ProcessPath ?? "RELYR"), process);
@@ -3248,7 +3185,7 @@ public partial class MainWindow : Window
         if (!CurrentProfile.AutoSwitchApplications.Contains(app, StringComparer.OrdinalIgnoreCase))
             CurrentProfile.AutoSwitchApplications.Add(app);
         MarkDirty();
-        ShowInlineNotice($"カーソルが {app} 上にある時、自動的に「{CurrentProfile.Name}」へ切り替えます");
+        ShowInlineNotice($"{app} がアクティブな時、自動的に「{CurrentProfile.Name}」へ切り替えます");
     }
     void DeleteProfile_Click(object s, RoutedEventArgs e)
     {
@@ -3729,7 +3666,6 @@ public partial class MainWindow : Window
         SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
         ThemeService.ThemeChanged -= AppThemeChanged;
         MacroPlayer.PlaybackFinished -= MacroPlaybackFinished;
-        engine.PointerMoved -= QueueAutomaticProfileCheck;
         updateCancellation.Cancel();
         profileOverlay?.Close();
         OverlayService.Shutdown();

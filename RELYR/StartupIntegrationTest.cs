@@ -51,9 +51,9 @@ public static class StartupIntegrationTest
             using var current = System.Diagnostics.Process.GetCurrentProcess();
             int before = current.HandleCount;
             for (int index = 0; index < 500; index++)
-                ConditionMatcher.ProcessUnderCursor();
+                ConditionMatcher.ForegroundProcessName();
             int growth = current.HandleCount - before;
-            Check(growth < 20, $"cursor profile polling does not leak process handles (growth={growth})");
+            Check(growth < 20, $"foreground profile polling does not leak process handles (growth={growth})");
         }
         catch (Exception ex) { report.RecordException("exception", "FAIL exception: ", ex); }
         return report.Complete("STARTUP INTEGRATION TEST PASSED", "STARTUP INTEGRATION TEST FAILED", includeFailureNames: false);
