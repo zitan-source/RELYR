@@ -183,6 +183,26 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DeckEditorSettingsCard" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="14,10"/>
+      <Setter Property="Margin" Value="0,0,10,10"/>
+    </Style>
+    <Style x:Key="DeckEditorSettingsCaption" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+      <Setter Property="Margin" Value="0,0,0,7"/>
+    </Style>
+    <Style x:Key="DeckEditorCompactAction" TargetType="Button" BasedOn="{StaticResource DeckAppearanceAction}">
+      <Setter Property="Height" Value="36"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/>
+    </Style>
+    <Style x:Key="DeckEditorCompactToggle" TargetType="ToggleButton" BasedOn="{StaticResource DeckAppearanceToggle}">
+      <Setter Property="Height" Value="36"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/>
+    </Style>
     <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Margin" Value="0,4,0,10"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -461,53 +481,69 @@
           <Grid x:Name="DeckEditorWorkspace" Visibility="Collapsed" MinWidth="0" SizeChanged="DeckEditorWorkspace_SizeChanged">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <Button x:Name="DeckBackButton" Style="{StaticResource DeckAppearanceAction}" Click="DeckBack_Click" Width="40" Height="40" MinWidth="40" MinHeight="40" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <Button x:Name="DeckBackButton" Style="{StaticResource DeckAppearanceAction}" Click="DeckBack_Click" Width="44" Height="44" MinWidth="44" MinHeight="44" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
                 <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Button>
-              <TextBox x:Name="DeckLayoutNameBox" Style="{StaticResource DeckRoundedTextBox}" Grid.Column="1" Height="40" Margin="0,0,12,0" Padding="14,0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged"/>
-              <CheckBox x:Name="DeckProfileSwitchBox" Grid.Column="2" Content="プロファイル切替を有効にする" VerticalAlignment="Center" HorizontalAlignment="Left" Checked="DeckProfileSwitchChanged" Unchecked="DeckProfileSwitchChanged"/>
-              <Button x:Name="DeckSaveButton" Style="{StaticResource DeckAppearanceAction}" Grid.Column="3" Content="保存" Click="DeckSave_Click" Height="40" MinHeight="40" VerticalAlignment="Center" Margin="12,0,0,0" Padding="18,0" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
+              <TextBox x:Name="DeckLayoutNameBox" Style="{StaticResource DeckRoundedTextBox}" Grid.Column="1" Height="44" Margin="0,0,12,0" Padding="14,0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged" ToolTip="Deckの名前"/>
+              <Button x:Name="DeckSaveButton" Style="{StaticResource DeckAppearanceAction}" Grid.Column="2" Content="保存" Click="DeckSave_Click" Width="88" Height="44" MinHeight="44" VerticalAlignment="Center" Margin="0" Padding="18,0" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
             </Grid>
-            <Border Grid.Row="1" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" Margin="12,2,0,20">
-            <WrapPanel x:Name="DeckSettingsPanel" Orientation="Horizontal" VerticalAlignment="Center">
-              <StackPanel x:Name="DeckSizeSettingsGroup" Orientation="Horizontal" Margin="0,0,20,0" VerticalAlignment="Center">
-                <TextBlock Text="グリッド" Visibility="Collapsed"/>
-              <WrapPanel x:Name="DeckSizeControlsWrap" VerticalAlignment="Center">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="サイズ" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0"/>
-                  <ComboBox x:Name="DeckSizePresetBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="148" Height="40" Margin="0" SelectionChanged="DeckSizePresetChanged">
-                    <ComboBoxItem Content="コンパクト  3×3" Tag="3x3"/><ComboBoxItem Content="標準  9×5" Tag="9x5"/><ComboBoxItem Content="ワイド  8×2" Tag="8x2"/><ComboBoxItem Content="カスタム" Tag="custom"/>
-                  </ComboBox>
+            <WrapPanel x:Name="DeckSettingsPanel" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,10">
+              <Border x:Name="DeckCoreSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
+                <StackPanel>
+                  <TextBlock Text="DECK" Style="{StaticResource DeckEditorSettingsCaption}"/>
+                  <StackPanel Orientation="Horizontal">
+                    <ToggleButton x:Name="DeckProfileSwitchBox" Style="{StaticResource DeckEditorCompactToggle}" Content="プロファイル連動" Checked="DeckProfileSwitchChanged" Unchecked="DeckProfileSwitchChanged" ToolTip="プロファイルごとに同じDeckの内容を切り替えます"/>
+                    <Button x:Name="DeckOverlayToggleButton" Style="{StaticResource DeckEditorCompactAction}" Content="表示を切替" Click="DeckOverlayToggle_Click" Margin="8,0,0,0" ToolTip="このDeckオーバーレイだけを表示または非表示にします"/>
+                  </StackPanel>
                 </StackPanel>
-                <StackPanel x:Name="DeckCustomSizePanel" Orientation="Horizontal" Margin="10,0,0,0" Visibility="Collapsed">
-                  <TextBox x:Name="DeckColumnsBox" Style="{StaticResource DeckRoundedTextBox}" Width="64" Height="40" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="DeckRowsBox" Style="{StaticResource DeckRoundedTextBox}" Width="64" Height="40" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/><TextBlock Text="  最大18×18" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
+              </Border>
+              <Border x:Name="DeckLayoutSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
+                <StackPanel x:Name="DeckSizeSettingsGroup">
+                  <TextBlock Text="レイアウト" Style="{StaticResource DeckEditorSettingsCaption}"/>
+                  <WrapPanel x:Name="DeckSizeControlsWrap" VerticalAlignment="Center">
+                    <ComboBox x:Name="DeckSizePresetBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="148" Height="36" Margin="0" SelectionChanged="DeckSizePresetChanged">
+                      <ComboBoxItem Content="コンパクト  3×3" Tag="3x3"/><ComboBoxItem Content="標準  9×5" Tag="9x5"/><ComboBoxItem Content="ワイド  8×2" Tag="8x2"/><ComboBoxItem Content="カスタム" Tag="custom"/>
+                    </ComboBox>
+                    <StackPanel x:Name="DeckCustomSizePanel" Orientation="Horizontal" Margin="8,0,0,0" Visibility="Collapsed" ToolTip="1～18列 × 1～18行">
+                      <TextBox x:Name="DeckColumnsBox" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
+                      <TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                      <TextBox x:Name="DeckRowsBox" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
+                    </StackPanel>
+                  </WrapPanel>
                 </StackPanel>
-              </WrapPanel>
-              </StackPanel>
-              <Border x:Name="DeckSettingsSeparatorOne" Width="1" Height="28" Background="{DynamicResource SubtleBorderBrush}" Margin="0,0,20,0" VerticalAlignment="Center"/>
-              <WrapPanel x:Name="DeckAppearanceSettingsGroup" Orientation="Horizontal" Margin="0,0,20,0" VerticalAlignment="Center">
-                <TextBlock Text="外観" Visibility="Collapsed"/>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="透過率" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0"/>
-                  <Slider x:Name="DeckOpacitySlider" Width="104" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged"/>
-                  <TextBlock x:Name="DeckOpacityValueText" Width="42" Text="96%" Margin="8,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+              </Border>
+              <Border x:Name="DeckAppearanceSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
+                <StackPanel x:Name="DeckAppearanceSettingsGroup">
+                  <TextBlock Text="外観" Style="{StaticResource DeckEditorSettingsCaption}"/>
+                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Slider x:Name="DeckOpacitySlider" Width="100" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" ToolTip="Deckの透過率"/>
+                    <TextBlock x:Name="DeckOpacityValueText" Width="42" Text="96%" Margin="8,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                    <StackPanel x:Name="DeckPanelColorControls" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                      <Border x:Name="DeckPanelColorPreview" Width="36" Height="36" CornerRadius="{StaticResource ControlCornerRadius}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" Cursor="Hand" ToolTip="背景色を選択" MouseLeftButtonDown="DeckPanelColorChoose_Click" SnapsToDevicePixels="True"/>
+                      <Button Style="{StaticResource DeckEditorCompactAction}" Width="36" Padding="0" Click="DeckPanelColorReset_Click" ToolTip="背景色をテーマ標準に戻す">
+                        <TextBlock Text="&#xE777;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
+                      </Button>
+                    </StackPanel>
+                    <StackPanel x:Name="DeckDisplaySettingsGroup" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                      <ToggleButton x:Name="DeckHoverPreviewBox" Style="{StaticResource DeckEditorCompactToggle}" Content="プレビュー" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="動画・音声ファイルのホバープレビュー"/>
+                    </StackPanel>
+                  </StackPanel>
                 </StackPanel>
-                <StackPanel x:Name="DeckPanelColorControls" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
-                  <TextBlock Text="背景" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0"/>
-                  <Border x:Name="DeckPanelColorPreview" Width="40" Height="40" CornerRadius="{StaticResource ControlCornerRadius}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" Cursor="Hand" ToolTip="テーマ標準に戻す" MouseLeftButtonDown="DeckPanelColorReset_Click" SnapsToDevicePixels="True"/>
-                  <Button Style="{StaticResource DeckAppearanceAction}" Content="色を選択…" Click="DeckPanelColorChoose_Click" Margin="0,0,6,0"/>
-                  <Button Style="{StaticResource DeckAppearanceAction}" Width="40" Padding="0" Click="DeckPanelColorReset_Click" ToolTip="テーマ標準に戻す">
-                    <TextBlock Text="&#xE777;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
-                  </Button>
+              </Border>
+              <Border x:Name="DeckAutoHideSettingsCard" Style="{StaticResource DeckEditorSettingsCard}" ToolTip="ピン留め中のDeckには適用されません">
+                <StackPanel x:Name="DeckAutoHideSettingsGroup">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="自動収納" Style="{StaticResource DeckEditorSettingsCaption}"/>
+                    <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="{DynamicResource MutedText}" Margin="6,0,0,7"/>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <ToggleButton x:Name="DeckAutoHideAfterActionBox" Style="{StaticResource DeckEditorCompactToggle}" Content="ボタン実行後" Checked="DeckAutoHideChanged" Unchecked="DeckAutoHideChanged" ToolTip="Deckボタンを実行したあと画面端へ収納します"/>
+                    <ToggleButton x:Name="DeckAutoHideOnPointerLeaveBox" Style="{StaticResource DeckEditorCompactToggle}" Content="マウス離脱後" Margin="8,0,0,0" Checked="DeckAutoHideChanged" Unchecked="DeckAutoHideChanged" ToolTip="マウスがDeckから離れたあと画面端へ収納します"/>
+                  </StackPanel>
                 </StackPanel>
-              <StackPanel x:Name="DeckDisplaySettingsGroup" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
-                <TextBlock Text="表示" Visibility="Collapsed"/>
-                <ToggleButton x:Name="DeckHoverPreviewBox" Style="{StaticResource DeckAppearanceToggle}" Content="プレビュー表示" Margin="0" VerticalAlignment="Center" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged"/>
-              </StackPanel>
-              </WrapPanel>
+              </Border>
             </WrapPanel>
-            </Border>
             <Viewbox x:Name="DeckGridViewbox" Grid.Row="2" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Top">
               <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
             </Viewbox>

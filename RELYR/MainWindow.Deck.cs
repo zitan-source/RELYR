@@ -180,17 +180,29 @@ public partial class MainWindow
         config.DeckHoverPreviewsEnabled = DeckHoverPreviewBox.IsChecked == true;
         MarkDirty(refreshDeckPanel: false);
     }
+    void DeckAutoHideChanged(object sender, RoutedEventArgs e)
+    {
+        if (updatingDeckEditor || config == null)
+            return;
+        config.DeckAutoHideAfterAction = DeckAutoHideAfterActionBox.IsChecked == true;
+        config.DeckAutoHideOnPointerLeave = DeckAutoHideOnPointerLeaveBox.IsChecked == true;
+        MarkDirty();
+    }
     internal void SetDeckButtonNameForTest(string input, string name) => SetDeckButtonName(input, name);
     internal ContextMenu CreateDeckInputContextMenu(string input)
     {
         var mappings = MappingCollectionForInput(input);
         var menu = new ContextMenu { MinWidth = 242 };
+        var copyAssignment = CreateDeckContextMenuItem("\uE8C8", "この割り当てをコピー", "");
+        copyAssignment.Click += (_, _) => CopyDeckAssignment(input);
+        var pasteAssignment = CreateDeckContextMenuItem("\uE77F", "コピーした割り当てを貼り付け", "");
+        pasteAssignment.Click += (_, _) => PasteDeckAssignment(input);
         var rename = CreateDeckContextMenuItem("\uE70F", "名前の変更...", "");
         rename.Click += (_, _) => RenameDeckButton(input);
-        var copy = CreateDeckContextMenuItem("\uE8C8", "コピー", "");
-        copy.Click += (_, _) => { var mapping = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)); if (mapping != null) CopyDeckFileToClipboard(mapping); };
-        var paste = CreateDeckContextMenuItem("\uE77F", "貼り付け", "");
-        paste.Click += (_, _) => { string? file = ClipboardDeckFile(); if (file != null) SetDeckButtonFile(input, file); };
+        var copyFile = CreateDeckContextMenuItem("\uE8C8", "登録ファイルをコピー", "");
+        copyFile.Click += (_, _) => { var mapping = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)); if (mapping != null) CopyDeckFileToClipboard(mapping); };
+        var pasteFile = CreateDeckContextMenuItem("\uE77F", "クリップボードのファイルを登録", "");
+        pasteFile.Click += (_, _) => { string? file = ClipboardDeckFile(); if (file != null) SetDeckButtonFile(input, file); };
         var reveal = CreateDeckContextMenuItem("\uE838", "ファイルの場所を開く", "");
         reveal.Click += (_, _) => RevealDeckFile(input);
         var color = CreateDeckContextMenuItem("\uE790", "色を変更...", "");
@@ -201,10 +213,13 @@ public partial class MainWindow
         resetColor.Click += (_, _) => SetDeckButtonColor(input, "");
         var delete = CreateDeckContextMenuItem("\uE74D", "削除", "Del", true);
         delete.Click += (_, _) => { if (mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)) > 0) { ClearSelectedInput(); MarkDirty(); RefreshSelectedInputVisual(input); } };
+        menu.Items.Add(copyAssignment);
+        menu.Items.Add(pasteAssignment);
+        menu.Items.Add(new Separator());
         menu.Items.Add(rename);
         menu.Items.Add(new Separator());
-        menu.Items.Add(copy);
-        menu.Items.Add(paste);
+        menu.Items.Add(copyFile);
+        menu.Items.Add(pasteFile);
         menu.Items.Add(reveal);
         menu.Items.Add(new Separator());
         menu.Items.Add(color);
@@ -215,13 +230,38 @@ public partial class MainWindow
         menu.Opened += (_, _) =>
         {
             var existing = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
-            copy.IsEnabled = DeckPanelLayout.IsAvailableFile(existing);
-            paste.IsEnabled = ClipboardDeckFile() != null;
+            copyAssignment.IsEnabled = existing != null && HasDeckButtonContent(existing);
+            pasteAssignment.IsEnabled = copiedDeckMapping != null;
+            copyFile.IsEnabled = DeckPanelLayout.IsAvailableFile(existing);
+            pasteFile.IsEnabled = ClipboardDeckFile() != null;
             reveal.IsEnabled = DeckPanelLayout.IsAvailableFile(existing);
             resetColor.IsEnabled = DeckPanelLayout.TryGetButtonColor(existing, out _);
             delete.IsEnabled = existing != null;
         };
         return menu;
+    }
+    void CopyDeckAssignment(string input)
+    {
+        var mapping = MappingCollectionForInput(input).LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        if (mapping == null || !HasDeckButtonContent(mapping))
+            return;
+        copiedDeckMapping = CloneMapping(mapping);
+        ShowInlineNotice(DisplayInputName(input) + " の割り当てをコピーしました");
+    }
+    void PasteDeckAssignment(string input)
+    {
+        if (copiedDeckMapping == null || !DeckPanelLayout.IsInputName(input))
+            return;
+        var mappings = MappingCollectionForInput(input);
+        var copy = CloneMapping(copiedDeckMapping);
+        copy.Input = input;
+        copy.Layer = DeckPanelLayout.Layer;
+        mappings.RemoveAll(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        mappings.Add(copy);
+        ClearSelectedInput();
+        MarkDirty();
+        RefreshSelectedInputVisual(input);
+        ShowInlineNotice(DisplayInputName(input) + " へ割り当てを貼り付けました");
     }
     static MenuItem CreateDeckContextMenuItem(string icon, string label, string shortcut, bool danger = false)
     {
@@ -305,10 +345,12 @@ public partial class MainWindow
             mappings.Add(mapping);
         mapping.DeckIcon = picker.SelectedPresetId;
         mapping.DeckIconPath = picker.SelectedCustomPath;
+        mapping.DeckIconAutoAssigned = false;
         if (selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true)
         {
             selected.DeckIcon = mapping.DeckIcon;
             selected.DeckIconPath = mapping.DeckIconPath;
+            selected.DeckIconAutoAssigned = false;
         }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
@@ -366,6 +408,8 @@ public partial class MainWindow
     // Deck layout editor and management workspace
     void BuildDeckManagementPanel()
     {
+        if (!editorUiInitialized)
+            return;
         CloseDeckEditorMediaPreview();
         DeckManagementGrid.Children.Clear();
         deckManagementButtons.Clear();
@@ -780,12 +824,16 @@ public partial class MainWindow
         card.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, isDefault ? "AccentBrush" : "BorderBrush");
         card.Click += (_, _) => EditDeckLayout(layout);
         var menu = new ContextMenu();
+        var toggleOverlay = new MenuItem { Header = "オーバーレイを表示／非表示" };
+        toggleOverlay.Click += (_, _) => OverlayService.TryShow(DeckPanelLayout.ActionValue(layout.Id));
         var makeDefault = new MenuItem { Header = "既定のDeckにする", IsEnabled = !isDefault };
         makeDefault.Click += (_, _) => SetDefaultDeckLayout(layout);
         var duplicate = new MenuItem { Header = "複製" };
         duplicate.Click += (_, _) => DuplicateDeckLayout(layout);
         var delete = new MenuItem { Header = "削除" };
         delete.Click += (_, _) => DeleteDeckLayout(layout);
+        menu.Items.Add(toggleOverlay);
+        menu.Items.Add(new Separator());
         menu.Items.Add(makeDefault);
         menu.Items.Add(new Separator());
         menu.Items.Add(duplicate);
@@ -944,8 +992,10 @@ public partial class MainWindow
         DeckOpacitySlider.Value = config.InputPanelOpacityPercent;
         DeckOpacityValueText.Text = config.InputPanelOpacityPercent + "%";
         DeckHoverPreviewBox.IsChecked = config.DeckHoverPreviewsEnabled;
+        DeckAutoHideAfterActionBox.IsChecked = config.DeckAutoHideAfterAction;
+        DeckAutoHideOnPointerLeaveBox.IsChecked = config.DeckAutoHideOnPointerLeave;
         DeckSizePresetBox.Style = (Style)FindResource("ToolbarComboBoxStyle");
-        DeckSizePresetBox.Height = 40;
+        DeckSizePresetBox.Height = 36;
         UpdateDeckPanelColorEditor();
         string preset = layout.Columns == 3 && layout.Rows == 3 ? "3x3" : layout.Columns == 9 && layout.Rows == 5 ? "9x5" : layout.Columns == 8 && layout.Rows == 2 ? "8x2" : "custom";
         DeckSizePresetBox.SelectedItem = DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x => Equals(x.Tag, preset));
@@ -967,6 +1017,11 @@ public partial class MainWindow
     {
         SaveAndApply("Deckレイアウトを保存し、反映しました");
         RefreshDeckLayoutCards();
+    }
+    void DeckOverlayToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedDeckLayout != null)
+            OverlayService.TryShow(DeckPanelLayout.ActionValue(selectedDeckLayout.Id));
     }
     void DeckLayoutNameChanged(object sender, TextChangedEventArgs e)
     {
@@ -1046,6 +1101,10 @@ public partial class MainWindow
         PanelPinned = source.PanelPinned,
         PanelWidth = source.PanelWidth,
         PanelHeight = source.PanelHeight,
+        PanelLeft = source.PanelLeft,
+        PanelTop = source.PanelTop,
+        PanelCollapsedLeft = source.PanelCollapsedLeft,
+        PanelCollapsedTop = source.PanelCollapsedTop,
         ProfileSwitchEnabled = true,
         ProfileGroupId = source.ProfileGroupId,
         ProfileId = profile.Id,
@@ -1126,6 +1185,8 @@ public partial class MainWindow
             return;
         selectedDeckLayout.Columns = columns;
         selectedDeckLayout.Rows = rows;
+        selectedDeckLayout.PanelWidth = null;
+        selectedDeckLayout.PanelHeight = null;
         if (updateBoxes)
         {
             updatingDeckEditor = true;
@@ -1297,19 +1358,48 @@ public partial class MainWindow
         }
         return removed;
     }
-    void PersistDeckPanelPosition(double left, double top)
+    void PersistDeckPanelPosition(string layoutId, double left, double top)
     {
         if (!double.IsFinite(left) || !double.IsFinite(top))
             return;
-        config.DeckPanelLeft = left;
-        config.DeckPanelTop = top;
-        appliedConfig.DeckPanelLeft = left;
-        appliedConfig.DeckPanelTop = top;
+        static void Apply(IEnumerable<DeckLayoutDefinition> layouts, string id, double x, double y)
+        {
+            var target = layouts.FirstOrDefault(layout => layout.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.PanelLeft = x;
+                target.PanelTop = y;
+            }
+        }
+        Apply(config.DeckLayouts, layoutId, left, top);
+        Apply(appliedConfig.DeckLayouts, layoutId, left, top);
         try
         {
             var persisted = store.Load();
-            persisted.DeckPanelLeft = left;
-            persisted.DeckPanelTop = top;
+            Apply(persisted.DeckLayouts, layoutId, left, top);
+            store.Save(persisted);
+        }
+        catch { }
+    }
+    void PersistDeckPanelCollapsedPosition(string layoutId, double left, double top)
+    {
+        if (!double.IsFinite(left) || !double.IsFinite(top))
+            return;
+        static void Apply(IEnumerable<DeckLayoutDefinition> layouts, string id, double x, double y)
+        {
+            var target = layouts.FirstOrDefault(layout => layout.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (target != null)
+            {
+                target.PanelCollapsedLeft = x;
+                target.PanelCollapsedTop = y;
+            }
+        }
+        Apply(config.DeckLayouts, layoutId, left, top);
+        Apply(appliedConfig.DeckLayouts, layoutId, left, top);
+        try
+        {
+            var persisted = store.Load();
+            Apply(persisted.DeckLayouts, layoutId, left, top);
             store.Save(persisted);
         }
         catch { }

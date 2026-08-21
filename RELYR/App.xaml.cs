@@ -35,10 +35,10 @@ public partial class App : System.Windows.Application
         // 入力フックを他のマウス常駐ソフトより先に解除できるよう、
         // Windows終了通知をアプリ用の最優先範囲で受け取る。
         SetProcessShutdownParameters(0x3FF, 0);
-        DispatcherUnhandledException += (_, e) => { InputEngine.ReleaseAll(); e.Handled = true; ShutdownWithExitCode(1); };
-        AppDomain.CurrentDomain.UnhandledException += (_, _) => InputEngine.ReleaseAll();
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => InputEngine.ReleaseAll();
-        TaskScheduler.UnobservedTaskException += (_, e) => { InputEngine.ReleaseAll(); e.SetObserved(); };
+        DispatcherUnhandledException += (_, e) => { InputEngine.ReleaseAllDefensively(); e.Handled = true; ShutdownWithExitCode(1); };
+        AppDomain.CurrentDomain.UnhandledException += (_, _) => InputEngine.ReleaseAllDefensively();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => InputEngine.ReleaseAllDefensively();
+        TaskScheduler.UnobservedTaskException += (_, e) => { InputEngine.ReleaseAllDefensively(); e.SetObserved(); };
         SystemEvents.PowerModeChanged += SystemPowerModeChanged;
         SystemEvents.SessionSwitch += SystemSessionSwitch;
     }
@@ -426,7 +426,8 @@ public partial class App : System.Windows.Application
 #if !PRODUCTION_PUBLISH
         startInputHooks = !args.Contains("--no-input-hooks", StringComparer.OrdinalIgnoreCase);
 #endif
-        var window = new MainWindow(args.Contains("--skip-setup", StringComparer.OrdinalIgnoreCase), startupConfig: loadedStartupConfig, runtimeRole: uiHost ? RuntimeRole.UiHost : RuntimeRole.Standard, startInputHooks: startInputHooks);
+        bool deferEditorUi = ShouldDeferEditorUi(args, loadedStartupConfig);
+        var window = new MainWindow(args.Contains("--skip-setup", StringComparer.OrdinalIgnoreCase), startupConfig: loadedStartupConfig, runtimeRole: uiHost ? RuntimeRole.UiHost : RuntimeRole.Standard, startInputHooks: startInputHooks, deferEditorUiUntilShown: deferEditorUi);
         MainWindow = window;
         StartStartupMaintenance(loadedStartupConfig);
         bool needsSetup = window.NeedsFirstRunSetup;
@@ -445,6 +446,8 @@ public partial class App : System.Windows.Application
     }
     internal static bool ShouldStartMediumUiHost(bool processElevated, IReadOnlyList<string> args)
         => !processElevated && IsMainUiLaunch(args);
+    internal static bool ShouldDeferEditorUi(IReadOnlyList<string> args, AppConfig config)
+        => args.Contains("--tray", StringComparer.OrdinalIgnoreCase) && config.FirstRunCompleted;
     internal static string[] EnsureUiHostArgument(IEnumerable<string> args)
         => args.Contains("--ui-host", StringComparer.OrdinalIgnoreCase) ? args.ToArray() : [.. args, "--ui-host"];
     // Privileged one-shot commands still use the registered elevated launcher.
@@ -625,7 +628,7 @@ public partial class App : System.Windows.Application
         catch { }
         try
         {
-            InputEngine.ReleaseAll();
+            InputEngine.ReleaseAllDefensively();
         }
         catch { }
         Environment.ExitCode = exitCode;
@@ -822,7 +825,7 @@ public partial class App : System.Windows.Application
         if (MainWindow is RELYR.MainWindow window)
             window.ResetInputStateForSessionTransition();
         else
-            InputEngine.ReleaseAll();
+            InputEngine.ReleaseAllDefensively();
     }
     protected override void OnExit(ExitEventArgs e)
     {
@@ -833,7 +836,7 @@ public partial class App : System.Windows.Application
         catch { }
         SystemEvents.PowerModeChanged -= SystemPowerModeChanged;
         SystemEvents.SessionSwitch -= SystemSessionSwitch;
-        InputEngine.ReleaseAll();
+        InputEngine.ReleaseAllDefensively();
         signalStop.Cancel();
         showSignal?.Set();
         shutdownSignal?.Set();

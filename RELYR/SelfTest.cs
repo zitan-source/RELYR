@@ -185,6 +185,9 @@ public static class SelfTest
             config.ShowDesktopNumberInTray = true;
             config.CheckForUpdates = false;
             config.DismissedUpdateVersion = "9.9.9";
+            config.PendingUpdateNotesVersion = "9.9.10";
+            config.PendingUpdateNotesBody = "- Deckを改善";
+            config.LastShownUpdateNotesVersion = "9.9.8";
             config.WindowActionTarget = WindowActionTarget.WindowUnderCursor;
             config.ThemeMode = AppThemeMode.Light;
             config.LastUpdateCheckUtcTicks = DateTimeOffset.UtcNow.UtcTicks;
@@ -198,6 +201,7 @@ public static class SelfTest
             config.KeyboardLayout = "US";
             config.SpaceHoldRepeatEnabled = true;
             config.SpaceHoldRepeatDelayMs = 450;
+            config.InputDisabledApplications = ["RobloxPlayerBeta.exe", "game.exe"];
             config.GestureThresholdPixels = 12;
             config.LockCursorDuringGesture = false;
             config.ClockBackgroundMode = ClockBackgroundMode.Image;
@@ -210,11 +214,17 @@ public static class SelfTest
             config.SharedDeckMappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A", Description = "共通", DeckIcon = "home", DeckIconPath = @"C:\Icons\home.png" }];
             config.DeckPanelLeft = 123.5;
             config.DeckPanelTop = 234.5;
+            config.DeckPanelCollapsedLeft = 246.5;
+            config.DeckPanelCollapsedTop = 357.5;
             config.DeckPanelWidth = 987.5;
             config.DeckPanelHeight = 543.5;
             config.DeckAutoHideAfterAction = false;
             config.DeckAutoHideOnPointerLeave = false;
             config.DeckLayouts[0].PanelPinned = true;
+            config.DeckLayouts[0].PanelLeft = 111.5;
+            config.DeckLayouts[0].PanelTop = 222.5;
+            config.DeckLayouts[0].PanelCollapsedLeft = 333.5;
+            config.DeckLayouts[0].PanelCollapsedTop = 444.5;
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -225,7 +235,7 @@ public static class SelfTest
             Check(!loaded.AutoSwitchProfilesByCursor, "legacy cursor profile option remains disabled after roundtrip");
             Check(!loaded.ShowProfileSwitchOverlay, "profile switch overlay option roundtrip");
             Check(loaded.ShowDesktopNumberInTray, "tray desktop number setting roundtrip");
-            Check(!loaded.CheckForUpdates && loaded.DismissedUpdateVersion == "9.9.9", "update-check and dismissed-version settings roundtrip");
+            Check(!loaded.CheckForUpdates && loaded.DismissedUpdateVersion == "9.9.9" && loaded.PendingUpdateNotesVersion == "9.9.10" && loaded.PendingUpdateNotesBody == "- Deckを改善" && loaded.LastShownUpdateNotesVersion == "9.9.8", "update-check, dismissal, and one-time release-note settings roundtrip");
             Check(loaded.WindowActionTarget == WindowActionTarget.WindowUnderCursor, "window action target setting roundtrip");
             Check(loaded.ThemeMode == AppThemeMode.Light && loaded.LastUpdateCheckUtcTicks == config.LastUpdateCheckUtcTicks, "theme mode and last update check roundtrip");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
@@ -237,20 +247,29 @@ public static class SelfTest
             Check(loaded.AutoSave, "auto-save setting roundtrip");
             Check(loaded.KeyboardLayout == "US", "keyboard layout setting roundtrip");
             Check(loaded.SpaceHoldRepeatEnabled && loaded.SpaceHoldRepeatDelayMs == 450, "Space hold repeat setting roundtrip");
+            Check(loaded.InputDisabledApplications.SequenceEqual(["RobloxPlayerBeta.exe", "game.exe"])
+                && MainWindow.IsInputProcessingDisabledForApplication(loaded.InputDisabledApplications, "RobloxPlayerBeta")
+                && MainWindow.IsInputProcessingDisabledForApplication(loaded.InputDisabledApplications, @"C:\Games\GAME.EXE")
+                && !MainWindow.IsInputProcessingDisabledForApplication(loaded.InputDisabledApplications, "notepad"),
+                "foreground application input-disable list roundtrip and exact process matching");
             Check(loaded.GestureThresholdPixels == 12 && !loaded.LockCursorDuringGesture && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and cursor-lock option roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
             Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
-            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && !loaded.DeckAutoHideAfterAction && !loaded.DeckAutoHideOnPointerLeave && loaded.DeckLayouts[0].PanelPinned, "Deck overlay size, pin, auto-hide, and all overlay positions roundtrip independently of profiles");
+            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && !loaded.DeckAutoHideAfterAction && !loaded.DeckAutoHideOnPointerLeave && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5 }, "global fallback and per-Deck expanded/collapsed positions, size, pin, auto-hide, and keypad positions roundtrip independently");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });
             var migratedGestureConfig = gestureMigrationService.Load();
             Check(migratedGestureConfig.Version == ConfigService.CurrentVersion && migratedGestureConfig.GestureThresholdPixels == 12, "the former 24-pixel gesture default migrates to a more forgiving 12-pixel movement threshold");
             Check(loaded.Profiles[1].AutoSwitchEnabled && loaded.Profiles[1].AutoSwitchApplications.Contains("notepad.exe"), "profile application auto-switch roundtrip");
-            const string releaseJson = """{"tag_name":"v0.1.69","draft":false,"prerelease":false,"assets":[{"name":"RELYR-Update-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"RELYR-Update-0.1.69.exe.sha256","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe.sha256"},{"name":"RELYR-Setup-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Setup-0.1.69.exe"}]}""";
+            const string releaseJson = """{"tag_name":"v0.1.69","draft":false,"prerelease":false,"body":"- Deckを改善\n- 操作性を向上","assets":[{"name":"RELYR-Update-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"RELYR-Update-0.1.69.exe.sha256","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe.sha256"},{"name":"RELYR-Setup-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Setup-0.1.69.exe"}]}""";
             var availableUpdate = UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 68));
             var latestVersion = UpdateService.ParseLatestVersion(releaseJson);
-            Check(availableUpdate is { VersionText: "0.1.69" } && availableUpdate.InstallerFileName == "RELYR-Update-0.1.69.exe" && UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 69)) == null && latestVersion.Version == new Version(0, 1, 69) && latestVersion.VersionText == "0.1.69", "GitHub release parser accepts only a newer trusted update installer with its checksum and ignores the full setup asset");
+            Check(availableUpdate is { VersionText: "0.1.69" } && availableUpdate.InstallerFileName == "RELYR-Update-0.1.69.exe" && availableUpdate.ReleaseNotes == "- Deckを改善\n- 操作性を向上" && UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 69)) == null && latestVersion.Version == new Version(0, 1, 69) && latestVersion.VersionText == "0.1.69", "GitHub release parser accepts only a newer trusted update installer, preserves its release notes, and ignores the full setup asset");
+            Check(MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.69", LastShownUpdateNotesVersion = "0.1.68" }, "0.1.69")
+                && !MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.69", LastShownUpdateNotesVersion = "0.1.69" }, "0.1.69")
+                && !MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.68" }, "0.1.69"),
+                "release notes appear exactly once and only after the matching installed update starts");
             string friendlyUpdateError = UpdateService.FriendlyError(new System.Net.Http.HttpRequestException("secret raw details"));
             Check(friendlyUpdateError.Contains("接続") && !friendlyUpdateError.Contains("secret raw details"), "update errors are translated into a beginner-friendly message without raw exception details");
             var updateNow = new DateTimeOffset(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
@@ -366,6 +385,33 @@ public static class SelfTest
             loaded.Profiles[0].Mappings.Add(new Mapping { Input = "A", Kind = ActionKind.Key, Value = "C" });
             Check(ConfigValidator.Validate(loaded).Any(x => x.Contains("競合")), "conflict detection");
             Check(InputEngineSmokeTest(), "input engine construct/dispose");
+            using (var excludedApplicationEngine = new InputEngine { Enabled = true })
+            {
+                bool excludedApplicationActive = false;
+                excludedApplicationEngine.HasMapping = input => input.Equals("A", StringComparison.OrdinalIgnoreCase);
+                excludedApplicationEngine.InputReceived = input => input.Equals("A", StringComparison.OrdinalIgnoreCase);
+                excludedApplicationEngine.ShouldInterceptInput = () => excludedApplicationEngine.HasCapturedPhysicalInput || !excludedApplicationActive;
+                excludedApplicationEngine.ShouldInterceptMouseInput = excludedApplicationEngine.ShouldInterceptInput;
+                IntPtr mappedDown = excludedApplicationEngine.DirectKeyForTest(0x41, false);
+                excludedApplicationActive = true;
+                IntPtr matchingUp = excludedApplicationEngine.DirectKeyForTest(0x41, true);
+                IntPtr excludedKey = excludedApplicationEngine.DirectKeyForTest(0x42, false);
+                IntPtr excludedMouse = excludedApplicationEngine.DirectMouseForTest(0x201);
+                Check(mappedDown == (IntPtr)1 && matchingUp == (IntPtr)1
+                    && excludedKey != (IntPtr)1 && excludedMouse != (IntPtr)1
+                    && !excludedApplicationEngine.HasCapturedStateForTest(),
+                    "an input-disabled foreground app finishes only an already captured press, then passes every keyboard and mouse input through");
+            }
+            var defensiveMouseReleases = new List<(uint Flag, uint Data)>();
+            try
+            {
+                InputEngine.MouseFlagOutputForTest = (flag, data) => defensiveMouseReleases.Add((flag, data));
+                InputEngine.ReleaseAllDefensively();
+            }
+            finally { InputEngine.MouseFlagOutputForTest = null; }
+            Check(new[] { (4u, 0u), (16u, 0u), (64u, 0u), (0x100u, 1u), (0x100u, 2u) }
+                .All(release => defensiveMouseReleases.Contains(release)),
+                "shutdown and emergency recovery release every mouse button even when another process owned the missing Down state");
             Check(!InputEngine.HookMissedRawTransitions(10, 10) && InputEngine.HookMissedRawTransitions(11, 10), "hook recovery requires proven Raw Input transitions missing from the low-level hook");
             using (var rawInputFaultEngine = new InputEngine())
                 Check(rawInputFaultEngine.RawInputFaultIsContainedForTest(), "a Raw Input decode fault is contained instead of terminating both low-level hooks");
@@ -419,6 +465,10 @@ public static class SelfTest
             Check(MainWindow.MappingApplicationMatches(applicationMapping, ownProcessName), "RELYR main window does not suppress application-scoped mappings");
             Check(ConditionMatcher.IsTaskbarClass("Shell_TrayWnd") && ConditionMatcher.IsTaskbarClass("Shell_SecondaryTrayWnd"), "taskbar class detection");
             Check(ActionCatalog.Items.Any(x => x.Name == "コピー" && x.Value == "Ctrl+C"), "action catalog copy preset");
+            var iconPresetIds = DeckIconCatalog.Presets.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Check(ActionCatalog.Items.All(action => iconPresetIds.Contains(DeckIconCatalog.SuggestedPresetId(action)))
+                && ActionCatalog.Items.All(action => DeckIconCatalog.IsAnimatedPreset(DeckIconCatalog.AnimatedId(DeckIconCatalog.SuggestedPresetId(action)))),
+                "every catalog action resolves to a paired static and animated Deck icon");
             var windowsApps = ActionCatalog.Items.Where(x => x.MajorCategory == "Windowsアプリ").ToList();
             var windowsAppCategories = ActionPickerWindow.CategoriesForMajor(ActionCatalog.Items, "Windowsアプリ");
             Check(new[] { "設定", "コントロールパネル", "ディスクの管理", "タスクマネージャー", "デバイスマネージャー" }.All(name => windowsApps.Any(x => x.Name == name)) && windowsAppCategories.FirstOrDefault() == ActionPickerWindow.AllCategories && ActionPickerWindow.ActionsForCategory(ActionCatalog.Items, "Windowsアプリ", ActionPickerWindow.AllCategories).Count == windowsApps.Count, "Windows applications are comprehensive and every major category begins with an all-actions view");
@@ -530,6 +580,7 @@ public static class SelfTest
                   && OverlayService.ShouldDismissFullScreenMouse(true, 0x201, false)
                   && OverlayService.ShouldDismissFullScreenMouse(true, 0x200, true),
                 "fullscreen overlays ignore their source release and close only on a fresh key, click, wheel, or movement");
+            Check(OverlayService.RecoverFromFullScreenFailureForTest(), "a fullscreen overlay construction failure clears the global input-consumption flag even when no window can close");
             var shownOverlays = new List<string>();
             OverlayService.ActionRequestedForTest = shownOverlays.Add;
             InputEngine.SendShortcut(OverlayService.NumpadAction);

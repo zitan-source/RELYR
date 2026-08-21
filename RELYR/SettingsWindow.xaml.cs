@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
     private readonly bool themeSelectionLoading = true;
     private bool themeAccepted;
     private bool ownerUpdateSubscribed;
+    readonly List<string> inputDisabledApplications;
 
     internal bool Accepted { get; private set; }
 
@@ -48,6 +49,7 @@ public partial class SettingsWindow : Window
     public AppThemeMode SelectedThemeMode => LightThemeBox.IsChecked == true ? AppThemeMode.Light : DarkThemeBox.IsChecked == true ? AppThemeMode.Dark : AppThemeMode.System;
     public bool AutoSave => AutoSaveBox.IsChecked == true;
     public bool SpaceHoldRepeat => SpaceRepeatBox.IsChecked == true;
+    public IReadOnlyList<string> InputDisabledApplications => inputDisabledApplications;
     public int SpaceHoldRepeatDelay => int.TryParse(SpaceRepeatDelayBox.Text, out var value) ? Math.Clamp(value, 100, 2000) : 400;
     public int GestureThreshold => int.TryParse(GestureThresholdBox.Text, out var value) ? Math.Clamp(value, 3, 100) : 12;
     public bool LockCursorDuringGesture => LockGestureCursorBox.IsChecked == true;
@@ -57,8 +59,11 @@ public partial class SettingsWindow : Window
     public string ClockSolidColor => NormalizeClockColor(ClockSolidColorBox.Text);
     public bool ClockShowOnAllMonitors => ClockAllMonitorsBox.IsChecked == true;
     public int InputPanelOpacityPercent => (int)Math.Round(InputPanelOpacitySlider.Value);
-    public bool DeckAutoHideAfterAction => DeckAutoHideAfterActionBox.IsChecked == true;
-    public bool DeckAutoHideOnPointerLeave => DeckAutoHideOnPointerLeaveBox.IsChecked == true;
+    // Deck auto-hide is edited in the Deck workspace. Keeping these values in
+    // the settings result prevents the general settings dialog from changing
+    // an unrelated Deck preference when it is saved.
+    public bool DeckAutoHideAfterAction => config.DeckAutoHideAfterAction;
+    public bool DeckAutoHideOnPointerLeave => config.DeckAutoHideOnPointerLeave;
     public bool CapsRemapChanged
     {
         get; private set;
@@ -85,6 +90,8 @@ public partial class SettingsWindow : Window
         this.config = config;
         originalThemeMode = config.ThemeMode;
         InitializeComponent();
+        inputDisabledApplications = [.. config.InputDisabledApplications];
+        RefreshInputDisabledApplications();
         MainWindow.FollowWindowsTitleBarTheme(this, value => TitleBarUsesDarkMode = value);
         MaxHeight = Math.Max(MinHeight, SystemParameters.WorkArea.Height - 40);
         Height = Math.Min(Height, MaxHeight);
@@ -113,8 +120,6 @@ public partial class SettingsWindow : Window
         ClockSolidColorBox.Text = NormalizeClockColor(config.ClockSolidColor);
         ClockAllMonitorsBox.IsChecked = config.ClockShowOnAllMonitors;
         InputPanelOpacitySlider.Value = Math.Clamp(config.InputPanelOpacityPercent, 40, 100);
-        DeckAutoHideAfterActionBox.IsChecked = config.DeckAutoHideAfterAction;
-        DeckAutoHideOnPointerLeaveBox.IsChecked = config.DeckAutoHideOnPointerLeave;
         UpdateInputPanelOpacityText();
         UpdateClockBackgroundControls();
         ArchiveWatchFolderBox.Text = string.IsNullOrWhiteSpace(config.ArchiveWatchFolder) ? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) : config.ArchiveWatchFolder;
@@ -130,6 +135,50 @@ public partial class SettingsWindow : Window
         ApplyUpdateResult(knownUpdate, false);
         RefreshCapsRemapStatus();
     }
+
+    void RefreshInputDisabledApplications()
+    {
+        InputDisabledApplicationList.ItemsSource = null;
+        InputDisabledApplicationList.ItemsSource = inputDisabledApplications.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    void AddRunningInputDisabledApplication_Click(object sender, RoutedEventArgs e)
+    {
+        string? executable = MainWindow.SelectRunningApplication(this, "RELYRの入力処理を無効にするアプリを選択");
+        if (!string.IsNullOrWhiteSpace(executable))
+            AddInputDisabledApplication(executable);
+    }
+
+    void AddInstalledInputDisabledApplication_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new ApplicationPickerWindow(true) { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedApplication == null)
+            return;
+        string? executable = ProfileManagerWindow.ExecutableNameForAutoSwitch(picker.SelectedApplication);
+        if (!string.IsNullOrWhiteSpace(executable))
+            AddInputDisabledApplication(executable);
+    }
+
+    void RemoveInputDisabledApplication_Click(object sender, RoutedEventArgs e)
+    {
+        if (InputDisabledApplicationList.SelectedItem is not string executable)
+            return;
+        inputDisabledApplications.RemoveAll(x => x.Equals(executable, StringComparison.OrdinalIgnoreCase));
+        RefreshInputDisabledApplications();
+    }
+
+    void AddInputDisabledApplication(string executable)
+    {
+        executable = Path.GetFileName(executable.Trim());
+        if (string.IsNullOrWhiteSpace(executable) || inputDisabledApplications.Contains(executable, StringComparer.OrdinalIgnoreCase))
+            return;
+        inputDisabledApplications.Add(executable);
+        RefreshInputDisabledApplications();
+        InputDisabledApplicationList.SelectedItem = executable;
+        InputDisabledApplicationList.ScrollIntoView(executable);
+    }
+
+    internal void AddInputDisabledApplicationForTest(string executable) => AddInputDisabledApplication(executable);
     void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
     {
         if (Owner is not MainWindow main || ownerUpdateSubscribed)
@@ -154,8 +203,9 @@ public partial class SettingsWindow : Window
         GeneralPanel.Visibility = selected == "General" ? Visibility.Visible : Visibility.Collapsed;
         AppearancePanel.Visibility = selected == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
         UpdatePanel.Visibility = selected == "Update" ? Visibility.Visible : Visibility.Collapsed;
+        DisabledPanel.Visibility = selected == "Disabled" ? Visibility.Visible : Visibility.Collapsed;
         SupportPanel.Visibility = selected == "Support" ? Visibility.Visible : Visibility.Collapsed;
-        LayersPanel.Visibility = selected == "Layers" ? Visibility.Visible : Visibility.Collapsed;
+        LayersScrollPanel.Visibility = selected == "Layers" ? Visibility.Visible : Visibility.Collapsed;
         OverlayPanel.Visibility = selected == "Overlay" ? Visibility.Visible : Visibility.Collapsed;
         ArchivePanel.Visibility = selected == "Archive" ? Visibility.Visible : Visibility.Collapsed;
         DataPanel.Visibility = selected == "Data" ? Visibility.Visible : Visibility.Collapsed;

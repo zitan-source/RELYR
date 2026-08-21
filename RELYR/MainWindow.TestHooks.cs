@@ -8,12 +8,20 @@ public partial class MainWindow
 {
     internal bool IsInputHookDisposedForTest => engine.IsDisposedForTest;
     internal bool IsInputEngineReadyForTest => engineStarted && engine.Enabled;
+    internal bool IsEditorUiInitializedForTest => editorUiInitialized;
+    internal void InitializeEditorUiForTest() => EnsureEditorUiInitialized();
     internal SettingsWindow? SettingsWindowForTest => settingsWindow;
     internal void OpenSettingsForTest() => OpenSettingsFrom(this);
     internal bool HasDestinationInputTargetForTest => destinationInputTarget != null;
     internal bool IsEditingSelectedInputForTest => editingSelectedInput;
     internal bool ShouldInterceptPhysicalInputForTest => engine.ShouldInterceptInput?.Invoke() ?? true;
     internal bool ShouldInterceptPhysicalMouseForTest => (engine.ShouldInterceptMouseInput ?? engine.ShouldInterceptInput)?.Invoke() ?? true;
+    internal bool InputProcessingSuppressedForTest => Volatile.Read(ref inputProcessingSuppressedForForeground);
+    internal void SetInputDisabledApplicationsForTest(IEnumerable<string> applications, string foregroundProcess)
+    {
+        appliedConfig.InputDisabledApplications = [.. applications];
+        RefreshInputProcessingSuppression(foregroundProcess);
+    }
     internal void ColorButtonsForTest() => ColorButtons();
     internal Profile CurrentProfileForTest => CurrentProfile;
     internal AppConfig ConfigForTest => config;
@@ -63,6 +71,10 @@ public partial class MainWindow
     }
 
     internal void EditDeckLayoutForTest(DeckLayoutDefinition layout) => EditDeckLayout(layout);
+    internal void CopyDeckAssignmentForTest(string input) => CopyDeckAssignment(input);
+    internal void PasteDeckAssignmentForTest(string input) => PasteDeckAssignment(input);
+    internal bool HasCopiedDeckAssignmentForTest => copiedDeckMapping != null;
+    internal string[] MultiSelectedInputsForTest => [.. multiSelectedInputs];
     internal void ApplyDeckSizeForTest(int columns, int rows) => ApplyDeckSize(columns, rows);
     internal void ShowDeckLayoutListForTest() => ShowDeckLayoutList();
     internal void ShowNewDeckDialogForTest() => PromptNewDeckLayout();

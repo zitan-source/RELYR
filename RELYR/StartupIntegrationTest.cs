@@ -31,6 +31,10 @@ public static class StartupIntegrationTest
                 && App.RestartTargetArguments([App.RestartLauncherArgument]).Length == 0,
                 "tray restart waits for the old process and then re-enters through the ordinary UI-host launch path");
             Check(!App.ShouldScanForOrphans(["--tray"]) && App.ShouldScanForOrphans([]), "logon startup skips the blocking orphan-process scan");
+            Check(App.ShouldDeferEditorUi(["--tray"], new AppConfig { FirstRunCompleted = true })
+                && !App.ShouldDeferEditorUi([], new AppConfig { FirstRunCompleted = true })
+                && !App.ShouldDeferEditorUi(["--tray"], new AppConfig { FirstRunCompleted = false }),
+                "completed tray startup defers only editor visuals while normal and first-run launches initialize the full UI");
             Check(StartupService.SameExecutablePath(executable, executable.ToUpperInvariant()) && !StartupService.SameExecutablePath(executable, @"C:\Temp\RELYR.exe"), "executable path comparison remains case-insensitive");
             Check(StartupService.IsRelyrExecutableIdentity("RELYR.exe", "RELYR", "RELYR.dll"),
                 "a RELYR process is identified independently of its folder and thread count");

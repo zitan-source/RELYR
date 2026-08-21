@@ -246,6 +246,13 @@ sealed class DeckVideoPreviewPopup : IDisposable
         closeTimer.Stop();
         pointerTimer.Stop();
         playbackTimer.Stop();
+        surfacePointerCaptured = false;
+        surfaceDragging = false;
+        draggingPlayhead = false;
+        if (Mouse.Captured == card)
+            card.ReleaseMouseCapture();
+        if (Mouse.Captured == frame)
+            frame.ReleaseMouseCapture();
         try
         {
             media.Stop();

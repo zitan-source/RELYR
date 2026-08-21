@@ -34,6 +34,7 @@ public sealed partial class InputEngine : IDisposable
     // never leave the desktop in a permanent left-button-down state.
     static int physicalMouseButtonsDownMask;
     internal static Action<uint, uint>? MouseFlagOutputForTest = null;
+    internal static Action<int, int>? MouseMoveOutputForTest = null;
     internal static Action<(uint Flag, uint Data)[]>? MouseClickBatchOutputForTest = null;
     internal static Func<ushort, bool, bool>? KeyOutputForTest = null;
     internal static Func<int, bool>? PhysicalKeyDownForTest = null;
@@ -81,6 +82,7 @@ public sealed partial class InputEngine : IDisposable
     int mouseLayerStartX, mouseLayerStartY;
     bool nativeRightLayerDrag;
     bool nativeRightLayerDragStarting;
+    int nativeRightDragDeltaX, nativeRightDragDeltaY;
     readonly BlockingCollection<NativeRightDragCommand> nativeRightDragOutputQueue = [];
     readonly Task nativeRightDragOutputWorker;
     System.Threading.Timer? nativeRightDragSafetyTimer;
@@ -675,7 +677,7 @@ public sealed partial class InputEngine : IDisposable
             }
             if (Enabled && deferredLayer == "MouseRight" && !layerUsed && !nativeRightLayerDrag && !nativeRightLayerDragStarting
                 && Distance(mouseLayerStartX, mouseLayerStartY, d.pt.x, d.pt.y) >= DragPixels)
-                QueueNativeRightDragStart();
+                QueueNativeRightDragStart(d.pt.x - mouseLayerStartX, d.pt.y - mouseLayerStartY);
             // RightDown is emitted by a serial output worker. Do not let the
             // triggering movement overtake it and reach the target first.
             if (nativeRightLayerDragStarting)
@@ -781,6 +783,20 @@ public sealed partial class InputEngine : IDisposable
         {
             EndDeferredMouseLayer(name);
             return (IntPtr)1;
+        }
+        // An unassigned button used while a mouse layer is held is an ordinary
+        // Windows click. Do not create a PressState for it: that unnecessary
+        // captured state can outlive an unusual button-up ordering and make
+        // subsequent clicks appear stuck. A mapping captured on Down still owns
+        // its matching Up even if the profile changes in between.
+        if (deferredLayer != null && !layerRepeatActive && (buttonDown || buttonUp))
+        {
+            string chord = deferredLayer + "+" + name;
+            if (!presses.ContainsKey(chord) && HasMapping?.Invoke(chord) != true)
+            {
+                Detected?.Invoke(chord + (buttonDown ? " Unassigned Down" : " Unassigned Up"));
+                return Next(n, w, l);
+            }
         }
         if (buttonUp)
             name = PendingLayerInput(name) ?? (deferredLayer != null && !layerRepeatActive ? deferredLayer + "+" + name : QualifyInput?.Invoke(name) ?? name);
@@ -1259,10 +1275,12 @@ public sealed partial class InputEngine : IDisposable
         QueueNativeRightDragEnd();
         Detected?.Invoke("MouseRight Native Drag End");
     }
-    void QueueNativeRightDragStart()
+    void QueueNativeRightDragStart(int dx, int dy)
     {
         if (nativeRightDragOutputQueue.IsAddingCompleted)
             return;
+        nativeRightDragDeltaX = dx;
+        nativeRightDragDeltaY = dy;
         nativeRightLayerDragStarting = true;
         try
         {
@@ -1288,13 +1306,21 @@ public sealed partial class InputEngine : IDisposable
                 continue;
             }
 
-            bool sent = false;
-            try { sent = SendMouseFlag(8); }
+            bool buttonSent = false;
+            bool sequenceSent = false;
+            try
+            {
+                lock (OutputLock)
+                {
+                    buttonSent = SendMouseFlag(8);
+                    sequenceSent = buttonSent && SendMouseMoveRelative(nativeRightDragDeltaX, nativeRightDragDeltaY);
+                }
+            }
             catch { }
             bool accepted;
             lock (stateLock)
             {
-                accepted = sent && !disposed && nativeRightLayerDragStarting
+                accepted = sequenceSent && !disposed && nativeRightLayerDragStarting
                     && deferredLayer == "MouseRight" && !layerUsed;
                 nativeRightLayerDragStarting = false;
                 nativeRightLayerDrag = accepted;
@@ -1303,7 +1329,7 @@ public sealed partial class InputEngine : IDisposable
             }
             if (!accepted)
             {
-                if (sent)
+                if (buttonSent)
                     ReleaseMouseLayerButtonIfInjected("MouseRight");
                 continue;
             }

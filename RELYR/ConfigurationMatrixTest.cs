@@ -25,6 +25,8 @@ internal static class ConfigurationMatrixTest
             TestMacroGraphs(report, ref cases);
             TestModifierClickOutputOrder(report, ref cases);
             TestLayerStateTransitions(report, ref cases);
+            TestUnassignedMouseLayerClicks(report, ref cases);
+            TestRightWheelMovementDoesNotCreateContextClick(report, ref cases);
             TestRawReleaseRecovery(report, ref cases);
             TestExtendedMouseButtonIdentity(report, ref cases);
         }
@@ -423,6 +425,55 @@ internal static class ConfigurationMatrixTest
         }
     }
 
+    static void TestUnassignedMouseLayerClicks(VerificationReport report, ref int cases)
+    {
+        const int nextHookResult = 73;
+        const int expectedSourceReplays = 24;
+        bool passed = true;
+        int sourceReplays = 0;
+        InputEngine.MouseClickBatchOutputForTest = _ => Interlocked.Increment(ref sourceReplays);
+        try
+        {
+            foreach (string layer in new[] { "MouseRight", "MouseBack", "MouseForward" })
+            {
+                var received = new List<string>();
+                using var engine = LayerEngine(layer + "+J", received);
+                (int Down, int Up) otherButton = layer == "MouseRight" ? (0x207, 0x208) : (0x204, 0x205);
+                foreach ((int down, int up) in new[] { (0x201, 0x202), otherButton })
+                {
+                    // The layer is deliberately released before the child
+                    // button. An unmapped child used to be stored under a
+                    // qualified name, while its later Up arrived unqualified.
+                    for (int iteration = 0; iteration < 4; iteration++)
+                    {
+                        LayerTransition(engine, layer, false);
+                        IntPtr childDown = engine.DirectMouseForTest(down);
+                        LayerTransition(engine, layer, true);
+                        IntPtr childUp = engine.DirectMouseForTest(up);
+                        passed &= childDown == new IntPtr(nextHookResult)
+                            && childUp == new IntPtr(nextHookResult)
+                            && !engine.HasCapturedStateForTest();
+                        cases += 3;
+                    }
+                }
+                passed &= engine.DirectMouseForTest(0x201) == new IntPtr(nextHookResult)
+                    && engine.DirectMouseForTest(0x202) == new IntPtr(nextHookResult);
+                cases += 2;
+            }
+            passed &= SpinWait.SpinUntil(() => Volatile.Read(ref sourceReplays) == expectedSourceReplays, 2000);
+            cases++;
+            report.Check(passed, "unassigned left/right clicks pass through every mouse layer without leaving captured state, even when the layer is released first");
+        }
+        finally
+        {
+            // Every deferred source replay must finish while the output hook is
+            // still installed. Otherwise a late Task.Run could leak a synthetic
+            // click into the following test or the active desktop.
+            SpinWait.SpinUntil(() => Volatile.Read(ref sourceReplays) >= expectedSourceReplays, 5000);
+            InputEngine.MouseClickBatchOutputForTest = null;
+        }
+    }
+
     static void TestRawReleaseRecovery(VerificationReport report, ref int cases)
     {
         foreach (string layer in new[] { "MouseRight", "MouseBack", "MouseForward" })
@@ -447,6 +498,84 @@ internal static class ConfigurationMatrixTest
             passed &= !engine.HasCapturedStateForTest();
             cases++;
             report.Check(passed, $"Raw Input first-Up recovery clears {layer} and never suppresses its next complete chord");
+        }
+    }
+
+    static void TestRightWheelMovementDoesNotCreateContextClick(VerificationReport report, ref int cases)
+    {
+        var output = new List<string>();
+        var clickBatches = new List<(uint Flag, uint Data)[]>();
+        var received = new List<string>();
+        InputEngine.MouseFlagOutputForTest = (flag, _) => { lock (output) output.Add(flag == 8 ? "Down" : flag == 16 ? "Up" : flag.ToString()); };
+        InputEngine.MouseMoveOutputForTest = (dx, dy) => { lock (output) output.Add($"Move:{dx},{dy}"); };
+        InputEngine.MouseClickBatchOutputForTest = batch => { lock (clickBatches) clickBatches.Add(batch); };
+        try
+        {
+            using (var engine = new InputEngine
+            {
+                Enabled = true,
+                DragPixels = 1,
+                NextHookForTest = (_, _, _) => new IntPtr(73),
+                HasMapping = input => input is "MouseRight+*" or "MouseRight+WheelUp" or "MouseRight+WheelDown",
+                InputReceived = input => { received.Add(input); return true; },
+                HasLongPress = _ => false,
+                IsGesturePress = _ => false,
+                IsGestureLongPress = _ => false,
+                IsNativeMouseDrag = _ => false,
+                HasLegacyMouseDrag = _ => false
+            })
+            {
+                bool passed = engine.DirectMouseForTest(0x204, 0, 100, 100) == (IntPtr)1;
+                passed &= engine.DirectMouseForTest(0x200, 0, 120, 105) == (IntPtr)1;
+                passed &= SpinWait.SpinUntil(() => { lock (output) return output.Count >= 2; }, 500);
+                passed &= engine.DirectMouseForTest(0x200, 0, 124, 107) == new IntPtr(73);
+                passed &= engine.DirectMouseForTest(0x20A, 120 << 16) == (IntPtr)1;
+                passed &= SpinWait.SpinUntil(() => { lock (output) return output.Contains("Up"); }, 500);
+                passed &= engine.DirectMouseForTest(0x205, 0, 124, 107) == (IntPtr)1;
+                string[] sequence;
+                lock (output) sequence = [.. output];
+                lock (clickBatches)
+                    passed &= clickBatches.Count == 0;
+                passed &= sequence.SequenceEqual(["Down", "Move:20,5", "Up"])
+                    && received.Count(input => input == "MouseRight+WheelUp") == 1
+                    && !engine.HasCapturedStateForTest();
+                cases += 9;
+                report.Check(passed, "a right-wheel mapping preserves native right-drag and emits Down, movement, Up before executing the mapped wheel action");
+            }
+
+            lock (output) output.Clear();
+            using (var engine = new InputEngine
+            {
+                Enabled = true,
+                DragPixels = 1,
+                NextHookForTest = (_, _, _) => new IntPtr(73),
+                HasMapping = input => input is "MouseRight+*" or "MouseRight+WheelUp",
+                InputReceived = input => { received.Add(input); return true; },
+                HasLongPress = _ => false,
+                IsGesturePress = _ => false,
+                IsGestureLongPress = _ => false,
+                IsNativeMouseDrag = _ => false,
+                HasLegacyMouseDrag = _ => false
+            })
+            {
+                engine.DirectMouseForTest(0x204, 0, 200, 200);
+                engine.DirectMouseForTest(0x200, 0, 220, 200);
+                bool started = SpinWait.SpinUntil(() => { lock (output) return output.Count >= 2; }, 500);
+                engine.DirectMouseForTest(0x205, 0, 220, 200);
+                bool ended = SpinWait.SpinUntil(() => { lock (output) return output.Contains("Up"); }, 500);
+                string[] sequence;
+                lock (output) sequence = [.. output];
+                cases += 3;
+                report.Check(started && ended && sequence.SequenceEqual(["Down", "Move:20,0", "Up"]) && !engine.HasCapturedStateForTest(),
+                    "native right-drag remains available even when the same right layer also has a wheel assignment");
+            }
+        }
+        finally
+        {
+            InputEngine.ReleaseAll();
+            InputEngine.MouseFlagOutputForTest = null;
+            InputEngine.MouseMoveOutputForTest = null;
+            InputEngine.MouseClickBatchOutputForTest = null;
         }
     }
 

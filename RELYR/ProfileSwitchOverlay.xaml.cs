@@ -5,6 +5,10 @@ namespace RELYR;
 
 public partial class ProfileSwitchOverlay : Window
 {
+    const int GwlExStyle = -20;
+    const long WsExTransparent = 0x00000020L;
+    const long WsExToolWindow = 0x00000080L;
+    const long WsExNoActivate = 0x08000000L;
     readonly TimeSpan visibleDuration;
     System.Threading.Timer? hideTimer;
     bool themeAppliedBeforeReveal;
@@ -22,7 +26,17 @@ public partial class ProfileSwitchOverlay : Window
         themeAppliedBeforeReveal = true;
         ThemeService.ThemeChanged += ThemeChanged;
         Loaded += OverlayLoaded;
+        SourceInitialized += (_, _) => MakeNativeWindowClickThrough();
         Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; hideTimer?.Dispose(); hideTimer = null; };
+    }
+
+    void MakeNativeWindowClickThrough()
+    {
+        IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+        long style = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
+        SetWindowLongPtr(hwnd, GwlExStyle, new IntPtr(style | WsExTransparent | WsExToolWindow | WsExNoActivate));
     }
 
     void OverlayLoaded(object sender, RoutedEventArgs e)
@@ -101,4 +115,6 @@ public partial class ProfileSwitchOverlay : Window
 
     [DllImport("user32.dll")]
     static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 }

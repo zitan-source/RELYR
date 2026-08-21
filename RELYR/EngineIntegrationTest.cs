@@ -829,6 +829,27 @@ public static class EngineIntegrationTest
             events.Clear();
             engine.ResetStateForTest();
             engine.DragPixels = 1;
+            var movingRightWheelFlags = new List<uint>();
+            var movingRightWheelMoves = new List<(int X, int Y)>();
+            InputEngine.MouseFlagOutputForTest = (flag, _) => movingRightWheelFlags.Add(flag);
+            InputEngine.MouseMoveOutputForTest = (x, y) => movingRightWheelMoves.Add((x, y));
+            var movingRightDown = engine.DirectMouseForTest(0x204, 0, 100, 100);
+            var movingRightMove = engine.DirectMouseForTest(0x200, 0, 112, 100);
+            await Task.Delay(40);
+            var movingWheelUp = engine.DirectMouseForTest(0x20A, 120 << 16, 112, 100);
+            var movingWheelDown = engine.DirectMouseForTest(0x20A, unchecked((int)(-120 << 16)), 114, 101);
+            var movingRightUp = engine.DirectMouseForTest(0x205, 0, 114, 101);
+            await Task.Delay(40);
+            Check(movingRightDown == (IntPtr)1 && movingRightMove == (IntPtr)1 && movingWheelUp == (IntPtr)1 && movingWheelDown == (IntPtr)1 && movingRightUp == (IntPtr)1
+                && events.Contains("MouseRight+WheelUp") && events.Contains("MouseRight+WheelDown")
+                && movingRightWheelFlags.SequenceEqual([8u, 16u]) && movingRightWheelMoves.SequenceEqual([(12, 0)]) && !engine.HasCapturedStateForTest(),
+                "a mapped right-wheel action keeps Filmora-style native right drag and pairs its synthetic Down with movement before Up");
+            InputEngine.MouseFlagOutputForTest = null;
+            InputEngine.MouseMoveOutputForTest = null;
+            rightWheelLayer = false;
+            rightSpaceGestureMode = true;
+            events.Clear();
+            engine.ResetStateForTest();
             bool physicalRightButtonDown = true;
             var recoveredNativeRightDragFlags = new List<uint>();
             InputEngine.PhysicalKeyDownForTest = key => key == 0x02 && physicalRightButtonDown;
@@ -842,7 +863,7 @@ public static class EngineIntegrationTest
             InputEngine.MouseFlagOutputForTest = null;
             InputEngine.PhysicalKeyDownForTest = null;
             engine.DragPixels = 50;
-            rightWheelLayer = false;
+            rightSpaceGestureMode = false;
             engine.ResetStateForTest();
             transientKeyMapped = false;
             var plainKeyDown = engine.DirectKeyForTest(0x42, false);

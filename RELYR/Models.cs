@@ -58,6 +58,7 @@ public sealed class Mapping
     public string DeckFilePath { get; set; } = "";
     public string DeckIcon { get; set; } = "";
     public string DeckIconPath { get; set; } = "";
+    public bool DeckIconAutoAssigned { get; set; }
 
     public Mapping Copy() => new()
     {
@@ -75,7 +76,8 @@ public sealed class Mapping
         DeckColor = DeckColor,
         DeckFilePath = DeckFilePath,
         DeckIcon = DeckIcon,
-        DeckIconPath = DeckIconPath
+        DeckIconPath = DeckIconPath,
+        DeckIconAutoAssigned = DeckIconAutoAssigned
     };
 }
 
@@ -102,6 +104,10 @@ public sealed class DeckLayoutDefinition
     public bool PanelPinned { get; set; }
     public double? PanelWidth { get; set; }
     public double? PanelHeight { get; set; }
+    public double? PanelLeft { get; set; }
+    public double? PanelTop { get; set; }
+    public double? PanelCollapsedLeft { get; set; }
+    public double? PanelCollapsedTop { get; set; }
     public List<Mapping> Mappings { get; set; } = [];
 }
 
@@ -138,6 +144,7 @@ public sealed class AppConfig
     public bool AutoSwitchProfilesByCursor { get; set; }
     public bool ShowProfileSwitchOverlay { get; set; } = true;
     public bool EngineEnabled { get; set; } = true;
+    public List<string> InputDisabledApplications { get; set; } = [];
     public bool StartWithWindows { get; set; }
     public bool AutoExtractDesktopArchives { get; set; }
     public string ArchiveWatchFolder { get; set; } = "";
@@ -145,6 +152,9 @@ public sealed class AppConfig
     public bool ShowDesktopNumberInTray { get; set; }
     public bool CheckForUpdates { get; set; } = true;
     public string DismissedUpdateVersion { get; set; } = "";
+    public string PendingUpdateNotesVersion { get; set; } = "";
+    public string PendingUpdateNotesBody { get; set; } = "";
+    public string LastShownUpdateNotesVersion { get; set; } = "";
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public WindowActionTarget WindowActionTarget { get; set; } = WindowActionTarget.ActiveWindow;
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -188,6 +198,8 @@ public sealed class AppConfig
     public List<DeckLayoutDefinition> DeckLayouts { get; set; } = [];
     public double? DeckPanelLeft { get; set; }
     public double? DeckPanelTop { get; set; }
+    public double? DeckPanelCollapsedLeft { get; set; }
+    public double? DeckPanelCollapsedTop { get; set; }
     public double? DeckPanelWidth { get; set; }
     public double? DeckPanelHeight { get; set; }
     public double? NumpadPanelLeft { get; set; }

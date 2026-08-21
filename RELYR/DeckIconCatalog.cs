@@ -13,6 +13,7 @@ internal sealed record DeckIconPreset(string Id, string Name, string Glyph);
 internal static class DeckIconCatalog
 {
     internal const string AnimatedPrefix = "animated:";
+    internal const string VisualTag = "DeckIconVisual";
     internal static IReadOnlyList<DeckIconPreset> Presets { get; } =
     [
         new("home", "ホーム", "\uE80F"), new("search", "検索", "\uE721"), new("settings", "設定", "\uE713"), new("favorite", "お気に入り", "\uE734"), new("star", "スター", "\uE735"),
@@ -35,6 +36,20 @@ internal static class DeckIconCatalog
         new("archive", "アーカイブ", "\uE7B8"), new("shield", "セキュリティ", "\uE83D"), new("key", "キー", "\uE8D7"), new("sort", "並べ替え", "\uE8CB"), new("view", "表示", "\uE890"),
         new("hide", "非表示", "\uED1A"), new("chat", "チャット", "\uE8BD"), new("comment", "コメント", "\uE90A"), new("notification", "通知", "\uE7ED"), new("code", "コード", "\uE943"),
         new("terminal", "ターミナル", "\uE756"), new("database", "データベース", "\uE8F1"), new("globe", "インターネット", "\uE774"), new("rocket", "起動", "\uE945"), new("gift", "ギフト", "\uEA39"),
+        new("window-close", "ウィンドウを閉じる", "\uE8BB"), new("window-maximize", "最大化", "\uE740"), new("window-minimize", "最小化", "\uE921"), new("window-restore", "元のサイズ", "\uE923"),
+        new("window-snap-left", "左にスナップ", "\uE76B"), new("window-snap-right", "右にスナップ", "\uE76C"), new("monitor-left", "左モニターへ", "\uE72B"), new("monitor-right", "右モニターへ", "\uE72A"),
+        new("monitor-up", "上モニターへ", "\uE74A"), new("monitor-down", "下モニターへ", "\uE74B"), new("desktop-left", "左の仮想デスクトップへ", "\uE72B"), new("desktop-right", "右の仮想デスクトップへ", "\uE72A"),
+        new("desktop-new", "仮想デスクトップを追加", "\uE710"), new("desktop-close", "仮想デスクトップを閉じる", "\uE711"), new("tab-new", "新しいタブ", "\uE710"), new("tab-close", "タブを閉じる", "\uE711"),
+        new("tab-left", "左のタブへ", "\uE72B"), new("tab-right", "右のタブへ", "\uE72A"), new("volume-up", "音量を上げる", "\uE995"), new("volume-down", "音量を下げる", "\uE993"),
+        new("media-next", "次の曲", "\uE893"), new("media-previous", "前の曲", "\uE892"), new("screenshot", "スクリーンショット", "\uE722"), new("ime", "日本語入力", "あ"),
+        new("task-view", "タスクビュー", "\uE7C4"), new("show-desktop", "デスクトップを表示", "\uE7F4"), new("select-all", "すべて選択", "\uE8B3"), new("properties", "プロパティ", "\uE946"),
+        new("bold", "太字", "B"), new("italic", "斜体", "I"), new("underline", "下線", "U"), new("new-folder", "新しいフォルダー", "\uE8F4"),
+        new("history", "履歴", "\uE81C"), new("accessibility", "アクセシビリティ", "\uE776"), new("clipboard", "クリップボード", "\uE77F"), new("run", "ファイル名を指定して実行", "\uE768"),
+        new("emoji", "絵文字", "\uE76E"),
+        new("number-1", "数字 1", "1"), new("number-2", "数字 2", "2"), new("number-3", "数字 3", "3"), new("number-4", "数字 4", "4"), new("number-5", "数字 5", "5"),
+        new("number-6", "数字 6", "6"), new("number-7", "数字 7", "7"), new("number-8", "数字 8", "8"), new("number-9", "数字 9", "9"), new("number-10", "数字 10", "10"),
+        new("number-11", "数字 11", "11"), new("number-12", "数字 12", "12"), new("number-13", "数字 13", "13"), new("number-14", "数字 14", "14"), new("number-15", "数字 15", "15"),
+        new("number-16", "数字 16", "16"), new("number-17", "数字 17", "17"), new("number-18", "数字 18", "18"), new("number-19", "数字 19", "19"), new("number-20", "数字 20", "20"),
         new("app-edge", "Microsoft Edge", "\uE774"), new("app-chrome", "Google Chrome", "\uE774"), new("app-firefox", "Mozilla Firefox", "\uE774"), new("app-opera", "Opera", "\uE774"), new("app-brave", "Brave", "\uE83D"),
         new("app-vivaldi", "Vivaldi", "\uE774"), new("app-word", "Microsoft Word", "\uE8A5"), new("app-excel", "Microsoft Excel", "\uE9F9"), new("app-powerpoint", "Microsoft PowerPoint", "\uE8A5"), new("app-outlook", "Microsoft Outlook", "\uE715"),
         new("app-onenote", "Microsoft OneNote", "\uE70B"), new("app-teams", "Microsoft Teams", "\uE716"), new("app-notepad", "メモ帳", "\uE70B"), new("app-paint", "ペイント", "\uE790"), new("app-file-explorer", "エクスプローラー", "\uE8B7"),
@@ -84,13 +99,16 @@ internal static class DeckIconCatalog
         if (preset == null)
             return null;
         bool softwarePreset = preset.Id.StartsWith("app-", StringComparison.OrdinalIgnoreCase);
+        bool numberPreset = preset.Id.StartsWith("number-", StringComparison.OrdinalIgnoreCase);
+        bool textPreset = numberPreset || preset.Id is "ime" or "bold" or "italic" or "underline";
         string displayGlyph = softwarePreset ? SoftwareMark(preset.Id) : preset.Glyph;
         var glyph = new TextBlock
         {
+            Tag = VisualTag,
             Text = displayGlyph,
-            FontFamily = new System.Windows.Media.FontFamily(softwarePreset ? "Segoe UI Variable, Segoe UI" : "Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = softwarePreset ? size * (displayGlyph.Length > 2 ? .46 : .62) : size,
-            FontWeight = softwarePreset ? FontWeights.SemiBold : FontWeights.Normal,
+            FontFamily = new System.Windows.Media.FontFamily(softwarePreset || textPreset ? "Segoe UI Variable, Segoe UI" : "Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = textPreset ? size * (displayGlyph.Length > 1 ? .62 : .76) : softwarePreset ? size * (displayGlyph.Length > 2 ? .46 : .62) : size,
+            FontWeight = softwarePreset || textPreset ? FontWeights.SemiBold : FontWeights.Normal,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -134,6 +152,78 @@ internal static class DeckIconCatalog
 
     internal static string AnimatedId(string presetId) => AnimatedPrefix + presetId;
     internal static bool IsAnimatedPreset(string? id) => !string.IsNullOrWhiteSpace(id) && id.StartsWith(AnimatedPrefix, StringComparison.OrdinalIgnoreCase);
+
+    internal static string SuggestedPresetId(CatalogAction action)
+    {
+        string value = action.Value.Trim();
+        string normalized = value.Replace(" ", "", StringComparison.Ordinal).ToUpperInvariant();
+        if (DeckPanelLayout.IsDeckAction(value)) return "grid";
+        if (value.Equals(OverlayService.NumpadAction, StringComparison.OrdinalIgnoreCase)) return "calculator";
+        if (value.Equals(OverlayService.ExtendedKeypadAction, StringComparison.OrdinalIgnoreCase)) return "keyboard";
+        if (value.Equals(OverlayService.BlankAction, StringComparison.OrdinalIgnoreCase)) return "hide";
+        if (value.Equals(OverlayService.ClockAction, StringComparison.OrdinalIgnoreCase)) return "clock";
+        if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase)) return "home";
+
+        string? exact = normalized switch
+        {
+            "CTRL+C" => "copy", "CTRL+V" => "paste", "CTRL+X" => "cut", "CTRL+S" => "save",
+            "CTRL+SHIFT+S" => "save", "CTRL+P" => "print", "CTRL+F" => "search", "CTRL+R" or "CTRL+SHIFT+R" or "F5" => "refresh",
+            "CTRL+Z" => "undo", "CTRL+Y" or "CTRL+SHIFT+Z" => "redo",
+            "ALT+LEFT" => "back", "ALT+RIGHT" => "forward", "ALT+UP" => "up",
+            "CTRL+ADD" or "CTRL+PLUS" => "zoom-in", "CTRL+SUBTRACT" or "CTRL+MINUS" => "zoom-out",
+            "CTRL+0" or "F11" => "full-screen", "DELETE" or "SHIFT+DELETE" => "delete", "ESC" => "cancel", "F2" => "edit", "F12" => "code",
+            "CTRL+T" => "tab-new", "CTRL+N" => "new-window", "CTRL+W" => "tab-close", "ALT+F4" or "CLOSEACTIVEWINDOW" => "window-close",
+            "CTRL+TAB" => "tab-right", "CTRL+SHIFT+TAB" => "tab-left", "CTRL+SHIFT+T" => "history",
+            "CTRL+A" => "select-all", "CTRL+B" => "bold", "CTRL+I" => "italic", "CTRL+U" => "underline",
+            "CTRL+O" => "folder", "CTRL+L" => "location", "CTRL+H" => "history", "CTRL+J" => "download", "CTRL+D" => "bookmark", "CTRL+SHIFT+O" => "bookmark",
+            "ALT+HOME" => "home", "ALT+ENTER" => "properties", "ALT+P" or "ALT+SHIFT+P" => "view",
+            "ALT+TAB" or "ALT+SHIFT+TAB" => "switch", "CTRL+SHIFT+ESC" => "app-task-manager",
+            "PRINTSCREEN" or "ALT+PRINTSCREEN" or "WIN+SHIFT+S" => "screenshot",
+            "VOLUMEUP" => "volume-up", "VOLUMEDOWN" => "volume-down", "VOLUMEMUTE" => "mute",
+            "MEDIAPLAYPAUSE" => "play", "MEDIASTOP" => "stop", "MEDIANEXTTRACK" => "media-next", "MEDIAPREVIOUSTRACK" => "media-previous",
+            "MAXIMIZEWINDOW" or "TOGGLEMAXIMIZEWINDOW" => "window-maximize", "MINIMIZEACTIVEWINDOW" => "window-minimize", "RESTOREORMINIMIZEWINDOW" => "window-restore",
+            "SNAPWINDOWLEFT" => "window-snap-left", "SNAPWINDOWRIGHT" => "window-snap-right",
+            "MOVEWINDOWMONITORLEFT" => "monitor-left", "MOVEWINDOWMONITORRIGHT" => "monitor-right", "MOVEWINDOWMONITORUP" => "monitor-up", "MOVEWINDOWMONITORDOWN" => "monitor-down",
+            "CTRL+WIN+LEFT" => "desktop-left", "CTRL+WIN+RIGHT" => "desktop-right", "MOVEWINDOWDESKTOPLEFT" => "desktop-left", "MOVEWINDOWDESKTOPRIGHT" => "desktop-right",
+            "CTRL+WIN+D" => "desktop-new", "CTRL+WIN+F4" => "desktop-close", "WIN+TAB" => "task-view",
+            "DESKTOP1" => "number-1", "DESKTOP2" => "number-2", "DESKTOP3" => "number-3", "DESKTOP4" => "number-4",
+            "DESKTOP5" => "number-5", "DESKTOP6" => "number-6", "DESKTOP7" => "number-7", "DESKTOP8" => "number-8",
+            "WIN+D" or "TOGGLEMINIMIZEALLWINDOWS" => "show-desktop", "WIN+M" => "window-minimize", "SHIFT+WIN+M" => "window-restore",
+            "WIN+E" => "app-file-explorer", "WIN+I" => "settings", "WIN+L" => "lock", "WIN+R" => "run", "WIN+S" => "search",
+            "WIN+A" => "settings", "WIN+N" => "notification", "WIN+V" => "clipboard", "WIN+X" => "menu", "WIN+Z" => "grid", "WIN+." => "emoji",
+            "CTRL+WIN+ENTER" => "accessibility", "CTRL+WIN+O" => "keyboard", "WIN+ADD" => "zoom-in", "WIN+ESC" => "zoom-out",
+            "WIN+H" => "microphone", "WIN+SPACE" or "IMEON" or "IMEOFF" or "IMETOGGLE" => "ime",
+            "CTRL+1" => "number-1", "CTRL+9" => "number-9", "CTRL+SHIFT+N" => "new-folder", "CTRL+SHIFT+I" => "switch",
+            "MOUSELEFT" or "MOUSERIGHT" or "MOUSEMIDDLE" or "SHIFTDRAG" or "CTRLDRAG" or "ALTDRAG" => "mouse",
+            "WHEELUP" => "up", "WHEELDOWN" => "down", "TILTLEFT" or "MOUSEBACK" => "back", "TILTRIGHT" or "MOUSEFORWARD" => "forward",
+            _ => null
+        };
+        if (exact != null)
+            return exact;
+
+        if (action.Kind == ActionKind.Launch)
+        {
+            string file = Path.GetFileNameWithoutExtension(value).ToLowerInvariant();
+            return file switch
+            {
+                "explorer" => "app-file-explorer", "notepad" => "app-notepad", "mspaint" => "app-paint",
+                "powershell" => "app-powershell", "wt" => "app-windows-terminal", "calc" => "calculator",
+                "taskmgr" => "app-task-manager", "cmd" => "terminal", "control" => "settings", "regedit" => "database",
+                "services" => "settings", "eventvwr" => "history", "msinfo32" or "dxdiag" or "resmon" => "info",
+                "diskmgmt" or "devmgmt" or "compmgmt" => "settings", _ => value.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase) ? "settings" : value.StartsWith("ms-screenclip:", StringComparison.OrdinalIgnoreCase) ? "screenshot" : "apps"
+            };
+        }
+        return action.Kind switch
+        {
+            ActionKind.Mouse => "mouse",
+            ActionKind.Profile => "switch",
+            ActionKind.Gesture => "mouse",
+            ActionKind.Macro => "list",
+            ActionKind.Text => "edit",
+            ActionKind.Key or ActionKind.Shortcut => "keyboard",
+            _ => "apps"
+        };
+    }
 
     static void ApplyPresetAnimation(TextBlock glyph, string presetId)
     {

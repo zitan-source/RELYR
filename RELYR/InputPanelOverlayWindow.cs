@@ -32,6 +32,7 @@ internal sealed class InputPanelOverlayWindow : Window
     const long WsExNoActivate = 0x08000000L;
     const int WmMouseActivate = 0x0021;
     const int MaNoActivate = 3;
+    const double PanelCornerRadius = 14;
 
     readonly Border dragArea;
     readonly Action<double, double>? savePosition;
@@ -68,8 +69,8 @@ internal sealed class InputPanelOverlayWindow : Window
         MaxHeight = Height;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true;
-        Background = WpfBrushes.Transparent;
+        AllowsTransparency = false;
+        Background = new SolidColorBrush(WpfColor.FromRgb(0x1C, 0x1F, 0x22));
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
@@ -81,7 +82,7 @@ internal sealed class InputPanelOverlayWindow : Window
 
         panelCard = new Border
         {
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = new CornerRadius(PanelCornerRadius),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(12),
             Opacity = Math.Clamp(opacityPercent, 40, 100) / 100d,
@@ -103,7 +104,9 @@ internal sealed class InputPanelOverlayWindow : Window
         root.Children.Add(body);
 
         SourceInitialized += WindowSourceInitialized;
-        Closed += (_, _) => { dragging = false; PersistPosition(); };
+        SizeChanged += (_, _) => ApplyRoundedWindowRegion();
+        dragArea.LostMouseCapture += (_, _) => dragging = false;
+        Closed += (_, _) => { ReleaseOwnedMouseCapture(); PersistPosition(); };
     }
 
     Border BuildHeader()
@@ -363,6 +366,16 @@ internal sealed class InputPanelOverlayWindow : Window
         e.Handled = true;
     }
 
+    void ReleaseOwnedMouseCapture()
+    {
+        dragging = false;
+        if (Mouse.Captured == dragArea)
+            dragArea.ReleaseMouseCapture();
+    }
+
+    internal void CapturePanelMouseForTest() => dragArea.CaptureMouse();
+    internal bool OwnsMouseCaptureForTest => Mouse.Captured == dragArea;
+
     void PersistPosition()
     {
         if (!positionDirty)
@@ -399,6 +412,23 @@ internal sealed class InputPanelOverlayWindow : Window
         long style = GetWindowLongPtr(helper.Handle, GwlExStyle).ToInt64();
         SetWindowLongPtr(helper.Handle, GwlExStyle, new IntPtr(style | WsExToolWindow | WsExNoActivate));
         HwndSource.FromHwnd(helper.Handle)?.AddHook(WindowMessageHook);
+        ApplyRoundedWindowRegion();
+    }
+
+    void ApplyRoundedWindowRegion()
+    {
+        if (PresentationSource.FromVisual(this) is not HwndSource)
+            return;
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || ActualWidth <= 0 || ActualHeight <= 0)
+            return;
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+        int width = Math.Max(1, (int)Math.Ceiling(ActualWidth * dpi.DpiScaleX));
+        int height = Math.Max(1, (int)Math.Ceiling(ActualHeight * dpi.DpiScaleY));
+        int diameter = Math.Max(2, (int)Math.Round(PanelCornerRadius * 2 * Math.Max(dpi.DpiScaleX, dpi.DpiScaleY)));
+        IntPtr region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+        if (region != IntPtr.Zero && SetWindowRgn(hwnd, region, true) == 0)
+            DeleteObject(region);
     }
 
     static IntPtr WindowMessageHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -415,6 +445,9 @@ internal sealed class InputPanelOverlayWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] static extern int GetWindowLong32(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr64(IntPtr hwnd, int index, IntPtr value);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW")] static extern int SetWindowLong32(IntPtr hwnd, int index, int value);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
+    [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
+    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool DeleteObject(IntPtr value);
     static IntPtr GetWindowLongPtr(IntPtr hwnd, int index) => IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, index) : new IntPtr(GetWindowLong32(hwnd, index));
     static IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value) => IntPtr.Size == 8 ? SetWindowLongPtr64(hwnd, index, value) : new IntPtr(SetWindowLong32(hwnd, index, value.ToInt32()));
 }

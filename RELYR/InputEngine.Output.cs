@@ -919,6 +919,21 @@ public sealed partial class InputEngine
             return sent;
         }
     }
+    static bool SendMouseMoveRelative(int dx, int dy)
+    {
+        if (MouseMoveOutputForTest is { } testOutput)
+        {
+            testOutput(dx, dy);
+            return true;
+        }
+        if (MouseFlagOutputForTest != null)
+            return true;
+        uint count = SendInput(1, [new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dx = dx, dy = dy, dwFlags = 1, dwExtraInfo = (UIntPtr)Marker } } }], Marshal.SizeOf<INPUT>());
+        bool sent = count == 1;
+        DeckIpcDiagnostics.RecordSendInput(sent, sent ? 0 : Marshal.GetLastWin32Error());
+        return sent;
+    }
+
     static bool SendMouseUpWithRetry(uint flag, uint data = 0)
     {
         for (int attempt = 0; attempt < 3; attempt++)
@@ -1008,6 +1023,28 @@ public sealed partial class InputEngine
             Interlocked.Exchange(ref modifierDragStartedAt, 0);
             modifierDragSafetyTimer?.Dispose();
             modifierDragSafetyTimer = null;
+        }
+        finally { Monitor.Exit(OutputLock); }
+    }
+    public static void ReleaseAllDefensively()
+    {
+        ReleaseAll();
+        if (!Monitor.TryEnter(OutputLock, 250))
+        {
+            ForceReleaseWithoutOutputLock();
+            return;
+        }
+        try
+        {
+            // Generated button state is tracked per process. If an elevated
+            // helper exits between Down and Up, the UI host cannot see that
+            // helper's tracking set. Shutdown and emergency recovery therefore
+            // send idempotent Up transitions for every mouse button.
+            SendMouseUpWithRetry(4);
+            SendMouseUpWithRetry(16);
+            SendMouseUpWithRetry(64);
+            SendMouseUpWithRetry(0x100, 1);
+            SendMouseUpWithRetry(0x100, 2);
         }
         finally { Monitor.Exit(OutputLock); }
     }

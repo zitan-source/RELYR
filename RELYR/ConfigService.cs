@@ -290,6 +290,7 @@ public sealed class ConfigService
     static void EnsureRequiredCollections(AppConfig value)
     {
         value.Profiles ??= [];
+        value.InputDisabledApplications ??= [];
         value.Macros ??= [];
         value.Gestures ??= [];
         value.SharedDeckMappings ??= [];
@@ -299,12 +300,20 @@ public sealed class ConfigService
         value.Gestures.RemoveAll(gesture => gesture is null);
         value.SharedDeckMappings.RemoveAll(mapping => mapping is null);
         value.DeckLayouts.RemoveAll(layout => layout is null);
+        value.InputDisabledApplications = [.. value.InputDisabledApplications
+            .Where(application => !string.IsNullOrWhiteSpace(application))
+            .Select(application => Path.GetFileName(application.Trim()))
+            .Where(application => !string.IsNullOrWhiteSpace(application))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     static void NormalizeScalarSettings(AppConfig value)
     {
         value.ActiveProfile ??= "";
         value.DismissedUpdateVersion ??= "";
+        value.PendingUpdateNotesVersion ??= "";
+        value.PendingUpdateNotesBody ??= "";
+        value.LastShownUpdateNotesVersion ??= "";
         value.KeyboardLayout = value.KeyboardLayout?.Equals("US", StringComparison.OrdinalIgnoreCase) == true ? "US" : "JIS";
         value.EmergencyShortcut = string.IsNullOrWhiteSpace(value.EmergencyShortcut) ? "Ctrl+Alt+Shift+F12" : value.EmergencyShortcut;
         value.ClockBackgroundImage ??= "";
@@ -412,6 +421,8 @@ public sealed class ConfigService
     {
         value.DeckPanelLeft = FiniteOrNull(value.DeckPanelLeft);
         value.DeckPanelTop = FiniteOrNull(value.DeckPanelTop);
+        value.DeckPanelCollapsedLeft = FiniteOrNull(value.DeckPanelCollapsedLeft);
+        value.DeckPanelCollapsedTop = FiniteOrNull(value.DeckPanelCollapsedTop);
         value.DeckPanelWidth = PositiveFiniteOrNull(value.DeckPanelWidth);
         value.DeckPanelHeight = PositiveFiniteOrNull(value.DeckPanelHeight);
         value.NumpadPanelLeft = FiniteOrNull(value.NumpadPanelLeft);
@@ -477,6 +488,10 @@ public sealed class ConfigService
             layout.Rows = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows);
             layout.PanelWidth = PositiveFiniteOrNull(layout.PanelWidth);
             layout.PanelHeight = PositiveFiniteOrNull(layout.PanelHeight);
+            layout.PanelLeft = FiniteOrNull(layout.PanelLeft);
+            layout.PanelTop = FiniteOrNull(layout.PanelTop);
+            layout.PanelCollapsedLeft = FiniteOrNull(layout.PanelCollapsedLeft);
+            layout.PanelCollapsedTop = FiniteOrNull(layout.PanelCollapsedTop);
             layout.PanelColor ??= "";
             layout.ProfileGroupId ??= "";
             layout.ProfileId ??= "";
@@ -581,6 +596,8 @@ public sealed class ConfigService
             map.DeckFilePath ??= "";
             map.DeckIcon ??= "";
             map.DeckIconPath ??= "";
+            if (!string.IsNullOrWhiteSpace(map.DeckIconPath))
+                map.DeckIconAutoAssigned = false;
             if (!Enum.IsDefined(map.Kind))
             {
                 map.Kind = ActionKind.None;

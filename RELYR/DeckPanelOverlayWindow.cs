@@ -41,6 +41,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     const int WmNcHitTest = 0x0084;
     const int WmSysCommand = 0x0112;
     const int WmSizing = 0x0214;
+    const int WmEnterSizeMove = 0x0231;
     const int WmExitSizeMove = 0x0232;
     const int WmDropFiles = 0x0233;
     const int WmCopyGlobalData = 0x0049;
@@ -55,10 +56,14 @@ internal sealed class DeckPanelOverlayWindow : Window
     const int HtBottomLeft = 16;
     const int HtBottomRight = 17;
     const int WmszLeft = 1;
+    const int WmszRight = 2;
     const int WmszTop = 3;
     const int WmszTopLeft = 4;
     const int WmszTopRight = 5;
     const int WmszBottomLeft = 7;
+    const int WmszBottom = 6;
+    const int WmszBottomRight = 8;
+    const double ResizeAxisLockThreshold = 4;
     const int WcaAccentPolicy = 19;
     const int AccentEnableAcrylicBlurBehind = 4;
     const int DwmwaWindowCornerPreference = 33;
@@ -91,6 +96,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly Border dragArea;
     readonly Action<Mapping>? execute;
     readonly Action<double, double>? savePosition;
+    readonly Action<double, double>? saveCollapsedPosition;
     readonly Action<string, double, double>? saveSize;
     readonly Action<string, bool>? savePinned;
     bool hoverPreviewsEnabled;
@@ -128,7 +134,9 @@ internal sealed class DeckPanelOverlayWindow : Window
     internal Button CloseButton { get; private set; } = null!;
     internal Button ResetSizeButton { get; private set; } = null!;
     internal Button PinButton { get; private set; } = null!;
+    internal Button FullScreenButton { get; private set; } = null!;
     internal Button MoreButton { get; private set; } = null!;
+    internal FrameworkElement CollapsedMoveHandle { get; private set; } = null!;
     internal bool IsPinnedForTest => layout.PanelPinned;
     internal bool PointerAutoHideArmedForTest => pointerEnteredSinceShown;
     internal void ArmPointerAutoHideForTest() => pointerEnteredSinceShown = true;
@@ -154,6 +162,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     internal string HeaderToolTipForTest => dragArea.ToolTip?.ToString() ?? "";
     internal System.Windows.Controls.ContextMenu? HeaderContextMenuForTest => dragArea.ContextMenu;
+    internal System.Windows.Controls.ContextMenu? PanelContextMenuForTest => panelCard.ContextMenu;
     internal double DefaultWidthForTest => defaultWindowWidth;
     internal double DefaultHeightForTest => defaultWindowHeight;
     internal bool UsesNoActivateStyle
@@ -165,7 +174,10 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly Border panelCard;
     readonly DeckLayoutDefinition layout;
     readonly UniformGrid deckGrid;
+    readonly Grid root;
+    readonly Viewbox deckView;
     TextBlock headerTitle = null!;
+    TextBlock fullScreenGlyph = null!;
     FrameworkElement headerGrip = null!;
     Style? glassButtonStyle;
     Style? closeButtonStyle;
@@ -181,6 +193,20 @@ internal sealed class DeckPanelOverlayWindow : Window
     double maximumDeckScale;
     Rect? safeMaximizeRestoreBounds;
     bool changingWindowState;
+    int renderedColumns;
+    int renderedRows;
+    bool collapsedToEdge;
+    bool edgeExpansionArmed;
+    bool collapsedPointerTransitionPending;
+    Rect expandedBounds;
+    Rect collapsedBounds;
+    bool collapsedPositionCustomized;
+    bool resetSizeWhenExpanded;
+    bool interactiveSizing;
+    bool? cornerResizeWidthDriven;
+    double interactiveSizingStartWidth;
+    double interactiveSizingStartHeight;
+    int headerLayoutMode = -1;
 
     enum DeckBackdropMode
     {
@@ -191,10 +217,11 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     WpfColor panelTone;
 
-    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
+    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<double, double>? collapsedPositionChanged = null)
     {
         execute = executeAction;
         savePosition = positionChanged;
+        saveCollapsedPosition = collapsedPositionChanged;
         saveSize = sizeChanged;
         savePinned = pinnedChanged;
         hoverAudioStartTimer.Tick += HoverAudioStartTimerTick;
@@ -203,20 +230,41 @@ internal sealed class DeckPanelOverlayWindow : Window
         autoHideAfterAction = config.DeckAutoHideAfterAction;
         autoHideOnPointerLeave = config.DeckAutoHideOnPointerLeave;
         layout = selectedLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
+        renderedColumns = layout.Columns;
+        renderedRows = layout.Rows;
         Title = "RELYR Deck - " + layout.Name;
         deckGrid = new UniformGrid();
-        UpdateDeckDimensions(layout.PanelWidth ?? config.DeckPanelWidth, layout.PanelHeight ?? config.DeckPanelHeight);
+        UpdateDeckDimensions(layout.PanelWidth, layout.PanelHeight);
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResize;
-        AllowsTransparency = true;
-        Background = WpfBrushes.Transparent;
+        AllowsTransparency = false;
+        Background = new SolidColorBrush(AcrylicCharcoal);
+        // Keep the whole borderless Deck inside WPF's opaque client area.
+        // Without WindowChrome, a resizable opaque Window reserves an
+        // invisible non-client strip; that changes the Deck aspect ratio and
+        // can leave a misleading hit-test margin around the visible panel.
+        WindowChrome.SetWindowChrome(this, new WindowChrome
+        {
+            CaptionHeight = 0,
+            ResizeBorderThickness = new Thickness(ResizeCornerSize),
+            GlassFrameThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            UseAeroCaptionButtons = false
+        });
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
         WindowStartupLocation = WindowStartupLocation.Manual;
-        Point initial = InitialPosition(config, Width, Height);
+        Point initial = InitialPosition(config, Width, Height, layout);
         Left = initial.X;
         Top = initial.Y;
+        if ((layout.PanelCollapsedLeft ?? config.DeckPanelCollapsedLeft) is double collapsedLeft
+            && (layout.PanelCollapsedTop ?? config.DeckPanelCollapsedTop) is double collapsedTop
+            && double.IsFinite(collapsedLeft) && double.IsFinite(collapsedTop))
+        {
+            collapsedBounds = new Rect(collapsedLeft, collapsedTop, 0, 0);
+            collapsedPositionCustomized = true;
+        }
 
         panelCard = new Border
         {
@@ -233,11 +281,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         panelCard.PreviewMouseLeftButtonUp += DragEnded;
         panelCard.MouseEnter += PanelCard_MouseEnter;
         panelCard.MouseLeave += PanelCard_MouseLeave;
-        SizeChanged += (_, _) => { ApplyRoundedPanelClip(); UpdateHeaderLayout(); };
+        // panelCard.SizeChanged already refreshes the WPF clip. Rebuilding it
+        // again from the Window event doubles the render work for every native
+        // sizing frame and makes interactive resize visibly pulse.
+        SizeChanged += (_, _) => { if (!interactiveSizing) ApplyRoundedWindowRegion(); UpdateHeaderLayout(); };
         ApplyPanelColor();
         Content = panelCard;
 
-        var root = new Grid { ClipToBounds = true };
+        root = new Grid { ClipToBounds = true };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HeaderHeight) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HeaderToGridGap) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -246,7 +297,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         root.Children.Add(dragArea);
         UpdateHeaderLayout();
 
-        var deckView = new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0), Child = deckGrid };
+        deckView = new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0), Child = deckGrid };
         Grid.SetRow(deckView, 2);
         root.Children.Add(deckView);
         BuildDeckButtons();
@@ -254,7 +305,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         SourceInitialized += WindowSourceInitialized;
         StateChanged += WindowStateChanged;
         ThemeService.ThemeChanged += ThemeChanged;
-        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); dragging = false; fileDragButton = null; CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistSize(); };
+        panelCard.LostMouseCapture += (_, _) => dragging = false;
+        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
     }
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
@@ -309,6 +361,53 @@ internal sealed class DeckPanelOverlayWindow : Window
             scale = Math.Min(widthScale, heightScale);
         return WindowSizeForScale(Math.Clamp(scale, minimumDeckScale, maximumDeckScale));
     }
+    void BeginInteractiveSizing(double width, double height)
+    {
+        interactiveSizing = true;
+        cornerResizeWidthDriven = null;
+        interactiveSizingStartWidth = Math.Max(1, width);
+        interactiveSizingStartHeight = Math.Max(1, height);
+    }
+    WpfSize ConstrainInteractiveSize(double proposedWidth, double proposedHeight, int edge)
+    {
+        if (!interactiveSizing)
+            BeginInteractiveSizing(ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
+        bool widthDriven;
+        if (edge is WmszLeft or WmszRight)
+            widthDriven = true;
+        else if (edge is WmszTop or WmszBottom)
+            widthDriven = false;
+        else
+        {
+            if (cornerResizeWidthDriven == null)
+            {
+                double widthDelta = Math.Abs(proposedWidth - interactiveSizingStartWidth);
+                double heightDelta = Math.Abs(proposedHeight - interactiveSizingStartHeight);
+                // WM_SIZING commonly begins with one or two rounding-only
+                // frames. Locking the axis from that noise can choose the
+                // opposite direction from the user's actual drag and makes the
+                // window jump between the cursor and the constrained edge.
+                if (Math.Max(widthDelta, heightDelta) < ResizeAxisLockThreshold)
+                {
+                    double startScale = (interactiveSizingStartWidth - OverlayChromeWidth) / Math.Max(1, naturalGridWidth);
+                    return WindowSizeForScale(Math.Clamp(startScale, minimumDeckScale, maximumDeckScale));
+                }
+                double widthChange = widthDelta / Math.Max(1, naturalGridWidth);
+                double heightChange = heightDelta / Math.Max(1, naturalGridHeight);
+                cornerResizeWidthDriven = widthChange >= heightChange;
+            }
+            widthDriven = cornerResizeWidthDriven.Value;
+        }
+        double scale = widthDriven
+            ? (proposedWidth - OverlayChromeWidth) / Math.Max(1, naturalGridWidth)
+            : (proposedHeight - OverlayChromeHeight) / Math.Max(1, naturalGridHeight);
+        return WindowSizeForScale(Math.Clamp(scale, minimumDeckScale, maximumDeckScale));
+    }
+    internal void BeginInteractiveSizingForTest(double width, double height) => BeginInteractiveSizing(width, height);
+    internal WpfSize ConstrainInteractiveSizeForTest(double width, double height, int edge) => ConstrainInteractiveSize(width, height, edge);
+    internal bool? CornerResizeWidthDrivenForTest => cornerResizeWidthDriven;
+    internal bool AppliesRoundedRegionDuringResizeForTest => !interactiveSizing;
+    internal void EndInteractiveSizingForTest() { interactiveSizing = false; cornerResizeWidthDriven = null; }
 
     void BuildDeckButtons()
     {
@@ -350,11 +449,9 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         autoHideTimer.Stop();
         pointerEnteredSinceShown = false;
-        dragging = false;
-        fileDragButton = null;
-        ClearDeckReorderTarget();
-        StopDragPreview();
+        ReleaseOwnedMouseCapture();
         PersistPosition();
+        PersistCollapsedPosition();
         PersistSize();
         // Hide first so a pointer that is still over a Deck button cannot raise
         // another MouseEnter and recreate a media preview during teardown.
@@ -362,6 +459,161 @@ internal sealed class DeckPanelOverlayWindow : Window
         ClearVideoPreviews();
         CancelPendingHoverAudio();
         StopHoverAudio();
+    }
+
+    void ReleaseOwnedMouseCapture()
+    {
+        dragging = false;
+        CancelDeckReorder();
+        fileDragButton = null;
+        if (Mouse.Captured == panelCard)
+            panelCard.ReleaseMouseCapture();
+    }
+
+    internal void CapturePanelMouseForTest() => panelCard.CaptureMouse();
+    internal bool OwnsMouseCaptureForTest => Mouse.Captured == panelCard || Mouse.Captured is Button button && deckButtons.Contains(button);
+
+    internal bool IsCollapsedToEdge => collapsedToEdge;
+    internal bool EdgeExpansionArmedForTest => edgeExpansionArmed;
+    internal void ArmEdgeExpansionForTest() => edgeExpansionArmed = true;
+    internal void ContinueFromCollapsedMoveHandleForTest() => ContinueFromCollapsedMoveHandle(true);
+    internal void HandlePointerEnteredForTest() => HandlePanelPointerEntered();
+    internal void HandlePointerLeftForTest() => HandlePanelPointerLeft();
+    internal bool CursorOutsideForTest => IsCursorOutsideDeckWindow();
+    internal Rect ExpandedBoundsForTest => expandedBounds;
+    internal Rect CollapsedBoundsForTest => collapsedBounds;
+    static Rect VirtualDesktopBounds => new(
+        SystemParameters.VirtualScreenLeft,
+        SystemParameters.VirtualScreenTop,
+        SystemParameters.VirtualScreenWidth,
+        SystemParameters.VirtualScreenHeight);
+
+    internal void MoveCollapsedTabForTest(double left, double top)
+    {
+        if (!collapsedToEdge)
+            return;
+        Rect work = VirtualDesktopBounds;
+        collapsedPositionCustomized = true;
+        ApplyCollapsedBounds(new Rect(
+            Math.Clamp(left, work.Left, work.Right - Width),
+            Math.Clamp(top, work.Top, work.Bottom - Height),
+            Width,
+            Height));
+        PersistCollapsedPosition();
+    }
+
+    internal void ExpandFromEdge()
+    {
+        if (!collapsedToEdge)
+            return;
+        collapsedToEdge = false;
+        edgeExpansionArmed = false;
+        collapsedPointerTransitionPending = false;
+        changingWindowState = true;
+        try
+        {
+            if (WindowState != WindowState.Normal)
+                WindowState = WindowState.Normal;
+            ResizeMode = ResizeMode.CanResize;
+            root.RowDefinitions[1].Height = new GridLength(HeaderToGridGap);
+            root.RowDefinitions[2].Height = new GridLength(1, GridUnitType.Star);
+            MinWidth = 0;
+            MinHeight = 0;
+            MaxWidth = double.PositiveInfinity;
+            MaxHeight = double.PositiveInfinity;
+            UpdateDeckDimensions(resetSizeWhenExpanded ? layout.PanelWidth : expandedBounds.Width, resetSizeWhenExpanded ? layout.PanelHeight : expandedBounds.Height);
+            resetSizeWhenExpanded = false;
+            Left = expandedBounds.Left;
+            Top = expandedBounds.Top;
+            UpdateLayout();
+            UpdateHeaderLayout();
+        }
+        finally { changingWindowState = false; }
+    }
+
+    internal void CollapseToEdge()
+    {
+        if (collapsedToEdge || layout.PanelPinned || !IsVisible)
+            return;
+        double width = ActualWidth > 0 ? ActualWidth : Width;
+        double height = ActualHeight > 0 ? ActualHeight : Height;
+        expandedBounds = new Rect(Left, Top, width, height);
+        collapsedToEdge = true;
+        edgeExpansionArmed = false;
+        collapsedPointerTransitionPending = true;
+        root.RowDefinitions[1].Height = new GridLength(0);
+        root.RowDefinitions[2].Height = new GridLength(0);
+        double collapsedWidth = Math.Clamp(width, 140, 220);
+        double collapsedHeight = OverlayChromeHeight - HeaderToGridGap;
+        Rect work = VirtualDesktopBounds;
+        if (collapsedPositionCustomized)
+        {
+            collapsedBounds = new Rect(
+                Math.Clamp(collapsedBounds.Left, work.Left, work.Right - collapsedWidth),
+                Math.Clamp(collapsedBounds.Top, work.Top, work.Bottom - collapsedHeight),
+                collapsedWidth,
+                collapsedHeight);
+        }
+        else
+        {
+            double leftDistance = Math.Abs(expandedBounds.Left - work.Left);
+            double rightDistance = Math.Abs(work.Right - expandedBounds.Right);
+            double topDistance = Math.Abs(expandedBounds.Top - work.Top);
+            double bottomDistance = Math.Abs(work.Bottom - expandedBounds.Bottom);
+            double nearest = Math.Min(Math.Min(leftDistance, rightDistance), Math.Min(topDistance, bottomDistance));
+            if (nearest == leftDistance)
+                collapsedBounds = new Rect(work.Left, Math.Clamp(expandedBounds.Top, work.Top, work.Bottom - collapsedHeight), collapsedWidth, collapsedHeight);
+            else if (nearest == rightDistance)
+                collapsedBounds = new Rect(work.Right - collapsedWidth, Math.Clamp(expandedBounds.Top, work.Top, work.Bottom - collapsedHeight), collapsedWidth, collapsedHeight);
+            else if (nearest == topDistance)
+                collapsedBounds = new Rect(Math.Clamp(expandedBounds.Left, work.Left, work.Right - collapsedWidth), work.Top, collapsedWidth, collapsedHeight);
+            else
+                collapsedBounds = new Rect(Math.Clamp(expandedBounds.Left, work.Left, work.Right - collapsedWidth), work.Bottom - collapsedHeight, collapsedWidth, collapsedHeight);
+        }
+        var pointerAtCollapse = System.Windows.Forms.Cursor.Position;
+        bool pointerStartedOutsideCollapsedBounds = !collapsedBounds.Contains(new Point(pointerAtCollapse.X, pointerAtCollapse.Y));
+        ApplyCollapsedBounds(collapsedBounds);
+        // Moving the collapsed tab to the nearest screen edge can place it
+        // underneath a stationary pointer.  Do not treat the resulting
+        // synthetic MouseEnter as an intentional request to expand: that
+        // would restore the old bounds, raise MouseLeave, and oscillate.
+        // If the pointer is already outside the tab, arm it immediately;
+        // otherwise require one genuine leave before the next enter expands.
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            if (!collapsedToEdge)
+                return;
+            collapsedPointerTransitionPending = false;
+            var currentPointer = System.Windows.Forms.Cursor.Position;
+            bool pointerActuallyMoved = currentPointer.X != pointerAtCollapse.X || currentPointer.Y != pointerAtCollapse.Y;
+            edgeExpansionArmed = pointerStartedOutsideCollapsedBounds || (pointerActuallyMoved && IsCursorOutsideDeckWindow());
+        }));
+    }
+
+    void ApplyCollapsedBounds(Rect bounds)
+    {
+        changingWindowState = true;
+        try
+        {
+            // A transparent WPF window can remain maximized after its content
+            // is collapsed. That leaves an invisible, desktop-sized hit-test
+            // surface. Normalize the native window before applying tab bounds.
+            if (WindowState != WindowState.Normal)
+                WindowState = WindowState.Normal;
+            ResizeMode = ResizeMode.NoResize;
+            MinWidth = 0;
+            MinHeight = 0;
+            MaxWidth = double.PositiveInfinity;
+            MaxHeight = double.PositiveInfinity;
+            Width = bounds.Width;
+            Height = bounds.Height;
+            Left = bounds.Left;
+            Top = bounds.Top;
+            collapsedBounds = new Rect(Left, Top, Width, Height);
+            UpdateLayout();
+            UpdateHeaderLayout();
+        }
+        finally { changingWindowState = false; }
     }
 
     internal void PrepareForShow()
@@ -563,18 +815,98 @@ internal sealed class DeckPanelOverlayWindow : Window
         Title = "RELYR Deck - " + layout.Name;
         headerTitle.Text = layout.Name;
         dragArea.ToolTip = layout.Name;
-        UpdateDeckDimensions(Width, Height);
+        bool dimensionsChanged = renderedColumns != layout.Columns || renderedRows != layout.Rows;
+        renderedColumns = layout.Columns;
+        renderedRows = layout.Rows;
+        if (collapsedToEdge)
+            resetSizeWhenExpanded |= dimensionsChanged;
+        else
+            UpdateDeckDimensions(dimensionsChanged ? layout.PanelWidth : Width, dimensionsChanged ? layout.PanelHeight : Height);
         UpdateHeaderLayout();
     }
 
     void PanelCard_MouseEnter(object sender, MouseEventArgs e)
+        => HandlePanelPointerEntered();
+
+    void HandlePanelPointerEntered()
     {
+        if (collapsedToEdge && collapsedPointerTransitionPending)
+        {
+            autoHideTimer.Stop();
+            return;
+        }
+        if (collapsedToEdge && (dragging || CollapsedMoveHandle.IsMouseOver))
+        {
+            autoHideTimer.Stop();
+            return;
+        }
+        if (collapsedToEdge && !edgeExpansionArmed)
+        {
+            autoHideTimer.Stop();
+            return;
+        }
+        if (collapsedToEdge)
+        {
+            ExpandFromPointerHover();
+            return;
+        }
         pointerEnteredSinceShown = true;
         autoHideTimer.Stop();
     }
 
     void PanelCard_MouseLeave(object sender, MouseEventArgs e)
+        => HandlePanelPointerLeft();
+
+    void CollapsedMoveHandle_MouseLeave(object sender, MouseEventArgs e)
     {
+        // Entering a collapsed tab through its right-edge move handle skips
+        // expansion so a drag can begin. Moving from that handle into the tab
+        // body does not raise PanelCard.MouseEnter again, so re-evaluate here.
+        ContinueFromCollapsedMoveHandle(panelCard.IsMouseOver || !IsCursorOutsideDeckWindow());
+    }
+
+    void ContinueFromCollapsedMoveHandle(bool pointerInsideCollapsedDeck)
+    {
+        if (pointerInsideCollapsedDeck
+            && collapsedToEdge
+            && !collapsedPointerTransitionPending
+            && edgeExpansionArmed
+            && !dragging)
+            ExpandFromPointerHover();
+    }
+
+    void ExpandFromPointerHover()
+    {
+        ExpandFromEdge();
+        // Entering the small edge tab is not the same as entering the expanded
+        // Deck. The Deck restores its independent previous position, which may
+        // be away from the pointer. Do not collapse it again until the pointer
+        // has genuinely reached that expanded surface at least once.
+        pointerEnteredSinceShown = false;
+        autoHideTimer.Stop();
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            if (!collapsedToEdge && !IsCursorOutsideDeckWindow())
+                pointerEnteredSinceShown = true;
+        }));
+    }
+
+    void HandlePanelPointerLeft()
+    {
+        if (collapsedToEdge)
+        {
+            if (collapsedPointerTransitionPending)
+            {
+                autoHideTimer.Stop();
+                return;
+            }
+            // Resizing or moving the native window can raise MouseLeave even
+            // though the physical pointer never left the collapsed tab. Only
+            // a cursor position that is really outside arms the next enter.
+            edgeExpansionArmed = IsCursorOutsideDeckWindow();
+            autoHideTimer.Stop();
+            return;
+        }
         if (pointerEnteredSinceShown && autoHideOnPointerLeave)
             ScheduleAutoHide(PointerLeaveAutoHideDelay, true);
     }
@@ -601,7 +933,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         if (autoHideRequiresPointerOutside && !IsCursorOutsideDeckWindow())
             return;
-        HideForReuse();
+        CollapseToEdge();
     }
 
     bool ShouldSuspendAutoHide() =>
@@ -674,6 +1006,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var grip = CreateHeaderGrip();
         headerGrip = grip;
         var title = new TextBlock { Text = layout.Name, FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -736,6 +1070,34 @@ internal sealed class DeckPanelOverlayWindow : Window
         reset.Style = CloseButtonStyle();
         reset.Click += (_, _) => ResetToDefaultSize();
         ResetSizeButton = reset;
+        fullScreenGlyph = new TextBlock
+        {
+            Text = "\uE740",
+            FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 14,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        fullScreenGlyph.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
+        var fullScreen = new Button
+        {
+            Width = 28,
+            Height = 30,
+            MinWidth = 28,
+            MaxWidth = 28,
+            MinHeight = 30,
+            MaxHeight = 30,
+            Margin = new Thickness(0),
+            Padding = new Thickness(0),
+            Focusable = false,
+            ToolTip = "全画面表示",
+            Content = fullScreenGlyph,
+            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        fullScreen.Style = CloseButtonStyle();
+        fullScreen.Click += (_, _) => ToggleSafeMaximize();
+        FullScreenButton = fullScreen;
         var moreGlyph = new TextBlock
         {
             Text = "\uE712",
@@ -792,6 +1154,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         close.Style = CloseButtonStyle();
         close.Click += (_, _) => HideForReuse();
         CloseButton = close;
+        CollapsedMoveHandle = CreateCollapsedMoveHandle();
+        CollapsedMoveHandle.MouseLeave += CollapsedMoveHandle_MouseLeave;
         grid.Children.Add(grip);
         Grid.SetColumn(title, 1);
         grid.Children.Add(title);
@@ -799,10 +1163,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         grid.Children.Add(pin);
         Grid.SetColumn(reset, 3);
         grid.Children.Add(reset);
-        Grid.SetColumn(more, 4);
+        Grid.SetColumn(fullScreen, 4);
+        grid.Children.Add(fullScreen);
+        Grid.SetColumn(more, 5);
         grid.Children.Add(more);
-        Grid.SetColumn(close, 5);
+        Grid.SetColumn(close, 6);
         grid.Children.Add(close);
+        Grid.SetColumn(CollapsedMoveHandle, 7);
+        grid.Children.Add(CollapsedMoveHandle);
         border.Child = grid;
         border.ContextMenu = CreateHeaderContextMenu();
         panelCard.ContextMenu = border.ContextMenu;
@@ -810,16 +1178,47 @@ internal sealed class DeckPanelOverlayWindow : Window
         return border;
     }
 
+    static FrameworkElement CreateCollapsedMoveHandle()
+    {
+        var glyph = new TextBlock
+        {
+            Text = "\uE7C2",
+            FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 15,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        glyph.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
+        return new Border
+        {
+            Width = 30,
+            Height = 30,
+            Margin = new Thickness(0),
+            Padding = new Thickness(0),
+            Background = WpfBrushes.Transparent,
+            Cursor = WpfCursors.SizeAll,
+            ToolTip = "折りたたんだDeckを移動",
+            Child = glyph,
+            Visibility = Visibility.Collapsed
+        };
+    }
+
     System.Windows.Controls.ContextMenu CreateHeaderContextMenu()
     {
         var menu = new System.Windows.Controls.ContextMenu { MinWidth = 190 };
-        var pin = new System.Windows.Controls.MenuItem { Header = "表示を固定", IsCheckable = true };
-        pin.Click += (_, _) => SetPinned(pin.IsChecked);
+        var store = new System.Windows.Controls.MenuItem { Header = "収納", IsCheckable = true };
+        store.Click += (_, _) =>
+        {
+            SetPinned(!store.IsChecked);
+            if (store.IsChecked)
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(CollapseToEdge));
+        };
         var reset = new System.Windows.Controls.MenuItem { Header = "元のサイズに戻す" };
         reset.Click += (_, _) => ResetToDefaultSize();
-        menu.Items.Add(pin);
+        menu.Items.Add(store);
         menu.Items.Add(reset);
-        menu.Opened += (_, _) => pin.IsChecked = layout.PanelPinned;
+        menu.Opened += (_, _) => store.IsChecked = !layout.PanelPinned;
         TrackContextMenu(menu);
         return menu;
     }
@@ -874,21 +1273,45 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     void UpdateHeaderLayout()
     {
-        if (dragArea == null || headerTitle == null || headerGrip == null || PinButton == null || MoreButton == null || ResetSizeButton == null || CloseButton == null)
+        if (dragArea == null || headerTitle == null || headerGrip == null || PinButton == null || FullScreenButton == null || MoreButton == null || ResetSizeButton == null || CloseButton == null || CollapsedMoveHandle == null)
             return;
+        if (collapsedToEdge)
+        {
+            if (headerLayoutMode == 3)
+                return;
+            headerLayoutMode = 3;
+            headerTitle.Visibility = Visibility.Visible;
+            headerGrip.Visibility = Visibility.Collapsed;
+            PinButton.Visibility = Visibility.Collapsed;
+            ResetSizeButton.Visibility = Visibility.Collapsed;
+            FullScreenButton.Visibility = Visibility.Collapsed;
+            MoreButton.Visibility = Visibility.Collapsed;
+            CloseButton.Visibility = Visibility.Collapsed;
+            CollapsedMoveHandle.Visibility = Visibility.Visible;
+            dragArea.Padding = new Thickness(8, 0, 2, 0);
+            return;
+        }
         double availableWidth = ActualWidth > 0 ? ActualWidth : Width;
         bool compact = availableWidth < CompactHeaderThreshold;
         bool ultraCompact = availableWidth < UltraCompactHeaderThreshold;
+        int nextMode = ultraCompact ? 2 : compact ? 1 : 0;
+        if (headerLayoutMode == nextMode)
+            return;
+        headerLayoutMode = nextMode;
         headerTitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         headerGrip.Visibility = ultraCompact ? Visibility.Collapsed : Visibility.Visible;
         PinButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ResetSizeButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        MoreButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        FullScreenButton.Visibility = Visibility.Visible;
+        MoreButton.Visibility = compact && !ultraCompact ? Visibility.Visible : Visibility.Collapsed;
+        CloseButton.Visibility = Visibility.Visible;
+        CollapsedMoveHandle.Visibility = Visibility.Collapsed;
         headerGrip.Margin = new Thickness(0, 0, ultraCompact ? 1 : 7, 0);
         headerGrip.RenderTransform = Transform.Identity;
         dragArea.Padding = ultraCompact ? new Thickness(6, 0, 8, 0) : new Thickness(8, 0, 6, 0);
         SetFixedHeaderButtonWidth(ResetSizeButton, ultraCompact ? 24 : 28);
         SetFixedHeaderButtonWidth(PinButton, 28);
+        SetFixedHeaderButtonWidth(FullScreenButton, ultraCompact ? 24 : 28);
         SetFixedHeaderButtonWidth(MoreButton, ultraCompact ? 24 : 28);
         SetFixedHeaderButtonWidth(CloseButton, ultraCompact ? 24 : 28);
     }
@@ -914,6 +1337,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             CloseButton.Style = CloseButtonStyle();
             ResetSizeButton.Style = CloseButtonStyle();
             PinButton.Style = CloseButtonStyle();
+            FullScreenButton.Style = CloseButtonStyle();
             MoreButton.Style = CloseButtonStyle();
             UpdatePinnedVisual();
         }));
@@ -1288,6 +1712,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         mapping ??= GetOrCreateDeckMapping(slot);
         mapping.DeckIcon = picker.SelectedPresetId;
         mapping.DeckIconPath = picker.SelectedCustomPath;
+        mapping.DeckIconAutoAssigned = false;
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
         RefreshDeckSlots(slot, slot);
@@ -1747,9 +2172,12 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     void DragStarted(object sender, MouseButtonEventArgs e)
     {
-        if (IsInsideButton(e.OriginalSource as DependencyObject))
+        DependencyObject? source = e.OriginalSource as DependencyObject;
+        if (collapsedToEdge && !IsInsideElement(source, CollapsedMoveHandle))
             return;
-        if (e.ClickCount == 2)
+        if (!collapsedToEdge && IsInsideButton(source))
+            return;
+        if (!collapsedToEdge && e.ClickCount == 2)
         {
             ToggleSafeMaximize();
             e.Handled = true;
@@ -1773,6 +2201,16 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         return false;
     }
+    static bool IsInsideElement(DependencyObject? source, DependencyObject ancestor)
+    {
+        for (var current = source; current != null;)
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+            current = current is Visual ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current);
+        }
+        return false;
+    }
     internal static bool CanDragPanelFromForTest(DependencyObject source) => !IsInsideButton(source);
     void DragMoved(object sender, MouseEventArgs e)
     {
@@ -1780,8 +2218,18 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         Point current = PointToScreen(e.GetPosition(this));
         Point delta = InputPanelOverlayWindow.PhysicalDragDeltaToDip(current - dragStart, dragDpi);
-        Left = windowStartLeft + delta.X;
-        Top = windowStartTop + delta.Y;
+        double left = windowStartLeft + delta.X;
+        double top = windowStartTop + delta.Y;
+        if (collapsedToEdge)
+        {
+            Rect work = VirtualDesktopBounds;
+            left = Math.Clamp(left, work.Left, work.Right - ActualWidth);
+            top = Math.Clamp(top, work.Top, work.Bottom - ActualHeight);
+            collapsedBounds = new Rect(left, top, ActualWidth, ActualHeight);
+            collapsedPositionCustomized = true;
+        }
+        Left = left;
+        Top = top;
         positionDirty = true;
         e.Handled = true;
     }
@@ -1791,18 +2239,43 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         dragging = false;
         panelCard.ReleaseMouseCapture();
-        PersistPosition();
+        if (collapsedToEdge)
+            PersistCollapsedPosition();
+        else
+            PersistPosition();
         e.Handled = true;
+    }
+    void PersistCollapsedPosition()
+    {
+        if (!collapsedPositionCustomized || collapsedBounds.Width <= 0 || collapsedBounds.Height <= 0)
+            return;
+        try { saveCollapsedPosition?.Invoke(collapsedBounds.Left, collapsedBounds.Top); } catch { }
     }
     void PersistPosition()
     {
         if (!positionDirty)
             return;
         positionDirty = false;
-        try { savePosition?.Invoke(Left, Top); } catch { }
+        Point position = collapsedToEdge ? expandedBounds.TopLeft
+            : safeMaximizeRestoreBounds is Rect restore ? restore.TopLeft
+            : new Point(Left, Top);
+        try { savePosition?.Invoke(position.X, position.Y); } catch { }
     }
     void PersistSize()
     {
+        if (safeMaximizeRestoreBounds is Rect fullScreenRestore)
+        {
+            try { saveSize?.Invoke(layout.Id, fullScreenRestore.Width, fullScreenRestore.Height); } catch { }
+            return;
+        }
+        if (collapsedToEdge)
+        {
+            if (expandedBounds.Width > 0 && expandedBounds.Height > 0)
+            {
+                try { saveSize?.Invoke(layout.Id, expandedBounds.Width, expandedBounds.Height); } catch { }
+            }
+            return;
+        }
         if (double.IsFinite(ActualWidth) && double.IsFinite(ActualHeight) && ActualWidth > 0 && ActualHeight > 0)
         {
             try { saveSize?.Invoke(layout.Id, ActualWidth, ActualHeight); } catch { }
@@ -1811,18 +2284,20 @@ internal sealed class DeckPanelOverlayWindow : Window
     void ResetToDefaultSize()
     {
         safeMaximizeRestoreBounds = null;
-        Width = defaultWindowWidth;
-        Height = defaultWindowHeight;
+        ResizeMode = ResizeMode.CanResize;
+        UpdateDeckDimensions();
         UpdateLayout();
+        UpdateFullScreenVisual();
         PersistSize();
     }
-    internal void MoveAndPersistForTest(double left, double top)
+    internal void MoveAndPersist(double left, double top)
     {
         Left = left;
         Top = top;
         positionDirty = false;
         try { savePosition?.Invoke(left, top); } catch { }
     }
+    internal void MoveAndPersistForTest(double left, double top) => MoveAndPersist(left, top);
     internal void ResizeAndPersistForTest(double width, double height)
     {
         double currentScale = Math.Clamp((ActualWidth - OverlayChromeWidth) / Math.Max(1, naturalGridWidth), minimumDeckScale, maximumDeckScale);
@@ -1834,10 +2309,15 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     internal void ToggleSafeMaximizeForTest() => ToggleSafeMaximize();
     internal bool IsSafelyMaximizedForTest => safeMaximizeRestoreBounds != null && WindowState == WindowState.Normal;
+    internal Rect CurrentMonitorWorkAreaForTest => CurrentMonitorWorkArea();
 
     void WindowStateChanged(object? sender, EventArgs e)
     {
-        if (!changingWindowState && WindowState == WindowState.Maximized)
+        if (changingWindowState)
+            return;
+        if (collapsedToEdge && WindowState != WindowState.Normal)
+            ApplyCollapsedBounds(collapsedBounds);
+        else if (WindowState == WindowState.Maximized)
             MaximizeWithinWorkArea();
     }
 
@@ -1846,7 +2326,10 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (safeMaximizeRestoreBounds is Rect restore)
         {
             safeMaximizeRestoreBounds = null;
-            ApplySafeBounds(restore);
+            ResizeMode = ResizeMode.CanResize;
+            UpdateDeckDimensions(restore.Width, restore.Height);
+            ApplyTemporaryBounds(new Rect(restore.Left, restore.Top, Width, Height));
+            UpdateFullScreenVisual();
             return;
         }
         MaximizeWithinWorkArea();
@@ -1856,16 +2339,31 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (safeMaximizeRestoreBounds == null)
             safeMaximizeRestoreBounds = new Rect(Left, Top, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
-        var maximum = WindowSizeForScale(maximumDeckScale);
-        Rect workArea = SystemParameters.WorkArea;
-        ApplySafeBounds(new Rect(
-            workArea.Left + (workArea.Width - maximum.Width) / 2,
-            workArea.Top + (workArea.Height - maximum.Height) / 2,
-            maximum.Width,
-            maximum.Height));
+        autoHideTimer.Stop();
+        ResizeMode = ResizeMode.NoResize;
+        MinWidth = 0;
+        MinHeight = 0;
+        MaxWidth = double.PositiveInfinity;
+        MaxHeight = double.PositiveInfinity;
+        ApplyTemporaryBounds(CurrentMonitorWorkArea());
+        UpdateFullScreenVisual();
     }
 
-    void ApplySafeBounds(Rect bounds)
+    Rect CurrentMonitorWorkArea()
+    {
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        var pixels = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+        if (handle != IntPtr.Zero && GetWindowRect(handle, out var native))
+            return new Rect(
+                Left + (pixels.Left - native.Left) / dpi.DpiScaleX,
+                Top + (pixels.Top - native.Top) / dpi.DpiScaleY,
+                pixels.Width / dpi.DpiScaleX,
+                pixels.Height / dpi.DpiScaleY);
+        return SystemParameters.WorkArea;
+    }
+
+    void ApplyTemporaryBounds(Rect bounds)
     {
         changingWindowState = true;
         try
@@ -1878,10 +2376,17 @@ internal sealed class DeckPanelOverlayWindow : Window
             Height = bounds.Height;
             UpdateLayout();
             positionDirty = false;
-            try { savePosition?.Invoke(Left, Top); } catch { }
-            try { saveSize?.Invoke(layout.Id, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height); } catch { }
         }
         finally { changingWindowState = false; }
+    }
+
+    void UpdateFullScreenVisual()
+    {
+        if (FullScreenButton == null || fullScreenGlyph == null)
+            return;
+        bool fullScreen = safeMaximizeRestoreBounds != null;
+        FullScreenButton.ToolTip = fullScreen ? "元の大きさに戻す" : "全画面表示";
+        fullScreenGlyph.Text = fullScreen ? "\uE73F" : "\uE740";
     }
     internal int ResizeHitTestForTest(Point point) => ResizeCornerHit(point.X, point.Y, ActualWidth, ActualHeight, ResizeCornerSize);
     static int ResizeCornerHit(double x, double y, double width, double height, double corner)
@@ -1894,11 +2399,13 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (right && bottom) return HtBottomRight;
         return 0;
     }
-    internal static Point InitialPosition(AppConfig config, double width, double height)
+    internal static Point InitialPosition(AppConfig config, double width, double height, DeckLayoutDefinition? layout = null)
     {
         double defaultLeft = Math.Max(SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Right - width - 24);
         double defaultTop = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 24);
-        if (config.DeckPanelLeft is not double savedLeft || config.DeckPanelTop is not double savedTop || !double.IsFinite(savedLeft) || !double.IsFinite(savedTop))
+        if ((layout?.PanelLeft ?? config.DeckPanelLeft) is not double savedLeft
+            || (layout?.PanelTop ?? config.DeckPanelTop) is not double savedTop
+            || !double.IsFinite(savedLeft) || !double.IsFinite(savedTop))
             return new Point(defaultLeft, defaultTop);
         const double visibleEdge = 48;
         double minLeft = SystemParameters.VirtualScreenLeft - width + visibleEdge, maxLeft = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - visibleEdge;
@@ -1915,6 +2422,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         HwndSource.FromHwnd(helper.Handle)?.AddHook(WindowMessageHook);
         EnableShellFileDrop(helper.Handle);
         ApplyRoundedPanelClip();
+        ApplyRoundedWindowRegion();
     }
 
     void ApplyRoundedPanelClip()
@@ -2210,17 +2718,24 @@ internal sealed class DeckPanelOverlayWindow : Window
                 return IntPtr.Zero;
             }
         }
+        if (msg == WmEnterSizeMove)
+        {
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            if (GetWindowRect(hwnd, out var currentRect))
+                BeginInteractiveSizing((currentRect.Right - currentRect.Left) / dpi.DpiScaleX, (currentRect.Bottom - currentRect.Top) / dpi.DpiScaleY);
+            else
+                BeginInteractiveSizing(ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
+        }
         if (msg == WmSizing && lParam != IntPtr.Zero)
         {
             var proposed = Marshal.PtrToStructure<NativeWindowRect>(lParam);
             DpiScale dpi = VisualTreeHelper.GetDpi(this);
             double proposedWidth = (proposed.Right - proposed.Left) / dpi.DpiScaleX;
             double proposedHeight = (proposed.Bottom - proposed.Top) / dpi.DpiScaleY;
-            double currentScale = Math.Clamp((ActualWidth - OverlayChromeWidth) / Math.Max(1, naturalGridWidth), minimumDeckScale, maximumDeckScale);
-            var constrained = AspectLockedSize(proposedWidth, proposedHeight, currentScale, true);
+            int edge = wParam.ToInt32();
+            var constrained = ConstrainInteractiveSize(proposedWidth, proposedHeight, edge);
             int targetWidth = Math.Max(1, (int)Math.Round(constrained.Width * dpi.DpiScaleX));
             int targetHeight = Math.Max(1, (int)Math.Round(constrained.Height * dpi.DpiScaleY));
-            int edge = wParam.ToInt32();
             if (edge is WmszLeft or WmszTopLeft or WmszBottomLeft)
                 proposed.Left = proposed.Right - targetWidth;
             else
@@ -2249,6 +2764,9 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         if (msg == WmExitSizeMove)
         {
+            interactiveSizing = false;
+            cornerResizeWidthDriven = null;
+            ApplyRoundedWindowRegion();
             PersistPosition();
             PersistSize();
         }

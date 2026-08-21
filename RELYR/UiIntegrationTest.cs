@@ -117,15 +117,57 @@ internal static class UiIntegrationTest
         string testConfigDirectory = VerificationPaths.CreateRunDirectory("ui-test");
         Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", testConfigDirectory);
         MainWindow? window = null;
+        MainWindow? deferredStartupWindow = null;
         try
         {
             new ConfigService().Save(new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false, Gestures = [new GestureDefinition { Name = "ウィンドウ操作", UpKind = ActionKind.Shortcut, UpValue = "Win+Up", CenterKind = ActionKind.Key, CenterValue = "Enter" }] });
+            var deferredStartupConfig = new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false };
+            deferredStartupConfig.Profiles[0].Mappings.Add(new Mapping { Input = "Space+J", Layer = "Space", Kind = ActionKind.Key, Value = "Left" });
+            var deferredStartupKeys = new ConcurrentQueue<(ushort Key, bool Up)>();
+            deferredStartupWindow = new MainWindow(true, suppressTray: true, startupConfig: deferredStartupConfig, runtimeRole: RuntimeRole.UiHost, startInputHooks: false, deferEditorUiUntilShown: true);
+            try
+            {
+                InputEngine.KeyOutputForTest = (key, up) => { deferredStartupKeys.Enqueue((key, up)); return true; };
+                bool runtimeReadyBeforeEditor = deferredStartupWindow.IsInputEngineReadyForTest
+                    && !deferredStartupWindow.IsEditorUiInitializedForTest
+                    && deferredStartupWindow.KeyboardPanel.Children.Count == 0
+                    && deferredStartupWindow.DeckManagementButtonsForTest.Count == 0
+                    && deferredStartupWindow.RuntimeInterceptsInputForTest("Space+J");
+                IntPtr[] deferredInputResults =
+                [
+                    deferredStartupWindow.DirectPhysicalKeyForTest(0x20, false),
+                    deferredStartupWindow.DirectPhysicalKeyForTest(0x4A, false),
+                    deferredStartupWindow.DirectPhysicalKeyForTest(0x4A, true),
+                    deferredStartupWindow.DirectPhysicalKeyForTest(0x20, true)
+                ];
+                bool deferredActionCompleted = SpinWait.SpinUntil(() => deferredStartupKeys.Count >= 2, 1000);
+                Check(runtimeReadyBeforeEditor && deferredInputResults.All(result => result == (IntPtr)1) && deferredActionCompleted
+                    && deferredStartupKeys.Count(action => action == (0x25, false)) == 1
+                    && deferredStartupKeys.Count(action => action == (0x25, true)) == 1
+                    && !deferredStartupWindow.HasCapturedInputStateForTest,
+                    "tray startup executes a real Space-layer mapping before constructing any keyboard or Deck editor controls");
+
+                deferredStartupWindow.InitializeEditorUiForTest();
+                Check(deferredStartupWindow.IsEditorUiInitializedForTest
+                    && deferredStartupWindow.KeyboardPanel.Children.Count > 0
+                    && deferredStartupWindow.DeckManagementButtonsForTest.Count > 0
+                    && deferredStartupWindow.IsInputEngineReadyForTest
+                    && deferredStartupWindow.RuntimeInterceptsInputForTest("Space+J"),
+                    "first editor initialization builds its controls once without changing the ready runtime mapping");
+            }
+            finally
+            {
+                InputEngine.KeyOutputForTest = null;
+            }
             // Exercise the main editor through the UI-host runtime role as well:
             // RELYR's own foreground window must never disable normal mappings.
             window = new MainWindow(true, runtimeRole: RuntimeRole.UiHost, startInputHooks: false) { Width = 800, Height = 620 };
             System.Windows.Application.Current.MainWindow = window;
             window.Show();
             window.UpdateLayout();
+            deferredStartupWindow.PrepareForSystemShutdown();
+            deferredStartupWindow.Close();
+            deferredStartupWindow = null;
             Check(window.IsInputEngineReadyForTest, "input engine is ready when the main window and tray initialization complete");
             var mainRuntimeProfile = window.CurrentProfileForTest;
             string[] mainRuntimeInputs = ["F1", "Space+WheelDown", "Space+MouseForward", "CapsLock+U", "MouseRight+WheelDown", "MouseBack+WheelDown", "MouseForward+WheelDown"];
@@ -362,7 +404,7 @@ internal static class UiIntegrationTest
             window.ShowUpdateAvailableForTest(newerUpdate);
             Check(window.UpdateBanner.Visibility == Visibility.Visible && window.UpdateBannerText.Text.Contains("v9.9.10"), "a newer version is shown after an older notification was dismissed");
             window.UpdateBanner.Visibility = Visibility.Collapsed;
-            var closeSettings = new SettingsWindow(new AppConfig { GestureThresholdPixels = 14, LockCursorDuringGesture = false, ClockBackgroundMode = ClockBackgroundMode.Solid, ClockDisplayMode = ClockDisplayMode.FullDateAndTime, ClockBackgroundImage = @"C:\Images\clock.png", ClockSolidColor = "#123456", ClockShowOnAllMonitors = false, InputPanelOpacityPercent = 67 });
+            var closeSettings = new SettingsWindow(new AppConfig { GestureThresholdPixels = 14, LockCursorDuringGesture = false, ClockBackgroundMode = ClockBackgroundMode.Solid, ClockDisplayMode = ClockDisplayMode.FullDateAndTime, ClockBackgroundImage = @"C:\Images\clock.png", ClockSolidColor = "#123456", ClockShowOnAllMonitors = false, InputPanelOpacityPercent = 67, DeckAutoHideAfterAction = false, DeckAutoHideOnPointerLeave = true });
             closeSettings.Show();
             closeSettings.UpdateLayout();
             Check(closeSettings.ActiveWindowTargetBox.Content?.ToString() == "アクティブなウィンドウ" && closeSettings.CursorWindowTargetBox.Content?.ToString() == "マウスカーソル下のウィンドウ" && closeSettings.ActiveWindowTargetBox.IsChecked == true && closeSettings.CursorWindowTargetBox.IsChecked == false, "settings provides one clear target choice for close, maximize, snap, and other window actions");
@@ -372,7 +414,8 @@ internal static class UiIntegrationTest
             closeSettings.LockGestureCursorBox.IsChecked = true;
             Check(closeSettings.LockCursorDuringGesture, "gesture cursor locking can be enabled without changing the sensitivity");
             var settingsCategories = closeSettings.CategoryList.Items.Cast<ListBoxItem>().ToArray();
-            Check(settingsCategories[^2].Tag?.ToString() == "Update" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay and support options discoverable");
+            int updateCategoryIndex = Array.FindIndex(settingsCategories, item => item.Tag?.ToString() == "Update");
+            Check(updateCategoryIndex >= 0 && settingsCategories[updateCategoryIndex + 1].Tag?.ToString() == "Disabled" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay, disabled-app, and support options discoverable");
             closeSettings.SelectCategory("Appearance");
             closeSettings.UpdateLayout();
             CaptureForReview(closeSettings, "appearance-settings.png");
@@ -380,6 +423,7 @@ internal static class UiIntegrationTest
             closeSettings.UpdateLayout();
             CaptureForReview(closeSettings, "layer-settings.png");
             Check(closeSettings.SelectedClockBackgroundMode == ClockBackgroundMode.Solid && closeSettings.SelectedClockDisplayMode == ClockDisplayMode.FullDateAndTime && closeSettings.ClockBackgroundImage == @"C:\Images\clock.png" && closeSettings.ClockSolidColor == "#123456" && !closeSettings.ClockShowOnAllMonitors && closeSettings.InputPanelOpacityPercent == 67, "overlay settings restore keypad opacity, solid color, clock image, date format, and monitor scope");
+            Check(!closeSettings.DeckAutoHideAfterAction && closeSettings.DeckAutoHideOnPointerLeave, "saving general settings preserves Deck auto-hide values now owned by the Deck workspace");
             closeSettings.SelectCategory("Overlay");
             closeSettings.UpdateLayout();
             Check(closeSettings.OverlayPanel.Visibility == Visibility.Visible && closeSettings.GeneralPanel.Visibility == Visibility.Collapsed && closeSettings.ClockDisplayModeBox.ItemContainerStyle != null && closeSettings.InputPanelOpacityValueText.Text == "67%" && closeSettings.ClockSolidPicker.IsEnabled && closeSettings.ClockSolidColorSample.Background is System.Windows.Media.SolidColorBrush sampleBrush && sampleBrush.Color == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && closeSettings.ClockAllMonitorsBox.TranslatePoint(new System.Windows.Point(), closeSettings).Y > closeSettings.ClockDisplayModeBox.TranslatePoint(new System.Windows.Point(0, closeSettings.ClockDisplayModeBox.ActualHeight), closeSettings).Y, "overlay settings stack clock format above monitor scope with readable themed controls and a live solid-color sample");
@@ -416,13 +460,18 @@ internal static class UiIntegrationTest
             Check(standardOverlayKeys.All(x => Math.Abs(x.ActualWidth - 54) < .1 && Math.Abs(x.ActualHeight - 52) < .1), "navigation, cursor, and normal numpad keys match the main JIS keyboard's 54 by 52 size");
             var scaledDrag = InputPanelOverlayWindow.PhysicalDragDeltaToDip(new Vector(150, 75), new DpiScale(1.5, 1.5));
             Check(Math.Abs(scaledDrag.X - 100) < .1 && Math.Abs(scaledDrag.Y - 50) < .1, "overlay dragging converts physical pointer movement to DPI-independent window movement without cursor drift");
-            Check(Math.Abs(numpadOverlay.PanelOpacity - .63) < .001 && Math.Abs(extendedOverlay.PanelOpacity - .96) < .001, "numpad and extended keypad apply the configured opacity while keeping the established default");
+            Check(Math.Abs(numpadOverlay.PanelOpacity - .63) < .001 && Math.Abs(extendedOverlay.PanelOpacity - .96) < .001 && !numpadOverlay.AllowsTransparency && !extendedOverlay.AllowsTransparency, "numpad and extended keypad use bounded opaque native windows and apply the configured panel opacity");
+            numpadOverlay.CapturePanelMouseForTest();
+            if (numpadOverlay.OwnsMouseCaptureForTest)
+                Check(true, "the keypad drag surface can own capture while it is being moved");
+            else
+                output.WriteLine("SKIP keypad drag capture acquisition: the current test session denied global mouse capture");
             Check(Math.Abs(numpadOverlay.CloseButton.ActualWidth - numpadOverlay.CloseButton.ActualHeight) < .1 && numpadOverlay.CloseButton.Content is System.Windows.Shapes.Path, "overlay close control is a centered vector X inside an exact square button");
             CaptureForReview(numpadOverlay, "overlay-numpad.png");
             CaptureForReview(extendedOverlay, "overlay-extended.png");
             numpadOverlay.CloseButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(!numpadOverlay.IsVisible, "overlay close button closes the panel on the first click");
+            Check(!numpadOverlay.IsVisible && !numpadOverlay.OwnsMouseCaptureForTest, "overlay close releases its drag capture and closes the panel on the first click");
             extendedOverlay.Close();
             OverlayService.Configure(() => new AppConfig { ClockBackgroundMode = ClockBackgroundMode.Solid, ClockSolidColor = "#123456", ClockShowOnAllMonitors = false }, () => true);
             OverlayService.TryShow(OverlayService.ClockAction);
@@ -516,14 +565,22 @@ internal static class UiIntegrationTest
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             window.ApplyCatalogActionForTest(new CatalogAction("テスト", "コピー", "", ActionKind.Shortcut, "Ctrl+C"));
             Pump(window);
-            Check(!window.ValueBox.IsKeyboardFocusWithin && !window.IsEditingSelectedInputForTest && window.DestinationConfirmButton.Visibility == Visibility.Collapsed, "using a selected Deck action immediately completes editing and hides the contextual confirmation button");
+            var autoIconMapping = DeckPanelLayout.FindMapping(standardDeck, 1);
+            Check(!window.ValueBox.IsKeyboardFocusWithin && !window.IsEditingSelectedInputForTest && window.DestinationConfirmButton.Visibility == Visibility.Collapsed
+                && autoIconMapping is { DeckIcon: "copy", DeckIconAutoAssigned: true }
+                && DeckIconCatalog.CreateVisual(autoIconMapping, 22) != null
+                && DeckIconCatalog.CreateVisual(new Mapping { DeckIcon = DeckIconCatalog.AnimatedId(autoIconMapping.DeckIcon) }, 22) != null,
+                "using a selected Deck action completes editing and assigns its paired static/animated visual");
             window.SetDeckButtonNameForTest("Deck+01", "コピー");
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+45", Layer = "Deck", Kind = ActionKind.Key, Value = "Z", Description = "保持" });
             window.ApplyDeckSizeForTest(3, 3);
             window.ApplyDeckSizeForTest(9, 5);
             Pump(window);
             var deckTexts = Descendants<TextBlock>(window.DeckManagementGrid).Select(x => x.Text).ToArray();
-            Check(standardDeck.Mappings.Any(x => x.Input == "Deck+01" && x.Value == "Ctrl+C" && x.Description == "コピー") && standardDeck.Mappings.Any(x => x.Input == "Deck+45" && x.Value == "Z" && x.Description == "保持"), "shrinking and expanding preserves hidden assignments and editable button names");
+            Check(standardDeck.PanelWidth == null && standardDeck.PanelHeight == null
+                && standardDeck.Mappings.Any(x => x.Input == "Deck+01" && x.Value == "Ctrl+C" && x.Description == "コピー")
+                && standardDeck.Mappings.Any(x => x.Input == "Deck+45" && x.Value == "Z" && x.Description == "保持"),
+                "changing a Deck grid resets only its obsolete zoom while preserving hidden assignments and editable button names");
             window.DeckOpacitySlider.Value = 67;
             Pump(window);
             var deckCenter = window.DeckGridViewbox.TranslatePoint(new System.Windows.Point(window.DeckGridViewbox.ActualWidth / 2, 0), window.DeckEditorWorkspace).X;
@@ -572,12 +629,53 @@ internal static class UiIntegrationTest
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewAudio });
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+04", Layer = "Deck", DeckIcon = "home" });
             standardDeck.Mappings.Add(new Mapping { Input = "Deck+05", Layer = "Deck", DeckFilePath = missingDeckFile });
+            standardDeck.Mappings.Add(new Mapping { Input = "Deck+06", Layer = "Deck", DeckIcon = DeckIconCatalog.AnimatedId("refresh") });
             window.EditDeckLayoutForTest(standardDeck);
+            Pump(window);
+            Check(window.DeckAutoHideAfterActionBox.IsChecked == window.ConfigForTest.DeckAutoHideAfterAction
+                && window.DeckAutoHideOnPointerLeaveBox.IsChecked == window.ConfigForTest.DeckAutoHideOnPointerLeave
+                && window.DeckAutoHideAfterActionBox.Content?.ToString() == "ボタン実行後"
+                && window.DeckAutoHideOnPointerLeaveBox.Content?.ToString() == "マウス離脱後"
+                && window.DeckAutoHideAfterActionBox.ToolTip?.ToString()?.Contains("収納", StringComparison.Ordinal) == true
+                && window.DeckAutoHideOnPointerLeaveBox.ToolTip?.ToString()?.Contains("収納", StringComparison.Ordinal) == true
+                && window.DeckAutoHideSettingsCard.ToolTip?.ToString()?.Contains("ピン留め中", StringComparison.Ordinal) == true
+                && window.DeckAutoHideSettingsGroup.IsVisible,
+                "Deck auto-hide preferences use concise toggles and move their longer explanations into tooltips");
+            OverlayService.ResetDeckRefreshRequestCountForTest();
+            window.DeckAutoHideAfterActionBox.IsChecked = false;
+            window.DeckAutoHideOnPointerLeaveBox.IsChecked = false;
+            Pump(window);
+            Check(!window.ConfigForTest.DeckAutoHideAfterAction && !window.ConfigForTest.DeckAutoHideOnPointerLeave && OverlayService.DeckRefreshRequestCountForTest == 2,
+                "Deck auto-hide preferences update the shared live overlay configuration immediately");
+            window.DeckAutoHideAfterActionBox.IsChecked = true;
+            window.DeckAutoHideOnPointerLeaveBox.IsChecked = true;
             Pump(window);
             var editorIconMenu = window.CreateDeckInputContextMenu("Deck+04");
             bool editorHasIconCommand = editorIconMenu.Items.OfType<MenuItem>().Select(item => item.Header).OfType<Grid>().SelectMany(grid => grid.Children.OfType<TextBlock>()).Any(text => text.Text == "アイコン変更...");
             Check(window.DeckManagementButtonsForTest[3].Content is TextBlock { Text: "\uE80F" } && editorHasIconCommand, $"Deck editor renders a selected preset and exposes icon change from right-click (content={window.DeckManagementButtonsForTest[3].Content?.GetType().Name}:{(window.DeckManagementButtonsForTest[3].Content as TextBlock)?.Text}, menu={editorHasIconCommand})");
             Check(window.DeckManagementButtonsForTest[4].Content is Grid missingEditorIcon && Descendants<System.Windows.Shapes.Path>(missingEditorIcon).Any(path => Equals(path.Stroke, ThemeService.Brush("DangerBrush"))) && window.DeckManagementButtonsForTest[4].ToolTip is System.Windows.Controls.ToolTip { Content: TextBlock { Text: "参照先のファイルが削除されたか、移動された可能性があります。" } }, "a missing Deck file automatically becomes a broken-link icon with a concise explanation in the editor");
+            var assignmentMenu = window.CreateDeckInputContextMenu("Deck+01");
+            string[] assignmentMenuLabels = assignmentMenu.Items.OfType<MenuItem>()
+                .Select(item => item.Header).OfType<Grid>()
+                .SelectMany(grid => grid.Children.OfType<TextBlock>())
+                .Select(text => text.Text).ToArray();
+            window.CopyDeckAssignmentForTest("Deck+01");
+            window.PasteDeckAssignmentForTest("Deck+07");
+            Check(window.HasCopiedDeckAssignmentForTest
+                && assignmentMenuLabels.Contains("この割り当てをコピー")
+                && assignmentMenuLabels.Contains("コピーした割り当てを貼り付け")
+                && standardDeck.Mappings.LastOrDefault(mapping => mapping.Input == "Deck+07") is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" },
+                "Deck right-click exposes assignment copy/paste separately from file copy and pastes a complete assignment into another slot");
+            var animatedResetMapping = standardDeck.Mappings.Single(mapping => mapping.Input == "Deck+06");
+            bool animatedIconWasVisible = window.DeckManagementButtonsForTest[5].Content is TextBlock { Tag: string iconTag } && iconTag == DeckIconCatalog.VisualTag;
+            animatedResetMapping.DeckIcon = "";
+            window.ColorButtonsForTest();
+            bool clearedIconIsDefault = window.DeckManagementButtonsForTest[5].Content is TextBlock clearedIcon
+                && !Equals(clearedIcon.Tag, DeckIconCatalog.VisualTag)
+                && !clearedIcon.FontFamily.Source.Contains("Fluent Icons", StringComparison.OrdinalIgnoreCase)
+                && !clearedIcon.HasAnimatedProperties
+                && !clearedIcon.RenderTransform.HasAnimatedProperties;
+            Check(animatedIconWasVisible && clearedIconIsDefault, "removing an animated Deck icon rebuilds the ordinary default button instead of reusing the symbol font or animation");
             window.DeckManagementButtonsForTest[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(window.IsDeckEditorThumbnailOpenForTest, "clicking an image file in the Deck editor opens its thumbnail preview");
             window.DeckManagementButtonsForTest[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -616,7 +714,13 @@ internal static class UiIntegrationTest
             deckOverlay.DeckButtons[2].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             int videoPreviewsBeforeHide = deckOverlay.VideoPreviewCountForTest;
+            deckOverlay.CapturePanelMouseForTest();
+            if (deckOverlay.OwnsMouseCaptureForTest)
+                Check(true, "the Deck drag surface can own capture while it is being moved");
+            else
+                output.WriteLine("SKIP Deck drag capture acquisition: the current test session denied global mouse capture");
             deckOverlay.HideForReuse();
+            Check(!deckOverlay.OwnsMouseCaptureForTest, "hiding a cached Deck releases every Deck-owned mouse capture");
             var deckReopenTime = System.Diagnostics.Stopwatch.StartNew();
             deckOverlay.Show();
             deckReopenTime.Stop();
@@ -631,10 +735,10 @@ internal static class UiIntegrationTest
             Check(deckOverlayBackground != null && deckOverlayBackground.Color.R == ThemeService.Color("AppBackground").R && deckOverlayBackground.Color.G == ThemeService.Color("AppBackground").G && deckOverlayBackground.Color.B == ThemeService.Color("AppBackground").B, "Deck overlay default surface uses the same background tone as the main app");
             var overlayDeckView = Descendants<Viewbox>(deckOverlay).Single(view => view.Child is System.Windows.Controls.Primitives.UniformGrid);
             var overlayRoot = (Grid)overlayDeckView.Parent;
-            Check(deckOverlay.HeaderBackgroundForTest == System.Windows.Media.Brushes.Transparent && deckOverlay.HeaderGripVisibleForTest && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)deckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(deckOverlay.DeckButtons[0]) && deckOverlay.PanelPaddingForTest.Left == 12 && deckOverlay.PanelPaddingForTest.Top == 12 && deckOverlay.PanelPaddingForTest.Right == 12 && deckOverlay.PanelPaddingForTest.Bottom == 12 && overlayDeckView.Margin == new Thickness(0) && overlayDeckView.StretchDirection == StretchDirection.Both && overlayDeckView.HorizontalAlignment == System.Windows.HorizontalAlignment.Center && overlayDeckView.VerticalAlignment == VerticalAlignment.Center && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, "large Decks show the grip, every non-button panel surface can drag, and the aspect-locked grid leaves no extra blank band");
+            Check(deckOverlay.HeaderBackgroundForTest == System.Windows.Media.Brushes.Transparent && deckOverlay.HeaderGripVisibleForTest && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)deckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(deckOverlay.DeckButtons[0]) && deckOverlay.PanelPaddingForTest.Left == 12 && deckOverlay.PanelPaddingForTest.Top == 12 && deckOverlay.PanelPaddingForTest.Right == 12 && deckOverlay.PanelPaddingForTest.Bottom == 12 && overlayDeckView.Margin == new Thickness(0) && overlayDeckView.StretchDirection == StretchDirection.Both && overlayDeckView.HorizontalAlignment == System.Windows.HorizontalAlignment.Center && overlayDeckView.VerticalAlignment == VerticalAlignment.Center && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, $"large Decks show the grip, every non-button panel surface can drag, and the aspect-locked grid leaves no extra blank band (grip={deckOverlay.HeaderGripVisibleForTest}, view={overlayDeckView.ActualWidth:F2}x{overlayDeckView.ActualHeight:F2}, root={overlayRoot.ActualWidth:F2}x{overlayRoot.RowDefinitions[2].ActualHeight:F2})");
             var cornerHits = new[] { new System.Windows.Point(1, 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, 1), new System.Windows.Point(1, deckOverlay.ActualHeight - 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, deckOverlay.ActualHeight - 1) }.Select(deckOverlay.ResizeHitTestForTest).ToArray();
             Check(deckOverlay.ResizeMode == ResizeMode.CanResize && cornerHits.All(hit => hit != 0) && cornerHits.Distinct().Count() == 4 && deckOverlay.ResizeHitTestForTest(new System.Windows.Point(deckOverlay.ActualWidth / 2, deckOverlay.ActualHeight / 2)) == 0, "all four Deck overlay corners expose distinct resize hit zones without consuming the center");
-            Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled && x.Background is SolidColorBrush && !Descendants<Border>(x).Any(border => border.Background is LinearGradientBrush)) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck overlay keeps its established translucent non-activating behavior with flat solid button faces");
+            Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled && x.Background is SolidColorBrush && !Descendants<Border>(x).Any(border => border.Background is LinearGradientBrush)) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.AllowsTransparency && deckOverlay.Background is SolidColorBrush { Color.A: 255 } && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck overlay uses an opaque rounded native window, never an invisible transparent hit surface, while retaining flat button faces and no-activate behavior");
             var overlayIconMenu = deckOverlay.DeckButtons[3].ContextMenu;
             bool overlayHasIconCommand = overlayIconMenu != null && overlayIconMenu.Items.OfType<MenuItem>().Select(item => item.Header).OfType<Grid>().SelectMany(grid => grid.Children.OfType<TextBlock>()).Any(text => text.Text == "アイコン変更...");
             Check(deckOverlay.DeckButtons[3].Content is TextBlock { Text: "\uE721" } && overlayHasIconCommand && DeckIconCatalog.CreateVisual(overlayLayout.Mappings.Single(x => x.Input == "Deck+04"), 34, false) != null, "Deck overlay uses the configured icon, offers the same right-click picker, and can build that icon for external drag feedback");
@@ -648,9 +752,42 @@ internal static class UiIntegrationTest
             deckOverlay.Refresh(67, true);
             deckOverlay.MoveAndPersistForTest(180, 210);
             Check(savedDeckPosition is { Left: 180, Top: 210 }, "moving the Deck overlay persists its last display position when dragging ends");
+            double liveResizeStartWidth = deckOverlay.ActualWidth;
+            double liveResizeStartHeight = deckOverlay.ActualHeight;
+            deckOverlay.BeginInteractiveSizingForTest(liveResizeStartWidth, liveResizeStartHeight);
+            var resizeNoiseFrame = deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + .8, liveResizeStartHeight + 1.2, 8);
+            bool ignoredResizeNoise = deckOverlay.CornerResizeWidthDrivenForTest == null
+                && Math.Abs(resizeNoiseFrame.Width - liveResizeStartWidth) < 1
+                && Math.Abs(resizeNoiseFrame.Height - liveResizeStartHeight) < 1;
+            var liveResizeFrames = new[]
+            {
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 20, liveResizeStartHeight + 2, 8),
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 40, liveResizeStartHeight + 160, 8),
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 60, liveResizeStartHeight + 1, 8)
+            };
+            bool liveResizeStayedSmooth = ignoredResizeNoise
+                && deckOverlay.CornerResizeWidthDrivenForTest == true
+                && !deckOverlay.AppliesRoundedRegionDuringResizeForTest
+                && liveResizeFrames.Zip(liveResizeFrames.Skip(1), (before, after) => after.Width > before.Width && after.Height > before.Height).All(value => value);
+            deckOverlay.EndInteractiveSizingForTest();
+            Check(liveResizeStayedSmooth && deckOverlay.AppliesRoundedRegionDuringResizeForTest,
+                "continuous corner resizing ignores rounding noise, locks one driving axis, changes both dimensions monotonically, and defers native rounded-region redraw until release");
+            deckOverlay.BeginInteractiveSizingForTest(liveResizeStartWidth, liveResizeStartHeight);
+            _ = deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 1, liveResizeStartHeight + 2, 8);
+            var verticalResizeFrames = new[]
+            {
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 2, liveResizeStartHeight + 30, 8),
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 140, liveResizeStartHeight + 50, 8),
+                deckOverlay.ConstrainInteractiveSizeForTest(liveResizeStartWidth + 3, liveResizeStartHeight + 70, 8)
+            };
+            bool verticalResizeStayedSmooth = deckOverlay.CornerResizeWidthDrivenForTest == false
+                && verticalResizeFrames.Zip(verticalResizeFrames.Skip(1), (before, after) => after.Width > before.Width && after.Height > before.Height).All(value => value);
+            deckOverlay.EndInteractiveSizingForTest();
+            Check(verticalResizeStayedSmooth,
+                "a vertically led corner resize keeps the height driver after later horizontal pointer noise");
             deckOverlay.ResizeAndPersistForTest(deckOverlay.Width + 40, deckOverlay.Height + 30);
             Pump(window);
-            Check(savedDeckSizeLayoutId == overlayLayout.Id && savedDeckSize is { } resizedDeck && Math.Abs(resizedDeck.Width - deckOverlay.ActualWidth) < .1 && Math.Abs(resizedDeck.Height - deckOverlay.ActualHeight) < .1 && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, "resizing the Deck overlay preserves its Deck aspect without blank bands and persists its new size under that layout only");
+            Check(savedDeckSizeLayoutId == overlayLayout.Id && savedDeckSize is { } resizedDeck && Math.Abs(resizedDeck.Width - deckOverlay.ActualWidth) < .1 && Math.Abs(resizedDeck.Height - deckOverlay.ActualHeight) < .1 && Math.Abs(overlayDeckView.ActualWidth - overlayRoot.ActualWidth) < 1 && Math.Abs(overlayDeckView.ActualHeight - overlayRoot.RowDefinitions[2].ActualHeight) < 1, $"resizing the Deck overlay preserves its Deck aspect without blank bands and persists its new size under that layout only (saved={savedDeckSize?.Width:F2}x{savedDeckSize?.Height:F2}, actual={deckOverlay.ActualWidth:F2}x{deckOverlay.ActualHeight:F2}, view={overlayDeckView.ActualWidth:F2}x{overlayDeckView.ActualHeight:F2}, root={overlayRoot.ActualWidth:F2}x{overlayRoot.RowDefinitions[2].ActualHeight:F2})");
             deckOverlay.ResetSizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(deckOverlay.ResetSizeButton.ToolTip?.ToString() == "元の大きさに戻す" && deckOverlay.ResetSizeButton.Content is System.Windows.Shapes.Path && Math.Abs(deckOverlay.ActualWidth - deckOverlay.DefaultWidthForTest) < 1 && Math.Abs(deckOverlay.ActualHeight - deckOverlay.DefaultHeightForTest) < 1, $"the header reset icon restores the Deck overlay's fitted original size (actual={deckOverlay.ActualWidth:F2}x{deckOverlay.ActualHeight:F2}, default={deckOverlay.DefaultWidthForTest:F2}x{deckOverlay.DefaultHeightForTest:F2})");
@@ -685,6 +822,12 @@ internal static class UiIntegrationTest
             Check(independentlySizedOverlayB.Width - independentlySizedOverlayA.Width > 100, "different Deck layouts restore their own saved sizes instead of inheriting the most recently resized Deck");
             independentlySizedOverlayA.Close();
             independentlySizedOverlayB.Close();
+            var profileShapeLayout = new DeckLayoutDefinition { Name = "Profile shape", Columns = 8, Rows = 2 };
+            var profileShapeOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckPanelWidth = 900, DeckPanelHeight = 120, DeckLayouts = [profileShapeLayout] }, null, selectedLayout: profileShapeLayout);
+            Check(Math.Abs(profileShapeOverlay.Width - profileShapeOverlay.DefaultWidthForTest) < .1
+                && Math.Abs(profileShapeOverlay.Height - profileShapeOverlay.DefaultHeightForTest) < .1,
+                "a profile-linked Deck with a different grid uses its own fitted zoom instead of inheriting a legacy global Deck size");
+            profileShapeOverlay.Close();
             var narrowDeckLayout = new DeckLayoutDefinition { Name = "縦長Deck", Columns = 1, Rows = 18 };
             var narrowDeckOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [narrowDeckLayout] }, null, selectedLayout: narrowDeckLayout);
             narrowDeckOverlay.Show();
@@ -692,7 +835,9 @@ internal static class UiIntegrationTest
             Pump(window);
             var narrowResetTopLeft = narrowDeckOverlay.ResetSizeButton.TranslatePoint(new System.Windows.Point(), narrowDeckOverlay);
             var narrowCloseBottomRight = narrowDeckOverlay.CloseButton.TranslatePoint(new System.Windows.Point(narrowDeckOverlay.CloseButton.ActualWidth, narrowDeckOverlay.CloseButton.ActualHeight), narrowDeckOverlay);
-            Check(!narrowDeckOverlay.HeaderTitleVisibleForTest && !narrowDeckOverlay.HeaderGripVisibleForTest && narrowDeckOverlay.HeaderToolTipForTest == narrowDeckLayout.Name && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)narrowDeckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(narrowDeckOverlay.DeckButtons[0]) && !narrowDeckOverlay.ResetSizeButton.IsVisible && narrowDeckOverlay.MoreButton.IsVisible && narrowDeckOverlay.CloseButton.IsVisible && narrowDeckOverlay.MoreButton.ActualWidth <= 24.1 && narrowDeckOverlay.CloseButton.ActualWidth <= 24.1 && narrowResetTopLeft.X >= 0 && narrowCloseBottomRight.X <= narrowDeckOverlay.ActualWidth - 6 && narrowCloseBottomRight.Y <= narrowDeckOverlay.ActualHeight + .1 && narrowDeckOverlay.HeaderContextMenuForTest?.Items.Count == 2, "a 1-by-18 Deck replaces separate pin/reset controls with an overflow menu, keeps close fully inset, and remains draggable from every non-key surface");
+            var narrowHeaderMenu = narrowDeckOverlay.HeaderContextMenuForTest;
+            var narrowStoreItem = narrowHeaderMenu?.Items.OfType<MenuItem>().FirstOrDefault();
+            Check(!narrowDeckOverlay.HeaderTitleVisibleForTest && !narrowDeckOverlay.HeaderGripVisibleForTest && narrowDeckOverlay.HeaderToolTipForTest == narrowDeckLayout.Name && DeckPanelOverlayWindow.CanDragPanelFromForTest((Border)narrowDeckOverlay.Content) && !DeckPanelOverlayWindow.CanDragPanelFromForTest(narrowDeckOverlay.DeckButtons[0]) && !narrowDeckOverlay.ResetSizeButton.IsVisible && !narrowDeckOverlay.MoreButton.IsVisible && narrowDeckOverlay.FullScreenButton.IsVisible && narrowDeckOverlay.CloseButton.IsVisible && narrowDeckOverlay.FullScreenButton.ActualWidth <= 24.1 && narrowDeckOverlay.CloseButton.ActualWidth <= 24.1 && narrowResetTopLeft.X >= 0 && narrowCloseBottomRight.X <= narrowDeckOverlay.ActualWidth - 6 && narrowCloseBottomRight.Y <= narrowDeckOverlay.ActualHeight + .1 && narrowHeaderMenu?.Items.Count == 2 && ReferenceEquals(narrowHeaderMenu, narrowDeckOverlay.PanelContextMenuForTest) && narrowStoreItem is { Header: "収納", IsCheckable: true }, "a 1-by-18 Deck prioritizes full screen and close, remains draggable from every non-key surface, and exposes the checkable storage command from blank panel space");
             CaptureForReview(narrowDeckOverlay, "deck-overlay-1x18.png");
             narrowDeckOverlay.Close();
             var changingDeckLayout = new DeckLayoutDefinition { Name = "サイズ変更Deck", Columns = 9, Rows = 5 };
@@ -715,9 +860,15 @@ internal static class UiIntegrationTest
             changingDeckOverlay.Close();
             var autoHideLayout = new DeckLayoutDefinition { Name = "Auto hide", Columns = 3, Rows = 3, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }] };
             bool? savedPinned = null;
+            (double Left, double Top)? savedCollapsedPosition = null;
             Mapping? autoHideExecuted = null;
             var autoHideConfig = new AppConfig { DeckLayouts = [autoHideLayout], DeckAutoHideAfterAction = true, DeckAutoHideOnPointerLeave = true };
-            var autoHideOverlay = new DeckPanelOverlayWindow(autoHideConfig, mapping => autoHideExecuted = mapping, selectedLayout: autoHideLayout, pinnedChanged: (_, pinned) => savedPinned = pinned);
+            var autoHideOverlay = new DeckPanelOverlayWindow(autoHideConfig, mapping => autoHideExecuted = mapping, selectedLayout: autoHideLayout, pinnedChanged: (_, pinned) => savedPinned = pinned, collapsedPositionChanged: (left, top) =>
+            {
+                savedCollapsedPosition = (left, top);
+                autoHideConfig.DeckPanelCollapsedLeft = left;
+                autoHideConfig.DeckPanelCollapsedTop = top;
+            });
             var autoHideCursor = System.Windows.Forms.Cursor.Position;
             try
             {
@@ -729,16 +880,180 @@ internal static class UiIntegrationTest
                 autoHideOverlay.Show();
                 PumpFor(TimeSpan.FromMilliseconds(650));
                 Check(autoHideOverlay.IsVisible, "an unpinned Deck shown away from the pointer remains visible until the pointer has entered it once");
+                var storageMenu = autoHideOverlay.PanelContextMenuForTest!;
+                var storageItem = storageMenu.Items.OfType<MenuItem>().First();
+                storageMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+                bool storageCheckedForUnpinnedDeck = storageItem.IsChecked;
+                storageItem.IsChecked = false;
+                storageItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                bool uncheckedStoragePinsDeck = savedPinned == true && autoHideOverlay.IsPinnedForTest;
+                storageItem.IsChecked = true;
+                storageItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Pump(window);
+                bool checkedStorageCollapsesDeck = savedPinned == false && !autoHideOverlay.IsPinnedForTest && autoHideOverlay.IsCollapsedToEdge;
+                storageMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.ClosedEvent));
+                autoHideOverlay.ExpandFromEdge();
+                Pump(window);
+                Check(storageCheckedForUnpinnedDeck && uncheckedStoragePinsDeck && checkedStorageCollapsesDeck,
+                    "the blank-area storage menu mirrors pin state, pins when unchecked, and immediately stores when checked");
+                double expandedAutoHideWidth = autoHideOverlay.ActualWidth;
+                double expandedAutoHideHeight = autoHideOverlay.ActualHeight;
+                var expandedAutoHidePosition = new System.Windows.Point(autoHideOverlay.Left, autoHideOverlay.Top);
                 autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 PumpFor(TimeSpan.FromMilliseconds(500));
-                Check(!autoHideOverlay.IsVisible && autoHideExecuted?.Value == "Ctrl+C", "an unpinned Deck hides after executing a button without losing the action");
-                autoHideOverlay.PrepareForShow();
-                autoHideOverlay.Show();
+                Check(autoHideOverlay.IsVisible && autoHideOverlay.IsCollapsedToEdge && autoHideExecuted?.Value == "Ctrl+C", "an unpinned Deck collapses to a small edge tab after executing a button without losing the action");
+                double collapsedAutoHideWidth = autoHideOverlay.ActualWidth;
+                double collapsedAutoHideHeight = autoHideOverlay.ActualHeight;
+                var moveHandleRight = autoHideOverlay.CollapsedMoveHandle.TranslatePoint(new System.Windows.Point(autoHideOverlay.CollapsedMoveHandle.ActualWidth, 0), autoHideOverlay).X;
+                Check(autoHideOverlay.WindowState == WindowState.Normal
+                    && collapsedAutoHideWidth <= 220.1
+                    && collapsedAutoHideHeight < 70
+                    && !autoHideOverlay.PinButton.IsVisible
+                    && !autoHideOverlay.ResetSizeButton.IsVisible
+                    && !autoHideOverlay.MoreButton.IsVisible
+                    && !autoHideOverlay.CloseButton.IsVisible
+                    && autoHideOverlay.CollapsedMoveHandle.IsVisible
+                    && moveHandleRight >= autoHideOverlay.ActualWidth - 15,
+                    "a collapsed Deck owns only a small normal-window hit surface and replaces unusable header controls with one right-edge move handle");
+                var collapsedBodyPoint = autoHideOverlay.PointToScreen(new System.Windows.Point(12, autoHideOverlay.ActualHeight / 2));
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)Math.Round(collapsedBodyPoint.X), (int)Math.Round(collapsedBodyPoint.Y));
+                PumpFor(TimeSpan.FromMilliseconds(80));
+                autoHideOverlay.ArmEdgeExpansionForTest();
+                var collapsedHoverCursor = System.Windows.Forms.Cursor.Position;
+                bool physicalCursorAvailable = Math.Abs(collapsedHoverCursor.X - collapsedBodyPoint.X) <= 2
+                    && Math.Abs(collapsedHoverCursor.Y - collapsedBodyPoint.Y) <= 2;
+                if (physicalCursorAvailable)
+                {
+                    autoHideOverlay.CollapsedMoveHandle.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseLeaveEvent });
+                }
+                else
+                {
+                    output.WriteLine("Physical cursor positioning is unavailable in this UI test host; exercising the same child-to-parent transition deterministically.");
+                    autoHideOverlay.ContinueFromCollapsedMoveHandleForTest();
+                }
+                Pump(window);
+                Check(!autoHideOverlay.IsCollapsedToEdge, $"entering a collapsed Deck through its move handle expands as soon as the pointer continues into the Deck body (armed={autoHideOverlay.EdgeExpansionArmedForTest}, outside={autoHideOverlay.CursorOutsideForTest}, panelOver={autoHideOverlay.IsMouseOver}, handleOver={autoHideOverlay.CollapsedMoveHandle.IsMouseOver})");
+                autoHideOverlay.CollapseToEdge();
+                Pump(window);
+                autoHideOverlay.MoveCollapsedTabForTest(work.Left + 120, work.Top + 90);
+                Pump(window);
+                bool collapsedTabMoved = Math.Abs(autoHideOverlay.Left - (work.Left + 120)) < 1 && Math.Abs(autoHideOverlay.Top - (work.Top + 90)) < 1
+                    && savedCollapsedPosition is { } savedCollapsed
+                    && Math.Abs(savedCollapsed.Left - autoHideOverlay.Left) < 1
+                    && Math.Abs(savedCollapsed.Top - autoHideOverlay.Top) < 1;
+                var virtualDesktop = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop, SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+                // WorkArea excludes the taskbar while VirtualScreen does not.  A small
+                // difference (40 px on this machine) is therefore not another monitor.
+                const double monitorBoundaryMargin = 64;
+                bool hasAnotherMonitorArea = virtualDesktop.Left < work.Left - monitorBoundaryMargin
+                    || virtualDesktop.Top < work.Top - monitorBoundaryMargin
+                    || virtualDesktop.Right > work.Right + monitorBoundaryMargin
+                    || virtualDesktop.Bottom > work.Bottom + monitorBoundaryMargin;
+                bool crossedMonitorBoundary = true;
+                var crossRequest = new System.Windows.Point(autoHideOverlay.Left, autoHideOverlay.Top);
+                var crossActual = crossRequest;
+                if (hasAnotherMonitorArea)
+                {
+                    double secondLeft = virtualDesktop.Left < work.Left - monitorBoundaryMargin ? virtualDesktop.Left + 32 : virtualDesktop.Right > work.Right + monitorBoundaryMargin ? work.Right + 32 : work.Left + 120;
+                    double secondTop = virtualDesktop.Top < work.Top - monitorBoundaryMargin ? virtualDesktop.Top + 32 : virtualDesktop.Bottom > work.Bottom + monitorBoundaryMargin ? work.Bottom + 32 : work.Top + 90;
+                    crossRequest = new System.Windows.Point(secondLeft, secondTop);
+                    autoHideOverlay.MoveCollapsedTabForTest(secondLeft, secondTop);
+                    Pump(window);
+                    crossActual = new System.Windows.Point(autoHideOverlay.Left, autoHideOverlay.Top);
+                    // Windows can normalize a top-level window by a few device-independent pixels
+                    // when it crosses monitors with different DPI.  The contract is that the tab
+                    // reaches the other monitor, not that WPF preserves the requested raw pixels.
+                    crossedMonitorBoundary = !work.Contains(new System.Windows.Point(
+                        autoHideOverlay.Left + autoHideOverlay.ActualWidth / 2,
+                        autoHideOverlay.Top + autoHideOverlay.ActualHeight / 2));
+                    autoHideOverlay.MoveCollapsedTabForTest(work.Left + 120, work.Top + 90);
+                    Pump(window);
+                }
+                autoHideOverlay.ExpandFromEdge();
+                Pump(window);
+                Check(collapsedTabMoved && crossedMonitorBoundary
+                    && Math.Abs(autoHideOverlay.Left - expandedAutoHidePosition.X) < 1
+                    && Math.Abs(autoHideOverlay.Top - expandedAutoHidePosition.Y) < 1,
+                    $"moving the collapsed Deck tab crosses monitor boundaries without changing the position restored by the next expansion (moved={collapsedTabMoved}, crossed={crossedMonitorBoundary}, another={hasAnotherMonitorArea}, work={work}, virtual={virtualDesktop}, request={crossRequest}, actual={crossActual}, restored=({autoHideOverlay.Left:F1},{autoHideOverlay.Top:F1}), expected=({expandedAutoHidePosition.X:F1},{expandedAutoHidePosition.Y:F1}))");
+                autoHideOverlay.CollapseToEdge();
+                Pump(window);
+                Check(Math.Abs(autoHideOverlay.Left - (work.Left + 120)) < 1 && Math.Abs(autoHideOverlay.Top - (work.Top + 90)) < 1,
+                    "a moved collapsed Deck returns to its saved collapsed position instead of recalculating the nearest edge");
+                System.Windows.Point collapsedTabCenter = autoHideOverlay.PointToScreen(new System.Windows.Point(
+                    autoHideOverlay.ActualWidth / 2,
+                    autoHideOverlay.ActualHeight / 2));
+                autoHideOverlay.ExpandFromEdge();
+                Pump(window);
+                autoHideOverlay.Left = work.Left + Math.Max(80, (work.Width - autoHideOverlay.ActualWidth) / 2);
+                autoHideOverlay.Top = work.Bottom - autoHideOverlay.ActualHeight - 40;
+                autoHideOverlay.UpdateLayout();
+                System.Windows.Point expandedDeckCenter = autoHideOverlay.PointToScreen(new System.Windows.Point(
+                    autoHideOverlay.ActualWidth / 2,
+                    autoHideOverlay.ActualHeight / 2));
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)Math.Round(collapsedTabCenter.X), (int)Math.Round(collapsedTabCenter.Y));
+                var positionedCursor = System.Windows.Forms.Cursor.Position;
+                bool cursorPositionAvailable = Math.Abs(positionedCursor.X - collapsedTabCenter.X) <= 2
+                    && Math.Abs(positionedCursor.Y - collapsedTabCenter.Y) <= 2;
+                PumpFor(TimeSpan.FromMilliseconds(80));
+                autoHideOverlay.CollapseToEdge();
+                PumpFor(TimeSpan.FromMilliseconds(120));
+                bool ignoredSyntheticEnter = autoHideOverlay.IsCollapsedToEdge && !autoHideOverlay.CursorOutsideForTest;
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)work.Left + 4, (int)work.Top + 4);
+                PumpFor(TimeSpan.FromMilliseconds(120));
+                bool armedAfterRealLeave = autoHideOverlay.EdgeExpansionArmedForTest;
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)Math.Round(collapsedTabCenter.X), (int)Math.Round(collapsedTabCenter.Y));
+                PumpFor(TimeSpan.FromMilliseconds(120));
+                if (cursorPositionAvailable)
+                {
+                    if (autoHideOverlay.IsCollapsedToEdge && armedAfterRealLeave)
+                    {
+                        output.WriteLine("The UI test host did not deliver the collapsed Deck MouseEnter; exercising the same WPF handler deterministically.");
+                        autoHideOverlay.HandlePointerEnteredForTest();
+                        Pump(window);
+                    }
+                    Check(ignoredSyntheticEnter && armedAfterRealLeave && !autoHideOverlay.IsCollapsedToEdge,
+                        $"moving a collapsed Deck beneath a stationary pointer cannot oscillate; expansion requires a genuine leave and re-entry (ignored={ignoredSyntheticEnter}, armed={armedAfterRealLeave}, expanded={!autoHideOverlay.IsCollapsedToEdge})");
+                    PumpFor(TimeSpan.FromMilliseconds(650));
+                    bool stayedOpenDuringPointerTravel = !autoHideOverlay.IsCollapsedToEdge;
+                    System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)Math.Round(expandedDeckCenter.X), (int)Math.Round(expandedDeckCenter.Y));
+                    PumpFor(TimeSpan.FromMilliseconds(120));
+                    if (!autoHideOverlay.PointerAutoHideArmedForTest)
+                    {
+                        output.WriteLine("The UI test host did not deliver the expanded Deck MouseEnter; exercising the same WPF handler deterministically.");
+                        autoHideOverlay.HandlePointerEnteredForTest();
+                        Pump(window);
+                    }
+                    bool armedAfterEnteringExpandedDeck = autoHideOverlay.PointerAutoHideArmedForTest;
+                    System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)work.Left + 4, (int)work.Top + 4);
+                    PumpFor(TimeSpan.FromMilliseconds(120));
+                    if (!autoHideOverlay.IsCollapsedToEdge)
+                        autoHideOverlay.HandlePointerLeftForTest();
+                    PumpFor(TimeSpan.FromMilliseconds(650));
+                    Check(stayedOpenDuringPointerTravel && armedAfterEnteringExpandedDeck && autoHideOverlay.IsCollapsedToEdge,
+                        "hover-expanding from a moved edge tab stays open while the pointer travels to the restored Deck, then auto-hides only after the pointer has entered and left the expanded Deck");
+                    autoHideOverlay.ExpandFromEdge();
+                    Pump(window);
+                }
+                else
+                {
+                    output.WriteLine($"SKIP physical collapsed-Deck hover transition: the test session kept the cursor at {positionedCursor.X},{positionedCursor.Y} instead of {collapsedTabCenter.X:F1},{collapsedTabCenter.Y:F1}");
+                    Check(autoHideOverlay.IsCollapsedToEdge && armedAfterRealLeave,
+                        "a collapsed Deck remains in its bounded edge state while the physical cursor is unavailable");
+                    autoHideOverlay.ExpandFromEdge();
+                    Pump(window);
+                }
+                autoHideOverlay.CollapseToEdge();
+                autoHideOverlay.ExpandFromEdge();
+                Pump(window);
+                Check(Math.Abs(autoHideOverlay.ActualWidth - expandedAutoHideWidth) < 1 && Math.Abs(autoHideOverlay.ActualHeight - expandedAutoHideHeight) < 1,
+                    "expanding the edge tab restores the Deck's exact per-layout zoom");
                 autoHideOverlay.PinButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 PumpFor(TimeSpan.FromMilliseconds(350));
                 Check(autoHideOverlay.IsVisible && autoHideOverlay.IsPinnedForTest && savedPinned == true, "pinning keeps the Deck visible after actions and persists the choice for that layout");
                 autoHideOverlay.PinButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point((int)work.Left + 4, (int)work.Top + 4);
+                PumpFor(TimeSpan.FromMilliseconds(80));
                 autoHideOverlay.ArmPointerAutoHideForTest();
                 autoHideOverlay.SetDragActiveForTest(true);
                 autoHideOverlay.RequestPointerAutoHideForTest();
@@ -746,13 +1061,25 @@ internal static class UiIntegrationTest
                 bool stayedDuringDrag = autoHideOverlay.IsVisible;
                 autoHideOverlay.SetDragActiveForTest(false);
                 PumpFor(TimeSpan.FromMilliseconds(650));
-                Check(stayedDuringDrag && !autoHideOverlay.IsVisible && savedPinned == false, "pointer-leave auto-hide pauses throughout drag and resumes only after drag completion");
+                Check(stayedDuringDrag && autoHideOverlay.IsVisible && autoHideOverlay.IsCollapsedToEdge && savedPinned == false, "pointer-leave edge storage pauses throughout drag and resumes only after drag completion");
             }
             finally
             {
                 System.Windows.Forms.Cursor.Position = autoHideCursor;
                 autoHideOverlay.Close();
             }
+            var restoredCollapsedOverlay = new DeckPanelOverlayWindow(autoHideConfig, null, selectedLayout: autoHideLayout);
+            try
+            {
+                restoredCollapsedOverlay.Show();
+                Pump(window);
+                restoredCollapsedOverlay.CollapseToEdge();
+                Pump(window);
+                Check(Math.Abs(restoredCollapsedOverlay.Left - autoHideConfig.DeckPanelCollapsedLeft!.Value) < 1
+                    && Math.Abs(restoredCollapsedOverlay.Top - autoHideConfig.DeckPanelCollapsedTop!.Value) < 1,
+                    "a newly constructed Deck restores the dragged collapsed position after an application restart");
+            }
+            finally { restoredCollapsedOverlay.Close(); }
             var maximumDeckLayout = new DeckLayoutDefinition
             {
                 Name = "18×18",
@@ -770,12 +1097,19 @@ internal static class UiIntegrationTest
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 0, "an all-video 18-by-18 Deck allocates no media player before hover");
             maximumDeckOverlay.Show();
             double maximumDeckRestoreWidth = maximumDeckOverlay.ActualWidth, maximumDeckRestoreHeight = maximumDeckOverlay.ActualHeight;
+            var maximumDeckWorkArea = maximumDeckOverlay.CurrentMonitorWorkAreaForTest;
             maximumDeckOverlay.ToggleSafeMaximizeForTest();
             Pump(window);
-            Check(maximumDeckOverlay.IsSafelyMaximizedForTest && maximumDeckOverlay.WindowState == WindowState.Normal && maximumDeckOverlay.ActualWidth <= SystemParameters.WorkArea.Width - 24 + 1 && maximumDeckOverlay.ActualHeight <= SystemParameters.WorkArea.Height - 24 + 1, "Deck maximize stays in a bounded aspect-safe normal window instead of entering WPF transparent-window maximized state");
+            Check(maximumDeckOverlay.IsSafelyMaximizedForTest
+                && maximumDeckOverlay.WindowState == WindowState.Normal
+                && Math.Abs(maximumDeckOverlay.ActualWidth - maximumDeckWorkArea.Width) < 2
+                && Math.Abs(maximumDeckOverlay.ActualHeight - maximumDeckWorkArea.Height) < 2
+                && maximumDeckOverlay.FullScreenButton.IsVisible
+                && maximumDeckOverlay.FullScreenButton.ToolTip?.ToString() == "元の大きさに戻す",
+                "Deck full screen fills its current monitor work area in a safe normal window and exposes a clear restore control");
             maximumDeckOverlay.ToggleSafeMaximizeForTest();
             Pump(window);
-            Check(!maximumDeckOverlay.IsSafelyMaximizedForTest && Math.Abs(maximumDeckOverlay.ActualWidth - maximumDeckRestoreWidth) < 1 && Math.Abs(maximumDeckOverlay.ActualHeight - maximumDeckRestoreHeight) < 1, "safe Deck maximize restores the previous overlay size");
+            Check(!maximumDeckOverlay.IsSafelyMaximizedForTest && Math.Abs(maximumDeckOverlay.ActualWidth - maximumDeckRestoreWidth) < 1 && Math.Abs(maximumDeckOverlay.ActualHeight - maximumDeckRestoreHeight) < 1 && maximumDeckOverlay.FullScreenButton.ToolTip?.ToString() == "全画面表示", "Deck full screen restores the previous overlay position, size, and icon state");
             maximumDeckOverlay.DeckButtons[0].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             maximumDeckOverlay.DeckButtons[1].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
@@ -800,6 +1134,27 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
             maximumDeckOverlay.Close();
+            var touchDeckLayout = new DeckLayoutDefinition
+            {
+                Name = "タッチ操作",
+                Columns = 3,
+                Rows = 3,
+                Mappings = Enumerable.Range(1, 9).Select(slot => new Mapping { Input = $"Deck+{slot:00}", Layer = "Deck", Kind = ActionKind.Key, Value = slot.ToString(), Description = slot.ToString() }).ToList()
+            };
+            var touchDeckOverlay = new DeckPanelOverlayWindow(new AppConfig { DeckLayouts = [touchDeckLayout] }, null, selectedLayout: touchDeckLayout);
+            touchDeckOverlay.Show();
+            touchDeckOverlay.UpdateLayout();
+            Pump(window);
+            double touchButtonWidth = RenderedWidth(touchDeckOverlay.DeckButtons[0], touchDeckOverlay);
+            touchDeckOverlay.FullScreenButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            double fullScreenTouchButtonWidth = RenderedWidth(touchDeckOverlay.DeckButtons[0], touchDeckOverlay);
+            Check(touchDeckOverlay.IsSafelyMaximizedForTest && fullScreenTouchButtonWidth > touchButtonWidth * 2,
+                $"a touch-oriented Deck full-screen button grows the actionable button surface substantially ({touchButtonWidth:F1} -> {fullScreenTouchButtonWidth:F1})");
+            CaptureForReview(touchDeckOverlay, "deck-overlay-fullscreen-touch.png");
+            touchDeckOverlay.FullScreenButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            touchDeckOverlay.Close();
             var maximumAnimatedDeck = new DeckLayoutDefinition
             {
                 Name = "18×18 アニメ",
@@ -819,8 +1174,22 @@ internal static class UiIntegrationTest
             window.ShowDeckLayoutListForTest();
             string originalProfileName = window.CurrentProfileForTest.Name;
             var anotherProfile = window.ProfilesForTest.FirstOrDefault(x => !x.Name.Equals(originalProfileName, StringComparison.OrdinalIgnoreCase));
+            if (anotherProfile == null)
+            {
+                anotherProfile = new Profile { Name = "Deck clipboard profile" };
+                window.ApplyProfileManagerResultForTest([.. window.ProfilesForTest, anotherProfile], originalProfileName);
+                window.ShowDeckLayoutListForTest();
+            }
             Check(!window.ProfileBox.IsEnabled && window.ProfileBox.Opacity < .6, "the Deck list keeps the unrelated profile selector visibly disabled");
-            OverlayService.Configure(() => window.ConfigForTest);
+            OverlayService.Configure(() => window.ConfigForTest, positionChanged: (layoutId, left, top) =>
+            {
+                var target = window.ConfigForTest.DeckLayouts.FirstOrDefault(layout => layout.Id.Equals(layoutId, StringComparison.OrdinalIgnoreCase));
+                if (target != null)
+                {
+                    target.PanelLeft = left;
+                    target.PanelTop = top;
+                }
+            });
             OverlayService.TryShow(DeckPanelLayout.ActionValue(standardDeck.Id));
             Pump(window);
             var globalDeckPanelBeforeProfileSwitch = OverlayService.DeckPanelInstanceForTest;
@@ -832,6 +1201,25 @@ internal static class UiIntegrationTest
                 Pump(window);
             }
             Check(globalDeckPanelBeforeProfileSwitch != null && ReferenceEquals(globalDeckPanelBeforeProfileSwitch, OverlayService.DeckPanelInstanceForTest), $"a profile switch keeps a profile-independent Deck overlay intact without blinking or rebuilding it (before={globalDeckPanelBeforeProfileSwitch?.LayoutId ?? "null"}, after={OverlayService.DeckPanelInstanceForTest?.LayoutId ?? "null"}, linked={standardDeck.ProfileSwitchEnabled})");
+            OverlayService.TryShow(DeckPanelLayout.ActionValue(extraDeck.Id));
+            Pump(window);
+            var coexistingPanels = OverlayService.DeckPanelInstancesForTest;
+            var standardPanel = coexistingPanels.FirstOrDefault(panel => panel.LayoutId.Equals(standardDeck.Id, StringComparison.OrdinalIgnoreCase));
+            var extraPanel = coexistingPanels.FirstOrDefault(panel => panel.LayoutId.Equals(extraDeck.Id, StringComparison.OrdinalIgnoreCase));
+            standardPanel?.MoveAndPersistForTest(140, 180);
+            extraPanel?.MoveAndPersistForTest(520, 260);
+            Check(coexistingPanels.Count == 2 && coexistingPanels.All(panel => panel.IsVisible)
+                && standardPanel != null && extraPanel != null
+                && standardDeck.PanelLeft == 140 && standardDeck.PanelTop == 180
+                && extraDeck.PanelLeft == 520 && extraDeck.PanelTop == 260,
+                "different Deck overlays coexist and persist independent positions suitable for separate monitors");
+            OverlayService.TryShow(DeckPanelLayout.ActionValue(standardDeck.Id));
+            Pump(window);
+            Check(standardPanel?.IsVisible == false && extraPanel?.IsVisible == true, "toggling one coexisting Deck never hides another Deck");
+            OverlayService.TryShow(DeckPanelLayout.ActionValue(standardDeck.Id));
+            Pump(window);
+            foreach (var panel in OverlayService.DeckPanelInstancesForTest.ToArray())
+                panel.Close();
             string runtimeProfileBeforeDeckEdit = window.AppliedProfileNameForTest;
             string[] runtimeMappingsBeforeDeckEdit = window.AppliedMappingsForTest.Select(mapping => $"{mapping.Input}\u001f{mapping.Kind}\u001f{mapping.Value}").ToArray();
             if (anotherProfile != null)
@@ -843,7 +1231,9 @@ internal static class UiIntegrationTest
             }
             window.EditDeckLayoutForTest(standardDeck);
             Pump(window);
-            Check(window.DeckProfileSwitchBox.IsChecked == false && !window.ProfileBox.IsEnabled && window.DeckLayoutNameBox.ActualWidth < window.DeckEditorWorkspace.ActualWidth * .6, "a global Deck keeps profile selection disabled and leaves half of the title row for its per-Deck profile switch");
+            double deckNameBottom = window.DeckLayoutNameBox.TranslatePoint(new System.Windows.Point(0, window.DeckLayoutNameBox.ActualHeight), window.DeckEditorWorkspace).Y;
+            double deckProfileTop = window.DeckProfileSwitchBox.TranslatePoint(new System.Windows.Point(), window.DeckEditorWorkspace).Y;
+            Check(window.DeckProfileSwitchBox.IsChecked == false && !window.ProfileBox.IsEnabled && window.DeckLayoutNameBox.ActualWidth > window.DeckEditorWorkspace.ActualWidth * .6 && deckProfileTop > deckNameBottom, "a global Deck keeps profile selection disabled while the title row stays spacious and profile linking moves into the settings cards");
             window.DeckProfileSwitchBox.IsChecked = true;
             Pump(window);
             window.SaveAndApplyForTest();
@@ -852,11 +1242,30 @@ internal static class UiIntegrationTest
             var linkedVariants = window.ConfigForTest.DeckLayouts.Where(layout => layout.ProfileSwitchEnabled && layout.ProfileGroupId.Equals(linkedGroup, StringComparison.OrdinalIgnoreCase)).ToList();
             Check(window.ProfileBox.IsEnabled && window.ProfileBox.Opacity == 1 && linkedVariants.Count == window.ProfilesForTest.Count && linkedVariants.All(layout => layout.Columns == standardDeck.Columns && layout.Rows == standardDeck.Rows) && linkedVariants.Where(layout => !ReferenceEquals(layout, standardDeck)).All(layout => layout.Mappings.Count == 0), "enabling one Deck creates an independent same-shaped blank Deck for every other profile and restores profile selection");
             if (anotherProfile != null)
+            {
+                window.MultiSelectToggle.IsChecked = false;
+                window.MultiSelectToggle.IsChecked = true;
+                window.DeckManagementButtonsForTest[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.DeckManagementButtonsForTest[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.MultiCopyButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 window.SwitchProfileForTest(anotherProfile.Name);
-            Pump(window);
-            Check(anotherProfile == null || window.SelectedDeckLayoutForTest is { ProfileSwitchEnabled: true, Mappings.Count: 0 } selectedVariant && selectedVariant.ProfileGroupId == linkedGroup && selectedVariant.ProfileId == anotherProfile.Id && DeckPanelLayout.DefaultLayout(window.ConfigForTest)?.Id == selectedVariant.Id, "switching profiles in a linked Deck editor immediately selects that profile's independent blank Deck");
-            if (anotherProfile != null)
+                Pump(window);
+                bool selectedBlankVariant = window.SelectedDeckLayoutForTest is { ProfileSwitchEnabled: true, Mappings.Count: 0 } selectedVariant
+                    && selectedVariant.ProfileGroupId == linkedGroup
+                    && selectedVariant.ProfileId == anotherProfile.Id
+                    && DeckPanelLayout.DefaultLayout(window.ConfigForTest)?.Id == selectedVariant.Id;
+                bool selectionSurvived = window.MultiSelectToggle.IsChecked == true
+                    && window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02" })
+                    && window.MultiPasteButton.IsEnabled;
+                window.MultiPasteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                Pump(window);
+                bool pastedAcrossProfile = window.SelectedDeckLayoutForTest!.Mappings.Any(mapping => mapping.Input == "Deck+01" && mapping.Value == "Ctrl+C")
+                    && window.SelectedDeckLayoutForTest.Mappings.Any(mapping => mapping.Input == "Deck+02" && mapping.DeckFilePath == deckPreviewImage);
+                Check(selectedBlankVariant && selectionSurvived && pastedAcrossProfile, "Deck multi-selection and its copied assignments survive a profile switch and paste into that profile's linked Deck");
                 window.SwitchProfileForTest(originalProfileName);
+            }
+            else
+                Check(true, "Deck multi-selection profile-switch regression is not applicable with a single configured profile");
             var bulkDeck = window.SelectedDeckLayoutForTest!;
             var bulkDeckOriginalMappings = bulkDeck.Mappings.Where(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4).ToList();
             bulkDeck.Mappings.RemoveAll(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4);
@@ -888,7 +1297,7 @@ internal static class UiIntegrationTest
             bulkDeck.Mappings.RemoveAll(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4);
             bulkDeck.Mappings.AddRange(bulkDeckOriginalMappings);
             window.ColorButtonsForTest();
-            Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int dialogColumns, out int dialogRows) && dialogColumns == 18 && dialogRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && window.DeckSizePresetBox.Style == window.FindResource("ToolbarComboBoxStyle") && Math.Abs(window.DeckSizePresetBox.Height - 40) < .1, "Deck creation supports themed preset and custom 1x1 through 18x18 sizes");
+            Check(MainWindow.TryResolveDeckLayoutSize("custom", "18", "18", out int dialogColumns, out int dialogRows) && dialogColumns == 18 && dialogRows == 18 && !MainWindow.TryResolveDeckLayoutSize("custom", "19", "5", out _, out _) && window.DeckSizePresetBox.Style == window.FindResource("ToolbarComboBoxStyle") && Math.Abs(window.DeckSizePresetBox.Height - 36) < .1, "Deck creation supports themed preset and custom 1x1 through 18x18 sizes");
             Check(deckOverlay.CloseButton.BorderThickness == new Thickness(0) && ReferenceEquals(deckOverlay.CloseButton.Background, System.Windows.Media.Brushes.Transparent), "Deck overlay close control renders only the X without a surrounding outline or surface");
             Check(!Descendants<TextBlock>(window).Any(x => x.Text is "一般権限" or "管理者モード"), "the obsolete process privilege label is absent from the main footer");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -915,7 +1324,7 @@ internal static class UiIntegrationTest
             window.ApplyDeckSizeForTest(9, 5);
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.DeckBackButton.Content is TextBlock && window.DeckBackButton.ToolTip?.ToString() == "Deck一覧へ戻る" && Math.Abs(window.DeckBackButton.ActualHeight - window.DeckLayoutNameBox.ActualHeight) < .1 && Math.Abs(window.DeckSaveButton.ActualHeight - window.DeckLayoutNameBox.ActualHeight) < .1 && Math.Abs(window.DeckLayoutNameBox.ActualHeight - 40) < .1, "Deck editor uses a compact icon-only back control and aligns back, name, and save controls to the same height");
+            Check(window.DeckBackButton.Content is TextBlock && window.DeckBackButton.ToolTip?.ToString() == "Deck一覧へ戻る" && Math.Abs(window.DeckBackButton.ActualHeight - window.DeckLayoutNameBox.ActualHeight) < .1 && Math.Abs(window.DeckSaveButton.ActualHeight - window.DeckLayoutNameBox.ActualHeight) < .1 && Math.Abs(window.DeckLayoutNameBox.ActualHeight - 44) < .1 && new FrameworkElement[] { window.DeckOverlayToggleButton, window.DeckProfileSwitchBox, window.DeckHoverPreviewBox, window.DeckAutoHideAfterActionBox, window.DeckAutoHideOnPointerLeaveBox }.All(control => Math.Abs(control.ActualHeight - 36) < .1), "Deck editor aligns the three primary controls at 44 pixels and every compact settings action at 36 pixels");
             Check(window.ProfileBox.TranslatePoint(new System.Windows.Point(), window).X < window.KeyboardLayoutBox.TranslatePoint(new System.Windows.Point(), window).X, "profile context precedes the less-frequently changed keyboard layout");
             double profileLabelLeft = window.ProfileToolbarLabel.TranslatePoint(new System.Windows.Point(), window).X;
             double mainKeyboardLeft = window.KeyboardViewbox.TranslatePoint(new System.Windows.Point(), window).X;
@@ -1515,15 +1924,34 @@ internal static class UiIntegrationTest
             Check(settings.StartWithWindowsChanged, "only changing the startup checkbox requests its privileged update");
             settings.StartupBox.IsChecked = !settings.StartWithWindows;
             Check(!settings.StartWithWindowsChanged, "restoring the startup checkbox removes privileged update request");
-            Check(!Descendants<System.Windows.Controls.ScrollViewer>(settings).Any(), "settings use category pages without scrolling");
+            Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll => ReferenceEquals(scroll, settings.LayersScrollPanel)), "only the longer layer category uses a bounded scroll surface");
             settings.CategoryList.SelectedIndex = 6;
             settings.UpdateLayout();
             Check(settings.UpdatePanel.Visibility == Visibility.Visible && settings.GeneralPanel.Visibility == Visibility.Collapsed && settings.CheckForUpdatesButton.Content?.ToString() == "アップデートを確認" && settings.InstallUpdateButton.Content?.ToString() == "今すぐアップデート" && settings.InstallUpdateButton.Visibility == Visibility.Visible && settings.UpdateStatusText.Text.Contains("v99.0.0") && settings.UpdateStatusText.Foreground is SolidColorBrush availableBrush && availableBrush.Color == ThemeService.Color("WarningBrush") && !settings.UpdateStatusText.Text.EndsWith('。'), "available update uses a clear orange status without unnecessary terminal punctuation");
             settings.ApplyUpdateResult(new UpdateCheckResult(MainWindow.RunningVersion, MainWindow.DisplayVersion, null, DateTimeOffset.Now), true);
             Check(settings.UpdateStatusText.Text == $"最新バージョンです（v{MainWindow.DisplayVersion}）" && settings.UpdateStatusText.Foreground is SolidColorBrush currentBrush && currentBrush.Color == ThemeService.Color("AccentBrush"), "current version uses a concise green status");
+            var updateNotes = new UpdateNotesWindow("9.9.9", "- Deckを見やすく改善\n- 全画面表示を追加");
+            updateNotes.Show();
+            PumpFor(TimeSpan.FromMilliseconds(80));
+            Check(updateNotes.VersionText.Text.Contains("v9.9.9", StringComparison.Ordinal) && updateNotes.NotesText.Text.Contains("全画面表示", StringComparison.Ordinal), "the post-update window shows the installed version and GitHub release body without rewriting it");
+            CaptureForReview(updateNotes, "update-notes.png");
+            updateNotes.Close();
             settings.SelectCategory("Support");
             settings.UpdateLayout();
-            Check(settings.SupportPanel.Visibility == Visibility.Visible && settings.UpdatePanel.Visibility == Visibility.Collapsed && settings.OpenSupportPageButton.Content?.ToString() == "支援ページを開く" && Uri.TryCreate(SettingsWindow.SupportPageUrl, UriKind.Absolute, out var supportUri) && supportUri.Scheme == Uri.UriSchemeHttps && supportUri.Host == "ko-fi.com", "support settings appear directly after updates and use the trusted HTTPS Ko-fi page");
+            Check(settings.SupportPanel.Visibility == Visibility.Visible && settings.UpdatePanel.Visibility == Visibility.Collapsed && settings.OpenSupportPageButton.Content?.ToString() == "支援ページを開く" && Uri.TryCreate(SettingsWindow.SupportPageUrl, UriKind.Absolute, out var supportUri) && supportUri.Scheme == Uri.UriSchemeHttps && supportUri.Host == "ko-fi.com", "support settings use the trusted HTTPS Ko-fi page");
+            var settingsCategoryTags = settings.CategoryList.Items.Cast<ListBoxItem>().Select(item => item.Tag?.ToString()).ToArray();
+            Check(Array.IndexOf(settingsCategoryTags, "Disabled") == Array.IndexOf(settingsCategoryTags, "Update") + 1, "the dedicated disabled-app category appears immediately below updates");
+            settings.SelectCategory("Disabled");
+            settings.UpdateLayout();
+            Check(settings.DisabledPanel.Visibility == Visibility.Visible
+                && settings.LayersScrollPanel.Visibility == Visibility.Collapsed
+                && Descendants<System.Windows.Controls.ListBox>(settings.DisabledPanel).Contains(settings.InputDisabledApplicationList)
+                && !Descendants<System.Windows.Controls.ListBox>(settings.LayersPanel).Contains(settings.InputDisabledApplicationList),
+                "disabled applications live on the independent disabled page instead of the layer page");
+            settings.Show();
+            PumpFor(TimeSpan.FromMilliseconds(80));
+            CaptureForReview(settings, "settings-disabled.png");
+            settings.Hide();
             settings.CategoryList.SelectedIndex = 2;
             settings.UpdateLayout();
             Check(settings.LayersPanel.Visibility == Visibility.Visible && settings.GeneralPanel.Visibility == Visibility.Collapsed, "settings sidebar switches category pages");
@@ -1565,12 +1993,34 @@ internal static class UiIntegrationTest
             settingsWithAutoSave.CategoryList.SelectedIndex = 6;
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.UpdatePanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.UpdatePanel.Parent).ActualHeight + .5, "update settings surface fits above the footer without clipping");
-            settingsWithAutoSave.CategoryList.SelectedIndex = 7;
+            settingsWithAutoSave.SelectCategory("Disabled");
+            settingsWithAutoSave.UpdateLayout();
+            Check(settingsWithAutoSave.DisabledPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.DisabledPanel.Parent).ActualHeight + .5, "disabled-app settings fit above the footer without clipping");
+            settingsWithAutoSave.SelectCategory("Support");
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.SupportPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.SupportPanel.Parent).ActualHeight + .5, "support settings fit without scrolling or clipping");
             settingsWithAutoSave.CategoryList.SelectedIndex = 2;
             settingsWithAutoSave.UpdateLayout();
-            Check(settingsWithAutoSave.LayersPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.LayersPanel.Parent).ActualHeight + .5, "layer settings fit without scrolling or clipping");
+            Check(settingsWithAutoSave.LayersScrollPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.LayersScrollPanel.Parent).ActualHeight + .5, "layer settings remain fully reachable through a bounded scroll surface without covering the footer");
+            settingsWithAutoSave.SelectCategory("Disabled");
+            settingsWithAutoSave.UpdateLayout();
+            settingsWithAutoSave.AddInputDisabledApplicationForTest("RobloxPlayerBeta.exe");
+            Check(settingsWithAutoSave.InputDisabledApplicationList.Items.Cast<string>().SequenceEqual(["RobloxPlayerBeta.exe"])
+                && Descendants<System.Windows.Controls.Button>(settingsWithAutoSave.DisabledPanel).Any(x => x.Content?.ToString() == "起動中から追加…")
+                && Descendants<System.Windows.Controls.TextBlock>(settingsWithAutoSave.DisabledPanel).Any(x => x.Text.Contains("入力をそのままアプリへ渡します", StringComparison.Ordinal)),
+                "the dedicated disabled page clearly manages applications where all RELYR keyboard and mouse processing is disabled");
+            window.SetInputDisabledApplicationsForTest(["RobloxPlayerBeta.exe"], "RobloxPlayerBeta");
+            var excludedKeyDown = window.DirectPhysicalKeyForTest(0x20, false);
+            var excludedKeyUp = window.DirectPhysicalKeyForTest(0x20, true);
+            var excludedMouseDown = window.DirectPhysicalMouseForTest(0x201);
+            var excludedMouseUp = window.DirectPhysicalMouseForTest(0x202);
+            Check(!window.ShouldInterceptPhysicalInputForTest && !window.ShouldInterceptPhysicalMouseForTest
+                && new[] { excludedKeyDown, excludedKeyUp, excludedMouseDown, excludedMouseUp }.All(result => result != (IntPtr)1)
+                && !window.HasCapturedInputStateForTest,
+                "an active registered application receives untouched keyboard and mouse input with no RELYR capture");
+            window.SetInputDisabledApplicationsForTest([], "RELYR");
+            Check(!window.InputProcessingSuppressedForTest,
+                "leaving an input-disabled application restores normal RELYR processing immediately");
             settingsWithAutoSave.CategoryList.SelectedIndex = 0;
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.AutoSaveBox.IsChecked == true, "auto-save option exists");
@@ -1578,6 +2028,9 @@ internal static class UiIntegrationTest
             Check(settingsWithAutoSave.EnableCapsRemapButton != null && settingsWithAutoSave.DisableCapsRemapButton != null && settingsWithAutoSave.CapsRemapStatus.Text.Length > 0, "CapsLock F13 setup and restore controls are available");
             Check(Descendants<System.Windows.Controls.Button>(settingsWithAutoSave).Any(x => x.Content?.ToString() == "インポート") && Descendants<System.Windows.Controls.Button>(settingsWithAutoSave).Any(x => x.Content?.ToString() == "エクスポート"), "import and export are in app settings");
             settingsWithAutoSave.Close();
+            window.Activate();
+            window.Focus();
+            Pump(window);
             Check(!Descendants<System.Windows.Controls.Button>(window).Any(x => x.Content?.ToString() is "インポート" or "エクスポート"), "import and export are removed from main toolbar");
             Check(!window.ToolbarPanel.Children.OfType<System.Windows.Controls.Button>().Any(x => x.Content?.ToString() is "名前変更" or "自動切替" or "割り当てコピー" or "削除") && window.ProfileManagerButton.Content is Grid, "the main toolbar keeps only immediate profile context while profile management stays in the sidebar");
             var profileManager = new ProfileManagerWindow([new Profile { Name = "標準" }, new Profile { Name = "編集用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] }], "編集用") { Owner = window, ShowInTaskbar = false };
@@ -2113,7 +2566,12 @@ internal static class UiIntegrationTest
             bool scissorsSnipIsRunning = animatedScissors is TextBlock { RenderTransform: TransformGroup scissorsTransforms }
                 && scissorsTransforms.Children.OfType<ScaleTransform>().Any(transform => transform.HasAnimatedProperties)
                 && scissorsTransforms.Children.OfType<RotateTransform>().Any(transform => transform.HasAnimatedProperties);
-            Check(lightDeckIconPicker.PresetCountForTest == 200 && lightDeckIconPicker.AnimatedPresetCountForTest == 200 && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && animatedPresetIsRunning && scissorsSnipIsRunning && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), $"Deck icon picker separates 200 theme-readable still presets from 200 continuously animated presets, including software-oriented choices and the scissors-specific motion, and retains custom image browsing (still={lightDeckIconPicker.PresetCountForTest}, animated={lightDeckIconPicker.AnimatedPresetCountForTest}, running={animatedPresetIsRunning}, scissors={scissorsSnipIsRunning})");
+            var animatedNumber = DeckIconCatalog.CreateVisual(new Mapping { DeckIcon = DeckIconCatalog.AnimatedId("number-20") }, 22, false);
+            bool animatedNumberIsRunning = animatedNumber is TextBlock { Text: "20", RenderTransform: TransformGroup numberTransforms }
+                && numberTransforms.Children.Any(transform => transform.HasAnimatedProperties);
+            bool hasAllNumberSamples = Enumerable.Range(1, 20).All(number => DeckIconCatalog.Presets.Any(preset => preset.Id == "number-" + number && preset.Glyph == number.ToString()));
+            int expectedDeckPresetCount = DeckIconCatalog.Presets.Count;
+            Check(lightDeckIconPicker.PresetCountForTest == expectedDeckPresetCount && lightDeckIconPicker.AnimatedPresetCountForTest == expectedDeckPresetCount && lightDeckIconPicker.BrowseButton.IsVisible && lightDeckIconPicker.SelectedPresetId == "home" && animatedPresetIsRunning && scissorsSnipIsRunning && animatedNumberIsRunning && hasAllNumberSamples && Descendants<System.Windows.Controls.Button>(lightDeckIconPicker.PresetPanel).All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5), $"Deck icon picker exposes every readable still and animated preset as a paired set, including numeric samples 1 through 20, and retains custom image browsing (catalog={expectedDeckPresetCount}, still={lightDeckIconPicker.PresetCountForTest}, animated={lightDeckIconPicker.AnimatedPresetCountForTest}, number20={animatedNumberIsRunning})");
             var presetButtons = lightDeckIconPicker.PresetPanel.Children.Cast<System.Windows.Controls.Button>().Take(3).ToArray();
             bool presetsFillAvailableWidth = lightDeckIconPicker.PresetPanel.ActualWidth >= lightDeckIconPicker.StaticPresetScroll.ViewportWidth - 1
                 && presetButtons.Length == 3
@@ -2167,7 +2625,7 @@ internal static class UiIntegrationTest
             window.DeckColumnsBox.Focus();
             System.Windows.Input.Keyboard.Focus(window.DeckColumnsBox);
             Pump(window);
-            Check(window.DeckColumnsBox.Width >= 64 && window.DeckColumnsBox.Height >= 40 && window.DeckRowsBox.Width >= 64 && window.DeckRowsBox.Height >= 40 && window.DeckColumnsBox.Text == "１２" && MainWindow.TryResolveDeckLayoutSize("custom", window.DeckColumnsBox.Text, window.DeckRowsBox.Text, out int lightColumns, out int lightRows) && lightColumns == 12 && lightRows == 18, "Deck dimension fields are large enough to read and accept full-width digits");
+            Check(window.DeckColumnsBox.Width >= 54 && window.DeckColumnsBox.Height >= 36 && window.DeckRowsBox.Width >= 54 && window.DeckRowsBox.Height >= 36 && window.DeckColumnsBox.Text == "１２" && MainWindow.TryResolveDeckLayoutSize("custom", window.DeckColumnsBox.Text, window.DeckRowsBox.Text, out int lightColumns, out int lightRows) && lightColumns == 12 && lightRows == 18, "compact Deck dimension fields remain large enough to read and accept full-width digits");
             Check(window.DeckColumnsBox.IsKeyboardFocusWithin && window.ShouldInterceptPhysicalInputForTest && window.ShouldInterceptPhysicalMouseForTest, $"a focused Deck text field leaves normal keyboard and mouse mappings active while unassigned keys pass through (visible={window.DeckColumnsBox.IsVisible}, enabled={window.DeckColumnsBox.IsEnabled}, focus={window.DeckColumnsBox.IsKeyboardFocusWithin}, focused={System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "none"}, keyboardIntercept={window.ShouldInterceptPhysicalInputForTest}, mouseIntercept={window.ShouldInterceptPhysicalMouseForTest})");
             var focusedEditorLayerEvents = new List<string>();
             using (var focusedEditorLayerEngine = new InputEngine())
@@ -2246,7 +2704,13 @@ internal static class UiIntegrationTest
             Check(window.IsInputHookDisposedForTest, "system shutdown immediately disposes keyboard and mouse hooks");
         }
         catch (Exception ex) { report.RecordException("UI exception", "FAIL UI exception: ", ex); }
-        finally { if (window != null) { window.PrepareForSystemShutdown(); window.Close(); } Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", previousConfigDirectory); try { if (Directory.Exists(testConfigDirectory)) Directory.Delete(testConfigDirectory, true); } catch { } }
+        finally
+        {
+            if (deferredStartupWindow != null) { deferredStartupWindow.PrepareForSystemShutdown(); deferredStartupWindow.Close(); }
+            if (window != null) { window.PrepareForSystemShutdown(); window.Close(); }
+            Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", previousConfigDirectory);
+            try { if (Directory.Exists(testConfigDirectory)) Directory.Delete(testConfigDirectory, true); } catch { }
+        }
         return report.Complete("UI INTEGRATION TEST PASSED", "UI INTEGRATION TEST FAILED: ");
     }
     static bool IsDark(System.Windows.Media.Brush brush) => brush is SolidColorBrush b && b.Color.R < 80 && b.Color.G < 80 && b.Color.B < 80;

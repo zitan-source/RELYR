@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 
 namespace RELYR;
 
-internal sealed record UpdateInfo(Version Version, string VersionText, Uri InstallerUri, Uri ChecksumUri, string? ApiDigest, string InstallerFileName);
+internal sealed record UpdateInfo(Version Version, string VersionText, Uri InstallerUri, Uri ChecksumUri, string? ApiDigest, string InstallerFileName, string ReleaseNotes = "");
 internal sealed record UpdateCheckResult(Version LatestVersion, string LatestVersionText, UpdateInfo? AvailableUpdate, DateTimeOffset CheckedAt);
 internal sealed record UpdateDownloadProgress(long BytesReceived, long? TotalBytes, double? Percentage);
 
@@ -84,7 +84,8 @@ internal static partial class UpdateService
         if (!TryGetTrustedDownloadUri(installerAsset, out var installerUri) || !TryGetTrustedDownloadUri(checksumAsset, out var checksumUri))
             return null;
         string? digest = installerAsset.TryGetProperty("digest", out var digestElement) ? digestElement.GetString() : null;
-        return new UpdateInfo(releaseVersion, versionText, installerUri, checksumUri, digest, installerName);
+        string releaseNotes = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString()?.Trim() ?? "" : "";
+        return new UpdateInfo(releaseVersion, versionText, installerUri, checksumUri, digest, installerName, releaseNotes);
     }
 
     static bool TryGetTrustedDownloadUri(JsonElement asset, out Uri uri)

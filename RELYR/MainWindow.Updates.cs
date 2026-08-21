@@ -28,6 +28,68 @@ namespace RELYR;
 /// </summary>
 public partial class MainWindow
 {
+    bool updateNotesQueued;
+
+    internal static bool ShouldShowPendingUpdateNotes(AppConfig value, string currentVersion) =>
+        !string.IsNullOrWhiteSpace(value.PendingUpdateNotesVersion)
+        && value.PendingUpdateNotesVersion.Equals(currentVersion, StringComparison.OrdinalIgnoreCase)
+        && !value.LastShownUpdateNotesVersion.Equals(currentVersion, StringComparison.OrdinalIgnoreCase);
+
+    void QueuePendingUpdateNotes()
+    {
+        if (updateNotesQueued || !ShouldShowPendingUpdateNotes(config, DisplayVersion))
+            return;
+        updateNotesQueued = true;
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            updateNotesQueued = false;
+            if (!ShouldShowPendingUpdateNotes(config, DisplayVersion) || !IsLoaded)
+                return;
+            string notes = string.IsNullOrWhiteSpace(config.PendingUpdateNotesBody)
+                ? "このリリースには更新内容が記載されていません。"
+                : config.PendingUpdateNotesBody.Trim();
+            new UpdateNotesWindow(DisplayVersion, notes) { Owner = this }.ShowDialog();
+            MarkPendingUpdateNotesShown();
+        }));
+    }
+
+    void PersistPendingUpdateNotes(UpdateInfo update)
+    {
+        config.PendingUpdateNotesVersion = update.VersionText;
+        config.PendingUpdateNotesBody = update.ReleaseNotes;
+        appliedConfig.PendingUpdateNotesVersion = update.VersionText;
+        appliedConfig.PendingUpdateNotesBody = update.ReleaseNotes;
+        try
+        {
+            var persisted = store.Load();
+            persisted.PendingUpdateNotesVersion = update.VersionText;
+            persisted.PendingUpdateNotesBody = update.ReleaseNotes;
+            store.Save(persisted);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    void MarkPendingUpdateNotesShown()
+    {
+        config.LastShownUpdateNotesVersion = DisplayVersion;
+        config.PendingUpdateNotesVersion = "";
+        config.PendingUpdateNotesBody = "";
+        appliedConfig.LastShownUpdateNotesVersion = DisplayVersion;
+        appliedConfig.PendingUpdateNotesVersion = "";
+        appliedConfig.PendingUpdateNotesBody = "";
+        try
+        {
+            var persisted = store.Load();
+            persisted.LastShownUpdateNotesVersion = DisplayVersion;
+            persisted.PendingUpdateNotesVersion = "";
+            persisted.PendingUpdateNotesBody = "";
+            store.Save(persisted);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     void ApplyUpdateCheckPreference(bool previousSetting)
     {
         if (!config.CheckForUpdates)
@@ -176,6 +238,7 @@ public partial class MainWindow
                 downloadProgress?.Report(value);
             });
             string installer = await UpdateService.DownloadAndVerifyAsync(update, updateCancellation.Token, footerProgress);
+            PersistPendingUpdateNotes(update);
             UpdateBannerProgress.Value = 100;
             UpdateAvailableButton.Content = "更新準備完了";
             reportProgress?.Invoke("ダウンロードと安全性の検証が完了しました。");

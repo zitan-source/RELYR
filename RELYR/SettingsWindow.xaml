@@ -140,6 +140,7 @@
           <ListBoxItem Content="自動解凍" Tag="Archive"/>
           <ListBoxItem Content="データ管理" Tag="Data"/>
           <ListBoxItem Content="アップデート" Tag="Update"/>
+          <ListBoxItem Content="無効" Tag="Disabled"/>
           <ListBoxItem Content="開発を支援" Tag="Support"/>
         </ListBox>
       </Grid>
@@ -222,14 +223,6 @@
           </Border>
           <Border Style="{StaticResource Card}" Padding="4" Margin="0,0,0,12">
             <StackPanel>
-              <TextBlock Text="Deckの自動退避" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,7"/>
-              <CheckBox x:Name="DeckAutoHideAfterActionBox" Content="Deckボタンの実行後に自動で隠す"/>
-              <CheckBox x:Name="DeckAutoHideOnPointerLeaveBox" Content="マウスがDeckから離れて0.5秒後に自動で隠す" Margin="0,6,0,0"/>
-              <TextBlock Text="ピン留め中、ドラッグ中、メニュー操作中は自動的に隠れません。" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,8,0,0"/>
-            </StackPanel>
-          </Border>
-          <Border Style="{StaticResource Card}" Padding="4" Margin="0,0,0,12">
-            <StackPanel>
               <TextBlock Text="背景" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,7"/>
               <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="ClockFrostedBackgroundBox" GroupName="ClockBackground" Content="現在の画面をすりガラス風にする" Margin="0,7,18,7" Checked="ClockBackground_Changed"/>
@@ -309,6 +302,23 @@
           </Border>
         </StackPanel>
 
+        <StackPanel x:Name="DisabledPanel" Visibility="Collapsed">
+          <TextBlock Text="無効" FontSize="27" FontWeight="Bold"/>
+          <TextBlock Text="指定したアプリではRELYRの入力処理を停止します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="RELYRを無効にするアプリ" FontSize="18" FontWeight="SemiBold"/>
+              <TextBlock Text="登録したアプリがアクティブな間は、キーボードとマウスの処理を止め、入力をそのままアプリへ渡します。" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,12"/>
+              <ListBox x:Name="InputDisabledApplicationList" Height="108" MinHeight="72" MouseDoubleClick="RemoveInputDisabledApplication_Click"/>
+              <WrapPanel HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="外す" ToolTip="選択したアプリを一覧から外します" Click="RemoveInputDisabledApplication_Click"/>
+                <Button Content="起動中から追加…" ToolTip="現在起動中のアプリから選びます" Click="AddRunningInputDisabledApplication_Click"/>
+                <Button Content="アプリを選ぶ…" ToolTip="インストール済みのアプリから選びます" Click="AddInstalledInputDisabledApplication_Click"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
         <StackPanel x:Name="SupportPanel" Visibility="Collapsed">
           <TextBlock Text="開発を支援" FontSize="27" FontWeight="Bold"/>
           <TextBlock Text="RELYRの継続的な開発と保守を任意で支援できます。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
@@ -340,7 +350,8 @@
           </Border>
         </StackPanel>
 
-        <StackPanel x:Name="LayersPanel" Visibility="Collapsed">
+        <ScrollViewer x:Name="LayersScrollPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="LayersPanel" Margin="0,0,10,0">
           <TextBlock Text="レイヤー" FontSize="27" FontWeight="Bold"/>
           <TextBlock Text="レイヤーキーと切替表示を設定します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,16"/>
           <Border Style="{StaticResource Card}" Margin="0,0,0,14">
@@ -382,6 +393,7 @@
             </StackPanel>
           </Border>
         </StackPanel>
+        </ScrollViewer>
 
         <StackPanel x:Name="ArchivePanel" Visibility="Collapsed">
           <TextBlock Text="自動解凍" FontSize="27" FontWeight="Bold"/>

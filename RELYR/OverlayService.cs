@@ -31,14 +31,21 @@ internal static class OverlayService
     internal const string BlankAction = "ShowBlankOverlay";
     internal const string ClockAction = "ShowClockOverlay";
 
+    sealed class DeckPanelEntry(string action, DeckPanelOverlayWindow window)
+    {
+        internal string Action { get; set; } = action;
+        internal DeckPanelOverlayWindow Window { get; } = window;
+    }
+
     static InputPanelOverlayWindow? inputPanel;
-    static DeckPanelOverlayWindow? deckPanel;
-    static string deckPanelAction = "";
+    static readonly Dictionary<string, DeckPanelEntry> deckPanels = new(StringComparer.OrdinalIgnoreCase);
+    static string lastDeckPanelKey = "";
     static readonly List<ScreenOverlayWindow> screenOverlays = [];
     static Func<AppConfig>? configProvider;
     static Func<bool>? physicalInputDownProvider;
     static Action<Mapping>? deckActionRequested;
-    static Action<double, double>? deckPositionChanged;
+    static Action<string, double, double>? deckPositionChanged;
+    static Action<string, double, double>? deckCollapsedPositionChanged;
     static Action<string, double, double>? deckSizeChanged;
     static Action<string, bool>? deckPinnedChanged;
     static Action? deckLayoutChanged;
@@ -53,22 +60,107 @@ internal static class OverlayService
 #if !PRODUCTION_PUBLISH
     internal static Action<string>? ActionRequestedForTest;
     internal static int DeckRefreshRequestCountForTest;
-    internal static DeckPanelOverlayWindow? DeckPanelInstanceForTest => deckPanel;
+    internal static DeckPanelOverlayWindow? DeckPanelInstanceForTest => deckPanels.TryGetValue(lastDeckPanelKey, out var entry) ? entry.Window : deckPanels.Values.LastOrDefault()?.Window;
+    internal static IReadOnlyList<DeckPanelOverlayWindow> DeckPanelInstancesForTest => deckPanels.Values.Select(entry => entry.Window).ToArray();
     internal static void ResetDeckRefreshRequestCountForTest() => Interlocked.Exchange(ref DeckRefreshRequestCountForTest, 0);
+    internal static bool RecoverFromFullScreenFailureForTest()
+    {
+        Interlocked.Exchange(ref fullScreenActive, 1);
+        RunOverlayUiSafely(() => throw new InvalidOperationException("simulated overlay failure"), "test overlay failure");
+        return !FullScreenVisible && Volatile.Read(ref fullScreenClosing) == 0 && Volatile.Read(ref fullScreenDismissArmed) == 0;
+    }
 #endif
     internal static bool FullScreenVisible => Volatile.Read(ref fullScreenActive) != 0;
 
-    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null)
+    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<string, double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<string, double, double>? collapsedPositionChanged = null)
     {
         configProvider = provider;
         physicalInputDownProvider = inputDownProvider;
         deckActionRequested = deckAction;
         deckPositionChanged = positionChanged;
+        deckCollapsedPositionChanged = collapsedPositionChanged;
         deckSizeChanged = sizeChanged;
         deckPinnedChanged = pinnedChanged;
         inputPanelPositionChanged = inputPositionChanged;
         deckLayoutChanged = layoutChanged;
         deckSlotsChanged = slotsChanged;
+    }
+
+    static string DeckPanelKey(string action, DeckLayoutDefinition layout)
+    {
+        if (action.Equals(DeckPanelAction, StringComparison.OrdinalIgnoreCase))
+            return "default";
+        if (layout.ProfileSwitchEnabled && !string.IsNullOrWhiteSpace(layout.ProfileGroupId))
+            return "group:" + layout.ProfileGroupId;
+        return "layout:" + layout.Id;
+    }
+
+    static void CloseDeckPanels()
+    {
+        var windows = deckPanels.Values.Select(entry => entry.Window).Distinct().ToArray();
+        deckPanels.Clear();
+        lastDeckPanelKey = "";
+        foreach (var window in windows)
+        {
+            try { window.Close(); } catch { }
+        }
+    }
+
+    static DeckPanelOverlayWindow CreateDeckPanel(AppConfig config, string action, string key, DeckLayoutDefinition layout, bool cascade)
+    {
+        var previous = cascade ? deckPanels.Values.LastOrDefault(entry => entry.Window.IsVisible)?.Window : null;
+        bool hasOwnPosition = layout.PanelLeft is double && layout.PanelTop is double;
+        var panel = new DeckPanelOverlayWindow(
+            config,
+            deckActionRequested,
+            config.InputPanelOpacityPercent,
+            (left, top) => deckPositionChanged?.Invoke(layout.Id, left, top),
+            layout,
+            deckSizeChanged,
+            deckPinnedChanged,
+            (left, top) => deckCollapsedPositionChanged?.Invoke(layout.Id, left, top));
+        var entry = new DeckPanelEntry(action, panel);
+        deckPanels[key] = entry;
+        lastDeckPanelKey = key;
+        panel.Closed += (_, _) =>
+        {
+            if (deckPanels.TryGetValue(key, out var current) && ReferenceEquals(current.Window, panel))
+                deckPanels.Remove(key);
+            if (lastDeckPanelKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+                lastDeckPanelKey = deckPanels.Keys.LastOrDefault() ?? "";
+        };
+        panel.PrepareForShow();
+        panel.Show();
+        if (!hasOwnPosition && previous != null)
+        {
+            const double cascadeOffset = 32;
+            double width = panel.ActualWidth > 0 ? panel.ActualWidth : panel.Width;
+            double height = panel.ActualHeight > 0 ? panel.ActualHeight : panel.Height;
+            double minLeft = SystemParameters.VirtualScreenLeft;
+            double minTop = SystemParameters.VirtualScreenTop;
+            double maxLeft = minLeft + SystemParameters.VirtualScreenWidth - Math.Min(width, SystemParameters.VirtualScreenWidth);
+            double maxTop = minTop + SystemParameters.VirtualScreenHeight - Math.Min(height, SystemParameters.VirtualScreenHeight);
+            double left = previous.Left + cascadeOffset;
+            double top = previous.Top + cascadeOffset;
+            if (left > maxLeft || top > maxTop)
+            {
+                left = minLeft + cascadeOffset;
+                top = minTop + cascadeOffset;
+            }
+            panel.MoveAndPersist(Math.Clamp(left, minLeft, maxLeft), Math.Clamp(top, minTop, maxTop));
+        }
+        return panel;
+    }
+
+    internal static bool IsDeckPanelVisible(string action)
+    {
+        var config = configProvider?.Invoke();
+        var layout = config == null ? null : DeckPanelLayout.ResolveActionLayout(config, action);
+        if (layout == null)
+            return false;
+        string key = DeckPanelKey(action, layout);
+        return deckPanels.TryGetValue(key, out var exact) && exact.Window.IsVisible
+            || deckPanels.Values.Any(entry => entry.Window.IsVisible && entry.Window.LayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase));
     }
     internal static void Shutdown()
     {
@@ -76,13 +168,13 @@ internal static class OverlayService
         {
             inputPanel?.Close();
             inputPanel = null;
-            deckPanel?.Close();
-            deckPanel = null;
+            CloseDeckPanels();
             CloseScreenOverlays();
             configProvider = null;
             physicalInputDownProvider = null;
             deckActionRequested = null;
             deckPositionChanged = null;
+            deckCollapsedPositionChanged = null;
             deckSizeChanged = null;
             deckPinnedChanged = null;
             inputPanelPositionChanged = null;
@@ -116,28 +208,31 @@ internal static class OverlayService
             {
                 Interlocked.Exchange(ref deckRefreshQueued, 0);
                 bool refreshContent = Interlocked.Exchange(ref deckRefreshContentRequired, 0) != 0;
-                if (deckPanel is not { } panel)
-                    return;
                 var config = configProvider?.Invoke();
                 if (config == null)
                     return;
-                var layout = DeckPanelLayout.ResolveActionLayout(config, deckPanelAction);
-                if (layout?.Id.Equals(panel.LayoutId, StringComparison.OrdinalIgnoreCase) != true)
+                foreach (var pair in deckPanels.ToArray())
                 {
-                    bool visible = panel.IsVisible;
-                    panel.Close();
-                    deckPanel = null;
-                    if (visible && layout != null)
+                    string key = pair.Key;
+                    var entry = pair.Value;
+                    var panel = entry.Window;
+                    var layout = DeckPanelLayout.ResolveActionLayout(config, entry.Action);
+                    if (layout?.Id.Equals(panel.LayoutId, StringComparison.OrdinalIgnoreCase) != true)
                     {
-                        deckPanel = new DeckPanelOverlayWindow(config, deckActionRequested, config.InputPanelOpacityPercent, deckPositionChanged, layout, deckSizeChanged, deckPinnedChanged);
-                        deckPanel.Closed += (_, _) => deckPanel = null;
-                        deckPanel.PrepareForShow();
-                        deckPanel.Show();
+                        bool visible = panel.IsVisible;
+                        bool collapsed = panel.IsCollapsedToEdge;
+                        panel.Close();
+                        if (visible && layout != null)
+                        {
+                            var replacement = CreateDeckPanel(config, entry.Action, key, layout, cascade: false);
+                            if (collapsed)
+                                replacement.CollapseToEdge();
+                        }
+                        continue;
                     }
-                    return;
+                    if (refreshContent)
+                        panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAutoHideAfterAction, config.DeckAutoHideOnPointerLeave);
                 }
-                if (refreshContent)
-                    panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAutoHideAfterAction, config.DeckAutoHideOnPointerLeave);
             }, "refresh Deck panel");
         }));
     }
@@ -183,10 +278,14 @@ internal static class OverlayService
         catch (Exception exception)
         {
             LogOverlayFailure(operation, exception);
-            try { deckPanel?.Close(); } catch { }
-            deckPanel = null;
+            CloseDeckPanels();
             try { inputPanel?.Close(); } catch { }
             inputPanel = null;
+            // If construction or Show fails after fullScreenActive was set,
+            // leaving that flag behind makes both low-level hooks consume all
+            // keyboard and mouse input even though no overlay is visible.
+            // Always clear the complete fullscreen transaction on any UI fault.
+            CloseScreenOverlays();
         }
     }
 
@@ -205,18 +304,31 @@ internal static class OverlayService
     {
         if (DeckPanelLayout.IsDeckAction(action))
         {
-            deckPanelAction = action;
             inputPanel?.Close();
             inputPanel = null;
             AppConfig deckConfig = configProvider?.Invoke() ?? new AppConfig();
             var layout = DeckPanelLayout.ResolveActionLayout(deckConfig, action);
-            if (deckPanel is { } existing)
+            if (layout == null)
+                return;
+            string key = DeckPanelKey(action, layout);
+            var matching = deckPanels.FirstOrDefault(pair => pair.Key.Equals(key, StringComparison.OrdinalIgnoreCase)
+                || pair.Value.Window.LayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(matching.Key))
             {
-                bool same = layout?.Id.Equals(existing.LayoutId, StringComparison.OrdinalIgnoreCase) == true;
+                key = matching.Key;
+                var entry = matching.Value;
+                var existing = entry.Window;
+                bool same = layout.Id.Equals(existing.LayoutId, StringComparison.OrdinalIgnoreCase);
                 if (same)
                 {
+                    lastDeckPanelKey = key;
                     if (existing.IsVisible)
                     {
+                        if (existing.IsCollapsedToEdge)
+                        {
+                            existing.ExpandFromEdge();
+                            return;
+                        }
                         existing.HideForReuse();
                         return;
                     }
@@ -226,20 +338,13 @@ internal static class OverlayService
                     return;
                 }
                 existing.Close();
-                deckPanel = null;
             }
-            if (layout == null)
-                return;
-            deckPanel = new DeckPanelOverlayWindow(deckConfig, deckActionRequested, deckConfig.InputPanelOpacityPercent, deckPositionChanged, layout, deckSizeChanged, deckPinnedChanged);
-            deckPanel.Closed += (_, _) => deckPanel = null;
-            deckPanel.PrepareForShow();
-            deckPanel.Show();
+            CreateDeckPanel(deckConfig, action, key, layout, cascade: true);
             return;
         }
         if (action is NumpadAction or ExtendedKeypadAction)
         {
-            deckPanel?.Close();
-            deckPanel = null;
+            CloseDeckPanels();
             bool extended = action == ExtendedKeypadAction;
             if (inputPanel is { IsVisible: true } existing && existing.IsExtended == extended)
             {
@@ -259,8 +364,7 @@ internal static class OverlayService
 
         inputPanel?.Close();
         inputPanel = null;
-        deckPanel?.Close();
-        deckPanel = null;
+        CloseDeckPanels();
         if (FullScreenVisible)
         {
             CloseScreenOverlays();
@@ -336,12 +440,21 @@ internal static class OverlayService
 
     static void CloseScreenOverlays()
     {
-        foreach (var window in screenOverlays.ToArray())
-            window.Close();
+        var windows = screenOverlays.ToArray();
         screenOverlays.Clear();
-        Interlocked.Exchange(ref fullScreenActive, 0);
-        Interlocked.Exchange(ref fullScreenClosing, 0);
-        Interlocked.Exchange(ref fullScreenDismissArmed, 0);
+        try
+        {
+            foreach (var window in windows)
+                try { window.Close(); } catch { }
+        }
+        finally
+        {
+            // Input callbacks consult this flag before every mapping. Its
+            // cleanup must not depend on every WPF Window closing cleanly.
+            Interlocked.Exchange(ref fullScreenActive, 0);
+            Interlocked.Exchange(ref fullScreenClosing, 0);
+            Interlocked.Exchange(ref fullScreenDismissArmed, 0);
+        }
     }
 
 }

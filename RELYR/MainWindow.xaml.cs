@@ -59,6 +59,7 @@ public partial class MainWindow : Window
     string automaticProfileReturnName = "";
     string automaticProfileCandidateSignature = "";
     int automaticProfileCandidateSamples;
+    bool inputProcessingSuppressedForForeground;
     DateTime suppressAutomaticProfileSwitchUntil = DateTime.MinValue;
     readonly string automaticProfileDiagnosticLog = Environment.GetEnvironmentVariable("RELYR_PROFILE_SWITCH_LOG") ?? "";
     readonly System.Windows.Threading.DispatcherTimer autoSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
@@ -90,6 +91,7 @@ public partial class MainWindow : Window
     ProfileSwitchOverlay? profileOverlay;
     string lastProfileOverlayName = "";
     Mapping? copiedMapping;
+    Mapping? copiedDeckMapping;
     Dictionary<string, Mapping?>? copiedMultiMappings;
     bool copiedMultiMappingsAreDeck;
     readonly HashSet<string> multiSelectedInputs = new(StringComparer.OrdinalIgnoreCase);
@@ -112,6 +114,7 @@ public partial class MainWindow : Window
     readonly bool suppressTray;
     readonly RuntimeRole runtimeRole;
     readonly bool inputHooksRequired;
+    bool editorUiInitialized;
     int trayDisposed;
     Profile CurrentProfile => config.Profiles.First(x => x.Name == config.ActiveProfile);
     Profile AppliedProfile => appliedConfig.Profiles.FirstOrDefault(x => x.Name == appliedConfig.ActiveProfile) ?? appliedConfig.Profiles[0];
@@ -138,7 +141,7 @@ public partial class MainWindow : Window
         }
     }
 
-    public MainWindow(bool skipSetup = false, bool suppressTray = false, AppConfig? startupConfig = null, RuntimeRole runtimeRole = RuntimeRole.Standard, bool startInputHooks = true)
+    public MainWindow(bool skipSetup = false, bool suppressTray = false, AppConfig? startupConfig = null, RuntimeRole runtimeRole = RuntimeRole.Standard, bool startInputHooks = true, bool deferEditorUiUntilShown = false)
     {
         this.suppressTray = suppressTray;
         this.runtimeRole = runtimeRole;
@@ -148,6 +151,7 @@ public partial class MainWindow : Window
         Loaded += (_, _) =>
         {
             EnsureUpdateCheckStarted();
+            QueuePendingUpdateNotes();
             Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea);
         };
         IsVisibleChanged += (_, _) => { if (IsVisible) EnsureUpdateCheckStarted(); };
@@ -193,7 +197,8 @@ public partial class MainWindow : Window
             HandleOverlayDeckLayoutChanged,
             HandleOverlayDeckSlotsChanged,
             PersistDeckPanelSize,
-            PersistDeckPanelPinned);
+            PersistDeckPanelPinned,
+            PersistDeckPanelCollapsedPosition);
         Func<string, WindowActionTarget, bool>? ipcShortcut = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendShortcut : null;
         Func<string, bool>? ipcText = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendText : null;
         Func<string, bool>? ipcMouse = runtimeRole == RuntimeRole.UiHost ? IpcRuntime.TrySendMouse : null;
@@ -210,21 +215,14 @@ public partial class MainWindow : Window
         AutoSaveToggle.IsChecked = config.AutoSave;
         UpdateAutoSaveToggleText();
         KeyboardLayoutBox.SelectedIndex = config.KeyboardLayout == "US" ? 1 : 0;
-        loading = false;
-        var shortActionOptions = ActionOptions(allowGesture: true);
-        var longActionOptions = ActionOptions(allowGesture: false);
-        KindBox.ItemsSource = shortActionOptions;
-        LongKindBox.ItemsSource = longActionOptions;
-        KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
-        LongKindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
-        BuildKeyboard();
-        BuildDeckManagementPanel();
+        if (!deferEditorUiUntilShown)
+            EnsureEditorUiInitialized();
+        else
+            loading = false;
         engine.UseUsLayout = config.KeyboardLayout == "US";
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
-        RefreshProfiles();
-        UpdateLayerButtons();
         engine.InputReceived = HandleInput;
         engine.InputStarted = CaptureInputMapping;
         engine.InputEnded = ReleaseInputMapping;
@@ -238,9 +236,9 @@ public partial class MainWindow : Window
         // press until its physical release is received.
         engine.ShouldInterceptInput = runtimeRole switch
         {
-            RuntimeRole.UiHost => () => engine.HasCapturedPhysicalInput || !WindowMonitorService.IsForegroundWindowElevated(),
-            RuntimeRole.ElevatedHelper => () => engine.HasCapturedPhysicalInput || (!ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated()),
-            _ => null
+            RuntimeRole.UiHost => () => engine.HasCapturedPhysicalInput || (!Volatile.Read(ref inputProcessingSuppressedForForeground) && !WindowMonitorService.IsForegroundWindowElevated()),
+            RuntimeRole.ElevatedHelper => () => engine.HasCapturedPhysicalInput || (!Volatile.Read(ref inputProcessingSuppressedForForeground) && !ConditionMatcher.IsForegroundVirtualMachineConsole() && WindowMonitorService.IsForegroundWindowElevated()),
+            _ => () => engine.HasCapturedPhysicalInput || !Volatile.Read(ref inputProcessingSuppressedForForeground)
         };
         engine.ShouldInterceptMouseInput = engine.ShouldInterceptInput;
         engine.IsNativeMouseDrag = input => FindCapturedInputMapping(input) is { Kind: ActionKind.Mouse } map && MappingExecutor.IsModifierDrag(map.Value);
@@ -252,6 +250,7 @@ public partial class MainWindow : Window
         engine.LongPressDuration = input => FindCapturedInputMapping(input)?.LongPressMs ?? 500;
         engine.DragPixels = config.MouseDragPixels;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
+        RefreshInputProcessingSuppression();
         engine.Detected += text => Dispatcher.BeginInvoke(() => HandleDetectedInput(text));
         engine.Enabled = false;
         // The UI hook remains medium integrity so Explorer can drop files onto
@@ -317,6 +316,34 @@ public partial class MainWindow : Window
         {
             config.FirstRunCompleted = true;
             store.Save(config);
+        }
+    }
+
+    // Runtime input must become ready during a tray launch without paying the
+    // cost of constructing controls that are used only by the editor.  Keep
+    // this boundary explicit: mappings, hooks, profile routing, Deck overlay
+    // execution, and the tray do not depend on these visual controls.
+    void EnsureEditorUiInitialized()
+    {
+        if (editorUiInitialized)
+            return;
+
+        editorUiInitialized = true;
+        loading = true;
+        try
+        {
+            KindBox.ItemsSource = ActionOptions(allowGesture: true);
+            LongKindBox.ItemsSource = ActionOptions(allowGesture: false);
+            KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
+            LongKindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
+            BuildKeyboard();
+            BuildDeckManagementPanel();
+            RefreshProfiles();
+            UpdateLayerButtons();
+        }
+        finally
+        {
+            loading = false;
         }
     }
 
@@ -458,7 +485,7 @@ public partial class MainWindow : Window
             return;
         }
         ApplyWindowsTitleBarTheme();
-        if (KeyboardPanel != null)
+        if (editorUiInitialized && KeyboardPanel != null)
         {
             BuildKeyboard();
             ColorButtons();
@@ -519,6 +546,8 @@ public partial class MainWindow : Window
 
     void BuildKeyboard()
     {
+        if (!editorUiInitialized)
+            return;
         KeyboardPanel.Children.Clear();
         SecondaryKeyboardPanel.Children.Clear();
         KeyboardPanel.Width = config.KeyboardLayout == "US" ? 900 : 942;
@@ -1449,6 +1478,14 @@ public partial class MainWindow : Window
     }
     void ApplyCatalogAction(CatalogAction action, bool longPress)
     {
+        if (!longPress && selected != null
+            && DeckPanelLayout.IsInputName(selected.Input)
+            && string.IsNullOrWhiteSpace(selected.DeckIconPath)
+            && (string.IsNullOrWhiteSpace(selected.DeckIcon) || selected.DeckIconAutoAssigned))
+        {
+            selected.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
+            selected.DeckIconAutoAssigned = true;
+        }
         if (action.Kind == ActionKind.Profile)
         {
             ApplyProfileAction(action.Value, longPress);
@@ -2234,6 +2271,8 @@ public partial class MainWindow : Window
             || ConditionMatcher.Matches(mapping.Application, foregroundProcess);
     void RefreshProfiles()
     {
+        if (!editorUiInitialized)
+            return;
         loading = true;
         ProfileBox.ItemsSource = null;
         ProfileBox.ItemsSource = config.Profiles.Select(x => x.Name).ToList();
@@ -2243,6 +2282,8 @@ public partial class MainWindow : Window
     }
     void ColorButtons()
     {
+        if (!editorUiInitialized)
+            return;
         var keyboardButtons = InputButtons(KeyboardPanel).Concat(InputButtons(SecondaryKeyboardPanel)).ToHashSet();
         foreach (var b in VisualInputButtons())
             UpdateInputButtonVisual(b, keyboardButtons.Contains(b));
@@ -2373,7 +2414,7 @@ public partial class MainWindow : Window
         SetSelectionPulseBrush(button, pulseBrush);
         if (pulseStateChanged)
             SetSelectionPulseVisual(button, pulsing, pulseBrush);
-        if (DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping) || button.Content is not TextBlock)
+        if (DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping) || button.Content is not TextBlock || Equals(((TextBlock)button.Content).Tag, DeckIconCatalog.VisualTag))
             button.Content = DeckPanelLayout.CreateButtonContent(input, mapping);
         else
             ((TextBlock)button.Content).Text = DeckPanelLayout.ActionLabel(input, mapping);
@@ -2541,6 +2582,8 @@ public partial class MainWindow : Window
     }
     void UpdateLayerButtons()
     {
+        if (!editorUiInitialized)
+            return;
         if (NormalLayerButton == null)
             return;
         foreach (var b in new[] { NormalLayerButton, SpaceLayerButton, CapsLockLayerButton, TaskbarLayerButton, RightMouseLayerButton, BackMouseLayerButton, ForwardMouseLayerButton })
@@ -2672,7 +2715,7 @@ public partial class MainWindow : Window
         }
         menu.Items.Add(profiles);
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("押下キーをすべて解除", null, (_, _) => InputEngine.ReleaseAll());
+        menu.Items.Add("押下キーをすべて解除", null, (_, _) => InputEngine.ReleaseAllDefensively());
         menu.Items.Add("再起動", null, (_, _) => Dispatcher.BeginInvoke(RequestApplicationRestart));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => RequestApplicationExit());
@@ -2799,24 +2842,16 @@ public partial class MainWindow : Window
     {
         if (DeckSettingsPanel == null || availableWidth <= 0)
             return;
-        // Let WPF wrap whole setting groups from their measured widths.  A
-        // hard breakpoint made a wide editor switch to a vertical layout just
-        // because side panes reduced its nominal width.
-        bool wrappedSettings = availableWidth < 1120;
         bool veryNarrowDeckSettings = availableWidth < 620;
-        DeckSettingsSeparatorOne.Visibility = wrappedSettings ? Visibility.Collapsed : Visibility.Visible;
-        DeckSizeSettingsGroup.Orientation = System.Windows.Controls.Orientation.Horizontal;
-        DeckAppearanceSettingsGroup.Orientation = System.Windows.Controls.Orientation.Horizontal;
-        DeckSizeSettingsGroup.Margin = new Thickness(0, 0, 20, 8);
-        DeckAppearanceSettingsGroup.Margin = new Thickness(0, 0, 20, 8);
-        DeckDisplaySettingsGroup.Margin = new Thickness(0);
-        double wrapWidth = Math.Max(240, availableWidth - 24);
-        DeckSizeControlsWrap.Width = veryNarrowDeckSettings ? wrapWidth : double.NaN;
-        DeckAppearanceSettingsGroup.Width = veryNarrowDeckSettings ? wrapWidth : double.NaN;
-        DeckPanelColorControls.Margin = veryNarrowDeckSettings ? new Thickness(0) : new Thickness(14, 0, 0, 0);
-        DeckDisplaySettingsGroup.Margin = veryNarrowDeckSettings ? new Thickness(8, 0, 0, 0) : new Thickness(16, 0, 0, 0);
+        double cardWidth = Math.Max(280, availableWidth - 10);
+        DeckCoreSettingsCard.Width = veryNarrowDeckSettings ? cardWidth : double.NaN;
+        DeckLayoutSettingsCard.Width = veryNarrowDeckSettings ? cardWidth : double.NaN;
+        DeckAppearanceSettingsCard.Width = veryNarrowDeckSettings ? cardWidth : double.NaN;
+        DeckAutoHideSettingsCard.Width = veryNarrowDeckSettings ? cardWidth : double.NaN;
+        DeckPanelColorControls.Margin = veryNarrowDeckSettings ? new Thickness(8, 0, 0, 0) : new Thickness(12, 0, 0, 0);
+        DeckDisplaySettingsGroup.Margin = veryNarrowDeckSettings ? new Thickness(8, 0, 0, 0) : new Thickness(12, 0, 0, 0);
         DeckBackButton.Margin = veryNarrowDeckSettings ? new Thickness(0, 0, 8, 0) : new Thickness(0, 0, 12, 0);
-        DeckSaveButton.Margin = veryNarrowDeckSettings ? new Thickness(8, 0, 0, 0) : new Thickness(12, 0, 0, 0);
+        DeckSaveButton.Width = veryNarrowDeckSettings ? 76 : 88;
         DeckSaveButton.Padding = veryNarrowDeckSettings ? new Thickness(12, 0, 12, 0) : new Thickness(18, 0, 18, 0);
         DeckLayoutNameBox.FontSize = veryNarrowDeckSettings ? 14 : 16;
     }
@@ -2868,6 +2903,8 @@ public partial class MainWindow : Window
     {
         if (!config.Profiles.Any(x => x.Name == name))
             return;
+        bool preserveDeckSelection = deckManagementMode && MultiSelectToggle.IsChecked == true;
+        string[] preservedDeckInputs = preserveDeckSelection ? [.. multiSelectedInputs] : [];
         bool changed = !config.ActiveProfile.Equals(name, StringComparison.OrdinalIgnoreCase) || !appliedConfig.ActiveProfile.Equals(name, StringComparison.OrdinalIgnoreCase);
         suppressAutomaticProfileSwitchUntil = DateTime.UtcNow.AddSeconds(2);
         explicitProfileSwitchProcess = ConditionMatcher.ForegroundProcessName();
@@ -2896,6 +2933,16 @@ public partial class MainWindow : Window
                 && profile != null && layout.ProfileId.Equals(profile.Id, StringComparison.OrdinalIgnoreCase));
             if (variant != null)
                 EditDeckLayout(variant);
+        }
+        if (preserveDeckSelection)
+        {
+            int visibleSlots = selectedDeckLayout == null ? 0 : DeckPanelLayout.VisibleSlotCount(selectedDeckLayout);
+            multiSelectedInputs.Clear();
+            foreach (string input in preservedDeckInputs.Where(input => DeckPanelLayout.SlotNumber(input) is int slot && slot >= 1 && slot <= visibleSlots))
+                multiSelectedInputs.Add(input);
+            MultiSelectToggle.IsChecked = true;
+            UpdateMultiSelectControls();
+            ColorDeckManagementButtons();
         }
         if (IsMouseLayerBlockedByDirectGesture(config.Profiles, CurrentProfile.Name, currentLayer))
             currentLayer = "通常";
@@ -2944,6 +2991,10 @@ public partial class MainWindow : Window
     }
     void AutoSwitchProfile()
     {
+        bool needsForegroundProcess = appliedConfig.InputDisabledApplications.Count > 0
+            || appliedConfig.Profiles.Skip(1).Any(x => x.AutoSwitchEnabled);
+        string process = needsForegroundProcess ? ConditionMatcher.ForegroundProcessName() : "";
+        RefreshInputProcessingSuppression(process);
         if (profileDropDownOpen || DateTime.UtcNow < suppressAutomaticProfileSwitchUntil)
         {
             LogAutomaticProfileSwitch($"paused dropdown={profileDropDownOpen} suppressUntil={suppressAutomaticProfileSwitchUntil:O}");
@@ -2963,7 +3014,6 @@ public partial class MainWindow : Window
             }
             return;
         }
-        string process = ConditionMatcher.ForegroundProcessName();
         string[] processes = string.IsNullOrWhiteSpace(process) ? [] : [process];
         var (Target, ReturnProfile) = ResolveAutomaticProfileTarget(appliedConfig.Profiles, appliedConfig.ActiveProfile, automaticProfileReturnName, processes, false);
         int requiredSamples = AutomaticProfileRequiredSamples(appliedConfig.Profiles, Target);
@@ -2986,6 +3036,22 @@ public partial class MainWindow : Window
         else
             LogAutomaticProfileSwitch($"not-applied before={before} target={target} runtime={appliedConfig.ActiveProfile} captured={engine.HasCapturedPhysicalInput}");
     }
+
+    void RefreshInputProcessingSuppression(string? foregroundProcess = null)
+    {
+        if (appliedConfig.InputDisabledApplications.Count == 0)
+        {
+            Volatile.Write(ref inputProcessingSuppressedForForeground, false);
+            return;
+        }
+        foregroundProcess ??= ConditionMatcher.ForegroundProcessName();
+        Volatile.Write(ref inputProcessingSuppressedForForeground,
+            IsInputProcessingDisabledForApplication(appliedConfig.InputDisabledApplications, foregroundProcess));
+    }
+
+    internal static bool IsInputProcessingDisabledForApplication(IEnumerable<string> applications, string foregroundProcess)
+        => !string.IsNullOrWhiteSpace(foregroundProcess)
+            && applications.Any(application => ConditionMatcher.Matches(application, foregroundProcess));
     bool TryApplyAutomaticProfileForProcesses(IReadOnlyCollection<string> processes, bool cursorOverTaskbar, out string target)
     {
         if (!TryResolveAndApplyAutomaticProfile(config, appliedConfig, processes, cursorOverTaskbar, engine.TryPrepareForProfileChange, ref automaticProfileReturnName, out target))
@@ -3485,6 +3551,8 @@ public partial class MainWindow : Window
             var persisted = store.Load();
             CopyApplicationOptions(config, persisted);
             store.Save(persisted);
+            if (runtimeRole == RuntimeRole.UiHost)
+                IpcRuntime.RequestReload();
 
             ThemeService.Apply(config.ThemeMode);
             archiveWatcher.Apply(config);
@@ -3517,6 +3585,7 @@ public partial class MainWindow : Window
         config.ThemeMode = window.SelectedThemeMode;
         config.AutoSave = window.AutoSave;
         config.SpaceHoldRepeatEnabled = window.SpaceHoldRepeat;
+        config.InputDisabledApplications = [.. window.InputDisabledApplications];
         config.SpaceHoldRepeatDelayMs = window.SpaceHoldRepeatDelay;
         config.GestureThresholdPixels = window.GestureThreshold;
         config.LockCursorDuringGesture = window.LockCursorDuringGesture;
@@ -3532,6 +3601,7 @@ public partial class MainWindow : Window
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
         engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
+        RefreshInputProcessingSuppression();
         OverlayService.RefreshDeckPanel();
     }
     static void CopyApplicationOptions(AppConfig source, AppConfig destination)
@@ -3545,10 +3615,14 @@ public partial class MainWindow : Window
         destination.CheckForUpdates = source.CheckForUpdates;
         destination.ShowProfileSwitchOverlay = source.ShowProfileSwitchOverlay;
         destination.DismissedUpdateVersion = source.DismissedUpdateVersion;
+        destination.PendingUpdateNotesVersion = source.PendingUpdateNotesVersion;
+        destination.PendingUpdateNotesBody = source.PendingUpdateNotesBody;
+        destination.LastShownUpdateNotesVersion = source.LastShownUpdateNotesVersion;
         destination.WindowActionTarget = source.WindowActionTarget;
         destination.ThemeMode = source.ThemeMode;
         destination.AutoSave = source.AutoSave;
         destination.SpaceHoldRepeatEnabled = source.SpaceHoldRepeatEnabled;
+        destination.InputDisabledApplications = [.. source.InputDisabledApplications];
         destination.SpaceHoldRepeatDelayMs = source.SpaceHoldRepeatDelayMs;
         destination.GestureThresholdPixels = source.GestureThresholdPixels;
         destination.LockCursorDuringGesture = source.LockCursorDuringGesture;
@@ -3575,6 +3649,7 @@ public partial class MainWindow : Window
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
         engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
+        RefreshInputProcessingSuppression();
         engine.Enabled = engineStarted && config.EngineEnabled;
         loading = true;
         KeyboardLayoutBox.SelectedIndex = config.KeyboardLayout == "US" ? 1 : 0;
@@ -3601,6 +3676,7 @@ public partial class MainWindow : Window
     {
         if (!NeedsFirstRunSetup)
             return;
+        EnsureEditorUiInitialized();
         var setup = new SetupWindow { Owner = this };
         if (setup.ShowDialog() == true)
         {
@@ -3613,6 +3689,7 @@ public partial class MainWindow : Window
     }
     public void ShowFromExternalLaunch()
     {
+        EnsureEditorUiInitialized();
         Show();
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
@@ -3642,6 +3719,11 @@ public partial class MainWindow : Window
                 mapping.DragValue = "";
                 mapping.DragEndValue = "";
                 mapping.Application = "";
+                if (mapping.DeckIconAutoAssigned)
+                {
+                    mapping.DeckIcon = "";
+                    mapping.DeckIconAutoAssigned = false;
+                }
                 if (!HasDeckButtonContent(mapping))
                     mappings.Remove(mapping);
             }
@@ -3682,7 +3764,7 @@ public partial class MainWindow : Window
             Task.WaitAll([actionWorker, dragActionWorker, taskbarClickReplayWorker], 2000);
         }
         catch { }
-        InputEngine.ReleaseAll();
+        InputEngine.ReleaseAllDefensively();
         engine.Dispose();
         RemoveTrayIconForImmediateExit();
         archiveWatcher.Dispose();
@@ -3735,7 +3817,7 @@ public partial class MainWindow : Window
         allowClose = true;
         engine.Enabled = false;
         ClearPendingActions();
-        InputEngine.ReleaseAll();
+        InputEngine.ReleaseAllDefensively();
         engine.Dispose();
         archiveWatcher.Dispose();
     }
@@ -3745,6 +3827,7 @@ public partial class MainWindow : Window
         activeLayerMappings.Clear();
         ClearPendingActions();
         engine.ResetForSessionTransition();
+        InputEngine.ReleaseAllDefensively();
     }
     public void RequestApplicationExit()
     {
@@ -3756,7 +3839,7 @@ public partial class MainWindow : Window
         try
         {
             Close();
-            InputEngine.ReleaseAll();
+            InputEngine.ReleaseAllDefensively();
             App.ExitImmediately(0);
         }
         catch
@@ -3836,7 +3919,9 @@ public partial class MainWindow : Window
         cancelled = result is null || (result == false && !noCopy);
         return result == true ? list.SelectedItem as Profile : null;
     }
-    string? SelectRunningApplication()
+    string? SelectRunningApplication() => SelectRunningApplication(this, "自動切替する起動中のアプリを選択");
+
+    internal static string? SelectRunningApplication(Window owner, string title)
     {
         var apps = new List<RunningApplicationOption>();
         foreach (var process in Process.GetProcesses())
@@ -3852,7 +3937,7 @@ public partial class MainWindow : Window
             }
         }
         var uniqueApps = apps.GroupBy(x => x.Value, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderBy(x => x.Label).ToList();
-        var dialog = new Window { Title = "自動切替する起動中のアプリを選択", Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner, Width = 620, Height = 480, Background = ThemeService.Brush("SurfaceBackground"), Foreground = ThemeService.Brush("PrimaryText"), ShowInTaskbar = false };
+        var dialog = new Window { Title = title, Owner = owner, WindowStartupLocation = WindowStartupLocation.CenterOwner, Width = 620, Height = 480, Background = ThemeService.Brush("SurfaceBackground"), Foreground = ThemeService.Brush("PrimaryText"), ShowInTaskbar = false };
         var grid = new Grid { Margin = new Thickness(18) };
         grid.RowDefinitions.Add(new RowDefinition());
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
