@@ -61,6 +61,7 @@ public partial class MainWindow
     internal Action<MacroInputPickerWindow>? KeypadInputRequestedForTest { get; set; }
 #endif
     internal WindowActionTarget DeckWindowActionTargetForTest => DeckExecutionConfig().WindowActionTarget;
+    internal WindowActionTarget TaskbarWindowActionTargetForTest => TaskbarExecutionConfig().WindowActionTarget;
 
     internal DeckLayoutDefinition AddDeckLayoutForTest(string name, int columns, int rows)
     {

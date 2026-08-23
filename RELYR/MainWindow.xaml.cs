@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
+    readonly MappingExecutor taskbarExecutor;
     readonly MappingExecutor deckExecutor;
     readonly ArchiveWatcher archiveWatcher = new();
     readonly BlockingCollection<(Mapping Map, string Input, bool ForceActiveWindow)> actionQueue = new(256);
@@ -215,6 +216,7 @@ public partial class MainWindow : Window
         // windows. Execute its mapping in that same process so a delayed or failed
         // helper connection can never disable keyboard or mouse layers.
         executor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", () => appliedConfig, null, null, null, null, uiOverlayRequest, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
+        taskbarExecutor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", TaskbarExecutionConfig, null, null, null, null, uiOverlayRequest, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
         deckExecutor = new MappingExecutor(new SystemInputOutput(name => appliedConfig.Macros.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), name => Dispatcher.BeginInvoke(() => SwitchProfile(name, true)), () => appliedConfig.KeyboardLayout == "US", DeckExecutionConfig, null, ipcShortcut, ipcText, ipcMouse, uiOverlayRequest, isDeckExecution: true, isElevatedInputHelper: runtimeRole == RuntimeRole.ElevatedHelper));
         actionWorker = Task.Run(ProcessActions);
         dragActionWorker = Task.Factory.StartNew(ProcessDragActions, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
@@ -2164,12 +2166,27 @@ public partial class MainWindow : Window
         snapshot.WindowActionTarget = WindowActionTarget.ActiveWindow;
         return snapshot;
     }
+    AppConfig TaskbarExecutionConfig()
+    {
+        var snapshot = store.Clone(appliedConfig);
+        // The taskbar is the invocation surface, never the target window. Its
+        // physical Down is suppressed before this worker runs, so the existing
+        // foreground window remains the correct recipient. Do not weaken the
+        // Explorer shell-surface guard to make taskbar shortcuts work.
+        snapshot.WindowActionTarget = WindowActionTarget.ActiveWindow;
+        return snapshot;
+    }
+    internal static bool IsTaskbarMappedInput(string input)
+        => input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase);
     void ProcessActions()
     {
         foreach (var (Map, Input, ForceActiveWindow) in actionQueue.GetConsumingEnumerable())
             try
             {
-                bool result = (ForceActiveWindow ? deckExecutor : executor).Execute(Map, Input, out var value);
+                MappingExecutor selectedExecutor = ForceActiveWindow
+                    ? deckExecutor
+                    : IsTaskbarMappedInput(Input) ? taskbarExecutor : executor;
+                bool result = selectedExecutor.Execute(Map, Input, out var value);
                 if (result)
                     Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }

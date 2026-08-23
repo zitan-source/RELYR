@@ -765,6 +765,11 @@ internal static class UiIntegrationTest
             Check(window.DeckOpacityValueText.Text == "67%" && window.ConfigForTest.InputPanelOpacityPercent == 67 && centeredOrScrollablePreview,
                 $"Deck opacity is editable in place and the dedicated preview is centered when it fits or scrollable when readability requires it (center={deckCenter:F1}, viewport={window.DeckGridScrollViewer.ViewportWidth:F1}, scroll={window.DeckGridScrollViewer.ScrollableWidth:F1})");
             Check(window.DeckWindowActionTargetForTest == WindowActionTarget.ActiveWindow, "Deck actions always target the previously active window instead of the overlay under the cursor");
+            Check(window.TaskbarWindowActionTargetForTest == WindowActionTarget.ActiveWindow
+                  && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
+                  && MainWindow.IsTaskbarMappedInput("Taskbar+MouseLeft:Long")
+                  && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
+                "taskbar mappings use the existing active window instead of resolving the Explorer taskbar as a cursor target");
             var colorPicker = new ThemeColorPickerWindow(System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56)) { Owner = window };
             colorPicker.Show();
             colorPicker.UpdateLayout();

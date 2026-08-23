@@ -218,6 +218,10 @@ public static class SelfTest
                 && taskbarReplayBatches[0].SequenceEqual([(2u, 0u), (4u, 0u)])
                 && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)]),
                 "taskbar long-press-only short clicks replay in ordered atomic Down/Up batches instead of sending input inside the hook");
+            Check(MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
+                  && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
+                  && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
+                "taskbar short and long actions keep their dedicated execution context");
             var mouseDisplayCases = new Dictionary<string, string> { { "MouseLeft", "マウス：左クリック" }, { "MouseRight", "マウス：右クリック" }, { "MouseMiddle", "マウス：ホイールクリック" }, { "MouseBack", "マウス：戻る" }, { "MouseForward", "マウス：進む" }, { "MouseX", "マウス：追加ボタン" }, { "WheelUp", "マウス：ホイール上" }, { "WheelDown", "マウス：ホイール下" }, { "TiltLeft", "マウス：チルト左" }, { "TiltRight", "マウス：チルト右" }, { "ShiftDrag", "マウス：Shift + 左クリック" }, { "CtrlDrag", "マウス：Ctrl + 左クリック" }, { "AltDrag", "マウス：Alt + 左クリック" } };
             Check(mouseDisplayCases.All(x => MainWindow.DisplayActionValue(ActionKind.Mouse, x.Key) == x.Value && MainWindow.NormalizeEditorAction(ActionKind.Shortcut, x.Value, ActionKind.Mouse, x.Key) == (ActionKind.Mouse, x.Key)), "every mouse execution value is readable in the editor and safely converts back to its compatible internal name");
             config.Profiles.Add(new Profile { Name = "アプリ用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] });
