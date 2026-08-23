@@ -8,8 +8,8 @@
     <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
       <Setter Property="Margin" Value="4"/>
     </Style>
-    <Style TargetType="CheckBox">
-      <Setter Property="Margin" Value="0,7"/><Setter Property="FontSize" Value="13"/>
+    <Style TargetType="CheckBox" BasedOn="{StaticResource AppSwitchCheckBoxStyle}">
+      <Setter Property="Margin" Value="0,3"/><Setter Property="FontSize" Value="13"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
     </Style>
     <Style TargetType="RadioButton">
@@ -309,7 +309,20 @@
             <StackPanel>
               <TextBlock Text="RELYRを無効にするアプリ" FontSize="18" FontWeight="SemiBold"/>
               <TextBlock Text="登録したアプリがアクティブな間は、キーボードとマウスの処理を止め、入力をそのままアプリへ渡します。" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,12"/>
-              <ListBox x:Name="InputDisabledApplicationList" Height="108" MinHeight="72" MouseDoubleClick="RemoveInputDisabledApplication_Click"/>
+              <ListBox x:Name="InputDisabledApplicationList" Height="126" MinHeight="84" MouseDoubleClick="RemoveInputDisabledApplication_Click">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="8,6">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <Image Source="{Binding Icon}" Width="28" Height="28" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Value}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
               <WrapPanel HorizontalAlignment="Right" Margin="0,8,0,0">
                 <Button Content="外す" ToolTip="選択したアプリを一覧から外します" Click="RemoveInputDisabledApplication_Click"/>
                 <Button Content="起動中から追加…" ToolTip="現在起動中のアプリから選びます" Click="AddRunningInputDisabledApplication_Click"/>

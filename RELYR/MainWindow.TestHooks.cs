@@ -71,10 +71,45 @@ public partial class MainWindow
     }
 
     internal void EditDeckLayoutForTest(DeckLayoutDefinition layout) => EditDeckLayout(layout);
+    internal void ClickDeckPreviewBackgroundForTest()
+    {
+        var click = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            Environment.TickCount,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent
+        };
+        DeckPreviewSurface.RaiseEvent(click);
+    }
     internal void CopyDeckAssignmentForTest(string input) => CopyDeckAssignment(input);
     internal void PasteDeckAssignmentForTest(string input) => PasteDeckAssignment(input);
     internal bool HasCopiedDeckAssignmentForTest => copiedDeckMapping != null;
     internal string[] MultiSelectedInputsForTest => [.. multiSelectedInputs];
+    internal void SetAssignmentDropTargetForTest(System.Windows.Controls.Button button, bool active)
+    {
+        SetAssignmentDropTargetVisual(button, active);
+        if (active)
+            return;
+        if (button.Tag is string input && DeckPanelLayout.IsInputName(input))
+            UpdateDeckManagementButtonVisual(button);
+        else
+            UpdateInputButtonVisual(button, IsDescendantOf(button, KeyboardPanel) || IsDescendantOf(button, SecondaryKeyboardPanel));
+    }
+    internal void SetInputHoverForTest(System.Windows.Controls.Button button, bool active)
+    {
+        if (active)
+            InputButtonHoverEntered(button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount));
+        else
+            InputButtonHoverExited(button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount));
+    }
+    internal AssignmentTransferResult TransferCurrentLayerAssignmentsForTest(string sourceKey, string targetKey)
+    {
+        var result = TransferAssignments(CurrentProfile.Mappings, InputForCurrentLayer(sourceKey), InputForCurrentLayer(targetKey));
+        if (result != AssignmentTransferResult.None)
+            ColorButtons();
+        return result;
+    }
     internal void ApplyDeckSizeForTest(int columns, int rows) => ApplyDeckSize(columns, rows);
     internal void ShowDeckLayoutListForTest() => ShowDeckLayoutList();
     internal void ShowNewDeckDialogForTest() => PromptNewDeckLayout();
@@ -123,9 +158,15 @@ public partial class MainWindow
     internal IntPtr DirectPhysicalMouseForTest(int message, int mouseData, int x, int y) => engine.DirectMouseForTest(message, mouseData, x, y);
     internal bool HasCapturedInputStateForTest => engine.HasCapturedStateForTest();
     internal bool NativeMouseDragReadyForTest(string input) => engine.IsNativeMouseDragReadyForTest(input);
+    internal bool InputEngineEnabledForTest => engine.Enabled;
+    internal bool TaskbarClickReplayFailedForTest => Volatile.Read(ref taskbarClickReplayFailed) != 0;
+    internal void FailOpenAfterTaskbarClickReplayFailureForTest() => FailOpenAfterTaskbarClickReplayFailure();
 
     internal void OpenKeypadInputForTest(bool longPress = false)
         => KeypadInput_Click(longPress ? LongKindBox : KindBox, new RoutedEventArgs());
+
+    internal void OpenDeckPanelPickerForTest(bool longPress = false)
+        => OpenDeckPanelPicker(longPress ? LongKindBox : KindBox, longPress);
 
     internal void SetCapsLockRemapForTest(bool enabled)
     {

@@ -161,6 +161,8 @@ internal static class ConfigurationMatrixTest
         ];
         config.DeckLayouts[0].Rows = 99;
         config.DeckLayouts[0].Columns = -1;
+        config.DeckLayouts[0].PanelPadding = 999;
+        config.DeckLayouts[0].PanelCornerRadius = -20;
         config.DeckLayouts[0].Mappings =
         [
             new() { Input = "Deck+01", Layer = "wrong", Kind = ActionKind.Gesture, Value = "Gesture", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+C" }
@@ -183,6 +185,7 @@ internal static class ConfigurationMatrixTest
             && repaired.Profiles[0].AutoSwitchApplications.SequenceEqual(["Notepad.exe"])
             && repaired.Profiles[0].Mappings is [{ Input: "Space+J", Layer: "Space", Kind: ActionKind.None, LongPressKind: ActionKind.None }]
             && repaired.DeckLayouts[0].Rows == 18 && repaired.DeckLayouts[0].Columns == 1
+            && repaired.DeckLayouts[0].PanelPadding == 24 && repaired.DeckLayouts[0].PanelCornerRadius == 0
             && repaired.DeckLayouts[0].Mappings is [{ Layer: "Deck", Kind: ActionKind.None, LongPressKind: ActionKind.None }]
             && !string.IsNullOrWhiteSpace(repaired.Macros[0].Id)
             && repaired.Macros[0].Steps.Count == 0
@@ -248,12 +251,15 @@ internal static class ConfigurationMatrixTest
             var layout = new DeckLayoutDefinition { Rows = rows, Columns = columns };
             int visible = rows * columns;
             layout.Mappings.Add(new Mapping { Input = DeckPanelLayout.InputName(1), Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Ctrl+C" });
+            layout.Mappings.Add(new Mapping { Input = DeckPanelLayout.InputName(1), Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "variant", Application = "editor.exe" });
             layout.Mappings.Add(new Mapping { Input = DeckPanelLayout.InputName(visible), Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Ctrl+V", Description = new string('名', 80) });
             passed &= DeckPanelLayout.VisibleSlotCount(layout) == visible
                 && DeckPanelLayout.SlotNumber(DeckPanelLayout.InputName(visible)) == visible
                 && DeckPanelLayout.FindMapping(layout, visible)?.Description.Length == 80;
             DeckPanelLayout.SwapSlots(layout, 1, visible);
-            passed &= visible == 1 || DeckPanelLayout.FindMapping(layout, 1)?.Value == "Ctrl+V";
+            passed &= visible == 1 || DeckPanelLayout.FindMapping(layout, 1)?.Value == "Ctrl+V"
+                && layout.Mappings.Count(mapping => mapping.Input == DeckPanelLayout.InputName(visible)) == 2
+                && layout.Mappings.Any(mapping => mapping.Input == DeckPanelLayout.InputName(visible) && mapping.Value == "variant" && mapping.Application == "editor.exe");
             cases++;
         }
         report.Check(passed, "all 324 Deck row/column combinations retain square spacing, slot identity, actions, and long names");

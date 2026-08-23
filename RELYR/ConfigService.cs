@@ -6,7 +6,7 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 31;
+    internal const int CurrentVersion = 32;
     const int MappingApplicationLossVersion = 29;
 
     const string SettingsFileName = "settings.json";
@@ -16,6 +16,7 @@ public sealed class ConfigService
     const int GestureThresholdMigrationVersion = 22;
     const int DeckLayoutMigrationVersion = 25;
     const int ActionKindRepairMigrationVersion = 28;
+    const int DeckAutoDismissBehaviorMigrationVersion = 32;
     const int ForceEngineEnabledMigrationVersion = 8;
     const int ClearStaleLongPressValueMigrationVersion = 9;
     static readonly Lock MigrationLock = new();
@@ -243,6 +244,19 @@ public sealed class ConfigService
                 }
             }
         }
+        if (storedVersion < DeckAutoDismissBehaviorMigrationVersion)
+        {
+            bool collapseAfterAction = root["DeckAutoHideAfterAction"]?.GetValue<bool>() ?? true;
+            bool collapseOnPointerLeave = root["DeckAutoHideOnPointerLeave"]?.GetValue<bool>() ?? true;
+            root[nameof(AppConfig.DeckAfterActionBehavior)] = collapseAfterAction
+                ? nameof(DeckAutoDismissBehavior.CollapseToEdge)
+                : nameof(DeckAutoDismissBehavior.StayVisible);
+            root[nameof(AppConfig.DeckPointerLeaveBehavior)] = collapseOnPointerLeave
+                ? nameof(DeckAutoDismissBehavior.CollapseToEdge)
+                : nameof(DeckAutoDismissBehavior.StayVisible);
+            root.Remove("DeckAutoHideAfterAction");
+            root.Remove("DeckAutoHideOnPointerLeave");
+        }
         return root.Deserialize<AppConfig>(jsonOptions) ?? new AppConfig();
     }
 
@@ -329,6 +343,10 @@ public sealed class ConfigService
             value.ClockBackgroundMode = ClockBackgroundMode.FrostedScreen;
         if (!Enum.IsDefined(value.ClockDisplayMode))
             value.ClockDisplayMode = ClockDisplayMode.DateAndTime;
+        if (!Enum.IsDefined(value.DeckAfterActionBehavior))
+            value.DeckAfterActionBehavior = DeckAutoDismissBehavior.CollapseToEdge;
+        if (!Enum.IsDefined(value.DeckPointerLeaveBehavior))
+            value.DeckPointerLeaveBehavior = DeckAutoDismissBehavior.CollapseToEdge;
     }
 
     static void NormalizeGestureThreshold(AppConfig value, int originalVersion)
@@ -493,6 +511,8 @@ public sealed class ConfigService
             layout.PanelCollapsedLeft = FiniteOrNull(layout.PanelCollapsedLeft);
             layout.PanelCollapsedTop = FiniteOrNull(layout.PanelCollapsedTop);
             layout.PanelColor ??= "";
+            layout.PanelPadding = double.IsFinite(layout.PanelPadding) ? Math.Clamp(layout.PanelPadding, 4, 24) : 12;
+            layout.PanelCornerRadius = double.IsFinite(layout.PanelCornerRadius) ? Math.Clamp(layout.PanelCornerRadius, 0, 24) : 14;
             layout.ProfileGroupId ??= "";
             layout.ProfileId ??= "";
             if (!layout.ProfileSwitchEnabled || !profileIds.Contains(layout.ProfileId))

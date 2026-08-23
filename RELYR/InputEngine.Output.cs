@@ -681,7 +681,7 @@ public sealed partial class InputEngine
         else
             throw new ArgumentException("認識できないマウス操作です: " + action);
     }
-    static void SendMouseClickAtomic(string action)
+    internal static bool SendMouseClickAtomic(string action)
     {
         (uint down, uint up, uint data, int button) = action.ToUpperInvariant() switch
         {
@@ -695,7 +695,7 @@ public sealed partial class InputEngine
         if (down == 0)
         {
             SendMouse(action);
-            return;
+            return true;
         }
         lock (OutputLock)
         {
@@ -703,13 +703,13 @@ public sealed partial class InputEngine
             if (MouseClickBatchOutputForTest is { } testBatch)
             {
                 testBatch(batch);
-                return;
+                return true;
             }
             if (MouseFlagOutputForTest is { } testOutput)
             {
                 testOutput(down, data);
                 testOutput(up, data);
-                return;
+                return true;
             }
             var inputs = new[]
             {
@@ -717,13 +717,18 @@ public sealed partial class InputEngine
                 new INPUT{type=0,U=new InputUnion{mi=new MOUSEINPUT{dwFlags=up,mouseData=data,dwExtraInfo=(UIntPtr)Marker}}}
             };
             uint sent = SendInput(2, inputs, Marshal.SizeOf<INPUT>());
+            DeckIpcDiagnostics.RecordSendInput(sent == 2, sent == 2 ? 0 : Marshal.GetLastWin32Error());
             InjectedMouseButtonsDown.Remove(button);
             InjectedMouseDownAt.Remove(button);
             if (sent == 2)
-                return;
+                return true;
             if (sent == 0)
                 SendMouseFlag(down, data);
             SendMouseUpWithRetry(up, data);
+            // The recovery attempts above finish this click as safely as the OS
+            // permits. Still report the incomplete atomic submission so the
+            // caller can stop intercepting future physical input immediately.
+            return false;
         }
     }
 

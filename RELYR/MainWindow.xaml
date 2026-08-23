@@ -10,12 +10,12 @@
       <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Height" Value="{StaticResource ControlHeight}"/><Setter Property="MinWidth" Value="40"/>
+      <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="FontWeight" Value="Normal"/>
     </Style>
     <Style x:Key="ToolbarToggleStyle" TargetType="ToggleButton">
-      <Setter Property="Height" Value="{StaticResource ControlHeight}"/><Setter Property="MinWidth" Value="40"/>
+      <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
@@ -31,6 +31,18 @@
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.45"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="AssignmentDragButtonBase" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="AllowDrop" Value="True"/>
+      <EventSetter Event="PreviewMouseLeftButtonDown" Handler="InputAssignmentDragStarted"/>
+      <EventSetter Event="PreviewMouseMove" Handler="InputAssignmentDragMoved"/>
+      <EventSetter Event="PreviewMouseLeftButtonUp" Handler="InputAssignmentDragEnded"/>
+      <EventSetter Event="PreviewDragEnter" Handler="InputAssignmentDragOver"/>
+      <EventSetter Event="PreviewDragOver" Handler="InputAssignmentDragOver"/>
+      <EventSetter Event="PreviewDragLeave" Handler="InputAssignmentDragLeave"/>
+      <EventSetter Event="PreviewDrop" Handler="InputAssignmentDropped"/>
+      <EventSetter Event="MouseEnter" Handler="InputButtonHoverEntered"/>
+      <EventSetter Event="MouseLeave" Handler="InputButtonHoverExited"/>
     </Style>
     <Style x:Key="SidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
       <Setter Property="Height" Value="42"/><Setter Property="Margin" Value="0,1"/>
@@ -61,7 +73,7 @@
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border x:Name="StatusBorder" Background="Transparent" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="StatusBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="StatusBorder" Property="Opacity" Value="0.72"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ToggleButton"><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="10,7"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="Cursor" Value="Hand"/><Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="{DynamicResource AccentStrongBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentButtonText}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger></Style.Triggers></Style>
-    <Style x:Key="KeyButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Style x:Key="KeyButton" TargetType="Button" BasedOn="{StaticResource AssignmentDragButtonBase}">
       <Setter Property="MinWidth" Value="48"/><Setter Property="MinHeight" Value="36"/><Setter Property="Height" Value="48"/><Setter Property="FontSize" Value="12"/>
       <EventSetter Event="PreviewMouseRightButtonDown" Handler="InputButton_RightClick"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
@@ -70,8 +82,11 @@
           <Border x:Name="KeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="0,0,0,1" SnapsToDevicePixels="True">
             <Grid>
               <Border x:Name="SelectionTint" Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/>
+              <Border x:Name="DropTargetTint" Background="{DynamicResource AccentStrongBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/>
               <Border x:Name="SelectionPulse" Height="3" Margin="6,0,6,4" Background="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="2" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False"/>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
+              <Border x:Name="MultiSelectBadge" Width="17" Height="17" CornerRadius="9" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AppBackground}" BorderThickness="1" Opacity="0" IsHitTestVisible="False"><TextBlock Text="✓" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <Border x:Name="DropTargetBadge" Width="26" Height="26" CornerRadius="13" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentButtonText}" BorderThickness="2" Opacity="0" IsHitTestVisible="False"><TextBlock Text="↓" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/></Border>
             </Grid>
           </Border>
         </Grid>
@@ -86,8 +101,11 @@
           </Path>
           <Path x:Name="EnterShape" Data="M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="{TemplateBinding BorderThickness}" StrokeLineJoin="Round"/>
           <Path x:Name="EnterSelectionTint" Data="M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z" Fill="{DynamicResource AccentSoftBrush}" Stroke="Transparent" IsHitTestVisible="False" Margin="1" Opacity="0"/>
+          <Path x:Name="DropTargetTint" Data="M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z" Fill="{DynamicResource AccentStrongBrush}" Stroke="Transparent" IsHitTestVisible="False" Margin="1" Opacity="0"/>
           <Path x:Name="SelectionPulse" Data="M 27,105 L 154,105 Q 158,105 158,101" Stroke="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0" IsHitTestVisible="False"/>
           <ContentPresenter Margin="18,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <Border x:Name="MultiSelectBadge" Width="17" Height="17" CornerRadius="9" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AppBackground}" BorderThickness="1" Opacity="0" IsHitTestVisible="False"><TextBlock Text="✓" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+          <Border x:Name="DropTargetBadge" Width="28" Height="28" CornerRadius="14" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentButtonText}" BorderThickness="2" Opacity="0" IsHitTestVisible="False"><TextBlock Text="↓" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/></Border>
         </Grid>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="EnterShape" Property="Stroke" Value="{DynamicResource AccentBrush}"/><Setter TargetName="EnterShape" Property="Opacity" Value="0.94"/></Trigger>
@@ -97,7 +115,7 @@
     </Style>
     <Style x:Key="DeckButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="FontSize" Value="11"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DeckKeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}" SnapsToDevicePixels="True"><Grid><Border x:Name="SelectionTint" Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="SelectionPulse" Height="3" Margin="6,0,6,4" Background="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="2" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="Opacity" Value="0.97"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="BorderThickness" Value="2"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DeckKeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="DeckKeyBorder" Property="RenderTransform"><Setter.Value><TranslateTransform Y="1"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DeckKeyBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" SnapsToDevicePixels="True"><Grid><Border x:Name="SelectionTint" Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="DropTargetTint" Background="{DynamicResource AccentStrongBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="SelectionPulse" Height="4" Margin="6,0,6,4" Background="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="2" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/><Border x:Name="MultiSelectBadge" Width="17" Height="17" CornerRadius="9" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AppBackground}" BorderThickness="1" Opacity="0" IsHitTestVisible="False"><TextBlock Text="✓" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><Border x:Name="DropTargetBadge" Width="26" Height="26" CornerRadius="13" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentButtonText}" BorderThickness="2" Opacity="0" IsHitTestVisible="False"><TextBlock Text="↓" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/></Border></Grid></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="Opacity" Value="0.97"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="DeckKeyBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DeckKeyBorder" Property="BorderThickness" Value="2"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DeckKeyBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="DeckKeyBorder" Property="RenderTransform"><Setter.Value><TranslateTransform Y="1"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="LayerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="SemiBold"/>
@@ -118,11 +136,11 @@
     <Style x:Key="LayerDescription" TargetType="TextBlock"><Setter Property="FontSize" Value="10.5"/><Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/><Setter Property="TextWrapping" Value="NoWrap"/></Style>
     <Style x:Key="LayerCategoryHeading" TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource MutedText}"/><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Margin" Value="8,10,8,5"/></Style>
     <Style x:Key="LayerActiveDot" TargetType="Ellipse"><Setter Property="Width" Value="8"/><Setter Property="Height" Value="8"/><Setter Property="Fill" Value="{DynamicResource AccentBrush}"/><Setter Property="Margin" Value="8,0,4,0"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Visibility" Value="Collapsed"/></Style>
-    <Style x:Key="MouseHotspot" TargetType="Button">
+    <Style x:Key="MouseHotspot" TargetType="Button" BasedOn="{StaticResource AssignmentDragButtonBase}">
       <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="2"/><Setter Property="Margin" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/><Setter Property="FontSize" Value="9"/><Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Grid SnapsToDevicePixels="True"><Border Background="{DynamicResource KeyDepthBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="0,1,0,0" IsHitTestVisible="False"/><Border x:Name="MouseButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="0,0,0,1" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><Grid><Border x:Name="SelectionTint" Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="SelectionPulse" Height="3" Margin="5,0,5,4" Background="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="2" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/></Grid></Border></Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="MouseButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="MouseButtonBorder" Property="Opacity" Value="0.97"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="MouseButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="MouseButtonBorder" Property="BorderThickness" Value="2"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="MouseButtonBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="MouseButtonBorder" Property="RenderTransform"><Setter.Value><TranslateTransform Y="1"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Grid SnapsToDevicePixels="True"><Border Background="{DynamicResource KeyDepthBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="0,1,0,0" IsHitTestVisible="False"/><Border x:Name="MouseButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="0,0,0,1" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><Grid><Border x:Name="SelectionTint" Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="DropTargetTint" Background="{DynamicResource AccentStrongBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/><Border x:Name="SelectionPulse" Height="4" Margin="5,0,5,4" Background="{Binding Path=(local:MainWindow.SelectionPulseBrush), RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="2" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False"/><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/><Border x:Name="MultiSelectBadge" Width="17" Height="17" CornerRadius="9" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AppBackground}" BorderThickness="1" Opacity="0" IsHitTestVisible="False"><TextBlock Text="✓" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><Border x:Name="DropTargetBadge" Width="26" Height="26" CornerRadius="13" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentButtonText}" BorderThickness="2" Opacity="0" IsHitTestVisible="False"><TextBlock Text="↓" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AccentButtonText}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/></Border></Grid></Border></Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="MouseButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="MouseButtonBorder" Property="Opacity" Value="0.97"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="MouseButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="MouseButtonBorder" Property="BorderThickness" Value="2"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="MouseButtonBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="MouseButtonBorder" Property="RenderTransform"><Setter.Value><TranslateTransform Y="1"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
       <EventSetter Event="PreviewMouseRightButtonDown" Handler="InputButton_RightClick"/>
       <EventSetter Event="MouseDoubleClick" Handler="InputButton_DoubleClick"/>
     </Style>
@@ -168,6 +186,30 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DeckTitleTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource AccentTextBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0,0,28,0"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+        <Grid SnapsToDevicePixels="True">
+          <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" Focusable="False"/>
+          <Button x:Name="EditGlyphButton" Style="{StaticResource AppButtonStyle}" Width="28" Height="30" MinWidth="0" MinHeight="0"
+                  Padding="0" Margin="0" Background="Transparent" BorderBrush="Transparent" BorderThickness="0"
+                  HorizontalAlignment="Right" VerticalAlignment="Center" Focusable="False"
+                  Click="DeckTitleEditButton_Click" ToolTip="Deck名を編集" AutomationProperties.Name="Deck名を編集">
+            <TextBlock x:Name="EditGlyph" Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="12"
+                       Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>
+          </Button>
+          <Border x:Name="FocusLine" Height="1" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" Opacity="0"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="EditGlyph" Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusLine" Property="Opacity" Value="1"/><Setter TargetName="EditGlyph" Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="DeckAppearanceToggle" TargetType="ToggleButton">
       <Setter Property="Height" Value="40"/><Setter Property="MinHeight" Value="40"/><Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="13,0"/>
       <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
@@ -184,18 +226,27 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="DeckEditorSettingsCard" TargetType="Border">
-      <Setter Property="Background" Value="{DynamicResource SurfaceBackground}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="10"/>
-      <Setter Property="Padding" Value="14,10"/>
-      <Setter Property="Margin" Value="0,0,10,10"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0,0,0,22"/>
     </Style>
     <Style x:Key="DeckEditorSettingsCaption" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontSize" Value="15"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style x:Key="DeckEditorFieldLabel" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+    <Style x:Key="DeckEditorHelperText" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
       <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
-      <Setter Property="Margin" Value="0,0,0,7"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="17"/>
     </Style>
     <Style x:Key="DeckEditorCompactAction" TargetType="Button" BasedOn="{StaticResource DeckAppearanceAction}">
       <Setter Property="Height" Value="36"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/>
@@ -203,13 +254,47 @@
     <Style x:Key="DeckEditorCompactToggle" TargetType="ToggleButton" BasedOn="{StaticResource DeckAppearanceToggle}">
       <Setter Property="Height" Value="36"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/>
     </Style>
+    <Style x:Key="DeckCustomizeTabStyle" TargetType="ToggleButton">
+      <Setter Property="Height" Value="34"/><Setter Property="MinHeight" Value="34"/><Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="8,0"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+        <Border x:Name="TabBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="TabBorder" Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="InspectorDetectButton" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+      <Setter Property="Width" Value="64"/>
+      <Setter Property="Height" Value="64"/>
+      <Setter Property="MinHeight" Value="64"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="DetectBorder" Width="64" Height="64" CornerRadius="32" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="True">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DetectBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="DetectBorder" Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="DetectBorder" Property="Opacity" Value="0.76"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="DetectBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="DetectBorder" Property="BorderThickness" Value="2"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Margin" Value="0,4,0,10"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
     </Style>
     <Style TargetType="ComboBox"><Setter Property="Margin" Value="0,4,0,10"/><Setter Property="Padding" Value="6"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource InputBackground}"/></Style>
     <Style x:Key="ToolbarComboBoxStyle" TargetType="ComboBox">
-      <Setter Property="Height" Value="{StaticResource ControlHeight}"/><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="11,0,34,0"/>
+      <Setter Property="Height" Value="44"/><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="11,0,34,0"/>
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem">
@@ -247,7 +332,7 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style TargetType="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
+    <Style TargetType="CheckBox" BasedOn="{StaticResource AppSwitchCheckBoxStyle}"/>
     <Style TargetType="Expander"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
     <Style TargetType="ListBox" BasedOn="{StaticResource AppListBoxStyle}"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Style>
     <Style x:Key="ActionChoice" TargetType="ListBoxItem">
@@ -280,13 +365,15 @@
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Launch}"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Macro}"><Setter Property="Foreground" Value="{DynamicResource ActionMacroIconBrush}"/></DataTrigger>
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static local:ActionKind.Gesture}"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding IsDeckPanel}" Value="True"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></DataTrigger>
       </Style.Triggers>
     </Style>
     <DataTemplate x:Key="ActionChoiceTemplate">
-      <Grid Width="120">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid MinWidth="0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock Text="{Binding Icon}" Style="{StaticResource ActionChoiceIcon}"/>
-        <TextBlock Grid.Column="2" Text="{Binding DisplayLabel}" FontSize="{Binding LabelFontSize}" Foreground="{DynamicResource PrimaryText}" TextWrapping="NoWrap" TextTrimming="None" TextAlignment="Left" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="2" Text="{Binding DisplayLabel}" FontSize="{Binding LabelFontSize}" Foreground="{DynamicResource PrimaryText}" TextWrapping="NoWrap" TextTrimming="None" TextAlignment="Left" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="3" Text="›" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" Margin="10,-1,2,0" HorizontalAlignment="Right" VerticalAlignment="Center" AutomationProperties.Name="選択肢を開く"/>
       </Grid>
     </DataTemplate>
     <Style x:Key="ActionChoiceList" TargetType="ListBox">
@@ -316,26 +403,30 @@
   </Window.Resources>
 
   <DockPanel x:Name="ShellDock">
-    <Border x:Name="TopToolbarPane" DockPanel.Dock="Top" Background="{DynamicResource AppBackground}" BorderThickness="0" Padding="16,10">
+    <Border x:Name="TopToolbarPane" DockPanel.Dock="Top" Background="{DynamicResource AppBackground}" BorderThickness="0" Padding="16,8" SizeChanged="TopToolbarPane_SizeChanged">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition x:Name="HeaderBrandColumn" Width="0"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock x:Name="VersionText" Text="v—" Visibility="Collapsed" Width="0" Height="0" Margin="0"/>
-        <Grid x:Name="ToolbarPanel" Grid.Column="1" Margin="14,0,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition MinWidth="0"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBlock x:Name="ProfileToolbarLabel" Text="プロファイル" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryText}"/>
-            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="200" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
-            <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="40" MinWidth="40" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
-            <TextBlock Text="配列" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/>
-            <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="76" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
-            <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
-              <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Content="選択" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数のキーを選択して、割り当てをまとめてコピー・貼り付け・削除します"/>
-              <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="40" MinWidth="40" Padding="0" IsEnabled="False" ToolTip="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE8C8;"/></Button>
-              <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="40" MinWidth="40" Padding="0" IsEnabled="False" ToolTip="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE77F;"/></Button>
-              <Button x:Name="MultiDeleteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiDelete_Click" Width="40" MinWidth="40" Padding="0" IsEnabled="False" ToolTip="選択したキーの割り当てを削除" Foreground="{DynamicResource PrimaryText}"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE74D;"/></Button>
+        <Grid x:Name="ToolbarPanel" Grid.Column="1" Margin="14,9.5,0,-9.5" UseLayoutRounding="True">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel x:Name="ToolbarContextPanel" Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock x:Name="ProfileToolbarLabel" Text="プロファイル" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryText}"/>
+            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
+            <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="44" MinWidth="44" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
+            <TextBlock x:Name="KeyboardLayoutToolbarLabel" Text="配列" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/>
+            <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
+            <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+              <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>
+              <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てをコピー" AutomationProperties.Name="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8C8;"/></Button>
+              <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てを貼り付け" AutomationProperties.Name="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE77F;"/></Button>
+              <Button x:Name="MultiDeleteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiDelete_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="選択したキーの割り当てを削除" AutomationProperties.Name="選択した割り当てを削除" Foreground="{DynamicResource PrimaryText}"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE74D;"/></Button>
             </StackPanel>
-          </WrapPanel>
-          <Button x:Name="ToolbarSaveButton" Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Content="保存" Click="Save_Click" Margin="14,3,0,3" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
+          </StackPanel>
+          <StackPanel x:Name="ToolbarPrimaryActionsPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button x:Name="ToolbarSaveButton" Style="{StaticResource ToolbarButtonStyle}" Content="保存" Width="96" MinWidth="96" Click="Save_Click" Margin="18,3,12,3" FontWeight="SemiBold" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
+            <ToggleButton x:Name="LightThemeToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Click="LightThemeToggle_Click" ToolTip="ライトモード" AutomationProperties.Name="ライトモード"><TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
+            <ToggleButton x:Name="DarkThemeToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Click="DarkThemeToggle_Click" ToolTip="ダークモード" AutomationProperties.Name="ダークモード"><TextBlock Text="&#xE708;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
+          </StackPanel>
         </Grid>
       </Grid>
     </Border>
@@ -369,9 +460,9 @@
     </Border>
 
     <Grid x:Name="MainContentGrid" ClipToBounds="True" SizeChanged="MainContent_SizeChanged">
-      <Grid.ColumnDefinitions><ColumnDefinition x:Name="LayerNavigationColumn" Width="0"/><ColumnDefinition Width="*" MinWidth="0"/><ColumnDefinition x:Name="AssignmentPaneColumn" Width="336"/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition x:Name="LayerNavigationColumn" Width="0"/><ColumnDefinition Width="*" MinWidth="0"/><ColumnDefinition x:Name="AssignmentPaneColumn" Width="252"/></Grid.ColumnDefinitions>
 
-      <Border x:Name="LayerNavigationPane" Width="224" Background="{DynamicResource AppBackground}" BorderThickness="0" Padding="18,20,14,12">
+      <Border x:Name="LayerNavigationPane" Width="216" Background="{DynamicResource AppBackground}" BorderThickness="0" Padding="18,20,14,12">
         <Grid x:Name="LayerNavigationGrid">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <Border x:Name="LeftPaneSoftDivider" Grid.RowSpan="4" Width="1" HorizontalAlignment="Right" VerticalAlignment="Stretch"
@@ -459,15 +550,15 @@
 
         </StackPanel>
         <Grid x:Name="KeyboardWorkspace" Grid.Row="1" VerticalAlignment="Top"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition x:Name="LowerInputRow" Height="Auto"/></Grid.RowDefinitions>
-          <Border x:Name="KeyboardSurfaceCard" Style="{StaticResource WorkspaceCardFrame}" Padding="18,16" HorizontalAlignment="Left" VerticalAlignment="Top"
+          <Border x:Name="KeyboardSurfaceCard" Style="{StaticResource WorkspaceCardFrame}" Padding="18,16" HorizontalAlignment="Center" VerticalAlignment="Top"
                   Background="Transparent" BorderThickness="0" CornerRadius="0" Effect="{x:Null}">
-            <Viewbox x:Name="KeyboardViewbox" MaxWidth="1220" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True" HorizontalAlignment="Left" VerticalAlignment="Top" SizeChanged="KeyboardViewbox_SizeChanged">
+            <Viewbox x:Name="KeyboardViewbox" MaxWidth="1220" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True" HorizontalAlignment="Center" VerticalAlignment="Top" SizeChanged="KeyboardViewbox_SizeChanged">
               <Canvas x:Name="KeyboardPanel" Width="960" Height="364" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
             </Viewbox>
           </Border>
-          <Grid x:Name="LowerInputGrid" Grid.Row="1" Width="{Binding ActualWidth,ElementName=KeyboardSurfaceCard}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,16,0,0">
+          <Grid x:Name="LowerInputGrid" Grid.Row="1" Width="{Binding ActualWidth,ElementName=KeyboardSurfaceCard}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="MouseColumn" Width="300"/></Grid.ColumnDefinitions>
-            <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="18,0,14,0" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Left" VerticalAlignment="Top"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312"/></Viewbox>
+            <Viewbox x:Name="SecondaryKeyboardViewbox" Margin="18,0,14,0" Stretch="Uniform" StretchDirection="Both" UseLayoutRounding="True" SnapsToDevicePixels="True" HorizontalAlignment="Left" VerticalAlignment="Top"><Canvas x:Name="SecondaryKeyboardPanel" Width="654" Height="312" UseLayoutRounding="True" SnapsToDevicePixels="True"/></Viewbox>
              <Border x:Name="MouseFrame" Grid.Column="1" Style="{StaticResource LowerGroupFrame}" Height="{Binding ActualHeight,ElementName=MouseHost}" VerticalAlignment="Top" Margin="0" Panel.ZIndex="0"
                     Background="Transparent" BorderThickness="0" CornerRadius="0" Effect="{x:Null}"/>
             <TextBlock Grid.Column="1" Text="マウス" Style="{StaticResource LowerGroupTitle}" Panel.ZIndex="2" HorizontalAlignment="Left" VerticalAlignment="Top"/>
@@ -478,86 +569,161 @@
           <ScrollViewer x:Name="DeckLayoutListWorkspace" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden">
             <WrapPanel x:Name="DeckLayoutCardsPanel" HorizontalAlignment="Left" VerticalAlignment="Top"/>
           </ScrollViewer>
-          <Grid x:Name="DeckEditorWorkspace" Visibility="Collapsed" MinWidth="0" SizeChanged="DeckEditorWorkspace_SizeChanged">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Grid x:Name="DeckEditorWorkspace" Visibility="Collapsed" MinWidth="0" UseLayoutRounding="True" SnapsToDevicePixels="True">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid x:Name="DeckEditorCommandBar" Margin="0,0,0,12" UseLayoutRounding="True">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <Button x:Name="DeckBackButton" Style="{StaticResource DeckAppearanceAction}" Click="DeckBack_Click" Width="44" Height="44" MinWidth="44" MinHeight="44" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
                 <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Button>
-              <TextBox x:Name="DeckLayoutNameBox" Style="{StaticResource DeckRoundedTextBox}" Grid.Column="1" Height="44" Margin="0,0,12,0" Padding="14,0" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged" ToolTip="Deckの名前"/>
-              <Button x:Name="DeckSaveButton" Style="{StaticResource DeckAppearanceAction}" Grid.Column="2" Content="保存" Click="DeckSave_Click" Width="88" Height="44" MinHeight="44" VerticalAlignment="Center" Margin="0" Padding="18,0" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
+              <TextBox x:Name="DeckLayoutNameBox" Style="{StaticResource DeckTitleTextBox}" Grid.Column="1" Height="44" MinWidth="110" MaxWidth="420" Margin="0,0,16,0" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Left" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged" ToolTip="クリックしてDeck名を編集" AutomationProperties.Name="Deck名"/>
+              <TextBlock x:Name="DeckSaveStatusText" Grid.Column="2" Text="未保存" Visibility="Collapsed" FontSize="11" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+              <Border Grid.Column="3" Background="{DynamicResource ControlBackground}" CornerRadius="8" Padding="3" Margin="0,0,10,0">
+                <UniformGrid Columns="2">
+                  <ToggleButton x:Name="DeckGridViewToggle" Style="{StaticResource DeckCustomizeTabStyle}" Width="42" IsChecked="True" Click="DeckViewMode_Click" Tag="Grid" ToolTip="実際のDeck配置で表示" AutomationProperties.Name="グリッド表示"><TextBlock Text="&#xE80A;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
+                  <ToggleButton x:Name="DeckListViewToggle" Style="{StaticResource DeckCustomizeTabStyle}" Width="42" Click="DeckViewMode_Click" Tag="List" ToolTip="DeckボタンとActionを一覧表示" AutomationProperties.Name="リスト表示"><TextBlock Text="&#xEA37;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
+                </UniformGrid>
+              </Border>
+              <ToggleButton x:Name="DeckCustomizeToggleButton" Grid.Column="4" Style="{StaticResource DeckEditorCompactToggle}" Click="DeckCustomizeToggle_Click" Margin="0,0,10,0" ToolTip="レイアウト・見た目・表示動作を設定" AutomationProperties.Name="Deckをカスタマイズ">
+                <StackPanel Orientation="Horizontal"><TextBlock x:Name="DeckCustomizeGlyph" Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="14" Margin="0,0,7,0"/><TextBlock x:Name="DeckCustomizeLabel" Text="カスタマイズ" TextWrapping="NoWrap"/></StackPanel>
+              </ToggleButton>
+              <Button x:Name="DeckOverlayToggleButton" Grid.Column="5" Style="{StaticResource DeckEditorCompactAction}" Content="Deckを表示" Click="DeckOverlayToggle_Click" Margin="0" ToolTip="このDeckを実際のオーバーレイとして表示します"/>
+              <Button x:Name="DeckSaveButton" Grid.Column="6" Visibility="Collapsed" Content="保存" Click="DeckSave_Click"/>
             </Grid>
-            <WrapPanel x:Name="DeckSettingsPanel" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,10">
-              <Border x:Name="DeckCoreSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
-                <StackPanel>
-                  <TextBlock Text="DECK" Style="{StaticResource DeckEditorSettingsCaption}"/>
-                  <StackPanel Orientation="Horizontal">
-                    <ToggleButton x:Name="DeckProfileSwitchBox" Style="{StaticResource DeckEditorCompactToggle}" Content="プロファイル連動" Checked="DeckProfileSwitchChanged" Unchecked="DeckProfileSwitchChanged" ToolTip="プロファイルごとに同じDeckの内容を切り替えます"/>
-                    <Button x:Name="DeckOverlayToggleButton" Style="{StaticResource DeckEditorCompactAction}" Content="表示を切替" Click="DeckOverlayToggle_Click" Margin="8,0,0,0" ToolTip="このDeckオーバーレイだけを表示または非表示にします"/>
-                  </StackPanel>
-                </StackPanel>
+            <Grid x:Name="DeckEditorBody" Grid.Row="1" MinWidth="0" ClipToBounds="True" SizeChanged="DeckEditorBody_SizeChanged">
+              <Grid.RowDefinitions><RowDefinition x:Name="DeckEditorBodyPrimaryRow" Height="*"/><RowDefinition x:Name="DeckEditorBodyGapRow" Height="0"/><RowDefinition x:Name="DeckEditorBodySecondaryRow" Height="0"/></Grid.RowDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition x:Name="DeckEditorPreviewColumn" Width="*" MinWidth="0"/><ColumnDefinition x:Name="DeckEditorGapColumn" Width="0"/><ColumnDefinition x:Name="DeckEditorSettingsColumn" Width="0"/></Grid.ColumnDefinitions>
+              <Border x:Name="DeckEditorPaneDivider" Grid.Column="1" Visibility="Collapsed" Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,8" Background="{DynamicResource SubtleBorderBrush}" Opacity="0.58" IsHitTestVisible="False"/>
+              <Border x:Name="DeckSettingsPanel" Grid.Column="2" Visibility="Collapsed" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14" ClipToBounds="True">
+                  <Grid>
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                  <Grid Margin="2,0,0,12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="Deckをカスタマイズ" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                    <Button x:Name="DeckCustomizeCloseButton" Grid.Column="1" Style="{StaticResource DeckAppearanceAction}" Click="DeckCustomizeClose_Click" Width="32" Height="32" MinWidth="32" MinHeight="32" Padding="0" Background="Transparent" BorderBrush="Transparent" ToolTip="カスタマイズを閉じる"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="12"/></Button>
+                  </Grid>
+                  <Border Grid.Row="1" Background="{DynamicResource ControlBackground}" CornerRadius="8" Padding="3" Margin="0,0,0,14">
+                    <UniformGrid Columns="3">
+                      <ToggleButton x:Name="DeckLayoutCustomizeTab" Style="{StaticResource DeckCustomizeTabStyle}" Content="レイアウト" Tag="Layout" IsChecked="True" Click="DeckCustomizeTab_Click"/>
+                      <ToggleButton x:Name="DeckAppearanceCustomizeTab" Style="{StaticResource DeckCustomizeTabStyle}" Content="見た目" Tag="Appearance" Click="DeckCustomizeTab_Click"/>
+                      <ToggleButton x:Name="DeckBehaviorCustomizeTab" Style="{StaticResource DeckCustomizeTabStyle}" Content="動作" Tag="Behavior" Click="DeckCustomizeTab_Click"/>
+                    </UniformGrid>
+                  </Border>
+                  <ScrollViewer x:Name="DeckSettingsScrollViewer" Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
+                  <Grid x:Name="DeckSettingsSectionsGrid">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition x:Name="DeckSettingsRowOne" Height="Auto"/>
+                      <RowDefinition x:Name="DeckSettingsRowTwo" Height="Auto"/>
+                      <RowDefinition x:Name="DeckSettingsRowThree" Height="Auto"/>
+                      <RowDefinition x:Name="DeckSettingsRowFour" Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border x:Name="DeckCoreSettingsCard" Grid.Row="0" Style="{StaticResource DeckEditorSettingsCard}">
+                      <StackPanel>
+                        <CheckBox x:Name="DeckProfileSwitchBox" Content="プロファイル別に切り替える" Checked="DeckProfileSwitchChanged" Unchecked="DeckProfileSwitchChanged" ToolTip="プロファイルごとにボタン内容を保存します"/>
+                      </StackPanel>
+                    </Border>
+                    <Border x:Name="DeckLayoutSettingsCard" Grid.Row="1" Style="{StaticResource DeckEditorSettingsCard}" Margin="0">
+                      <StackPanel x:Name="DeckSizeSettingsGroup">
+                        <TextBlock Text="サイズ" Style="{StaticResource DeckEditorFieldLabel}"/>
+                        <Border Background="{DynamicResource ControlBackground}" CornerRadius="8" Padding="2">
+                          <UniformGrid Columns="3">
+                            <ToggleButton x:Name="DeckSmallSizeToggle" Style="{StaticResource DeckCustomizeTabStyle}" Content="小" Tag="3x3" Click="DeckSizeSegment_Click"/>
+                            <ToggleButton x:Name="DeckMediumSizeToggle" Style="{StaticResource DeckCustomizeTabStyle}" Content="中" Tag="9x5" Click="DeckSizeSegment_Click"/>
+                            <ToggleButton x:Name="DeckLargeSizeToggle" Style="{StaticResource DeckCustomizeTabStyle}" Content="大" Tag="8x2" Click="DeckSizeSegment_Click"/>
+                          </UniformGrid>
+                        </Border>
+                        <ComboBox x:Name="DeckSizePresetBox" Visibility="Collapsed" SelectionChanged="DeckSizePresetChanged">
+                          <ComboBoxItem Content="コンパクト（3列 × 3行）" Tag="3x3"/><ComboBoxItem Content="標準（9列 × 5行）" Tag="9x5"/><ComboBoxItem Content="ワイド（8列 × 2行）" Tag="8x2"/><ComboBoxItem Content="カスタム" Tag="custom"/>
+                        </ComboBox>
+                        <Grid x:Name="DeckCustomSizePanel" Margin="0,14,0,0" Visibility="Visible" ToolTip="列数・行数とも1～18">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="54"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                          <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="40"/><RowDefinition Height="40"/><RowDefinition Height="40"/></Grid.RowDefinitions>
+                          <TextBlock Text="列数" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                          <Slider x:Name="DeckColumnsSlider" Grid.Column="1" Minimum="1" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True" Margin="4,0,8,0" ValueChanged="DeckDimensionSliderChanged"/>
+                          <TextBox x:Name="DeckColumnsBox" Grid.Column="2" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="6,0" MaxLength="2" FontSize="13" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
+                          <TextBlock Grid.Row="1" Text="行数" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                          <Slider x:Name="DeckRowsSlider" Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True" Margin="4,0,8,0" ValueChanged="DeckDimensionSliderChanged"/>
+                          <TextBox x:Name="DeckRowsBox" Grid.Row="1" Grid.Column="2" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="6,0" MaxLength="2" FontSize="13" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
+                          <TextBlock Grid.Row="2" Text="余白" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                          <Slider x:Name="DeckPanelPaddingSlider" Grid.Row="2" Grid.Column="1" Minimum="4" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" Margin="4,0,8,0" ValueChanged="DeckPanelPaddingChanged"/>
+                          <TextBlock x:Name="DeckPanelPaddingValueText" Grid.Row="2" Grid.Column="2" Text="12 px" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                          <TextBlock Grid.Row="3" Text="角丸" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                          <Slider x:Name="DeckPanelCornerRadiusSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" Margin="4,0,8,0" ValueChanged="DeckPanelCornerRadiusChanged"/>
+                          <TextBlock x:Name="DeckPanelCornerRadiusValueText" Grid.Row="3" Grid.Column="2" Text="14 px" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+                    <Border x:Name="DeckAppearanceSettingsCard" Grid.Row="2" Style="{StaticResource DeckEditorSettingsCard}" Visibility="Collapsed" Margin="0">
+                      <StackPanel x:Name="DeckAppearanceSettingsGroup">
+                        <Grid>
+                          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="背景" Style="{StaticResource DeckEditorFieldLabel}"/>
+                          <StackPanel x:Name="DeckPanelColorControls" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border x:Name="DeckPanelColorPreview" Width="36" Height="36" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" Cursor="Hand" ToolTip="背景色を選択" MouseLeftButtonDown="DeckPanelColorChoose_Click" SnapsToDevicePixels="True"/>
+                            <Button Style="{StaticResource DeckEditorCompactAction}" Content="色を選択" Click="DeckPanelColorChoose_Click" ToolTip="背景色を選択"/>
+                            <Button Style="{StaticResource DeckEditorCompactAction}" Content="標準" Click="DeckPanelColorReset_Click" Margin="6,0,0,0" ToolTip="背景色をテーマ標準に戻す"/>
+                          </StackPanel>
+                          <TextBlock Grid.Row="2" Text="透明度" Style="{StaticResource DeckEditorFieldLabel}" Margin="0,16,0,6"/>
+                          <TextBlock x:Name="DeckOpacityValueText" Grid.Row="2" Grid.Column="1" Width="42" Text="96%" TextAlignment="Right" VerticalAlignment="Bottom" Margin="0,16,0,6"/>
+                          <Slider x:Name="DeckOpacitySlider" Grid.Row="3" Grid.ColumnSpan="2" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" ToolTip="Deckの透明度"/>
+                        </Grid>
+                        <CheckBox x:Name="DeckHoverAnimationBox" Content="ホバー時アニメーション" Margin="0,18,0,0" Checked="DeckHoverAnimationChanged" Unchecked="DeckHoverAnimationChanged" ToolTip="ボタンにポインターを重ねたときだけ動かします"/>
+                        <CheckBox x:Name="DeckHoverPreviewBox" Content="ファイルをホバー再生" Margin="0,12,0,0" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="動画は表示、音声は再生します"/>
+                      </StackPanel>
+                    </Border>
+                    <Border x:Name="DeckAutoHideSettingsCard" Grid.Row="3" Style="{StaticResource DeckEditorSettingsCard}" Visibility="Collapsed" Margin="0">
+                      <StackPanel x:Name="DeckAutoHideSettingsGroup">
+                        <Grid x:Name="DeckBehaviorFieldsGrid">
+                          <Grid.ColumnDefinitions><ColumnDefinition x:Name="DeckBehaviorFirstColumn" Width="*"/><ColumnDefinition x:Name="DeckBehaviorGapColumn" Width="10"/><ColumnDefinition x:Name="DeckBehaviorSecondColumn" Width="*"/></Grid.ColumnDefinitions>
+                          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                          <StackPanel x:Name="DeckAfterActionBehaviorGroup">
+                            <TextBlock Text="実行後" Style="{StaticResource DeckEditorFieldLabel}"/>
+                            <ComboBox x:Name="DeckAfterActionBehaviorBox" Style="{StaticResource ToolbarComboBoxStyle}" Height="36" Margin="0" HorizontalAlignment="Stretch" SelectionChanged="DeckAutoDismissBehaviorChanged" ToolTip="Deckを固定している間は自動動作しません">
+                              <ComboBoxItem Content="そのまま表示" Tag="StayVisible"/><ComboBoxItem Content="画面端に折りたたむ" Tag="CollapseToEdge"/><ComboBoxItem Content="Deckを非表示" Tag="Hide"/>
+                            </ComboBox>
+                          </StackPanel>
+                          <StackPanel x:Name="DeckPointerLeaveBehaviorGroup" Grid.Column="2">
+                            <TextBlock Text="マウスが離れた後" Style="{StaticResource DeckEditorFieldLabel}"/>
+                            <ComboBox x:Name="DeckPointerLeaveBehaviorBox" Style="{StaticResource ToolbarComboBoxStyle}" Height="36" Margin="0" HorizontalAlignment="Stretch" SelectionChanged="DeckAutoDismissBehaviorChanged" ToolTip="Deckを固定している間は自動動作しません">
+                              <ComboBoxItem Content="そのまま表示" Tag="StayVisible"/><ComboBoxItem Content="画面端に折りたたむ" Tag="CollapseToEdge"/><ComboBoxItem Content="Deckを非表示" Tag="Hide"/>
+                            </ComboBox>
+                          </StackPanel>
+                          <TextBlock x:Name="DeckPinnedBehaviorHint" Grid.Row="1" Grid.ColumnSpan="3" Text="固定中は自動動作しません。" Style="{StaticResource DeckEditorHelperText}" Margin="0,6,0,0"/>
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </ScrollViewer>
+                <Button x:Name="DeckCustomizationResetButton" Grid.Row="3" Style="{StaticResource DeckEditorCompactAction}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="DeckCustomizationReset_Click" ToolTip="このDeckの見た目とレイアウトを標準に戻す">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE777;" FontFamily="Segoe Fluent Icons" FontSize="14" Margin="0,0,8,0"/><TextBlock Text="リセット"/></StackPanel>
+                </Button>
+                </Grid>
               </Border>
-              <Border x:Name="DeckLayoutSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
-                <StackPanel x:Name="DeckSizeSettingsGroup">
-                  <TextBlock Text="レイアウト" Style="{StaticResource DeckEditorSettingsCaption}"/>
-                  <WrapPanel x:Name="DeckSizeControlsWrap" VerticalAlignment="Center">
-                    <ComboBox x:Name="DeckSizePresetBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="148" Height="36" Margin="0" SelectionChanged="DeckSizePresetChanged">
-                      <ComboBoxItem Content="コンパクト  3×3" Tag="3x3"/><ComboBoxItem Content="標準  9×5" Tag="9x5"/><ComboBoxItem Content="ワイド  8×2" Tag="8x2"/><ComboBoxItem Content="カスタム" Tag="custom"/>
-                    </ComboBox>
-                    <StackPanel x:Name="DeckCustomSizePanel" Orientation="Horizontal" Margin="8,0,0,0" Visibility="Collapsed" ToolTip="1～18列 × 1～18行">
-                      <TextBox x:Name="DeckColumnsBox" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
-                      <TextBlock Text=" × " VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
-                      <TextBox x:Name="DeckRowsBox" Style="{StaticResource DeckRoundedTextBox}" Width="54" Height="36" Margin="0" Padding="8,0" MaxLength="2" FontSize="14" VerticalContentAlignment="Center" TextAlignment="Center" PreviewKeyDown="DeckCustomSizeKeyDown" LostKeyboardFocus="DeckCustomSizeLostKeyboardFocus"/>
-                    </StackPanel>
-                  </WrapPanel>
-                </StackPanel>
-              </Border>
-              <Border x:Name="DeckAppearanceSettingsCard" Style="{StaticResource DeckEditorSettingsCard}">
-                <StackPanel x:Name="DeckAppearanceSettingsGroup">
-                  <TextBlock Text="外観" Style="{StaticResource DeckEditorSettingsCaption}"/>
-                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Slider x:Name="DeckOpacitySlider" Width="100" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" ToolTip="Deckの透過率"/>
-                    <TextBlock x:Name="DeckOpacityValueText" Width="42" Text="96%" Margin="8,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                    <StackPanel x:Name="DeckPanelColorControls" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <Border x:Name="DeckPanelColorPreview" Width="36" Height="36" CornerRadius="{StaticResource ControlCornerRadius}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" Cursor="Hand" ToolTip="背景色を選択" MouseLeftButtonDown="DeckPanelColorChoose_Click" SnapsToDevicePixels="True"/>
-                      <Button Style="{StaticResource DeckEditorCompactAction}" Width="36" Padding="0" Click="DeckPanelColorReset_Click" ToolTip="背景色をテーマ標準に戻す">
-                        <TextBlock Text="&#xE777;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
-                      </Button>
-                    </StackPanel>
-                    <StackPanel x:Name="DeckDisplaySettingsGroup" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <ToggleButton x:Name="DeckHoverPreviewBox" Style="{StaticResource DeckEditorCompactToggle}" Content="プレビュー" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="動画・音声ファイルのホバープレビュー"/>
-                    </StackPanel>
-                  </StackPanel>
-                </StackPanel>
-              </Border>
-              <Border x:Name="DeckAutoHideSettingsCard" Style="{StaticResource DeckEditorSettingsCard}" ToolTip="ピン留め中のDeckには適用されません">
-                <StackPanel x:Name="DeckAutoHideSettingsGroup">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="自動収納" Style="{StaticResource DeckEditorSettingsCaption}"/>
-                    <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="{DynamicResource MutedText}" Margin="6,0,0,7"/>
-                  </StackPanel>
-                  <StackPanel Orientation="Horizontal">
-                    <ToggleButton x:Name="DeckAutoHideAfterActionBox" Style="{StaticResource DeckEditorCompactToggle}" Content="ボタン実行後" Checked="DeckAutoHideChanged" Unchecked="DeckAutoHideChanged" ToolTip="Deckボタンを実行したあと画面端へ収納します"/>
-                    <ToggleButton x:Name="DeckAutoHideOnPointerLeaveBox" Style="{StaticResource DeckEditorCompactToggle}" Content="マウス離脱後" Margin="8,0,0,0" Checked="DeckAutoHideChanged" Unchecked="DeckAutoHideChanged" ToolTip="マウスがDeckから離れたあと画面端へ収納します"/>
-                  </StackPanel>
-                </StackPanel>
-              </Border>
-            </WrapPanel>
-            <Viewbox x:Name="DeckGridViewbox" Grid.Row="2" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Top">
-              <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
-            </Viewbox>
+              <Grid x:Name="DeckPreviewPane" Grid.Column="0" MinWidth="0">
+                <Border x:Name="DeckPreviewSurface" Background="Transparent" BorderThickness="0" CornerRadius="0" ClipToBounds="True">
+                  <ScrollViewer x:Name="DeckGridScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" PanningMode="Both" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" SizeChanged="DeckGridScrollViewer_SizeChanged">
+                      <Grid x:Name="DeckGridViewbox" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
+                        <Grid.LayoutTransform><ScaleTransform x:Name="DeckGridScaleTransform" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
+                        <UniformGrid x:Name="DeckManagementGrid" Rows="5" Columns="9" Width="522" Height="350"/>
+                      </Grid>
+                  </ScrollViewer>
+                </Border>
+                <ScrollViewer x:Name="DeckListScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly" Padding="8,4">
+                  <StackPanel x:Name="DeckListPanel" MaxWidth="760" HorizontalAlignment="Stretch"/>
+                </ScrollViewer>
+              </Grid>
+            </Grid>
           </Grid>
         </Grid>
       </Grid>
 
-      <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource AppBackground}" BorderThickness="0" CornerRadius="0" Margin="10,16,14,16" Padding="22" ClipToBounds="True">
+      <Border x:Name="AssignmentPane" Grid.Column="2" Panel.ZIndex="20" Visibility="Visible" Background="{DynamicResource AppBackground}" BorderThickness="0" CornerRadius="0" Margin="8,16,10,16" Padding="18" ClipToBounds="True">
         <Border.RenderTransform><TranslateTransform x:Name="AssignmentPaneTransform" X="0"/></Border.RenderTransform>
         <Grid>
         <ScrollViewer x:Name="AssignmentScrollViewer" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden" PanningMode="VerticalOnly" IsDeferredScrollingEnabled="False" PreviewMouseWheel="AssignmentPane_PreviewMouseWheel">
           <StackPanel>
-            <TextBlock Text="インスペクター" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
-            <Button x:Name="DetectInputButton" Content="入力を検出" Click="Detect_Click" Margin="0,0,0,12" ToolTip="押したキーまたはマウス入力を検出"/>
             <StackPanel x:Name="SelectionHeader" Visibility="Collapsed" Margin="0,0,0,14">
               <TextBlock Text="入力元" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
               <TextBlock x:Name="InputDisplayText" Text="キーを選択してください" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" TextWrapping="Wrap" Margin="0,3,0,0"/>
@@ -570,14 +736,14 @@
               <TextBlock Text="ファイル" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,4"/>
               <Button x:Name="DeckFileDropTarget" Height="72" MinHeight="72" Margin="0,0,0,4" Padding="10" AllowDrop="True" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Click="DeckFileSelect_Click" PreviewDragEnter="DeckFileDropTarget_DragOver" PreviewDragOver="DeckFileDropTarget_DragOver" PreviewDrop="DeckFileDropTarget_Drop" DragEnter="DeckFileDropTarget_DragOver" DragOver="DeckFileDropTarget_DragOver" DragLeave="DeckFileDropTarget_DragLeave" Drop="DeckFileDropTarget_Drop" ToolTip="クリックしてファイルを選択、またはエクスプローラーからファイルをドロップ"/>
               <TextBlock Text="アクセントカラー" Foreground="{DynamicResource SecondaryText}" Margin="0,12,0,6"/>
-              <StackPanel Orientation="Horizontal" x:Name="DeckColorSwatches">
+              <UniformGrid x:Name="DeckColorSwatches" Columns="3" HorizontalAlignment="Stretch">
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#1D6FA5" Tag="#1D6FA5" Click="DeckColorSwatch_Click" ToolTip="ブルー"/>
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#187F6A" Tag="#187F6A" Click="DeckColorSwatch_Click" ToolTip="ティール"/>
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#8A5B25" Tag="#8A5B25" Click="DeckColorSwatch_Click" ToolTip="アンバー"/>
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#9A465B" Tag="#9A465B" Click="DeckColorSwatch_Click" ToolTip="ローズ"/>
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#6C579C" Tag="#6C579C" Click="DeckColorSwatch_Click" ToolTip="バイオレット"/>
                 <Button Style="{StaticResource DeckColorSwatch}" Background="#5B6872" Tag="#5B6872" Click="DeckColorSwatch_Click" ToolTip="スレート"/>
-              </StackPanel>
+              </UniformGrid>
               <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="標準に戻す" Click="DeckColorReset_Click" Padding="9,4" MinHeight="28" Margin="0,0,8,0"/>
                 <Button Content="カスタム…" Click="DeckColorCustom_Click" Padding="9,4" MinHeight="28" Margin="0"/>
@@ -587,7 +753,7 @@
             <StackPanel Margin="0,0,0,12">
               <StackPanel>
                 <TextBlock Text="実行する操作" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
+                <ListBox x:Name="KindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="1"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
                 <TextBlock Text="内容" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="ValueBox" TextChanged="EditorChanged" GotKeyboardFocus="ExecutionValue_GotKeyboardFocus" ToolTip="内容を直接入力するか、右側のキーパッドからキーを選べます"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                   <Button x:Name="DestinationClearButton" Content="削除" Visibility="Collapsed" Click="ExecutionValueClear_Click" Background="Transparent" Foreground="{DynamicResource DangerBrush}"/>
@@ -600,7 +766,7 @@
             <Expander x:Name="LongPressExpander" Header="長押しを追加" Expanded="LongPressExpander_Expanded" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,10">
               <StackPanel>
                 <TextBlock Text="長押しの操作" FontSize="13" FontWeight="SemiBold" Margin="0,10,0,8"/>
-                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
+                <ListBox x:Name="LongKindBox" Style="{StaticResource ActionChoiceList}" SelectionChanged="EditorChanged" PreviewMouseLeftButtonDown="ActionKind_PreviewMouseLeftButtonDown" ItemContainerStyle="{StaticResource ActionChoice}" ItemTemplate="{StaticResource ActionChoiceTemplate}" Margin="0,0,0,7"><ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="1"/></ItemsPanelTemplate></ListBox.ItemsPanel></ListBox>
                 <TextBlock Text="内容" Foreground="{DynamicResource SecondaryText}"/><TextBox x:Name="LongValueBox" TextChanged="EditorChanged" GotKeyboardFocus="ExecutionValue_GotKeyboardFocus" ToolTip="内容を直接入力するか、右側のキーパッドからキーを選べます"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                   <Button x:Name="LongDestinationClearButton" Content="削除" Visibility="Collapsed" Click="ExecutionValueClear_Click" Background="Transparent" Foreground="{DynamicResource DangerBrush}"/>
@@ -613,13 +779,35 @@
             </StackPanel>
           </StackPanel>
         </ScrollViewer>
-        <StackPanel x:Name="InspectorEmptyState" Margin="0,28,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
-          <Border Width="64" Height="64" CornerRadius="32" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,18">
-            <TextBlock Text="⌘" FontFamily="Segoe UI Symbol" FontSize="27" Foreground="{DynamicResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <TextBlock Text="キーを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-          <TextBlock Margin="8,6,8,0" MaxWidth="270" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" TextWrapping="Wrap"><Run Text="編集するキーまたはDeckボタンを"/><LineBreak/><Run Text="選択してください"/></TextBlock>
-        </StackPanel>
+        <Grid x:Name="InspectorEmptyState" Margin="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+          <Grid.RenderTransform><TranslateTransform x:Name="InspectorEmptyStateTransform" Y="-96"/></Grid.RenderTransform>
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Button x:Name="DetectInputButton" Grid.Row="0" Style="{StaticResource InspectorDetectButton}" Click="Detect_Click" Margin="0,0,0,24" VerticalAlignment="Bottom" ToolTip="入力を検出" AutomationProperties.Name="入力を検出">
+            <TextBlock Text="⌘" FontFamily="Segoe UI Symbol" FontSize="25"/>
+          </Button>
+          <TextBlock x:Name="InspectorEmptyTitleText" Grid.Row="1" Text="キーを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <StackPanel Grid.Row="2" VerticalAlignment="Top" HorizontalAlignment="Stretch">
+            <TextBlock x:Name="InspectorEmptyDescriptionText" Margin="8,7,8,0" MaxWidth="270" Foreground="{DynamicResource SecondaryText}" Text="編集するキーを選択してください" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+            <StackPanel x:Name="InspectorHintsPanel" HorizontalAlignment="Center" Margin="0,48,0,0">
+              <TextBlock Text="ヒント" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" HorizontalAlignment="Stretch" Margin="0,0,0,11"/>
+              <Grid x:Name="InspectorHintOneRow" HorizontalAlignment="Stretch" Margin="0,0,0,9">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="30" Height="30" CornerRadius="7" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"><Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"><Path x:Name="InspectorHintOneIcon" Data="M5,3 L5,20 L9.5,15.5 L13,22 L16,20.5 L12.5,14 L19,14 Z" Fill="Transparent" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox></Border>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" HorizontalAlignment="Left"><TextBlock x:Name="InspectorHintOneTitle" Text="キーをクリック" FontSize="11.5" FontWeight="SemiBold" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/><TextBlock x:Name="InspectorHintOneDescription" Text="編集するキーを選択" FontSize="10.5" Foreground="{DynamicResource MutedText}" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/></StackPanel>
+              </Grid>
+              <Grid x:Name="InspectorHintTwoRow" HorizontalAlignment="Stretch" Margin="0,0,0,9">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="30" Height="30" CornerRadius="7" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"><Viewbox Width="17" Height="17" HorizontalAlignment="Center" VerticalAlignment="Center"><Path x:Name="InspectorHintTwoIcon" Data="M3,6 H21 V18 H3 Z M6,9 H7 M10,9 H11 M14,9 H15 M18,9 H19 M6,12 H7 M10,12 H11 M14,12 H15 M18,12 H19 M6,15 H18" Fill="Transparent" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox></Border>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" HorizontalAlignment="Left"><TextBlock x:Name="InspectorHintTwoTitle" Text="入力を検出" FontSize="11.5" FontWeight="SemiBold" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/><TextBlock x:Name="InspectorHintTwoDescription" Text="実際の入力からキーを探す" FontSize="10.5" Foreground="{DynamicResource MutedText}" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/></StackPanel>
+              </Grid>
+              <Grid x:Name="InspectorHintThreeRow" HorizontalAlignment="Stretch">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="30" Height="30" CornerRadius="7" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"><Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"><Path x:Name="InspectorHintThreeIcon" Data="M12,3 C7.6,3 5,6.2 5,10 V14 C5,18.4 7.8,21 12,21 C16.2,21 19,18.4 19,14 V10 C19,6.2 16.4,3 12,3 Z M12,3 V10 M12,10 H19" Fill="Transparent" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Viewbox></Border>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" HorizontalAlignment="Left"><TextBlock x:Name="InspectorHintThreeTitle" Text="右クリック" FontSize="11.5" FontWeight="SemiBold" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/><TextBlock x:Name="InspectorHintThreeDescription" Text="コピー・貼り付け・削除" FontSize="10.5" Foreground="{DynamicResource MutedText}" TextAlignment="Left" HorizontalAlignment="Left" TextWrapping="NoWrap"/></StackPanel>
+              </Grid>
+            </StackPanel>
+          </StackPanel>
+        </Grid>
         </Grid>
       </Border>
       <Border x:Name="RightPaneSoftDivider" Grid.Column="2" Panel.ZIndex="19" Width="1" HorizontalAlignment="Left" VerticalAlignment="Stretch"

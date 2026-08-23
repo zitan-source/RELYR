@@ -50,6 +50,31 @@ public static class SelfTest
             File.WriteAllText(Path.Combine(newData, "settings.json"), "{}");
             Check(ConfigService.DeleteUserDataDirectories(oldData, newData) && !Directory.Exists(oldData) && !Directory.Exists(newData), "complete uninstall removes both current and legacy AppData settings folders");
             Check(config.Profiles.Count == 1 && config.Profiles[0].Name == "標準" && config.Profiles[0].Mappings.Count == 0, "only standard profile exists by default");
+            var dragAssignments = new List<Mapping>
+            {
+                new() { Input = "A", Layer = "通常", Kind = ActionKind.Text, Value = "source-default", Application = "editor.exe" },
+                new() { Input = "A", Layer = "通常", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+A", Application = "browser.exe" },
+                new() { Input = "B", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+B", Description = "target-default" }
+            };
+            var swapResult = MainWindow.TransferAssignments(dragAssignments, "A", "B");
+            bool profileDragSwapPreservedEveryVariant = swapResult == AssignmentTransferResult.Swapped
+                && dragAssignments.Count(mapping => mapping.Input == "B") == 2
+                && dragAssignments.Count(mapping => mapping.Input == "A") == 1
+                && dragAssignments.Where(mapping => mapping.Input == "B").Select(mapping => mapping.Application).Order().SequenceEqual(new[] { "browser.exe", "editor.exe" })
+                && dragAssignments.Single(mapping => mapping.Input == "A").Description == "target-default";
+            string[] draggableLayers = ["Space", "CapsLock", "MouseRight", "MouseBack", "MouseForward", "Taskbar"];
+            bool everyLayerMovesWithoutLoss = true;
+            foreach (string layer in draggableLayers)
+            {
+                string source = layer + "+C", target = layer + "+D";
+                dragAssignments.Add(new Mapping { Input = source, Layer = layer, Kind = ActionKind.Key, Value = "Enter", DragValue = "CtrlDrag", DragEndValue = "CtrlDragEnd" });
+                everyLayerMovesWithoutLoss &= MainWindow.TransferAssignments(dragAssignments, source, target) == AssignmentTransferResult.Moved
+                    && dragAssignments.Single(mapping => mapping.Input == target) is { Layer: var movedLayer, Value: "Enter", DragValue: "CtrlDrag", DragEndValue: "CtrlDragEnd" }
+                    && movedLayer == layer
+                    && !dragAssignments.Any(mapping => mapping.Input == source);
+            }
+            Check(profileDragSwapPreservedEveryVariant && everyLayerMovesWithoutLoss,
+                "dragging assignments moves empty targets, swaps occupied targets, and preserves every app variant and action field across all editable layers");
             byte[] legacyMap = [0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0x64, 0, 0x3A, 0, 0x0C, 0, 0x79, 0, 0, 0, 0, 0];
             Check(LegacyKeyRemapService.ContainsCapsLockToF13(legacyMap), "legacy CapsLock-to-F13 registry mapping detection");
             var remapRemoved = LegacyKeyRemapService.UpdateCapsLockToF13(legacyMap, false);
@@ -169,13 +194,30 @@ public static class SelfTest
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
             var taskbarLongOnly = new Mapping { Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
             var taskbarReplayEvents = new List<string>();
-            MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], taskbarReplayEvents.Add);
+            int taskbarReplayFailures = 0;
+            MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], click => { taskbarReplayEvents.Add(click); return true; }, () => { }, () => taskbarReplayFailures++);
+            var failedTaskbarReplayEvents = new List<string>();
+            int defensiveTaskbarReleases = 0;
+            MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], click => { failedTaskbarReplayEvents.Add(click); return false; }, () => defensiveTaskbarReleases++, () => taskbarReplayFailures++);
+            var taskbarReplayBatches = new List<(uint Flag, uint Data)[]>();
+            try
+            {
+                InputEngine.MouseClickBatchOutputForTest = batch => taskbarReplayBatches.Add(batch);
+                MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], InputEngine.SendMouseClickAtomic, () => defensiveTaskbarReleases++, () => taskbarReplayFailures++);
+            }
+            finally { InputEngine.MouseClickBatchOutputForTest = null; }
             Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft", longPress: true) == null
-                && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"]),
-                "taskbar long-press-only short clicks replay in order on a worker instead of sending input inside the hook");
+                && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
+                && failedTaskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
+                && taskbarReplayFailures == 1
+                && defensiveTaskbarReleases == 2
+                && taskbarReplayBatches.Count == 2
+                && taskbarReplayBatches[0].SequenceEqual([(2u, 0u), (4u, 0u)])
+                && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)]),
+                "taskbar long-press-only short clicks replay in ordered atomic Down/Up batches instead of sending input inside the hook");
             var mouseDisplayCases = new Dictionary<string, string> { { "MouseLeft", "マウス：左クリック" }, { "MouseRight", "マウス：右クリック" }, { "MouseMiddle", "マウス：ホイールクリック" }, { "MouseBack", "マウス：戻る" }, { "MouseForward", "マウス：進む" }, { "MouseX", "マウス：追加ボタン" }, { "WheelUp", "マウス：ホイール上" }, { "WheelDown", "マウス：ホイール下" }, { "TiltLeft", "マウス：チルト左" }, { "TiltRight", "マウス：チルト右" }, { "ShiftDrag", "マウス：Shift + 左クリック" }, { "CtrlDrag", "マウス：Ctrl + 左クリック" }, { "AltDrag", "マウス：Alt + 左クリック" } };
             Check(mouseDisplayCases.All(x => MainWindow.DisplayActionValue(ActionKind.Mouse, x.Key) == x.Value && MainWindow.NormalizeEditorAction(ActionKind.Shortcut, x.Value, ActionKind.Mouse, x.Key) == (ActionKind.Mouse, x.Key)), "every mouse execution value is readable in the editor and safely converts back to its compatible internal name");
             config.Profiles.Add(new Profile { Name = "アプリ用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] });
@@ -218,13 +260,16 @@ public static class SelfTest
             config.DeckPanelCollapsedTop = 357.5;
             config.DeckPanelWidth = 987.5;
             config.DeckPanelHeight = 543.5;
-            config.DeckAutoHideAfterAction = false;
-            config.DeckAutoHideOnPointerLeave = false;
+            config.DeckAfterActionBehavior = DeckAutoDismissBehavior.Hide;
+            config.DeckPointerLeaveBehavior = DeckAutoDismissBehavior.StayVisible;
             config.DeckLayouts[0].PanelPinned = true;
             config.DeckLayouts[0].PanelLeft = 111.5;
             config.DeckLayouts[0].PanelTop = 222.5;
             config.DeckLayouts[0].PanelCollapsedLeft = 333.5;
             config.DeckLayouts[0].PanelCollapsedTop = 444.5;
+            config.DeckLayouts[0].PanelPadding = 18;
+            config.DeckLayouts[0].PanelCornerRadius = 9;
+            config.DeckLayouts[0].HoverAnimationEnabled = false;
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -255,12 +300,20 @@ public static class SelfTest
             Check(loaded.GestureThresholdPixels == 12 && !loaded.LockCursorDuringGesture && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and cursor-lock option roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
             Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
-            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && !loaded.DeckAutoHideAfterAction && !loaded.DeckAutoHideOnPointerLeave && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5 }, "global fallback and per-Deck expanded/collapsed positions, size, pin, auto-hide, and keypad positions roundtrip independently");
+            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && loaded.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && loaded.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.StayVisible && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5, PanelPadding: 18, PanelCornerRadius: 9, HoverAnimationEnabled: false }, "global fallback and per-Deck expanded/collapsed positions, size, pin, appearance, display behavior, and keypad positions roundtrip independently");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });
             var migratedGestureConfig = gestureMigrationService.Load();
             Check(migratedGestureConfig.Version == ConfigService.CurrentVersion && migratedGestureConfig.GestureThresholdPixels == 12, "the former 24-pixel gesture default migrates to a more forgiving 12-pixel movement threshold");
+            var deckBehaviorMigrationService = new ConfigService(Path.Combine(dir, "deck-behavior-migration"));
+            Directory.CreateDirectory(deckBehaviorMigrationService.DirectoryPath);
+            File.WriteAllText(deckBehaviorMigrationService.FilePath, """{"Version":31,"DeckAutoHideAfterAction":false,"DeckAutoHideOnPointerLeave":true,"Profiles":[{"Name":"標準","Mappings":[]}]}""");
+            var migratedDeckBehavior = deckBehaviorMigrationService.Load();
+            Check(migratedDeckBehavior.Version == ConfigService.CurrentVersion
+                && migratedDeckBehavior.DeckAfterActionBehavior == DeckAutoDismissBehavior.StayVisible
+                && migratedDeckBehavior.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.CollapseToEdge,
+                "legacy Deck auto-hide switches migrate without changing existing user behavior");
             Check(loaded.Profiles[1].AutoSwitchEnabled && loaded.Profiles[1].AutoSwitchApplications.Contains("notepad.exe"), "profile application auto-switch roundtrip");
             const string releaseJson = """{"tag_name":"v0.1.69","draft":false,"prerelease":false,"body":"- Deckを改善\n- 操作性を向上","assets":[{"name":"RELYR-Update-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"RELYR-Update-0.1.69.exe.sha256","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Update-0.1.69.exe.sha256"},{"name":"RELYR-Setup-0.1.69.exe","state":"uploaded","browser_download_url":"https://github.com/zitan-source/RELYR/releases/download/v0.1.69/RELYR-Setup-0.1.69.exe"}]}""";
             var availableUpdate = UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 68));

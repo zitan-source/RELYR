@@ -22,6 +22,10 @@ public enum ClockDisplayMode
 {
     Time, TimeWithSeconds, DateAndTime, FullDateAndTime
 }
+public enum DeckAutoDismissBehavior
+{
+    StayVisible, CollapseToEdge, Hide
+}
 
 public sealed class MacroStep
 {
@@ -101,6 +105,9 @@ public sealed class DeckLayoutDefinition
     public int Columns { get; set; } = 9;
     public int Rows { get; set; } = 5;
     public string PanelColor { get; set; } = "";
+    public double PanelPadding { get; set; } = 12;
+    public double PanelCornerRadius { get; set; } = 14;
+    public bool HoverAnimationEnabled { get; set; } = true;
     public bool PanelPinned { get; set; }
     public double? PanelWidth { get; set; }
     public double? PanelHeight { get; set; }
@@ -189,8 +196,10 @@ public sealed class AppConfig
     public bool ClockShowOnAllMonitors { get; set; } = true;
     public int InputPanelOpacityPercent { get; set; } = 96;
     public bool DeckHoverPreviewsEnabled { get; set; } = true;
-    public bool DeckAutoHideAfterAction { get; set; } = true;
-    public bool DeckAutoHideOnPointerLeave { get; set; } = true;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public DeckAutoDismissBehavior DeckAfterActionBehavior { get; set; } = DeckAutoDismissBehavior.CollapseToEdge;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public DeckAutoDismissBehavior DeckPointerLeaveBehavior { get; set; } = DeckAutoDismissBehavior.CollapseToEdge;
     public bool UseSharedDeckPanel { get; set; }
     public List<Mapping> SharedDeckMappings { get; set; } = [];
     public string DefaultDeckLayoutId { get; set; } = "";

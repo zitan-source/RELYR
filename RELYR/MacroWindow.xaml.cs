@@ -35,6 +35,9 @@ public partial class MacroWindow : Window
     (int X, int Y)? lastRecordedMousePosition;
     Stopwatch? sinceLast, manualSinceLast;
     MacroStep? dragStep;
+    ListBoxItem? dragTargetContainer;
+    System.Windows.Media.TranslateTransform? dragTargetTransform;
+    bool dragTargetAfter;
     Action<int, int>? coordinateCaptureCallback;
     int dragInsertionIndex = -1;
     System.Windows.Point dragStart;
@@ -274,12 +277,17 @@ public partial class MacroWindow : Window
         if (!loading && editingName)
             FooterStatus.Text = "［名前を確定］を押すか Enter キーで確定してください。";
     }
-    void ConfirmName_Click(object sender, RoutedEventArgs e) => CommitNameEdit(true);
+    void ConfirmName_Click(object sender, RoutedEventArgs e)
+    {
+        if (CommitNameEdit(true))
+            StepList.Focus();
+    }
     void NameBox_KeyDown(object sender, WpfKeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            CommitNameEdit(true);
+            if (CommitNameEdit(true))
+                StepList.Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
@@ -346,7 +354,7 @@ public partial class MacroWindow : Window
         manualHeld.Clear();
         manualSinceLast = Stopwatch.StartNew();
         setRecording(true, false, false);
-        ManualCaptureButton.Content = "■ 手動追加を完了";
+        ManualCaptureLabel.Text = "手動追加を完了";
         ManualStatus.Text = "入力中です。キーを押してください。終わったら［手動追加を完了］を押します。";
         ManualCaptureButton.Focus();
     }
@@ -365,7 +373,7 @@ public partial class MacroWindow : Window
         manualCaptureActive = false;
         manualSinceLast = null;
         setRecording(false, false, false);
-        ManualCaptureButton.Content = "手動追加を開始";
+        ManualCaptureLabel.Text = "手動追加を開始";
         ManualStatus.Text = "停止中";
     }
     static Key EventKey(WpfKeyEventArgs e) => e.Key == Key.System ? e.SystemKey : e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
@@ -464,7 +472,7 @@ public partial class MacroWindow : Window
         RelativeMouseMovementBox.IsEnabled = false;
         FixedMousePositionBox.IsEnabled = false;
         setRecording(true, RecordMouseMovesBox.IsChecked == true, config.RecordMappedActionsInMacros);
-        RecordButton.Content = "■ 記録停止";
+        RecordButtonLabel.Text = "記録を停止";
         RecordButton.Background = ThemeService.Brush("AccentStrongBrush");
         RecordButton.Foreground = ThemeService.Brush("AccentButtonText");
         RecordStatus.Text = $"記録中（{(config.RecordMappedActionsInMacros ? "割り当て後のアクション" : "物理キー")}）— Ctrl + Shift + F12 で終了";
@@ -587,7 +595,7 @@ public partial class MacroWindow : Window
         RecordPhysicalInputBox.IsEnabled = true;
         RecordMouseMovesBox.IsEnabled = true;
         UpdateMouseMovementModeState();
-        RecordButton.Content = "● 記録を開始（末尾へ追記）";
+        RecordButtonLabel.Text = "記録を開始（末尾へ追記）";
         RecordButton.Background = ThemeService.Brush("DangerBackground");
         RecordButton.Foreground = ThemeService.Brush("DangerForeground");
         RecordStatus.Text = "停止中";
@@ -708,7 +716,7 @@ public partial class MacroWindow : Window
             return;
         }
         coordinateCaptureActive = true;
-        CoordinateCaptureButton.Content = "クリックして座標を記録…（Escでキャンセル）";
+        CoordinateCaptureLabel.Text = "クリックして座標を記録…（Escでキャンセル）";
         CoordinateCaptureButton.Background = ThemeService.Brush("AccentSoftBrush");
         FooterStatus.Text = "画面上の記録したい位置を左クリックしてください。このクリック自体は実行されません。";
         CoordinateCaptureButton.Focus();
@@ -739,7 +747,7 @@ public partial class MacroWindow : Window
             InputEngine.CancelCoordinateCapture(coordinateCaptureCallback);
         coordinateCaptureCallback = null;
         coordinateCaptureActive = false;
-        CoordinateCaptureButton.Content = "座標を記録";
+        CoordinateCaptureLabel.Text = "座標を記録";
         CoordinateCaptureButton.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
         if (status != null)
             FooterStatus.Text = status;
@@ -921,7 +929,7 @@ public partial class MacroWindow : Window
     void StepList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         dragStart = e.GetPosition(StepList);
-        dragStep = StepFromElement(e.OriginalSource as DependencyObject);
+        dragStep = IsStepDragHandle(e.OriginalSource as DependencyObject) ? StepFromElement(e.OriginalSource as DependencyObject) : null;
         dragInsertionIndex = -1;
     }
     void StepList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -945,9 +953,10 @@ public partial class MacroWindow : Window
             return;
         try
         {
+            ShowStepDragPreview(p);
             DragDrop.DoDragDrop(StepList, dragStep, System.Windows.DragDropEffects.Move);
         }
-        finally { HideDropIndicator(); dragStep = null; }
+        finally { HideDropIndicator(); StepDragPreviewPopup.IsOpen = false; dragStep = null; }
     }
     void StepList_DragOver(object sender, System.Windows.DragEventArgs e)
     {
@@ -966,14 +975,24 @@ public partial class MacroWindow : Window
             bool after = e.GetPosition(container).Y >= container.ActualHeight / 2;
             dragInsertionIndex = Math.Clamp(target + (after ? 1 : 0), 0, current.Steps.Count);
             lineY = container.TranslatePoint(new System.Windows.Point(0, after ? container.ActualHeight : 0), StepList).Y;
+            AnimateDragTarget(container, after);
         }
         else
         {
             dragInsertionIndex = current.Steps.Count;
             lineY = StepList.ItemContainerGenerator.ContainerFromIndex(StepList.Items.Count - 1) is not ListBoxItem last ? 2 : last.TranslatePoint(new System.Windows.Point(0, last.ActualHeight), StepList).Y;
+            AnimateDragTarget(null, false);
         }
+        var pointer = e.GetPosition(StepList);
+        StepDragPreviewPopup.HorizontalOffset = pointer.X + 16;
+        StepDragPreviewPopup.VerticalOffset = pointer.Y + 14;
         DropIndicator.Margin = new Thickness(5, Math.Max(0, lineY - 1.5), 5, 0);
-        DropIndicator.Visibility = Visibility.Visible;
+        if (DropIndicator.Visibility != Visibility.Visible)
+        {
+            DropIndicator.Opacity = 0;
+            DropIndicator.Visibility = Visibility.Visible;
+            DropIndicator.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(110)));
+        }
         e.Effects = System.Windows.DragDropEffects.Move;
         e.Handled = true;
     }
@@ -987,6 +1006,7 @@ public partial class MacroWindow : Window
     {
         dragInsertionIndex = -1;
         DropIndicator?.Visibility = Visibility.Collapsed;
+        AnimateDragTarget(null, false);
     }
     void StepList_Drop(object sender, System.Windows.DragEventArgs e)
     {
@@ -1033,6 +1053,67 @@ public partial class MacroWindow : Window
         return null;
     }
     MacroStep? StepFromElement(DependencyObject? element) => StepContainerFromElement(element)?.DataContext is StepView view ? view.Step : null;
+
+    bool IsStepDragHandle(DependencyObject? element)
+    {
+        while (element != null && element != StepList)
+        {
+            if (element is FrameworkElement { Tag: "MacroStepDragHandle" })
+                return true;
+            if (element is ListBoxItem)
+                return false;
+            element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+        }
+        return false;
+    }
+
+    void ShowStepDragPreview(System.Windows.Point pointer)
+    {
+        if (dragStep == null || current == null)
+            return;
+        int index = current.Steps.IndexOf(dragStep);
+        StepDragPreviewNumber.Text = (index + 1).ToString();
+        StepDragPreviewTitle.Text = HumanTitle(dragStep);
+        StepDragPreviewDetail.Text = HumanDetail(dragStep);
+        StepDragPreviewPopup.HorizontalOffset = pointer.X + 16;
+        StepDragPreviewPopup.VerticalOffset = pointer.Y + 14;
+        StepDragPreviewPopup.IsOpen = true;
+    }
+
+    void AnimateDragTarget(ListBoxItem? target, bool insertAfter)
+    {
+        if (ReferenceEquals(target, dragTargetContainer) && (target == null || insertAfter == dragTargetAfter))
+            return;
+        if (dragTargetContainer != null && dragTargetTransform != null)
+        {
+            var oldTarget = dragTargetContainer;
+            var oldTransform = dragTargetTransform;
+            var settle = new System.Windows.Media.Animation.DoubleAnimation(oldTransform.Y, 0, TimeSpan.FromMilliseconds(90))
+            {
+                EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+            };
+            settle.Completed += (_, _) =>
+            {
+                if (ReferenceEquals(oldTarget.RenderTransform, oldTransform))
+                    oldTarget.RenderTransform = System.Windows.Media.Transform.Identity;
+            };
+            oldTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, settle);
+        }
+        dragTargetContainer = target;
+        dragTargetTransform = null;
+        dragTargetAfter = insertAfter;
+        if (target == null)
+            return;
+        var transform = new System.Windows.Media.TranslateTransform();
+        target.RenderTransform = transform;
+        dragTargetTransform = transform;
+        double offset = insertAfter ? -5 : 5;
+        transform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, offset, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+            });
+    }
     void StepList_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (StepList.SelectedItems.Count == 1)

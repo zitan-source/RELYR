@@ -6,8 +6,6 @@ using System.Windows.Input;
 
 namespace RELYR;
 
-internal sealed record AutoSwitchApplicationInfo(string Label, string Value);
-
 public partial class ProfileManagerWindow : Window
 {
     readonly List<Profile> profiles;
@@ -60,9 +58,11 @@ public partial class ProfileManagerWindow : Window
         SelectedProfileTitle.Text = profile.Name;
         AutoSwitchBox.IsEnabled = !ReferenceEquals(profile, profiles[0]);
         AutoSwitchBox.IsChecked = !ReferenceEquals(profile, profiles[0]) && profile.AutoSwitchEnabled;
-        AutoSwitchBox.Content = AutoSwitchBox.IsChecked == true ? "● 自動切替 オン" : "○ 自動切替 オフ";
         AssignedApplicationList.ItemsSource = null;
-        AssignedApplicationList.ItemsSource = profile.AutoSwitchApplications.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+        AssignedApplicationList.ItemsSource = profile.AutoSwitchApplications
+            .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+            .Select(ApplicationDisplayItem.FromExecutable)
+            .ToList();
         loading = false;
         StatusText.Text = ReferenceEquals(profile, profiles[0]) ? "標準プロファイルは、自動切替対象がない場合の戻り先です。" : $"割り当て {profile.Mappings.Count}件 / 対象アプリ {profile.AutoSwitchApplications.Count}件";
     }
@@ -177,7 +177,6 @@ public partial class ProfileManagerWindow : Window
         if (loading || SelectedProfile == null || ReferenceEquals(SelectedProfile, profiles[0]))
             return;
         SelectedProfile.AutoSwitchEnabled = AutoSwitchBox.IsChecked == true;
-        AutoSwitchBox.Content = SelectedProfile.AutoSwitchEnabled ? "● 自動切替 オン" : "○ 自動切替 オフ";
         RefreshProfileListWithoutChangingSelection();
     }
     void RefreshProfileListWithoutChangingSelection()
@@ -192,7 +191,7 @@ public partial class ProfileManagerWindow : Window
     void RefreshRunningApplications_Click(object sender, RoutedEventArgs e) => RefreshRunningApplications();
     void RefreshRunningApplications()
     {
-        var apps = new List<AutoSwitchApplicationInfo>();
+        var apps = new List<ApplicationDisplayItem>();
         foreach (var process in Process.GetProcesses())
         {
             using (process)
@@ -200,7 +199,10 @@ public partial class ProfileManagerWindow : Window
                 try
                 {
                     if (process.MainWindowHandle != IntPtr.Zero && !string.IsNullOrWhiteSpace(process.MainWindowTitle))
-                        apps.Add(new($"{process.MainWindowTitle}  —  {process.ProcessName}.exe", process.ProcessName + ".exe"));
+                    {
+                        string executable = process.ProcessName + ".exe";
+                        apps.Add(new(process.MainWindowTitle, executable, ApplicationIconService.TryGetProcessPath(process)));
+                    }
                 }
                 catch { }
             }
@@ -209,15 +211,16 @@ public partial class ProfileManagerWindow : Window
     }
     void AddRunningApplication_Click(object sender, RoutedEventArgs e)
     {
-        if (RunningApplicationList.SelectedItem is AutoSwitchApplicationInfo app)
+        if (RunningApplicationList.SelectedItem is ApplicationDisplayItem app)
             AddAutoSwitchApplication(app.Value);
         else
             ShowStatus("右側の一覧からアプリを選択してください。", true);
     }
     void RemoveAutoSwitchApplication_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedProfile == null || AssignedApplicationList.SelectedItem is not string app)
+        if (SelectedProfile == null || AssignedApplicationList.SelectedItem is not ApplicationDisplayItem selected)
             return;
+        string app = selected.Value;
         SelectedProfile.AutoSwitchApplications.RemoveAll(x => x.Equals(app, StringComparison.OrdinalIgnoreCase));
         RefreshSelectedProfile();
         ShowStatus(app + " を対象から外しました。");

@@ -71,9 +71,9 @@ internal sealed class DeckPanelOverlayWindow : Window
     const int DwmwaSystemBackdropType = 38;
     const int DwmWindowCornerPreferenceRound = 2;
     const int DwmsbtNone = 1;
-    const double PanelCornerRadius = 14;
+    const double DefaultPanelCornerRadius = 14;
     const double PanelBorderThickness = 1;
-    const double PanelInset = 12;
+    const double DefaultPanelInset = 12;
     const double HeaderHeight = 30;
     const double HeaderToGridGap = 12;
     const double CompactHeaderThreshold = 150;
@@ -99,9 +99,11 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly Action<double, double>? saveCollapsedPosition;
     readonly Action<string, double, double>? saveSize;
     readonly Action<string, bool>? savePinned;
+    readonly Action? stateChanged;
     bool hoverPreviewsEnabled;
-    bool autoHideAfterAction;
-    bool autoHideOnPointerLeave;
+    DeckAutoDismissBehavior afterActionBehavior;
+    DeckAutoDismissBehavior pointerLeaveBehavior;
+    DeckAutoDismissBehavior pendingAutoDismissBehavior;
     bool pointerEnteredSinceShown;
     bool autoHideRequiresPointerOutside;
     int openContextMenus;
@@ -116,6 +118,8 @@ internal sealed class DeckPanelOverlayWindow : Window
     bool deckBuildQueued;
     int deckReorderSourceSlot;
     Button? deckReorderTargetButton;
+    System.Windows.Media.Brush? deckReorderTargetOriginalBorderBrush;
+    Thickness deckReorderTargetOriginalBorderThickness;
     Point fileDragStart;
     MediaPlayer? hoverAudioPlayer;
     Button? hoverAudioSource;
@@ -131,6 +135,7 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     internal IReadOnlyList<Button> DeckButtons => deckButtons;
     internal int VideoPreviewCountForTest => videoPreview == null ? 0 : 1;
+    internal Func<System.Drawing.Point>? CursorPositionProviderForTest { get; set; }
     internal Button CloseButton { get; private set; } = null!;
     internal Button ResetSizeButton { get; private set; } = null!;
     internal Button PinButton { get; private set; } = null!;
@@ -140,7 +145,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     internal bool IsPinnedForTest => layout.PanelPinned;
     internal bool PointerAutoHideArmedForTest => pointerEnteredSinceShown;
     internal void ArmPointerAutoHideForTest() => pointerEnteredSinceShown = true;
-    internal void RequestPointerAutoHideForTest() => ScheduleAutoHide(PointerLeaveAutoHideDelay, true);
+    internal void RequestPointerAutoHideForTest() => ScheduleAutoDismiss(pointerLeaveBehavior, PointerLeaveAutoHideDelay, true);
     internal void SetDragActiveForTest(bool value) => internalDeckDragActive = value;
     internal double VisualOpacityForTest => panelCard.Opacity;
     internal int GlassOpacityPercentForTest => glassOpacityPercent;
@@ -173,6 +178,8 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly List<Button> deckButtons = [];
     readonly Border panelCard;
     readonly DeckLayoutDefinition layout;
+    double PanelCornerRadius => Math.Clamp(double.IsFinite(layout.PanelCornerRadius) ? layout.PanelCornerRadius : DefaultPanelCornerRadius, 0, 24);
+    double PanelInset => Math.Clamp(double.IsFinite(layout.PanelPadding) ? layout.PanelPadding : DefaultPanelInset, 4, 24);
     readonly UniformGrid deckGrid;
     readonly Grid root;
     readonly Viewbox deckView;
@@ -195,6 +202,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     bool changingWindowState;
     int renderedColumns;
     int renderedRows;
+    double renderedPanelInset;
     bool collapsedToEdge;
     bool edgeExpansionArmed;
     bool collapsedPointerTransitionPending;
@@ -217,21 +225,23 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     WpfColor panelTone;
 
-    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<double, double>? collapsedPositionChanged = null)
+    internal DeckPanelOverlayWindow(AppConfig config, Action<Mapping>? executeAction, int opacityPercent = 96, Action<double, double>? positionChanged = null, DeckLayoutDefinition? selectedLayout = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<double, double>? collapsedPositionChanged = null, Action? presentationStateChanged = null)
     {
         execute = executeAction;
         savePosition = positionChanged;
         saveCollapsedPosition = collapsedPositionChanged;
         saveSize = sizeChanged;
         savePinned = pinnedChanged;
+        stateChanged = presentationStateChanged;
         hoverAudioStartTimer.Tick += HoverAudioStartTimerTick;
         autoHideTimer.Tick += AutoHideTimerTick;
         hoverPreviewsEnabled = config.DeckHoverPreviewsEnabled;
-        autoHideAfterAction = config.DeckAutoHideAfterAction;
-        autoHideOnPointerLeave = config.DeckAutoHideOnPointerLeave;
+        afterActionBehavior = config.DeckAfterActionBehavior;
+        pointerLeaveBehavior = config.DeckPointerLeaveBehavior;
         layout = selectedLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
         renderedColumns = layout.Columns;
         renderedRows = layout.Rows;
+        renderedPanelInset = PanelInset;
         Title = "RELYR Deck - " + layout.Name;
         deckGrid = new UniformGrid();
         UpdateDeckDimensions(layout.PanelWidth, layout.PanelHeight);
@@ -349,8 +359,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         deckGrid.Width = naturalGridWidth;
         deckGrid.Height = naturalGridHeight;
     }
-    static double OverlayChromeWidth => PanelInset * 2 + PanelBorderThickness * 2;
-    static double OverlayChromeHeight => PanelInset * 2 + PanelBorderThickness * 2 + HeaderHeight + HeaderToGridGap;
+    double OverlayChromeWidth => PanelInset * 2 + PanelBorderThickness * 2;
+    double OverlayChromeHeight => PanelInset * 2 + PanelBorderThickness * 2 + HeaderHeight + HeaderToGridGap;
     WpfSize WindowSizeForScale(double scale) => new(naturalGridWidth * scale + OverlayChromeWidth, naturalGridHeight * scale + OverlayChromeHeight);
     WpfSize AspectLockedSize(double proposedWidth, double proposedHeight, double currentScale, bool followLargestChange)
     {
@@ -456,6 +466,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         // Hide first so a pointer that is still over a Deck button cannot raise
         // another MouseEnter and recreate a media preview during teardown.
         Hide();
+        NotifyPresentationStateChanged();
         ClearVideoPreviews();
         CancelPendingHoverAudio();
         StopHoverAudio();
@@ -529,6 +540,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             UpdateHeaderLayout();
         }
         finally { changingWindowState = false; }
+        NotifyPresentationStateChanged();
     }
 
     internal void CollapseToEdge()
@@ -570,7 +582,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             else
                 collapsedBounds = new Rect(Math.Clamp(expandedBounds.Left, work.Left, work.Right - collapsedWidth), work.Bottom - collapsedHeight, collapsedWidth, collapsedHeight);
         }
-        var pointerAtCollapse = System.Windows.Forms.Cursor.Position;
+        var pointerAtCollapse = CurrentCursorPosition();
         bool pointerStartedOutsideCollapsedBounds = !collapsedBounds.Contains(new Point(pointerAtCollapse.X, pointerAtCollapse.Y));
         ApplyCollapsedBounds(collapsedBounds);
         // Moving the collapsed tab to the nearest screen edge can place it
@@ -584,10 +596,11 @@ internal sealed class DeckPanelOverlayWindow : Window
             if (!collapsedToEdge)
                 return;
             collapsedPointerTransitionPending = false;
-            var currentPointer = System.Windows.Forms.Cursor.Position;
+            var currentPointer = CurrentCursorPosition();
             bool pointerActuallyMoved = currentPointer.X != pointerAtCollapse.X || currentPointer.Y != pointerAtCollapse.Y;
             edgeExpansionArmed = pointerStartedOutsideCollapsedBounds || (pointerActuallyMoved && IsCursorOutsideDeckWindow());
         }));
+        NotifyPresentationStateChanged();
     }
 
     void ApplyCollapsedBounds(Rect bounds)
@@ -794,35 +807,45 @@ internal sealed class DeckPanelOverlayWindow : Window
         videoPreview = null;
     }
 
-    internal void Refresh(int opacityPercent, bool previewsEnabled, bool? hideAfterAction = null, bool? hideOnPointerLeave = null)
+    internal void Refresh(int opacityPercent, bool previewsEnabled, DeckAutoDismissBehavior? afterAction = null, DeckAutoDismissBehavior? pointerLeave = null)
     {
-        RefreshAppearance(opacityPercent, previewsEnabled, hideAfterAction, hideOnPointerLeave);
+        RefreshAppearance(opacityPercent, previewsEnabled, afterAction, pointerLeave);
         if (deckButtonsBuilt)
             BuildDeckButtons();
         else
             QueueDeckButtonBuild();
     }
 
-    internal void RefreshAppearance(int opacityPercent, bool previewsEnabled, bool? hideAfterAction = null, bool? hideOnPointerLeave = null)
+    internal void RefreshAppearance(int opacityPercent, bool previewsEnabled, DeckAutoDismissBehavior? afterAction = null, DeckAutoDismissBehavior? pointerLeave = null)
     {
         hoverPreviewsEnabled = previewsEnabled;
-        if (hideAfterAction is bool afterAction)
-            autoHideAfterAction = afterAction;
-        if (hideOnPointerLeave is bool pointerLeave)
-            autoHideOnPointerLeave = pointerLeave;
+        if (afterAction != null || pointerLeave != null)
+            autoHideTimer.Stop();
+        if (afterAction is DeckAutoDismissBehavior newAfterAction)
+            afterActionBehavior = newAfterAction;
+        if (pointerLeave is DeckAutoDismissBehavior newPointerLeave)
+            pointerLeaveBehavior = newPointerLeave;
         SetGlassOpacity(opacityPercent);
+        panelCard.Padding = new Thickness(PanelInset);
+        panelCard.CornerRadius = new CornerRadius(PanelCornerRadius);
+        dragArea.Margin = new Thickness(-PanelInset, 0, -PanelInset, 0);
+        glassButtonStyle = null;
         ApplyPanelColor();
         Title = "RELYR Deck - " + layout.Name;
         headerTitle.Text = layout.Name;
         dragArea.ToolTip = layout.Name;
         bool dimensionsChanged = renderedColumns != layout.Columns || renderedRows != layout.Rows;
+        bool panelInsetChanged = Math.Abs(renderedPanelInset - PanelInset) > .01;
         renderedColumns = layout.Columns;
         renderedRows = layout.Rows;
+        renderedPanelInset = PanelInset;
         if (collapsedToEdge)
-            resetSizeWhenExpanded |= dimensionsChanged;
+            resetSizeWhenExpanded |= dimensionsChanged || panelInsetChanged;
         else
-            UpdateDeckDimensions(dimensionsChanged ? layout.PanelWidth : Width, dimensionsChanged ? layout.PanelHeight : Height);
+            UpdateDeckDimensions(dimensionsChanged || panelInsetChanged ? layout.PanelWidth : Width, dimensionsChanged || panelInsetChanged ? layout.PanelHeight : Height);
         UpdateHeaderLayout();
+        ApplyRoundedPanelClip();
+        ApplyRoundedWindowRegion();
     }
 
     void PanelCard_MouseEnter(object sender, MouseEventArgs e)
@@ -907,15 +930,16 @@ internal sealed class DeckPanelOverlayWindow : Window
             autoHideTimer.Stop();
             return;
         }
-        if (pointerEnteredSinceShown && autoHideOnPointerLeave)
-            ScheduleAutoHide(PointerLeaveAutoHideDelay, true);
+        if (pointerEnteredSinceShown)
+            ScheduleAutoDismiss(pointerLeaveBehavior, PointerLeaveAutoHideDelay, true);
     }
 
-    void ScheduleAutoHide(TimeSpan delay, bool requirePointerOutside)
+    void ScheduleAutoDismiss(DeckAutoDismissBehavior behavior, TimeSpan delay, bool requirePointerOutside)
     {
         autoHideTimer.Stop();
-        if (layout.PanelPinned || !IsVisible)
+        if (behavior == DeckAutoDismissBehavior.StayVisible || layout.PanelPinned || !IsVisible)
             return;
+        pendingAutoDismissBehavior = behavior;
         autoHideRequiresPointerOutside = requirePointerOutside;
         autoHideTimer.Interval = delay;
         autoHideTimer.Start();
@@ -928,12 +952,15 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         if (ShouldSuspendAutoHide())
         {
-            ScheduleAutoHide(PointerLeaveAutoHideDelay, autoHideRequiresPointerOutside);
+            ScheduleAutoDismiss(pendingAutoDismissBehavior, PointerLeaveAutoHideDelay, autoHideRequiresPointerOutside);
             return;
         }
         if (autoHideRequiresPointerOutside && !IsCursorOutsideDeckWindow())
             return;
-        CollapseToEdge();
+        if (pendingAutoDismissBehavior == DeckAutoDismissBehavior.Hide)
+            HideForReuse();
+        else if (pendingAutoDismissBehavior == DeckAutoDismissBehavior.CollapseToEdge)
+            CollapseToEdge();
     }
 
     bool ShouldSuspendAutoHide() =>
@@ -946,8 +973,8 @@ internal sealed class DeckPanelOverlayWindow : Window
         menu.Closed += (_, _) =>
         {
             openContextMenus = Math.Max(0, openContextMenus - 1);
-            if (pointerEnteredSinceShown && autoHideOnPointerLeave && IsCursorOutsideDeckWindow())
-                ScheduleAutoHide(PointerLeaveAutoHideDelay, true);
+            if (pointerEnteredSinceShown && IsCursorOutsideDeckWindow())
+                ScheduleAutoDismiss(pointerLeaveBehavior, PointerLeaveAutoHideDelay, true);
         };
     }
 
@@ -1051,7 +1078,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             Margin = new Thickness(0),
             Padding = new Thickness(0),
             Focusable = false,
-            ToolTip = "元の大きさに戻す",
+            ToolTip = "初期サイズに戻す",
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
             Content = new System.Windows.Shapes.Path
@@ -1090,7 +1117,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             Margin = new Thickness(0),
             Padding = new Thickness(0),
             Focusable = false,
-            ToolTip = "全画面表示",
+            ToolTip = "最大化",
             Content = fullScreenGlyph,
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center
@@ -1152,6 +1179,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         };
         ((System.Windows.Shapes.Path)close.Content).SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "PrimaryText");
         close.Style = CloseButtonStyle();
+        close.ToolTip = "Deckを非表示";
         close.Click += (_, _) => HideForReuse();
         CloseButton = close;
         CollapsedMoveHandle = CreateCollapsedMoveHandle();
@@ -1207,14 +1235,14 @@ internal sealed class DeckPanelOverlayWindow : Window
     System.Windows.Controls.ContextMenu CreateHeaderContextMenu()
     {
         var menu = new System.Windows.Controls.ContextMenu { MinWidth = 190 };
-        var store = new System.Windows.Controls.MenuItem { Header = "収納", IsCheckable = true };
+        var store = new System.Windows.Controls.MenuItem { Header = "画面端に折りたたむ", IsCheckable = true };
         store.Click += (_, _) =>
         {
             SetPinned(!store.IsChecked);
             if (store.IsChecked)
                 _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(CollapseToEdge));
         };
-        var reset = new System.Windows.Controls.MenuItem { Header = "元のサイズに戻す" };
+        var reset = new System.Windows.Controls.MenuItem { Header = "初期サイズに戻す" };
         reset.Click += (_, _) => ResetToDefaultSize();
         menu.Items.Add(store);
         menu.Items.Add(reset);
@@ -1248,7 +1276,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (PinButton == null)
             return;
-        PinButton.ToolTip = layout.PanelPinned ? "固定を解除" : "表示を固定";
+        PinButton.ToolTip = layout.PanelPinned ? "固定表示を解除" : "Deckを固定表示";
         PinButton.Opacity = layout.PanelPinned ? 1 : .72;
         if (layout.PanelPinned)
             PinButton.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "AccentSoftBrush");
@@ -1350,7 +1378,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         var sharedRadius = WpfApplication.Current.TryFindResource("ControlCornerRadius") is CornerRadius radius
             ? radius
             : new CornerRadius(6);
-        glassButtonStyle = CreateGlassButtonStyle(sharedRadius, WpfColor.FromArgb(24, 255, 255, 255));
+        glassButtonStyle = CreateGlassButtonStyle(sharedRadius, layout.HoverAnimationEnabled);
         return glassButtonStyle;
     }
     Style CloseButtonStyle()
@@ -1378,13 +1406,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         closeButtonStyle = style;
         return closeButtonStyle;
     }
-    static Style CreateGlassButtonStyle(CornerRadius cornerRadius, WpfColor hoverHighlight)
+    static Style CreateGlassButtonStyle(CornerRadius cornerRadius, bool animateHover)
     {
         var style = new Style(typeof(Button));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.CursorProperty, WpfCursors.Hand));
         var template = new ControlTemplate(typeof(Button));
         var root = new FrameworkElementFactory(typeof(Grid)) { Name = "HoverRoot" };
-        root.SetValue(UIElement.RenderTransformProperty, new TranslateTransform());
+        root.SetValue(FrameworkElement.RenderTransformOriginProperty, new Point(.5, .5));
+        root.SetValue(UIElement.RenderTransformProperty, new ScaleTransform(1, 1));
         var surface = new FrameworkElementFactory(typeof(Border)) { Name = "GlassSurface" };
         surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BackgroundProperty));
         surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BorderBrushProperty));
@@ -1392,24 +1421,6 @@ internal sealed class DeckPanelOverlayWindow : Window
         surface.SetValue(Border.CornerRadiusProperty, cornerRadius);
         surface.SetValue(Border.PaddingProperty, new TemplateBindingExtension(System.Windows.Controls.Control.PaddingProperty));
         root.AppendChild(surface);
-        var highlight = new FrameworkElementFactory(typeof(Border)) { Name = "GlassHighlight" };
-        highlight.SetValue(Border.BackgroundProperty, new SolidColorBrush(hoverHighlight));
-        highlight.SetValue(Border.CornerRadiusProperty, cornerRadius);
-        highlight.SetValue(UIElement.IsHitTestVisibleProperty, false);
-        highlight.SetValue(UIElement.OpacityProperty, 0d);
-        root.AppendChild(highlight);
-        var underline = new FrameworkElementFactory(typeof(Border)) { Name = "HoverUnderline" };
-        underline.SetValue(Border.BackgroundProperty, new SolidColorBrush(WpfColor.FromArgb(204, 242, 246, 248)));
-        underline.SetValue(Border.CornerRadiusProperty, new CornerRadius(1));
-        underline.SetValue(FrameworkElement.HeightProperty, 2d);
-        underline.SetValue(FrameworkElement.MarginProperty, new Thickness(10, 0, 10, 3));
-        underline.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Stretch);
-        underline.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Bottom);
-        underline.SetValue(FrameworkElement.RenderTransformOriginProperty, new Point(.5, .5));
-        underline.SetValue(UIElement.RenderTransformProperty, new ScaleTransform(.35, 1));
-        underline.SetValue(UIElement.IsHitTestVisibleProperty, false);
-        underline.SetValue(UIElement.OpacityProperty, 0d);
-        root.AppendChild(underline);
         var content = new FrameworkElementFactory(typeof(ContentPresenter));
         content.SetValue(ContentPresenter.HorizontalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.HorizontalContentAlignmentProperty));
         content.SetValue(ContentPresenter.VerticalAlignmentProperty, new TemplateBindingExtension(System.Windows.Controls.Control.VerticalContentAlignmentProperty));
@@ -1417,33 +1428,52 @@ internal sealed class DeckPanelOverlayWindow : Window
         content.SetValue(ContentPresenter.ContentTemplateProperty, new TemplateBindingExtension(ContentControl.ContentTemplateProperty));
         content.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
         root.AppendChild(content);
+        var dropBadge = new FrameworkElementFactory(typeof(Border)) { Name = "DropTargetBadge" };
+        dropBadge.SetValue(FrameworkElement.WidthProperty, 26d);
+        dropBadge.SetValue(FrameworkElement.HeightProperty, 26d);
+        dropBadge.SetValue(Border.CornerRadiusProperty, new CornerRadius(13));
+        dropBadge.SetValue(Border.BackgroundProperty, new SolidColorBrush(DeckAccent));
+        dropBadge.SetValue(Border.BorderBrushProperty, WpfBrushes.White);
+        dropBadge.SetValue(Border.BorderThicknessProperty, new Thickness(2));
+        dropBadge.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+        dropBadge.SetValue(FrameworkElement.VerticalAlignmentProperty, System.Windows.VerticalAlignment.Center);
+        dropBadge.SetValue(UIElement.OpacityProperty, 0d);
+        dropBadge.SetValue(UIElement.IsHitTestVisibleProperty, false);
+        dropBadge.SetValue(System.Windows.Controls.Panel.ZIndexProperty, 2);
+        var dropGlyph = new FrameworkElementFactory(typeof(TextBlock));
+        dropGlyph.SetValue(TextBlock.TextProperty, "↓");
+        dropGlyph.SetValue(TextBlock.FontSizeProperty, 17d);
+        dropGlyph.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+        dropGlyph.SetValue(TextBlock.ForegroundProperty, WpfBrushes.White);
+        dropGlyph.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+        dropGlyph.SetValue(FrameworkElement.VerticalAlignmentProperty, System.Windows.VerticalAlignment.Center);
+        dropGlyph.SetValue(FrameworkElement.MarginProperty, new Thickness(0, -2, 0, 0));
+        dropBadge.AppendChild(dropGlyph);
+        root.AppendChild(dropBadge);
         template.VisualTree = root;
         template.Triggers.Add(new Trigger
         {
             Property = UIElement.IsMouseOverProperty,
             Value = true,
-            Setters =
-            {
-                new Setter(UIElement.OpacityProperty, .98d, "GlassSurface"),
-                new Setter(UIElement.EffectProperty, new DropShadowEffect { Color = DeckAccent, BlurRadius = 11, ShadowDepth = 0, Opacity = .24 }, "HoverRoot")
-            }
+            Setters = { new Setter(UIElement.OpacityProperty, .98d, "GlassSurface") }
         });
         template.Triggers.Add(new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .84d, "GlassSurface") } });
         template.Triggers.Add(new Trigger { Property = UIElement.IsEnabledProperty, Value = false, Setters = { new Setter(UIElement.OpacityProperty, .42d) } });
-        AddDeckHoverTransition(template, UIElement.MouseEnterEvent, true);
-        AddDeckHoverTransition(template, UIElement.MouseLeaveEvent, false);
+        if (animateHover)
+        {
+            AddDeckHoverTransition(template, UIElement.MouseEnterEvent, true);
+            AddDeckHoverTransition(template, UIElement.MouseLeaveEvent, false);
+        }
         style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, template));
         return style;
     }
     static void AddDeckHoverTransition(ControlTemplate template, RoutedEvent routedEvent, bool entering)
     {
-        var duration = TimeSpan.FromMilliseconds(entering ? 150 : 180);
+        var duration = TimeSpan.FromMilliseconds(entering ? 120 : 150);
         var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
         var storyboard = new Storyboard();
-        AddDeckHoverAnimation(storyboard, "GlassHighlight", new PropertyPath(UIElement.OpacityProperty), entering ? 1 : 0, duration, easing);
-        AddDeckHoverAnimation(storyboard, "HoverUnderline", new PropertyPath(UIElement.OpacityProperty), entering ? .92 : 0, duration, easing);
-        AddDeckHoverAnimation(storyboard, "HoverUnderline", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleXProperty), entering ? 1 : .35, duration, easing);
-        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, TranslateTransform.YProperty), entering ? -1 : 0, duration, easing);
+        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleXProperty), entering ? 1.05 : 1, duration, easing);
+        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleYProperty), entering ? 1.05 : 1, duration, easing);
         var trigger = new EventTrigger(routedEvent);
         trigger.Actions.Add(new BeginStoryboard { Storyboard = storyboard });
         template.Triggers.Add(trigger);
@@ -1527,8 +1557,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (MainWindow.MappingInterceptsInput(mapping))
         {
             execute?.Invoke(mapping);
-            if (autoHideAfterAction && !layout.PanelPinned)
-                ScheduleAutoHide(ActionAutoHideDelay, false);
+            ScheduleAutoDismiss(afterActionBehavior, ActionAutoHideDelay, false);
         }
         else if (DeckPanelLayout.IsAudioFile(mapping.DeckFilePath))
             PlayHoverAudio(mapping.DeckFilePath, (Button)sender);
@@ -1981,10 +2010,12 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     bool IsCursorOutsideDeckWindow()
     {
-        var cursor = System.Windows.Forms.Cursor.Position;
+        var cursor = CurrentCursorPosition();
         Point point = PointFromScreen(new Point(cursor.X, cursor.Y));
         return point.X < 0 || point.Y < 0 || point.X > ActualWidth || point.Y > ActualHeight;
     }
+    System.Drawing.Point CurrentCursorPosition()
+        => CursorPositionProviderForTest?.Invoke() ?? System.Windows.Forms.Cursor.Position;
     void StartExternalFileDrag(Button button, Mapping mapping)
     {
         CancelDeckReorder();
@@ -2058,7 +2089,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             FrameworkElement preview = configuredIcon ?? (image != null
                 ? new WpfImage { Source = image, Stretch = Stretch.Uniform }
                 : DeckPanelLayout.CreateFileIcon(mapping.DeckFilePath, 42));
-            dragPreview = new DeckDragPreviewWindow(preview);
+            dragPreview = CreateCompactDragPreview(preview);
             dragPreview.Show();
             UpdateDragPreview();
         }
@@ -2068,7 +2099,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         if (dragPreview == null)
             return;
-        var screen = System.Windows.Forms.Cursor.Position;
+        var screen = CurrentCursorPosition();
         dragPreview.MoveToPhysical(screen.X, screen.Y);
     }
     void DeckDragGiveFeedback(object sender, System.Windows.GiveFeedbackEventArgs e)
@@ -2120,7 +2151,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     }
     void UpdateDeckReorderDrag()
     {
-        var cursor = System.Windows.Forms.Cursor.Position;
+        var cursor = CurrentCursorPosition();
         int targetSlot = DeckSlotAt(new NativeDropPoint { X = cursor.X, Y = cursor.Y });
         SetDeckReorderTarget(targetSlot);
         UpdateDragPreview();
@@ -2133,21 +2164,27 @@ internal sealed class DeckPanelOverlayWindow : Window
         ClearDeckReorderTarget();
         if (target == null)
             return;
-        target.Effect = new DropShadowEffect
-        {
-            Color = DeckAccent,
-            BlurRadius = 14,
-            ShadowDepth = 0,
-            Opacity = .58
-        };
+        deckReorderTargetOriginalBorderBrush = target.BorderBrush;
+        deckReorderTargetOriginalBorderThickness = target.BorderThickness;
+        target.BorderBrush = new SolidColorBrush(DeckAccent);
+        target.BorderThickness = new Thickness(3);
+        target.ApplyTemplate();
+        if (target.Template.FindName("DropTargetBadge", target) is UIElement badge)
+            badge.Opacity = 1;
         deckReorderTargetButton = target;
     }
     void ClearDeckReorderTarget()
     {
         if (deckReorderTargetButton == null)
             return;
-        deckReorderTargetButton.ClearValue(UIElement.EffectProperty);
+        deckReorderTargetButton.ApplyTemplate();
+        if (deckReorderTargetButton.Template.FindName("DropTargetBadge", deckReorderTargetButton) is UIElement badge)
+            badge.Opacity = 0;
+        deckReorderTargetButton.BorderBrush = deckReorderTargetOriginalBorderBrush ?? WpfBrushes.Transparent;
+        deckReorderTargetButton.BorderThickness = deckReorderTargetOriginalBorderThickness;
         deckReorderTargetButton = null;
+        deckReorderTargetOriginalBorderBrush = null;
+        deckReorderTargetOriginalBorderThickness = new Thickness(0);
     }
     void StartReorderDragPreview(Button source, Mapping? mapping)
     {
@@ -2165,11 +2202,15 @@ internal sealed class DeckPanelOverlayWindow : Window
                 BorderThickness = source.BorderThickness,
                 Child = content
             };
-            dragPreview = new DeckDragPreviewWindow(face);
+            dragPreview = CreateCompactDragPreview(face);
             dragPreview.Show();
         }
         catch { dragPreview = null; }
     }
+    internal static DeckDragPreviewWindow CreateCompactDragPreview(FrameworkElement preview)
+        => new(preview, compact: true);
+    internal void SetDeckReorderTargetForTest(int slot) => SetDeckReorderTarget(slot);
+    internal void ClearDeckReorderTargetForTest() => ClearDeckReorderTarget();
     void DragStarted(object sender, MouseButtonEventArgs e)
     {
         DependencyObject? source = e.OriginalSource as DependencyObject;
@@ -2289,6 +2330,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         UpdateLayout();
         UpdateFullScreenVisual();
         PersistSize();
+        NotifyPresentationStateChanged();
     }
     internal void MoveAndPersist(double left, double top)
     {
@@ -2308,6 +2350,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         PersistSize();
     }
     internal void ToggleSafeMaximizeForTest() => ToggleSafeMaximize();
+    internal bool IsSafelyMaximized => safeMaximizeRestoreBounds != null && WindowState == WindowState.Normal;
     internal bool IsSafelyMaximizedForTest => safeMaximizeRestoreBounds != null && WindowState == WindowState.Normal;
     internal Rect CurrentMonitorWorkAreaForTest => CurrentMonitorWorkArea();
 
@@ -2330,6 +2373,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             UpdateDeckDimensions(restore.Width, restore.Height);
             ApplyTemporaryBounds(new Rect(restore.Left, restore.Top, Width, Height));
             UpdateFullScreenVisual();
+            NotifyPresentationStateChanged();
             return;
         }
         MaximizeWithinWorkArea();
@@ -2347,6 +2391,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         MaxHeight = double.PositiveInfinity;
         ApplyTemporaryBounds(CurrentMonitorWorkArea());
         UpdateFullScreenVisual();
+        NotifyPresentationStateChanged();
     }
 
     Rect CurrentMonitorWorkArea()
@@ -2385,8 +2430,13 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (FullScreenButton == null || fullScreenGlyph == null)
             return;
         bool fullScreen = safeMaximizeRestoreBounds != null;
-        FullScreenButton.ToolTip = fullScreen ? "元の大きさに戻す" : "全画面表示";
+        FullScreenButton.ToolTip = fullScreen ? "元の位置とサイズに戻す" : "最大化";
         fullScreenGlyph.Text = fullScreen ? "\uE73F" : "\uE740";
+    }
+
+    void NotifyPresentationStateChanged()
+    {
+        try { stateChanged?.Invoke(); } catch { }
     }
     internal int ResizeHitTestForTest(Point point) => ResizeCornerHit(point.X, point.Y, ActualWidth, ActualHeight, ResizeCornerSize);
     static int ResizeCornerHit(double x, double y, double width, double height, double corner)

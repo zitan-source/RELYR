@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Button = System.Windows.Controls.Button;
 using ContextMenu = System.Windows.Controls.ContextMenu;
@@ -15,6 +16,9 @@ public partial class GestureManagerWindow : Window
     readonly IReadOnlyList<DeckLayoutDefinition> deckLayouts;
     readonly string keyboardLayout;
     bool loading;
+    bool editingGestureName;
+    GestureDefinition? editingGesture;
+    string gestureNameBeforeEdit = "";
 
     internal IReadOnlyList<GestureDefinition> ResultGestures => gestures;
     internal IReadOnlyList<Profile> ResultProfiles => profiles;
@@ -87,19 +91,74 @@ public partial class GestureManagerWindow : Window
         var gesture = SelectedGesture;
         if (gesture == null)
             return;
-        string old = gesture.Name;
-        string? name = PromptName("ジェスチャー名を変更", "新しい名前", old);
-        if (string.IsNullOrWhiteSpace(name) || name == old)
-            return;
-        if (gestures.Any(x => !ReferenceEquals(x, gesture) && x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        editingGesture = gesture;
+        gestureNameBeforeEdit = gesture.Name;
+        editingGestureName = true;
+        GestureTitle.IsReadOnly = false;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
         {
-            ShowStatus("同じ名前のジェスチャーがあります。", true);
-            return;
+            GestureTitle.Focus();
+            GestureTitle.SelectAll();
+        }));
+    }
+
+    void GestureTitle_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (CommitGestureName(true))
+                GestureList.Focus();
+            e.Handled = true;
         }
-        gesture.Name = name;
-        RenameReferences(profiles, old, name);
+        else if (e.Key == Key.Escape)
+        {
+            CancelGestureNameEdit();
+            e.Handled = true;
+        }
+    }
+
+    void GestureTitle_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (editingGestureName)
+            CommitGestureName(true);
+    }
+
+    bool CommitGestureName(bool showStatus)
+    {
+        if (!editingGestureName || editingGesture == null)
+            return true;
+        string name = GestureTitle.Text.Trim();
+        if (name.Length == 0 || gestures.Any(x => !ReferenceEquals(x, editingGesture) && x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            GestureTitle.Text = gestureNameBeforeEdit;
+            ShowStatus(name.Length == 0 ? "ジェスチャー名を入力してください。" : "同じ名前のジェスチャーがあります。", true);
+            GestureTitle.Focus();
+            GestureTitle.SelectAll();
+            return false;
+        }
+        string old = editingGesture.Name;
+        editingGesture.Name = name;
+        if (!old.Equals(name, StringComparison.Ordinal))
+            RenameReferences(profiles, old, name);
+        EndGestureNameEdit();
         RefreshGestures(name);
-        ShowStatus("名前と割り当てからの参照を変更しました。");
+        if (showStatus)
+            ShowStatus("名前と割り当てからの参照を変更しました。");
+        return true;
+    }
+
+    void CancelGestureNameEdit()
+    {
+        GestureTitle.Text = gestureNameBeforeEdit;
+        EndGestureNameEdit();
+        RefreshEditor();
+    }
+
+    void EndGestureNameEdit()
+    {
+        editingGestureName = false;
+        editingGesture = null;
+        GestureTitle.IsReadOnly = true;
     }
 
     void DeleteGesture_Click(object sender, RoutedEventArgs e)

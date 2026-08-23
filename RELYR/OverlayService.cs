@@ -25,6 +25,14 @@ namespace RELYR;
 /// <summary>割り当てから呼び出せる画面オーバーレイを一元管理します。</summary>
 internal static class OverlayService
 {
+    internal enum DeckPresentationState
+    {
+        Hidden,
+        Visible,
+        Collapsed,
+        Maximized
+    }
+
     internal const string NumpadAction = "ShowNumpadOverlay";
     internal const string ExtendedKeypadAction = "ShowExtendedKeypadOverlay";
     internal const string DeckPanelAction = "ShowDeckPanelOverlay";
@@ -48,6 +56,7 @@ internal static class OverlayService
     static Action<string, double, double>? deckCollapsedPositionChanged;
     static Action<string, double, double>? deckSizeChanged;
     static Action<string, bool>? deckPinnedChanged;
+    static Action? deckPresentationStateChanged;
     static Action? deckLayoutChanged;
     static Action<string, int, int>? deckSlotsChanged;
     static Action<bool, double, double>? inputPanelPositionChanged;
@@ -72,7 +81,7 @@ internal static class OverlayService
 #endif
     internal static bool FullScreenVisible => Volatile.Read(ref fullScreenActive) != 0;
 
-    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<string, double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<string, double, double>? collapsedPositionChanged = null)
+    internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<string, double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<string, double, double>? collapsedPositionChanged = null, Action? presentationStateChanged = null)
     {
         configProvider = provider;
         physicalInputDownProvider = inputDownProvider;
@@ -81,6 +90,7 @@ internal static class OverlayService
         deckCollapsedPositionChanged = collapsedPositionChanged;
         deckSizeChanged = sizeChanged;
         deckPinnedChanged = pinnedChanged;
+        deckPresentationStateChanged = presentationStateChanged;
         inputPanelPositionChanged = inputPositionChanged;
         deckLayoutChanged = layoutChanged;
         deckSlotsChanged = slotsChanged;
@@ -118,7 +128,8 @@ internal static class OverlayService
             layout,
             deckSizeChanged,
             deckPinnedChanged,
-            (left, top) => deckCollapsedPositionChanged?.Invoke(layout.Id, left, top));
+            (left, top) => deckCollapsedPositionChanged?.Invoke(layout.Id, left, top),
+            NotifyDeckPresentationStateChanged);
         var entry = new DeckPanelEntry(action, panel);
         deckPanels[key] = entry;
         lastDeckPanelKey = key;
@@ -128,9 +139,11 @@ internal static class OverlayService
                 deckPanels.Remove(key);
             if (lastDeckPanelKey.Equals(key, StringComparison.OrdinalIgnoreCase))
                 lastDeckPanelKey = deckPanels.Keys.LastOrDefault() ?? "";
+            NotifyDeckPresentationStateChanged();
         };
         panel.PrepareForShow();
         panel.Show();
+        NotifyDeckPresentationStateChanged();
         if (!hasOwnPosition && previous != null)
         {
             const double cascadeOffset = 32;
@@ -162,6 +175,28 @@ internal static class OverlayService
         return deckPanels.TryGetValue(key, out var exact) && exact.Window.IsVisible
             || deckPanels.Values.Any(entry => entry.Window.IsVisible && entry.Window.LayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase));
     }
+
+    internal static DeckPresentationState DeckPanelPresentationState(string action)
+    {
+        var config = configProvider?.Invoke();
+        var layout = config == null ? null : DeckPanelLayout.ResolveActionLayout(config, action);
+        if (layout == null)
+            return DeckPresentationState.Hidden;
+        string key = DeckPanelKey(action, layout);
+        DeckPanelOverlayWindow? panel = deckPanels.TryGetValue(key, out var exact)
+            ? exact.Window
+            : deckPanels.Values.FirstOrDefault(entry => entry.Window.LayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase))?.Window;
+        if (panel?.IsVisible != true)
+            return DeckPresentationState.Hidden;
+        if (panel.IsCollapsedToEdge)
+            return DeckPresentationState.Collapsed;
+        return panel.IsSafelyMaximized ? DeckPresentationState.Maximized : DeckPresentationState.Visible;
+    }
+
+    static void NotifyDeckPresentationStateChanged()
+    {
+        try { deckPresentationStateChanged?.Invoke(); } catch { }
+    }
     internal static void Shutdown()
     {
         if (WpfApplication.Current?.Dispatcher.CheckAccess() == true)
@@ -177,6 +212,7 @@ internal static class OverlayService
             deckCollapsedPositionChanged = null;
             deckSizeChanged = null;
             deckPinnedChanged = null;
+            deckPresentationStateChanged = null;
             inputPanelPositionChanged = null;
             deckLayoutChanged = null;
             deckSlotsChanged = null;
@@ -231,7 +267,7 @@ internal static class OverlayService
                         continue;
                     }
                     if (refreshContent)
-                        panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAutoHideAfterAction, config.DeckAutoHideOnPointerLeave);
+                        panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAfterActionBehavior, config.DeckPointerLeaveBehavior);
                 }
             }, "refresh Deck panel");
         }));
@@ -332,9 +368,15 @@ internal static class OverlayService
                         existing.HideForReuse();
                         return;
                     }
-                    existing.RefreshAppearance(deckConfig.InputPanelOpacityPercent, deckConfig.DeckHoverPreviewsEnabled, deckConfig.DeckAutoHideAfterAction, deckConfig.DeckAutoHideOnPointerLeave);
+                    existing.RefreshAppearance(deckConfig.InputPanelOpacityPercent, deckConfig.DeckHoverPreviewsEnabled, deckConfig.DeckAfterActionBehavior, deckConfig.DeckPointerLeaveBehavior);
+                    // An explicitly requested show must reveal the complete
+                    // Deck even if this cached window was hidden while it was
+                    // still in its edge-tab state.
+                    if (existing.IsCollapsedToEdge)
+                        existing.ExpandFromEdge();
                     existing.PrepareForShow();
                     existing.Show();
+                    NotifyDeckPresentationStateChanged();
                     return;
                 }
                 existing.Close();

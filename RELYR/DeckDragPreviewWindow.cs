@@ -25,6 +25,7 @@ namespace RELYR;
 sealed class DeckDragPreviewWindow : Window
 {
     const double WidthDip = 72, HeightDip = 66;
+    const double CompactWidthDip = 20, CompactHeightDip = 20;
     const int GwlExStyle = -20;
     const long WsExTransparent = 0x00000020L;
     const long WsExToolWindow = 0x00000080L;
@@ -32,10 +33,16 @@ sealed class DeckDragPreviewWindow : Window
     const uint SwpNoActivate = 0x0010;
     const uint SwpNoOwnerZOrder = 0x0200;
     const uint SwpShowWindow = 0x0040;
-    internal DeckDragPreviewWindow(FrameworkElement preview)
+    readonly double previewWidth;
+    readonly double previewHeight;
+    internal double PreviewWidthForTest => previewWidth;
+    internal double PreviewHeightForTest => previewHeight;
+    internal DeckDragPreviewWindow(FrameworkElement preview, bool compact = false)
     {
-        Width = WidthDip;
-        Height = HeightDip;
+        previewWidth = compact ? CompactWidthDip : WidthDip;
+        previewHeight = compact ? CompactHeightDip : HeightDip;
+        Width = previewWidth;
+        Height = previewHeight;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true;
@@ -46,15 +53,15 @@ sealed class DeckDragPreviewWindow : Window
         IsHitTestVisible = false;
         Content = new Border
         {
-            Width = WidthDip,
-            Height = HeightDip,
-            Padding = new Thickness(5),
-            CornerRadius = new CornerRadius(9),
-            Opacity = .78,
+            Width = previewWidth,
+            Height = previewHeight,
+            Padding = new Thickness(compact ? 1.5 : 5),
+            CornerRadius = new CornerRadius(compact ? 5 : 9),
+            Opacity = compact ? .88 : .78,
             Background = new SolidColorBrush(WpfColor.FromArgb(214, 24, 28, 31)),
             BorderBrush = new SolidColorBrush(WpfColor.FromArgb(210, 120, 225, 210)),
             BorderThickness = new Thickness(1),
-            Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Opacity = .55, Color = Colors.Black },
+            Effect = new DropShadowEffect { BlurRadius = compact ? 7 : 18, ShadowDepth = compact ? 2 : 4, Opacity = .55, Color = Colors.Black },
             Child = preview
         };
         SourceInitialized += (_, _) => ConfigureHandle();
@@ -80,7 +87,7 @@ sealed class DeckDragPreviewWindow : Window
             if (dpi == 0)
                 dpi = 96;
             double scale = dpi / 96d;
-            int width = (int)Math.Ceiling(WidthDip * scale), height = (int)Math.Ceiling(HeightDip * scale);
+            int width = (int)Math.Ceiling(previewWidth * scale), height = (int)Math.Ceiling(previewHeight * scale);
             SetWindowPos(hwnd, new IntPtr(-1), x - width / 2, y - height / 2, width, height, SwpNoActivate | SwpNoOwnerZOrder | SwpShowWindow);
         }
         catch { }

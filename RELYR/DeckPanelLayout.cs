@@ -135,26 +135,8 @@ internal static class DeckPanelLayout
         if (firstSlot == secondSlot || firstSlot < 1 || secondSlot < 1 || firstSlot > MaximumSlotCount || secondSlot > MaximumSlotCount)
             return;
         string first = InputName(firstSlot), second = InputName(secondSlot);
-        Mapping? firstMapping = layout.Mappings.LastOrDefault(x => x.Input.Equals(first, StringComparison.OrdinalIgnoreCase));
-        Mapping? secondMapping = layout.Mappings.LastOrDefault(x => x.Input.Equals(second, StringComparison.OrdinalIgnoreCase));
-        layout.Mappings.RemoveAll(x => x.Input.Equals(first, StringComparison.OrdinalIgnoreCase) || x.Input.Equals(second, StringComparison.OrdinalIgnoreCase));
-        if (secondMapping != null)
-        {
-            var moved = CloneMapping(secondMapping);
-            moved.Input = first;
-            moved.Layer = Layer;
-            layout.Mappings.Add(moved);
-        }
-        if (firstMapping != null)
-        {
-            var moved = CloneMapping(firstMapping);
-            moved.Input = second;
-            moved.Layer = Layer;
-            layout.Mappings.Add(moved);
-        }
+        MainWindow.TransferAssignments(layout.Mappings, first, second);
     }
-
-    static Mapping CloneMapping(Mapping mapping) => mapping.Copy();
 
     internal static bool TryParseButtonColor(string? value, out WpfColor color)
     {

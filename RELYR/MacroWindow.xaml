@@ -22,6 +22,9 @@
     <Style x:Key="FormStackButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Margin" Value="0,6,0,0"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="MinHeight" Value="44"/>
+      <Setter Property="Padding" Value="14,0"/>
     </Style>
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource CardBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
@@ -68,6 +71,25 @@
           <Setter Property="Background" Value="{DynamicResource ActionKeyIconBrush}"/>
         </DataTrigger>
       </Style.Triggers>
+    </Style>
+    <Style x:Key="MacroTitleTextBox" TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0,0,34,0"/><Setter Property="FontSize" Value="21"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+        <Grid SnapsToDevicePixels="True">
+          <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" Focusable="False"/>
+          <Button x:Name="EditMacroNameButton" Style="{StaticResource AppButtonStyle}" Width="30" Height="32" MinWidth="0" MinHeight="0" Padding="0" Margin="0"
+                  Background="Transparent" BorderBrush="Transparent" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                  Focusable="False" Click="EditMacro_Click" ToolTip="マクロ名を編集" AutomationProperties.Name="マクロ名を編集">
+            <TextBlock x:Name="EditMacroNameGlyph" Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{DynamicResource MutedText}"/>
+          </Button>
+          <Border x:Name="MacroNameFocusLine" Height="1" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" Opacity="0"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="EditMacroNameGlyph" Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="MacroNameFocusLine" Property="Opacity" Value="1"/><Setter TargetName="EditMacroNameGlyph" Property="Foreground" Value="{DynamicResource AccentTextBrush}"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="TabControl">
       <Setter Property="Background" Value="Transparent"/>
@@ -148,15 +170,15 @@
           <Grid x:Name="EditorPanel" IsEnabled="False" Opacity="0.45">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
 
-            <Grid>
+            <Grid Margin="0,0,0,6">
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <StackPanel><TextBlock Text="マクロ名" FontSize="16" FontWeight="Bold"/><TextBox x:Name="NameBox" Height="{StaticResource ControlHeight}" Margin="0,8,0,0" IsReadOnly="True" TextChanged="NameChanged" KeyDown="NameBox_KeyDown"/></StackPanel>
-              <Button x:Name="ConfirmNameButton" Grid.Column="1" Content="名前を確定" Click="ConfirmName_Click" Margin="8,21,0,0" Visibility="Collapsed"
+              <TextBox x:Name="NameBox" Style="{StaticResource MacroTitleTextBox}" Height="44" IsReadOnly="True" TextChanged="NameChanged" KeyDown="NameBox_KeyDown"/>
+              <Button x:Name="ConfirmNameButton" Grid.Column="1" Content="確定" Click="ConfirmName_Click" Margin="8,2,0,2" Visibility="Collapsed"
                       Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,12,0,7">
-              <TextBlock Text="登録された手順" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/>
+              <TextBlock Text="手順" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/>
               <TextBlock x:Name="StepSummary" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"/>
             </Grid>
 
@@ -173,14 +195,28 @@
                 </ContextMenu>
               </ListBox.ContextMenu>
               <ListBox.ItemTemplate><DataTemplate><Border Padding="7,5"><Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="30"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="44"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Style="{StaticResource MacroStepKindBar}"/>
-                <TextBlock Grid.Column="1" Text="{Binding Number}" Foreground="{DynamicResource MutedText}" VerticalAlignment="Center"/>
+                <Border Grid.Column="1" Tag="MacroStepNumber" Width="34" Height="34" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="8">
+                  <TextBlock Text="{Binding Number}" Foreground="{DynamicResource PrimaryText}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
                 <StackPanel Grid.Column="2"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel>
                 <TextBlock Grid.Column="3" Text="{Binding DelayLabel}" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <Border Grid.Column="4" Tag="MacroStepDragHandle" Width="28" Height="34" Margin="6,0,0,0" Background="Transparent" CornerRadius="7" Cursor="SizeAll" ToolTip="ドラッグして並べ替え">
+                  <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons" FontSize="15" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
               </Grid></Border></DataTemplate></ListBox.ItemTemplate>
             </ListBox>
             <Border x:Name="DropIndicator" Grid.Row="2" Height="3" Margin="5,0,5,0" VerticalAlignment="Top" Background="{DynamicResource AccentBrush}" CornerRadius="2" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="20"/>
+            <Popup x:Name="StepDragPreviewPopup" Grid.Row="2" Placement="Relative" PlacementTarget="{Binding ElementName=StepList}" AllowsTransparency="True" IsHitTestVisible="False">
+              <Border Width="330" Padding="10,8" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="10" Opacity="0.95" Effect="{DynamicResource GroupCardShadowEffect}">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Border Width="32" Height="32" Background="{DynamicResource ControlBackground}" CornerRadius="8"><TextBlock x:Name="StepDragPreviewNumber" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/></Border>
+                  <StackPanel Grid.Column="1"><TextBlock x:Name="StepDragPreviewTitle" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="StepDragPreviewDetail" Foreground="{DynamicResource SecondaryText}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel>
+                  <TextBlock Grid.Column="2" Text="&#xE712;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+              </Border>
+            </Popup>
 
             <WrapPanel Grid.Row="3" HorizontalAlignment="Right">
               <Button x:Name="UndoButton" Content="↶ 元に戻す" Click="Undo_Click" IsEnabled="False"/>
@@ -197,9 +233,9 @@
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
           <UniformGrid Columns="3" Margin="0,0,0,8">
-            <Button x:Name="ManualModeButton" Content="手動追加" Click="EditorModeButton_Click" Tag="0"/>
-            <Button x:Name="RecordModeButton" Content="自動記録" Click="EditorModeButton_Click" Tag="1"/>
-            <Button x:Name="StepEditModeButton" Content="手順編集" Click="EditorModeButton_Click" Tag="2"/>
+            <Button x:Name="ManualModeButton" Click="EditorModeButton_Click" Tag="0"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" Margin="0,0,6,0"/><TextBlock Text="手動追加"/></StackPanel></Button>
+            <Button x:Name="RecordModeButton" Click="EditorModeButton_Click" Tag="1"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7C8;" FontFamily="Segoe Fluent Icons" Margin="0,0,6,0"/><TextBlock Text="自動記録"/></StackPanel></Button>
+            <Button x:Name="StepEditModeButton" Click="EditorModeButton_Click" Tag="2"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" Margin="0,0,6,0"/><TextBlock Text="手順編集"/></StackPanel></Button>
           </UniformGrid>
         <TabControl x:Name="EditorTabs" Grid.Row="1" Background="Transparent" BorderThickness="0" SelectedIndex="0" SelectionChanged="EditorTabs_SelectionChanged">
           <TabControl.Template>
@@ -210,25 +246,25 @@
           <TabItem Header="手動追加">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,10,4,4">
               <TextBlock Text="キーを追加" FontSize="16" FontWeight="Bold"/>
-              <Button x:Name="KeypadInputButton" Content="キーパッドから入力…" Click="KeypadInput_Click" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}"/>
-              <Button x:Name="ManualCaptureButton" Content="手動追加を開始" PreviewKeyDown="ManualCapture_KeyDown" PreviewKeyUp="ManualCapture_KeyUp" Click="ManualCapture_Click" LostKeyboardFocus="ManualCapture_LostKeyboardFocus" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}" Background="{DynamicResource AccentSoftBrush}"/>
+              <Button x:Name="KeypadInputButton" Click="KeypadInput_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE765;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock Text="キーパッドから入力…"/></StackPanel></Button>
+              <Button x:Name="ManualCaptureButton" PreviewKeyDown="ManualCapture_KeyDown" PreviewKeyUp="ManualCapture_KeyUp" Click="ManualCapture_Click" LostKeyboardFocus="ManualCapture_LostKeyboardFocus" Style="{StaticResource FormStackButton}" Background="{DynamicResource AccentSoftBrush}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock x:Name="ManualCaptureLabel" Text="手動追加を開始"/></StackPanel></Button>
               <TextBlock x:Name="ManualStatus" Text="停止中" Foreground="{DynamicResource AccentTextBrush}" TextWrapping="Wrap" Margin="3,3,3,12"/>
               <TextBlock Text="停止: Ctrl + Shift + F12" Foreground="{DynamicResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="2,0,2,10"/>
 
               <Separator Margin="0,2,0,10" Background="{DynamicResource SubtleBorderBrush}"/>
-              <Button Content="定番アクションを追加…" Click="AddCatalogAction_Click" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}"/>
-              <Button Content="アプリ・ファイル・URLを追加…" Click="AddApplicationAction_Click" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}"/>
-              <Button x:Name="CoordinateCaptureButton" Content="座標を記録" Click="CoordinateCapture_Click" HorizontalContentAlignment="Center" Style="{StaticResource FormStackButton}"/>
+              <Button Click="AddCatalogAction_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock Text="定番アクションを追加…"/></StackPanel></Button>
+              <Button Click="AddApplicationAction_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE71B;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock Text="アプリ・ファイル・URLを追加…"/></StackPanel></Button>
+              <Button x:Name="CoordinateCaptureButton" Click="CoordinateCapture_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="⊙" FontFamily="Segoe UI Symbol" FontSize="18" Width="24"/><TextBlock x:Name="CoordinateCaptureLabel" Text="座標を記録"/></StackPanel></Button>
               <TextBlock Text="文字列を追加" FontWeight="SemiBold" Margin="0,12,0,6"/>
               <TextBox x:Name="ManualTextBox" AcceptsReturn="True" MinHeight="58" Padding="12,10" VerticalContentAlignment="Top" TextWrapping="Wrap"/>
-              <Button x:Name="AddTextActionButton" Content="文字列を手順へ追加" Click="AddTextAction_Click" Style="{StaticResource FormStackButton}"/>
+              <Button x:Name="AddTextActionButton" Click="AddTextAction_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="T" FontFamily="Segoe UI" FontSize="16" Width="24"/><TextBlock Text="文字列を手順へ追加"/></StackPanel></Button>
 
               <TextBlock Text="待機時間を追加" FontWeight="SemiBold" Margin="0,24,0,6"/>
               <Grid>
                 <TextBox x:Name="WaitBox" Text="500" Padding="12,0,44,0"/>
                 <TextBlock Text="ms" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0" IsHitTestVisible="False"/>
               </Grid>
-              <Button x:Name="AddWaitButton" Content="選択位置の後ろへ待機を追加" Click="AddWait_Click" Style="{StaticResource FormStackButton}"/>
+              <Button x:Name="AddWaitButton" Click="AddWait_Click" Style="{StaticResource FormStackButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE823;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock Text="待機時間を手順へ追加"/></StackPanel></Button>
             </StackPanel></ScrollViewer>
           </TabItem>
 
@@ -253,8 +289,9 @@
                 </StackPanel>
               </Expander>
               <TextBlock Text="すべてのマクロに共通の設定です。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="10" Margin="2,8,2,0"/>
-              <Button x:Name="RecordButton" Content="● 記録を開始" Click="Record_Click"
-                      Style="{StaticResource DangerButton}" Padding="12,10" Margin="0,22,0,0"/>
+              <Button x:Name="RecordButton" Click="Record_Click" Style="{StaticResource DangerButton}" Padding="14,10" Margin="0,22,0,0" HorizontalContentAlignment="Left">
+                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7C8;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24"/><TextBlock x:Name="RecordButtonLabel" Text="記録を開始"/></StackPanel>
+              </Button>
               <TextBlock x:Name="RecordStatus" Text="停止中" TextAlignment="Center" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,8,2,0"/>
             </StackPanel></ScrollViewer>
           </TabItem>

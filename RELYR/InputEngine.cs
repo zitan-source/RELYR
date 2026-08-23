@@ -91,7 +91,7 @@ public sealed partial class InputEngine : IDisposable
     int layerRepeatGeneration;
     long lastRecordedMove;
     long mousePassthroughUntil;
-    bool enabled = true;
+    volatile bool enabled = true;
     public bool Enabled
     {
         get => enabled;

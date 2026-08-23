@@ -6,7 +6,10 @@ using Microsoft.Win32;
 
 namespace RELYR;
 
-internal sealed record InstalledApplicationInfo(string Name, string LaunchPath, string Source);
+internal sealed record InstalledApplicationInfo(string Name, string LaunchPath, string Source, string? ExecutableName = null)
+{
+    public System.Windows.Media.ImageSource Icon { get; } = ApplicationIconService.GetIcon(LaunchPath);
+}
 
 public partial class ApplicationPickerWindow : Window
 {

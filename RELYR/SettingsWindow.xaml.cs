@@ -62,8 +62,8 @@ public partial class SettingsWindow : Window
     // Deck auto-hide is edited in the Deck workspace. Keeping these values in
     // the settings result prevents the general settings dialog from changing
     // an unrelated Deck preference when it is saved.
-    public bool DeckAutoHideAfterAction => config.DeckAutoHideAfterAction;
-    public bool DeckAutoHideOnPointerLeave => config.DeckAutoHideOnPointerLeave;
+    public DeckAutoDismissBehavior DeckAfterActionBehavior => config.DeckAfterActionBehavior;
+    public DeckAutoDismissBehavior DeckPointerLeaveBehavior => config.DeckPointerLeaveBehavior;
     public bool CapsRemapChanged
     {
         get; private set;
@@ -139,7 +139,10 @@ public partial class SettingsWindow : Window
     void RefreshInputDisabledApplications()
     {
         InputDisabledApplicationList.ItemsSource = null;
-        InputDisabledApplicationList.ItemsSource = inputDisabledApplications.OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase).ToList();
+        InputDisabledApplicationList.ItemsSource = inputDisabledApplications
+            .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+            .Select(ApplicationDisplayItem.FromExecutable)
+            .ToList();
     }
 
     void AddRunningInputDisabledApplication_Click(object sender, RoutedEventArgs e)
@@ -161,8 +164,9 @@ public partial class SettingsWindow : Window
 
     void RemoveInputDisabledApplication_Click(object sender, RoutedEventArgs e)
     {
-        if (InputDisabledApplicationList.SelectedItem is not string executable)
+        if (InputDisabledApplicationList.SelectedItem is not ApplicationDisplayItem selected)
             return;
+        string executable = selected.Value;
         inputDisabledApplications.RemoveAll(x => x.Equals(executable, StringComparison.OrdinalIgnoreCase));
         RefreshInputDisabledApplications();
     }
@@ -174,8 +178,11 @@ public partial class SettingsWindow : Window
             return;
         inputDisabledApplications.Add(executable);
         RefreshInputDisabledApplications();
-        InputDisabledApplicationList.SelectedItem = executable;
-        InputDisabledApplicationList.ScrollIntoView(executable);
+        var selected = InputDisabledApplicationList.Items.Cast<ApplicationDisplayItem>()
+            .FirstOrDefault(x => x.Value.Equals(executable, StringComparison.OrdinalIgnoreCase));
+        InputDisabledApplicationList.SelectedItem = selected;
+        if (selected != null)
+            InputDisabledApplicationList.ScrollIntoView(selected);
     }
 
     internal void AddInputDisabledApplicationForTest(string executable) => AddInputDisabledApplication(executable);
