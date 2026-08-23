@@ -28,7 +28,9 @@ internal sealed class ScreenOverlayWindow : Window
     readonly TextBlock? timeText, dateText;
     readonly System.Drawing.Rectangle screenBounds;
     readonly ClockDisplayMode displayMode;
+    IntPtr nativeHandle;
     internal bool IsClock => timeText != null;
+    internal bool CursorRestoredForTest { get; private set; }
 
     internal ScreenOverlayWindow(System.Windows.Forms.Screen screen, bool clock, AppConfig config)
         : this(screen, clock, config, clock)
@@ -91,8 +93,18 @@ internal sealed class ScreenOverlayWindow : Window
             clockTimer.Start();
         }
 
-        SourceInitialized += (_, _) => SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero, screenBounds.Left, screenBounds.Top, screenBounds.Width, screenBounds.Height, 0x0010 | 0x0040);
-        Closed += (_, _) => clockTimer.Stop();
+        SourceInitialized += (_, _) =>
+        {
+            IntPtr handle = new WindowInteropHelper(this).Handle;
+            Interlocked.Exchange(ref nativeHandle, handle);
+            SetWindowPos(handle, IntPtr.Zero, screenBounds.Left, screenBounds.Top, screenBounds.Width, screenBounds.Height, 0x0010 | 0x0040);
+        };
+        Closed += (_, _) =>
+        {
+            clockTimer.Stop();
+            RestoreVisibleSystemCursor();
+            Interlocked.Exchange(ref nativeHandle, IntPtr.Zero);
+        };
     }
 
     void AddClockBackground(Grid root, System.Windows.Forms.Screen screen, AppConfig config)
@@ -183,6 +195,36 @@ internal sealed class ScreenOverlayWindow : Window
         catch { return null; }
     }
 
+    internal void HideNativeImmediately()
+    {
+        // This can be called by the fail-open watchdog while the WPF dispatcher
+        // is blocked. Never touch the Window/Dispatcher from that thread.
+        IntPtr handle = Volatile.Read(ref nativeHandle);
+        if (handle != IntPtr.Zero)
+            ShowWindow(handle, 0);
+    }
+
+    void RestoreVisibleSystemCursor()
+    {
+        Cursor = WpfCursors.Arrow;
+        if (Content is FrameworkElement root)
+        {
+            root.Cursor = WpfCursors.Arrow;
+            root.ForceCursor = false;
+        }
+        try
+        {
+            IntPtr arrow = LoadCursor(IntPtr.Zero, new IntPtr(32512));
+            if (arrow != IntPtr.Zero)
+                SetCursor(arrow);
+        }
+        catch { }
+        CursorRestoredForTest = true;
+    }
+
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
+    [DllImport("user32.dll")] static extern IntPtr SetCursor(IntPtr cursor);
     [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr value);
 }

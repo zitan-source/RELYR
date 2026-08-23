@@ -544,11 +544,19 @@ internal static class UiIntegrationTest
             OverlayService.TryDismissFullScreenKeyboard(true);
             Pump(window);
             Check(clockStayedVisibleDuringSourceRepeat && clockStayedVisibleAfterSourceRelease && !OverlayService.FullScreenVisible, "clock ignores source-key repeat, survives its release, and closes on the next fresh key press");
+            OverlayService.Configure(() => new AppConfig { ClockBackgroundMode = ClockBackgroundMode.Solid, ClockSolidColor = "#123456", ClockShowOnAllMonitors = false }, () => false);
+            OverlayService.TryShow(OverlayService.ClockAction);
+            Pump(window);
+            int externallyClosedOverlayCount = OverlayService.ScreenOverlayCountForTest;
+            OverlayService.CloseScreenOverlaysExternallyForTest();
+            Pump(window);
+            Check(externallyClosedOverlayCount > 0 && !OverlayService.FullScreenVisible && OverlayService.ScreenOverlayCountForTest == 0, "external fullscreen window closure clears the global input-consumption transaction");
             var primaryScreen = System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0];
             var cursorOverlay = new ScreenOverlayWindow(primaryScreen, true, new AppConfig { ClockBackgroundMode = ClockBackgroundMode.Solid, ClockSolidColor = "#123456" });
             var clockTime = Descendants<TextBlock>(cursorOverlay).OrderByDescending(x => x.FontSize).First();
             Check(cursorOverlay.Cursor == System.Windows.Input.Cursors.None && cursorOverlay.ForceCursor && clockTime.FontFamily.Source == "Segoe UI Variable Display" && clockTime.FontStretch == FontStretches.Condensed, "clock hides the pointer and uses the narrow Segoe UI Variable display face");
             cursorOverlay.Close();
+            Check(cursorOverlay.CursorRestoredForTest && cursorOverlay.Cursor == System.Windows.Input.Cursors.Arrow, "closing a fullscreen overlay explicitly restores a visible system cursor");
             var backgroundOnlyOverlay = new ScreenOverlayWindow(primaryScreen, false, new AppConfig { ClockBackgroundMode = ClockBackgroundMode.Solid, ClockSolidColor = "#123456" }, true);
             Check(!backgroundOnlyOverlay.IsClock && backgroundOnlyOverlay.Content is Grid backgroundGrid && backgroundGrid.Background is SolidColorBrush backgroundBrush && backgroundBrush.Color == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56), "a monitor without clock text still receives the configured clock background");
             backgroundOnlyOverlay.Close();
@@ -2676,6 +2684,7 @@ internal static class UiIntegrationTest
             Check(macroStepHandles.Length == macroConfig.Macros[0].Steps.Count && macroStepHandles.All(handle => handle.Cursor == System.Windows.Input.Cursors.SizeAll && !string.IsNullOrWhiteSpace(handle.ToolTip?.ToString()))
                 && macroStepNumbers.Length == macroConfig.Macros[0].Steps.Count && macroStepNumbers.All(number => Math.Abs(number.ActualWidth - 34) < .1),
                 "every macro step has a readable fixed number badge and an explicit three-dot drag handle");
+            Check(macro.OpenSafeStepDragPreviewForTest(), "the visual-only macro drag preview is also click-through at the native popup-window level");
             CaptureForReview(macro, "macro-manager.png");
             Check(Descendants<TextBlock>(macro).Any(x => x.Text.Contains("Ctrl + Shift + F12")), "macro stop shortcut is explained");
             Check(macro.RecordKeyboardBox.IsChecked == true && macro.RecordKeyboardBox.Content.ToString()!.Contains("キーボード操作"), "keyboard recording option exists and defaults on");

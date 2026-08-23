@@ -49,6 +49,8 @@ internal static class OverlayService
     static readonly Dictionary<string, DeckPanelEntry> deckPanels = new(StringComparer.OrdinalIgnoreCase);
     static string lastDeckPanelKey = "";
     static readonly List<ScreenOverlayWindow> screenOverlays = [];
+    static readonly object screenOverlayGate = new();
+    const int FullScreenCloseFailOpenMilliseconds = 250;
     static Func<AppConfig>? configProvider;
     static Func<bool>? physicalInputDownProvider;
     static Action<Mapping>? deckActionRequested;
@@ -77,6 +79,23 @@ internal static class OverlayService
         Interlocked.Exchange(ref fullScreenActive, 1);
         RunOverlayUiSafely(() => throw new InvalidOperationException("simulated overlay failure"), "test overlay failure");
         return !FullScreenVisible && Volatile.Read(ref fullScreenClosing) == 0 && Volatile.Read(ref fullScreenDismissArmed) == 0;
+    }
+    internal static int ScreenOverlayCountForTest
+    {
+        get { lock (screenOverlayGate) return screenOverlays.Count; }
+    }
+    internal static void CloseScreenOverlaysExternallyForTest()
+    {
+        foreach (var overlay in SnapshotScreenOverlays())
+            overlay.Close();
+    }
+    internal static bool RecoverFromStalledFullScreenCloseForTest()
+    {
+        Interlocked.Exchange(ref fullScreenActive, 1);
+        Interlocked.Exchange(ref fullScreenClosing, 1);
+        ScheduleFullScreenCloseFailOpenWatchdog();
+        bool recovered = SpinWait.SpinUntil(() => !FullScreenVisible, TimeSpan.FromSeconds(2));
+        return recovered && Volatile.Read(ref fullScreenClosing) == 0 && Volatile.Read(ref fullScreenDismissArmed) == 0;
     }
 #endif
     internal static bool FullScreenVisible => Volatile.Read(ref fullScreenActive) != 0;
@@ -414,19 +433,23 @@ internal static class OverlayService
         }
         AppConfig config = configProvider?.Invoke() ?? new AppConfig();
         bool clockAction = action == ClockAction;
+        var overlaysToShow = new List<ScreenOverlayWindow>();
         foreach (var screen in System.Windows.Forms.Screen.AllScreens)
         {
             bool showClock = clockAction && (config.ClockShowOnAllMonitors || screen.Primary);
             var overlay = new ScreenOverlayWindow(screen, showClock, config, clockAction);
-            screenOverlays.Add(overlay);
+            overlay.Closed += ScreenOverlayClosed;
+            overlaysToShow.Add(overlay);
         }
+        lock (screenOverlayGate)
+            screenOverlays.AddRange(overlaysToShow);
         fullScreenStartCursor = System.Windows.Forms.Cursor.Position;
         Interlocked.Exchange(ref fullScreenActive, 1);
         Interlocked.Exchange(ref fullScreenClosing, 0);
         // 物理キーから起動した場合は、その起動キーのUpを受け取るまで解除を
         // 許可しない。マクロ等からの起動は、最初の新しい入力ですぐ解除できる。
         Interlocked.Exchange(ref fullScreenDismissArmed, physicalInputDownProvider?.Invoke() == true ? 0 : 1);
-        foreach (var overlay in screenOverlays)
+        foreach (var overlay in overlaysToShow)
             overlay.Show();
     }
 
@@ -477,26 +500,92 @@ internal static class OverlayService
     {
         if (Interlocked.Exchange(ref fullScreenClosing, 1) != 0)
             return;
-        _ = WpfApplication.Current.Dispatcher.BeginInvoke(CloseScreenOverlays);
+        try
+        {
+            var dispatcher = WpfApplication.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+            {
+                FailOpenScreenOverlays();
+                return;
+            }
+            _ = dispatcher.BeginInvoke(CloseScreenOverlays);
+            ScheduleFullScreenCloseFailOpenWatchdog();
+        }
+        catch
+        {
+            // The hook has already consumed the dismissing input. If the UI
+            // dispatcher is unavailable, hide the native surfaces immediately
+            // and stop consuming further physical input.
+            FailOpenScreenOverlays();
+        }
     }
 
     static void CloseScreenOverlays()
     {
-        var windows = screenOverlays.ToArray();
-        screenOverlays.Clear();
+        var windows = SnapshotScreenOverlays();
         try
         {
             foreach (var window in windows)
+            {
+                try { window.HideNativeImmediately(); } catch { }
                 try { window.Close(); } catch { }
+            }
         }
         finally
         {
+            lock (screenOverlayGate)
+                screenOverlays.Clear();
             // Input callbacks consult this flag before every mapping. Its
             // cleanup must not depend on every WPF Window closing cleanly.
-            Interlocked.Exchange(ref fullScreenActive, 0);
-            Interlocked.Exchange(ref fullScreenClosing, 0);
-            Interlocked.Exchange(ref fullScreenDismissArmed, 0);
+            ResetFullScreenTransaction();
         }
+    }
+
+    static void ScreenOverlayClosed(object? sender, EventArgs e)
+    {
+        bool noOverlaysRemain;
+        lock (screenOverlayGate)
+        {
+            if (sender is ScreenOverlayWindow overlay)
+                screenOverlays.Remove(overlay);
+            noOverlaysRemain = screenOverlays.Count == 0;
+        }
+        // A display/session transition can destroy a WPF overlay without going
+        // through CloseScreenOverlays. Never leave the hooks consuming input
+        // after the last native fullscreen surface is gone.
+        if (noOverlaysRemain)
+            ResetFullScreenTransaction();
+    }
+
+    static void FailOpenScreenOverlays()
+    {
+        ScreenOverlayWindow[] windows = SnapshotScreenOverlays();
+        foreach (var window in windows)
+            try { window.HideNativeImmediately(); } catch { }
+        ResetFullScreenTransaction();
+    }
+
+    static ScreenOverlayWindow[] SnapshotScreenOverlays()
+    {
+        lock (screenOverlayGate)
+            return screenOverlays.ToArray();
+    }
+
+    static void ScheduleFullScreenCloseFailOpenWatchdog()
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(FullScreenCloseFailOpenMilliseconds).ConfigureAwait(false);
+            if (FullScreenVisible && Volatile.Read(ref fullScreenClosing) != 0)
+                FailOpenScreenOverlays();
+        });
+    }
+
+    static void ResetFullScreenTransaction()
+    {
+        Interlocked.Exchange(ref fullScreenActive, 0);
+        Interlocked.Exchange(ref fullScreenClosing, 0);
+        Interlocked.Exchange(ref fullScreenDismissArmed, 0);
     }
 
 }

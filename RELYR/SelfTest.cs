@@ -634,6 +634,18 @@ public static class SelfTest
                   && OverlayService.ShouldDismissFullScreenMouse(true, 0x200, true),
                 "fullscreen overlays ignore their source release and close only on a fresh key, click, wheel, or movement");
             Check(OverlayService.RecoverFromFullScreenFailureForTest(), "a fullscreen overlay construction failure clears the global input-consumption flag even when no window can close");
+            Check(OverlayService.RecoverFromStalledFullScreenCloseForTest(), "a stalled UI dispatcher cannot leave the fullscreen input-consumption transaction armed");
+            InputEngine.CancelCoordinateCapture();
+            int coordinateCallbacks = 0;
+            Check(InputEngine.BeginCoordinateCapture((_, _) => coordinateCallbacks++)
+                  && InputEngine.HandleCoordinateCaptureForTest(0x201, 10, 20)
+                  && coordinateCallbacks == 1
+                  && InputEngine.CoordinateCapturePendingForTest
+                  && !InputEngine.HandleCoordinateCaptureForTest(0x201, 30, 40)
+                  && !InputEngine.HandleCoordinateCaptureForTest(0x202, 30, 40)
+                  && !InputEngine.CoordinateCapturePendingForTest,
+                "coordinate capture fails open on the next physical Down when the captured Up was lost");
+            InputEngine.CancelCoordinateCapture();
             var shownOverlays = new List<string>();
             OverlayService.ActionRequestedForTest = shownOverlays.Add;
             InputEngine.SendShortcut(OverlayService.NumpadAction);

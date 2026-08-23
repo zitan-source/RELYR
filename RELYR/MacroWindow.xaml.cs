@@ -1080,6 +1080,19 @@ public partial class MacroWindow : Window
         StepDragPreviewPopup.IsOpen = true;
     }
 
+    void StepDragPreviewPopup_Opened(object? sender, EventArgs e) => NonInteractivePopupSafety.Apply(StepDragPreviewPopup);
+
+#if !PRODUCTION_PUBLISH
+    internal bool OpenSafeStepDragPreviewForTest()
+    {
+        StepDragPreviewPopup.IsOpen = true;
+        NonInteractivePopupSafety.Apply(StepDragPreviewPopup);
+        bool safe = NonInteractivePopupSafety.HasRequiredStylesForTest(StepDragPreviewPopup);
+        StepDragPreviewPopup.IsOpen = false;
+        return safe;
+    }
+#endif
+
     void AnimateDragTarget(ListBoxItem? target, bool insertAfter)
     {
         if (ReferenceEquals(target, dragTargetContainer) && (target == null || insertAfter == dragTargetAfter))

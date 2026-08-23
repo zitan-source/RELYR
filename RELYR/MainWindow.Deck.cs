@@ -895,6 +895,7 @@ public partial class MainWindow
         var card = new Border
         {
             Child = image,
+            IsHitTestVisible = false,
             Padding = new Thickness(6),
             CornerRadius = new CornerRadius(10),
             BorderThickness = new Thickness(1),
@@ -908,8 +909,10 @@ public partial class MainWindow
             VerticalOffset = 6,
             AllowsTransparency = true,
             StaysOpen = false,
+            IsHitTestVisible = false,
             Child = card
         };
+        popup.Opened += (_, _) => NonInteractivePopupSafety.Apply(popup);
         deckEditorThumbnailPopup = popup;
         popup.Closed += (_, _) =>
         {

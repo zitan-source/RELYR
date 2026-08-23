@@ -942,8 +942,20 @@ public sealed partial class InputEngine : IDisposable
     internal static void CancelCoordinateCapture(Action<int, int>? callback = null)
     {
         lock (CoordinateCaptureLock)
-            if (callback == null || ReferenceEquals(pendingCoordinateCapture, callback))
+        {
+            if (callback == null)
+            {
                 pendingCoordinateCapture = null;
+                suppressCoordinateCaptureLeftUp = false;
+            }
+            else if (ReferenceEquals(pendingCoordinateCapture, callback))
+                pendingCoordinateCapture = null;
+            else if (pendingCoordinateCapture == null && suppressCoordinateCaptureLeftUp)
+                // The Down callback already ran and posted completion to the UI.
+                // Closing/cancelling that UI before the physical Up must not
+                // leave a process-wide suppression waiting forever.
+                suppressCoordinateCaptureLeftUp = false;
+        }
     }
 
     static bool TryHandleCoordinateCapture(int message, int x, int y)
@@ -951,6 +963,14 @@ public sealed partial class InputEngine : IDisposable
         Action<int, int>? callback = null;
         lock (CoordinateCaptureLock)
         {
+            if (message == 0x201 && pendingCoordinateCapture == null && suppressCoordinateCaptureLeftUp)
+            {
+                // Mouse buttons do not auto-repeat. A second physical Down means
+                // the captured click's Up was lost. Fail open before this new
+                // click so its matching Up reaches Windows normally.
+                suppressCoordinateCaptureLeftUp = false;
+                return false;
+            }
             if (message == 0x201 && pendingCoordinateCapture != null)
             {
                 callback = pendingCoordinateCapture;
@@ -981,6 +1001,8 @@ public sealed partial class InputEngine : IDisposable
                 return pendingCoordinateCapture != null || suppressCoordinateCaptureLeftUp;
         }
     }
+    internal static bool HandleCoordinateCaptureForTest(int message, int x = 0, int y = 0)
+        => TryHandleCoordinateCapture(message, x, y);
 
     IntPtr ProcessPress(string input, bool down, bool up, int n, IntPtr w, IntPtr l, int x = 0, int y = 0, bool fireOnDown = false, bool repeatWhileHeld = false)
     {
@@ -1896,6 +1918,7 @@ public sealed partial class InputEngine : IDisposable
     }
     public void ResetForSessionTransition()
     {
+        CancelCoordinateCapture();
         ResetCapturedState(true, true);
         Array.Clear(lowLevelMouseUpsPendingRaw);
         Array.Clear(rawMouseUpsAwaitingLowLevel);
@@ -1907,6 +1930,7 @@ public sealed partial class InputEngine : IDisposable
             return;
         disposed = true;
         enabled = false;
+        CancelCoordinateCapture();
         if (ReferenceEquals(directTestTarget, this))
             directTestTarget = null;
         ResetCapturedState(true, true);
