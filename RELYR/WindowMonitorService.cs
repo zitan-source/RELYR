@@ -116,7 +116,22 @@ internal static class WindowMonitorService
     internal static IntPtr SelectShortcutTarget(IEnumerable<WindowCandidate> candidates)
         => candidates.FirstOrDefault(IsShortcutTargetCandidate).Handle;
 
-    internal static bool IsUsableWindow(IntPtr window) => window != IntPtr.Zero && IsWindow(window) && IsWindowVisible(window);
+    internal static bool IsUsableWindow(IntPtr window)
+    {
+        if (window == IntPtr.Zero || !IsWindow(window) || !IsWindowVisible(window))
+            return false;
+        var className = new System.Text.StringBuilder(256);
+        GetClassName(window, className, className.Capacity);
+        // Window-under-cursor actions must never resize, move, minimize, maximize,
+        // or close Explorer's desktop/taskbar hosts.  Those shell surfaces are
+        // visible top-level windows, but changing their native bounds can remove
+        // the wallpaper and desktop hit target from one monitor until Explorer is
+        // restarted.
+        return !IsShellSurfaceClass(className.ToString());
+    }
+
+    internal static bool IsShellSurfaceClass(string className)
+        => ShortcutShellClasses.Contains(className);
 
     internal static IntPtr SelectShortcutPreparationTarget(IntPtr? preferred, Func<IntPtr, bool> isUsable)
         => preferred is { } window && isUsable(window) ? window : IntPtr.Zero;

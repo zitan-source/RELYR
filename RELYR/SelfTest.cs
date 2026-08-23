@@ -653,6 +653,10 @@ public static class SelfTest
                 new WindowMonitorService.WindowCandidate((IntPtr)5,"Chrome_WidgetWin_1",true)
             };
             Check(WindowMonitorService.SelectShortcutTarget(shortcutCandidates) == (IntPtr)5, "macro shortcut skips taskbar, Windows 11 shell overlays, and hidden windows");
+            Check(new[] { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Composition.DesktopWindowContentBridge" }.All(WindowMonitorService.IsShellSurfaceClass)
+                  && !WindowMonitorService.IsShellSurfaceClass("Chrome_WidgetWin_1")
+                  && !WindowMonitorService.IsShellSurfaceClass("CabinetWClass"),
+                "window actions reject desktop and taskbar shell surfaces without blocking ordinary application or Explorer folder windows");
             Check(ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4], 40, 99)
                   && !ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[0], 40, 99)
                   && !ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4], 99, 99),
