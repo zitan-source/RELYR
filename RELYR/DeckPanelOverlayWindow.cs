@@ -486,7 +486,14 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     internal bool IsCollapsedToEdge => collapsedToEdge;
     internal bool EdgeExpansionArmedForTest => edgeExpansionArmed;
-    internal void ArmEdgeExpansionForTest() => edgeExpansionArmed = true;
+    internal void ArmEdgeExpansionForTest()
+    {
+        // The test hook represents the state after the asynchronous collapsed-
+        // bounds transition has completed. Do not leave the transition gate at
+        // the scheduler-dependent value from the preceding ContextIdle callback.
+        collapsedPointerTransitionPending = false;
+        edgeExpansionArmed = true;
+    }
     internal void ContinueFromCollapsedMoveHandleForTest() => ContinueFromCollapsedMoveHandle(true);
     internal void HandlePointerEnteredForTest() => HandlePanelPointerEntered();
     internal void HandlePointerLeftForTest() => HandlePanelPointerLeft();
