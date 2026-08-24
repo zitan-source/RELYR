@@ -56,6 +56,16 @@ public partial class MainWindow
             : $"{Name}\n{Action.Description}";
     }
 
+    internal sealed record ActionPaletteCategoryOption(
+        string Name,
+        string Section,
+        string Glyph,
+        bool StartsSection,
+        bool ShowDivider)
+    {
+        public override string ToString() => Name;
+    }
+
     sealed record IndexedMapping(int Index, Mapping Mapping);
     sealed record ActionPaletteMappingSnapshot(List<Mapping> Collection, string Input, IReadOnlyList<IndexedMapping> Previous);
     sealed record ActionPaletteUndoState(IReadOnlyList<ActionPaletteMappingSnapshot> Snapshots, string Message);
@@ -326,7 +336,7 @@ public partial class MainWindow
             .GroupBy(item => $"{item.Group}\n{ActionPaletteSignature(item.Action.Kind, item.Action.Value)}", StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())];
 
-        string? previousCategory = ActionPaletteCategoryBox.SelectedItem as string;
+        string previousCategory = SelectedActionPaletteCategory();
         var groups = actionPaletteItems.Select(item => item.Group).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         groups.RemoveAll(group => string.Equals(group, ActionPaletteAllCategory, StringComparison.OrdinalIgnoreCase)
             || string.Equals(group, ActionPaletteUsedCategory, StringComparison.OrdinalIgnoreCase));
@@ -335,8 +345,8 @@ public partial class MainWindow
         var preferredOrder = new[]
         {
             ActionPaletteApplicationsCategory, ActionPaletteKeysCategory, ActionPaletteShortcutsCategory,
-            "Windows", "入力・編集", "ファイル・文書", "メディア", "ウィンドウ・デスクトップ",
-            "ブラウザー", "エクスプローラー", "マウス", "オーバーレイ", "Windowsアプリ",
+            "入力・編集", "Windows", "ファイル・文書", "エクスプローラー", "ブラウザー",
+            "ウィンドウ・デスクトップ", "メディア", "マウス", "Windowsアプリ", "オーバーレイ",
             "プロファイル", "マクロ", "ジェスチャー", "Deckパネル", "その他"
         };
         var orderedGroups = preferredOrder.Where(group => groups.Remove(group)).Concat(groups.OrderBy(group => group, StringComparer.CurrentCultureIgnoreCase)).ToList();
@@ -344,16 +354,85 @@ public partial class MainWindow
         refreshingActionPalette = true;
         try
         {
-            ActionPaletteCategoryBox.ItemsSource = new[] { ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups).ToList();
-            ActionPaletteCategoryBox.SelectedItem = previousCategory != null && ActionPaletteCategoryBox.Items.Contains(previousCategory)
+            var categoryOptions = BuildActionPaletteCategoryOptions(
+                new[] { ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups));
+            ActionPaletteCategoryBox.ItemsSource = categoryOptions;
+            SelectActionPaletteCategory(categoryOptions.Any(option => option.Name.Equals(previousCategory, StringComparison.OrdinalIgnoreCase))
                 ? previousCategory
-                : ActionPaletteAllCategory;
+                : ActionPaletteAllCategory);
         }
         finally
         {
             refreshingActionPalette = false;
         }
         FilterActionPalette();
+    }
+
+    static List<ActionPaletteCategoryOption> BuildActionPaletteCategoryOptions(IEnumerable<string> categories)
+    {
+        var options = new List<ActionPaletteCategoryOption>();
+        string previousSection = string.Empty;
+        foreach (string category in categories)
+        {
+            string section = ActionPaletteCategorySection(category);
+            bool startsSection = !section.Equals(previousSection, StringComparison.Ordinal);
+            options.Add(new ActionPaletteCategoryOption(
+                category,
+                section,
+                ActionPaletteCategoryGlyph(category),
+                startsSection,
+                startsSection && options.Count > 0));
+            previousSection = section;
+        }
+        return options;
+    }
+
+    static string ActionPaletteCategorySection(string category)
+    {
+        if (category is ActionPaletteAllCategory or ActionPaletteUsedCategory)
+            return "ステータス";
+        return "カテゴリ";
+    }
+
+    static string ActionPaletteCategoryGlyph(string category) => category switch
+    {
+        ActionPaletteAllCategory => "\uE80A",
+        ActionPaletteUsedCategory => "\uE73E",
+        ActionPaletteApplicationsCategory => "\uE71D",
+        ActionPaletteKeysCategory => "\uE765",
+        ActionPaletteShortcutsCategory => "\uE8D7",
+        "Windows" => "\uE782",
+        "入力・編集" => "\uE70F",
+        "ファイル・文書" => "\uE8A5",
+        "メディア" => "\uE8D6",
+        "ウィンドウ・デスクトップ" => "\uE7F4",
+        "ブラウザー" => "\uE774",
+        "エクスプローラー" => "\uE8B7",
+        "マウス" => "\uE962",
+        "オーバーレイ" => "\uE737",
+        "Windowsアプリ" => "\uE71D",
+        "プロファイル" => "\uE8AB",
+        "マクロ" => "\uE8D7",
+        "ジェスチャー" => "\uE7C9",
+        "Deckパネル" => "\uE80A",
+        "モニター" => "\uE7F4",
+        _ => "\uE8FD"
+    };
+
+    string SelectedActionPaletteCategory()
+        => ActionPaletteCategoryBox?.SelectedItem is ActionPaletteCategoryOption option
+            ? option.Name
+            : ActionPaletteCategoryBox?.SelectedItem?.ToString() ?? ActionPaletteAllCategory;
+
+    void SelectActionPaletteCategory(string category)
+    {
+        if (ActionPaletteCategoryBox == null)
+            return;
+        var option = ActionPaletteCategoryBox.Items
+            .OfType<ActionPaletteCategoryOption>()
+            .FirstOrDefault(item => item.Name.Equals(category, StringComparison.OrdinalIgnoreCase));
+        if (option != null)
+            ActionPaletteCategoryBox.SelectedItem = option;
     }
 
     static string ActionPaletteSignature(ActionKind kind, string? value)
@@ -426,7 +505,7 @@ public partial class MainWindow
         actionPaletteCustomShortcuts.RemoveAll(action => action.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
         actionPaletteCustomShortcuts.Insert(0, new CatalogAction("任意のショートカット", DisplayInputName(value), "作成したショートカットを送信します", ActionKind.Shortcut, value));
         RefreshActionPalette();
-        ActionPaletteCategoryBox.SelectedItem = ActionPaletteShortcutsCategory;
+        SelectActionPaletteCategory(ActionPaletteShortcutsCategory);
     }
 
     void StartActionPaletteApplicationDiscovery()
@@ -535,7 +614,7 @@ public partial class MainWindow
         if (ActionPaletteList == null || categoryBox == null || refreshingActionPalette)
             return;
         string query = ActionPaletteSearchBox?.Text.Trim() ?? string.Empty;
-        string category = categoryBox.SelectedItem as string ?? ActionPaletteAllCategory;
+        string category = SelectedActionPaletteCategory();
         IEnumerable<ActionPaletteItem> filtered = actionPaletteItems;
         if (category == ActionPaletteUsedCategory)
             filtered = filtered.Where(item => item.UsageCount > 0);
@@ -548,9 +627,9 @@ public partial class MainWindow
             filtered = filtered
                 .GroupBy(item => ActionPaletteSignature(item.Action.Kind, item.Action.Value), StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.OrderBy(item => item.Group == ActionPaletteKeysCategory ? 1 : 0).First());
-        var groupOrder = categoryBox.Items.Cast<string>()
-            .Select((group, index) => (group, index))
-            .ToDictionary(entry => entry.group, entry => entry.index, StringComparer.OrdinalIgnoreCase);
+        var groupOrder = categoryBox.Items.OfType<ActionPaletteCategoryOption>()
+            .Select((option, index) => (option.Name, index))
+            .ToDictionary(entry => entry.Name, entry => entry.index, StringComparer.OrdinalIgnoreCase);
         List<ActionPaletteItem> result;
         if (category == ActionPaletteUsedCategory)
         {

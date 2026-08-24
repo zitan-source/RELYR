@@ -30,25 +30,7 @@
       <Setter Property="Background" Value="{DynamicResource CardBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="{StaticResource SurfaceCornerRadius}"/><Setter Property="Padding" Value="12"/>
     </Style>
-    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/>
-      <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
-          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True">
-            <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/>
-            <Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/>
-          </Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource DangerActionButtonStyle}"/>
     <Style x:Key="MacroStepKindBar" TargetType="Border">
       <Setter Property="Width" Value="4"/>
       <Setter Property="CornerRadius" Value="2"/>
@@ -222,7 +204,7 @@
               <Button x:Name="UndoButton" Content="↶ 元に戻す" Click="Undo_Click" IsEnabled="False"/>
               <Button x:Name="MoveUpButton" Content="↑ 上へ" Click="MoveUp_Click" IsEnabled="False"/>
               <Button x:Name="MoveDownButton" Content="↓ 下へ" Click="MoveDown_Click" IsEnabled="False"/>
-              <Button x:Name="DeleteStepButton" Content="選択した手順を削除" Click="DeleteStep_Click" IsEnabled="False"/>
+              <Button x:Name="DeleteStepButton" Content="選択した手順を削除" Click="DeleteStep_Click" IsEnabled="False" Style="{StaticResource DangerButton}"/>
               <Button x:Name="ClearStepsButton" Content="すべて消去" Click="Clear_Click" IsEnabled="False" Style="{StaticResource DangerButton}"/>
             </WrapPanel>
           </Grid>

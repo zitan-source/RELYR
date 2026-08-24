@@ -63,6 +63,8 @@ public partial class GestureManagerWindow : Window
     {
         var gesture = SelectedGesture;
         GestureEditor.IsEnabled = gesture != null;
+        RenameGestureButton.IsEnabled = gesture != null;
+        DeleteGestureButton.IsEnabled = gesture != null;
         GestureTitle.Text = gesture?.Name ?? "ジェスチャーを追加してください";
         UpActionText.Text = Display(gesture?.UpKind ?? ActionKind.None, gesture?.UpValue ?? "");
         DownActionText.Text = Display(gesture?.DownKind ?? ActionKind.None, gesture?.DownValue ?? "");

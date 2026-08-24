@@ -103,7 +103,7 @@ public partial class MainWindow
             Source = popupItem
         };
         MainWindow_PreviewMouseDown(this, click);
-        ActionPaletteCategoryBox.SelectedItem = category;
+        SelectActionPaletteCategory(category);
     }
     internal bool ApplyPaletteActionForTest(CatalogAction action, string targetInput, string targetKey)
         => ApplyPaletteActionDrop(action, targetInput, targetKey);

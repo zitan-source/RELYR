@@ -5,6 +5,7 @@
         Title="RELYR" Icon="Assets/RELYR.ico" Height="900" Width="1280" MinHeight="640" MinWidth="880" WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" Closing="Window_Closing" PreviewMouseDown="MainWindow_PreviewMouseDown">
   <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
       <Setter Property="Margin" Value="3"/><Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -14,6 +15,11 @@
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="FontWeight" Value="Normal"/>
     </Style>
+    <Style x:Key="ToolbarDangerButtonStyle" TargetType="Button" BasedOn="{StaticResource DangerActionButtonStyle}">
+      <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
+      <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+    </Style>
     <Style x:Key="ToolbarToggleStyle" TargetType="ToggleButton">
       <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
@@ -21,14 +27,37 @@
       <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
-        <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
-        </Border>
+        <Grid SnapsToDevicePixels="True">
+          <Border x:Name="ToggleBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
+          </Border>
+          <Border x:Name="SelectionLine" Width="24" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
-          <Trigger Property="IsChecked" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter TargetName="SelectionLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.45"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="ThemeSegmentToggleStyle" TargetType="ToggleButton">
+      <Setter Property="Width" Value="40"/><Setter Property="MinWidth" Value="40"/><Setter Property="Height" Value="40"/>
+      <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+        <Grid SnapsToDevicePixels="True">
+          <Border x:Name="SegmentSurface" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
+          </Border>
+          <Border x:Name="SegmentLine" Width="20" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SegmentSurface" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="SegmentSurface" Property="Opacity" Value="0.76"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="SegmentSurface" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="SegmentLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="SegmentLine" Property="Opacity" Value="1"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
@@ -64,10 +93,7 @@
       <Setter Property="Margin" Value="8,10,8,3"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Height="1" Background="{DynamicResource SubtleBorderBrush}"/></ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/><Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
-    </Style>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource DangerActionButtonStyle}"/>
     <Style x:Key="StatusToggleStyle" TargetType="ToggleButton">
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="6,2"/><Setter Property="Margin" Value="0"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border x:Name="StatusBorder" Background="Transparent" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="StatusBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="StatusBorder" Property="Opacity" Value="0.72"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
@@ -325,7 +351,7 @@
       <Grid MinWidth="0" ToolTip="{Binding ToolTipText}">
         <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
         <Border Width="26" Height="26" CornerRadius="6" Background="{DynamicResource SurfaceBackground}" HorizontalAlignment="Left" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Variable" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+          <TextBlock x:Name="ActionPaletteItemGlyph" Text="{Binding Glyph}" FontFamily="Segoe UI Variable, Segoe UI Symbol, Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
         </Border>
         <StackPanel Grid.Column="1" Margin="7,0,4,0" VerticalAlignment="Center" MinWidth="0">
           <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
@@ -337,6 +363,28 @@
     <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
       <Setter Property="Margin" Value="0,4,0,10"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+    </Style>
+    <Style x:Key="ActionPaletteSearchTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="TextAlignment" Value="Left"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="FlowDirection" Value="LeftToRight"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+        <Border x:Name="ActionSearchBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" SnapsToDevicePixels="True">
+          <ScrollViewer x:Name="PART_ContentHost" Margin="30,0,34,0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Focusable="False">
+            <ScrollViewer.Template><ControlTemplate TargetType="ScrollViewer">
+              <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentStringFormat="{TemplateBinding ContentStringFormat}" CanContentScroll="{TemplateBinding CanContentScroll}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" TextBlock.TextAlignment="Left"/>
+            </ControlTemplate></ScrollViewer.Template>
+          </ScrollViewer>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ActionSearchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ActionSearchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="ActionSearchBorder" Property="BorderThickness" Value="2"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ActionSearchBorder" Property="Opacity" Value="0.45"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ComboBox"><Setter Property="Margin" Value="0,4,0,10"/><Setter Property="Padding" Value="6"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource InputBackground}"/></Style>
     <Style x:Key="ToolbarComboScrollBarStyle" TargetType="{x:Type ScrollBar}">
@@ -361,12 +409,15 @@
         <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Background" Value="{DynamicResource SurfaceBackground}"/><Setter Property="Padding" Value="10,7"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
-          <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+          <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="22"/></Grid.ColumnDefinitions>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+              <TextBlock x:Name="SelectedCheck" Grid.Column="1" Text="✓" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False"/>
+            </Grid>
           </Border>
           <ControlTemplate.Triggers>
-            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
-            <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+            <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="SelectedCheck" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
             <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ItemBorder" Property="Opacity" Value="0.45"/></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
@@ -381,7 +432,7 @@
           </ToggleButton>
           <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
             <Border Margin="0,3,0,0" Width="{Binding ActualWidth,RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}" SnapsToDevicePixels="True" ClipToBounds="True">
-              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,4">
                 <ScrollViewer.Resources><Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource ToolbarComboScrollBarStyle}"/></ScrollViewer.Resources>
                 <ItemsPresenter/>
               </ScrollViewer>
@@ -392,6 +443,43 @@
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
           <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="ComboBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ComboBorder" Property="Opacity" Value="0.45"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="ToolbarHeaderComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ToolbarComboBoxStyle}">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FocusVisualStyle"><Setter.Value><Style TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
+        <Border Height="2" Margin="6,0" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1"/>
+      </ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="ActionPaletteCategoryItemStyle" TargetType="ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+        <Grid Margin="5,0,5,0">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <Border Grid.Row="0" Height="1" Margin="7,7,7,5" Background="{DynamicResource SubtleBorderBrush}" Visibility="{Binding ShowDivider,Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <TextBlock Grid.Row="1" Text="{Binding Section}" Margin="9,1,9,4" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource MutedText}" Visibility="{Binding StartsSection,Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <Border x:Name="CategoryItemBorder" Grid.Row="2" MinHeight="36" Padding="9,0,8,0" Background="Transparent" CornerRadius="7" SnapsToDevicePixels="True">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
+              <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              <TextBlock x:Name="CategorySelectedCheck" Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0"/>
+            </Grid>
+          </Border>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="CategoryItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="CategoryItemBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="CategorySelectedCheck" Property="Opacity" Value="1"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="CategoryItemBorder" Property="Opacity" Value="0.45"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
@@ -474,22 +562,33 @@
         <Grid x:Name="ToolbarPanel" Grid.Column="1" Margin="14,9.5,0,-9.5" UseLayoutRounding="True">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel x:Name="ToolbarContextPanel" Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBlock x:Name="ProfileToolbarLabel" Text="プロファイル" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SecondaryText}"/>
-            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
-            <Button x:Name="NewProfileButton" Style="{StaticResource ToolbarButtonStyle}" Content="＋" Width="44" MinWidth="44" Padding="0" Click="NewProfile_Click" ToolTip="新しいプロファイル"/>
-            <TextBlock x:Name="KeyboardLayoutToolbarLabel" Text="配列" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="14,0,7,0" Foreground="{DynamicResource SecondaryText}"/>
-            <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
-            <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+            <Grid x:Name="ProfileToolbarIcon" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center" ToolTip="プロファイル" AutomationProperties.Name="プロファイル">
+              <Viewbox Width="22" Height="22"><Canvas Width="22" Height="22">
+                <Path Data="M1.8,7 L9.7,2.8 L17.6,7 L9.7,11.2 Z M1.8,11.8 L9.7,16 L17.6,11.8 M1.8,16.3 L9.7,20.4 L17.6,16.3"
+                      Stroke="{DynamicResource SecondaryText}" StrokeThickness="1.55" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/>
+                <Ellipse Canvas.Left="11.4" Canvas.Top="0.7" Width="10.4" Height="10.4" Fill="{DynamicResource AppBackground}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.55"/>
+                <Ellipse Canvas.Left="15" Canvas.Top="3.1" Width="3.2" Height="3.2" Fill="{DynamicResource AccentBrush}"/>
+                <Path Data="M13.9,9 C14.3,6.9 15.4,6.2 16.6,6.2 C17.8,6.2 18.9,6.9 19.3,9" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.35" StrokeStartLineCap="Round" Fill="Transparent"/>
+              </Canvas></Viewbox>
+            </Grid>
+            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
+            <TextBlock x:Name="KeyboardLayoutToolbarIcon" Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="24" Height="24" TextAlignment="Center" VerticalAlignment="Center" Margin="18,0,8,0" Foreground="{DynamicResource SecondaryText}" ToolTip="キーボード配列" AutomationProperties.Name="キーボード配列"/>
+            <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
+            <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
               <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>
               <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てをコピー" AutomationProperties.Name="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8C8;"/></Button>
               <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てを貼り付け" AutomationProperties.Name="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE77F;"/></Button>
-              <Button x:Name="MultiDeleteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiDelete_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="選択したキーの割り当てを削除" AutomationProperties.Name="選択した割り当てを削除" Foreground="{DynamicResource PrimaryText}"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE74D;"/></Button>
+              <Button x:Name="MultiDeleteButton" Style="{StaticResource ToolbarDangerButtonStyle}" Click="MultiDelete_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="選択したキーの割り当てを削除" AutomationProperties.Name="選択した割り当てを削除"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE74D;"/></Button>
             </StackPanel>
           </StackPanel>
           <StackPanel x:Name="ToolbarPrimaryActionsPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
             <Button x:Name="ToolbarSaveButton" Style="{StaticResource ToolbarButtonStyle}" Content="保存" Width="96" MinWidth="96" Click="Save_Click" Margin="18,3,12,3" FontWeight="SemiBold" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
-            <ToggleButton x:Name="LightThemeToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Click="LightThemeToggle_Click" ToolTip="ライトモード" AutomationProperties.Name="ライトモード"><TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
-            <ToggleButton x:Name="DarkThemeToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Click="DarkThemeToggle_Click" ToolTip="ダークモード" AutomationProperties.Name="ダークモード"><TextBlock Text="&#xE708;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
+            <Border x:Name="ThemeSegmentPanel" Height="44" Margin="0" Padding="2" Background="{DynamicResource ControlBackground}" CornerRadius="{StaticResource ControlCornerRadius}">
+              <StackPanel Orientation="Horizontal">
+                <ToggleButton x:Name="LightThemeToggle" Style="{StaticResource ThemeSegmentToggleStyle}" Click="LightThemeToggle_Click" ToolTip="ライトモード" AutomationProperties.Name="ライトモード"><TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
+                <ToggleButton x:Name="DarkThemeToggle" Style="{StaticResource ThemeSegmentToggleStyle}" Click="DarkThemeToggle_Click" ToolTip="ダークモード" AutomationProperties.Name="ダークモード"><TextBlock Text="&#xE708;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </Grid>
       </Grid>
@@ -890,13 +989,14 @@
             <Button Grid.Column="1" Width="30" Height="30" MinHeight="30" Padding="0" Margin="2,0,0,0" VerticalAlignment="Top" Click="CloseActionPalette_Click" ToolTip="Action一覧を閉じる" AutomationProperties.Name="Action一覧を閉じる"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="13"/></Button>
           </Grid>
           <Grid Grid.Row="1" Height="{StaticResource ControlHeight}" Margin="0,0,0,8">
-            <TextBox x:Name="ActionPaletteSearchBox" Height="{StaticResource ControlHeight}" Margin="0" Padding="30,0,34,0" VerticalContentAlignment="Center" TextChanged="ActionPaletteSearchChanged" PreviewMouseLeftButtonDown="ActionPaletteSearchPreviewMouseLeftButtonDown" ToolTip="名前・説明・ショートカットを検索"/>
+            <TextBox x:Name="ActionPaletteSearchBox" Style="{StaticResource ActionPaletteSearchTextBoxStyle}" Height="{StaticResource ControlHeight}" TextChanged="ActionPaletteSearchChanged" PreviewMouseLeftButtonDown="ActionPaletteSearchPreviewMouseLeftButtonDown" ToolTip="名前・説明・ショートカットを検索"/>
             <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{DynamicResource MutedText}" Margin="10,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"/>
             <TextBlock x:Name="ActionPaletteSearchHint" Text="Actionを検索" FontSize="11" Foreground="{DynamicResource MutedText}" Margin="31,0,8,0" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"/>
             <Button x:Name="ActionPaletteSearchClearButton" Width="26" Height="26" MinWidth="26" MinHeight="26" Margin="0,0,5,0" Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Visibility="Collapsed" Click="ClearActionPaletteSearch_Click" ToolTip="検索を消去" AutomationProperties.Name="Action検索を消去"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="11"/></Button>
           </Grid>
           <Grid Grid.Row="2" Margin="0,0,0,8">
-            <ComboBox x:Name="ActionPaletteCategoryBox" Style="{StaticResource ToolbarComboBoxStyle}" Height="36" MaxDropDownHeight="520" Margin="0" Padding="9,0,28,0" SelectionChanged="ActionPaletteCategoryChanged" AutomationProperties.Name="Actionカテゴリ"/>
+            <ComboBox x:Name="ActionPaletteCategoryBox" Style="{StaticResource ToolbarComboBoxStyle}" ItemContainerStyle="{StaticResource ActionPaletteCategoryItemStyle}" Height="36" MaxDropDownHeight="520" Margin="0" Padding="33,0,28,0" SelectionChanged="ActionPaletteCategoryChanged" AutomationProperties.Name="Actionカテゴリ"/>
+            <TextBlock Text="{Binding SelectedItem.Glyph,ElementName=ActionPaletteCategoryBox}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="{DynamicResource AccentTextBrush}" Width="18" Margin="9,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center" IsHitTestVisible="False"/>
             <TextBlock x:Name="ActionPaletteResultCount" Visibility="Collapsed" IsHitTestVisible="False"/>
           </Grid>
           <Button x:Name="ActionPaletteCustomShortcutButton" Grid.Row="3" Height="36" MinHeight="36" Margin="0,0,0,8" Padding="9,0" Visibility="Collapsed" Click="CreateActionPaletteShortcut_Click" AutomationProperties.Name="任意のショートカットを作成">

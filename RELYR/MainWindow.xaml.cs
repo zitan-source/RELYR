@@ -24,6 +24,7 @@ namespace RELYR;
 
 public partial class MainWindow : Window
 {
+    const string NewProfileMenuTag = "NewProfile";
     const double DefaultMainWindowMinWidth = 880;
     const double DefaultMainWindowMinHeight = 640;
     const double MainWindowWorkAreaInset = 8;
@@ -86,6 +87,7 @@ public partial class MainWindow : Window
     int exitRequested;
     int restartRequested;
     int lowerKeyboardScaleSyncGeneration;
+    int toolbarKeyboardAlignmentGeneration;
     string? pendingDetectedLayer;
     bool updateInProgress;
     DateTimeOffset lastAutomaticUpdateCheckAttempt;
@@ -2503,7 +2505,34 @@ public partial class MainWindow : Window
             return;
         loading = true;
         ProfileBox.ItemsSource = null;
-        ProfileBox.ItemsSource = config.Profiles.Select(x => x.Name).ToList();
+        var profileItems = config.Profiles.Select(x => (object)x.Name).ToList();
+        var createProfileItem = new ComboBoxItem
+        {
+            Tag = NewProfileMenuTag,
+            Padding = new Thickness(0),
+            Content = new Border
+            {
+                MinHeight = 40,
+                Margin = new Thickness(0, 4, 0, 4),
+                Padding = new Thickness(8, 6, 8, 6),
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Child = new TextBlock
+                {
+                    Text = "＋  新しいプロファイル",
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            }
+        };
+        if (createProfileItem.Content is Border createProfileBorder)
+        {
+            createProfileBorder.SetResourceReference(Border.BorderBrushProperty, "SubtleBorderBrush");
+            if (createProfileBorder.Child is TextBlock createProfileLabel)
+                createProfileLabel.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextBrush");
+        }
+        System.Windows.Automation.AutomationProperties.SetName(createProfileItem, "新しいプロファイルを作成");
+        profileItems.Add(createProfileItem);
+        ProfileBox.ItemsSource = profileItems;
         ProfileBox.SelectedItem = config.ActiveProfile;
         loading = false;
         ColorButtons();
@@ -2997,7 +3026,17 @@ public partial class MainWindow : Window
 
     void ProfileChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (loading || ProfileBox.SelectedItem is not string name)
+        if (loading)
+            return;
+        if (ProfileBox.SelectedItem is ComboBoxItem { Tag: string tag } && tag == NewProfileMenuTag)
+        {
+            loading = true;
+            ProfileBox.SelectedItem = config.ActiveProfile;
+            loading = false;
+            Dispatcher.BeginInvoke(new Action(() => NewProfile_Click(ProfileBox, new RoutedEventArgs())));
+            return;
+        }
+        if (ProfileBox.SelectedItem is not string name)
             return;
         suppressAutomaticProfileSwitchUntil = DateTime.UtcNow.AddSeconds(2);
         SwitchProfile(name, false);
@@ -3094,36 +3133,78 @@ public partial class MainWindow : Window
         AssignmentPane.Padding = new Thickness(gap);
         UpdateLayerButtonWidths();
         ScheduleLowerKeyboardScaleSync();
+        ScheduleToolbarKeyboardAlignment();
     }
 
     void TopToolbarPane_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (ToolbarPanel == null || ProfileToolbarLabel == null || KeyboardLayoutToolbarLabel == null)
+        if (ToolbarPanel == null || ProfileBox == null || KeyboardLayoutBox == null)
             return;
         bool compact = e.NewSize.Width < 1040;
         bool narrow = e.NewSize.Width < 920;
-        ProfileToolbarLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        KeyboardLayoutToolbarLabel.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
         ProfileBox.Width = narrow ? 132 : compact ? 145 : 170;
         KeyboardLayoutBox.Width = narrow ? 70 : 84;
         ToolbarPanel.Margin = new Thickness(compact ? 6 : 14, 9.5, 0, -9.5);
         double compactCommandWidth = compact ? 34 : 44;
-        foreach (var control in new System.Windows.Controls.Control[] { MultiSelectToggle, MultiCopyButton, MultiPasteButton, MultiDeleteButton, LightThemeToggle, DarkThemeToggle })
+        foreach (var control in new System.Windows.Controls.Control[] { MultiSelectToggle, MultiCopyButton, MultiPasteButton, MultiDeleteButton })
         {
             control.Width = compactCommandWidth;
             control.MinWidth = compactCommandWidth;
             control.Margin = new Thickness(compact ? 1 : 3);
             control.Padding = new Thickness(0);
         }
-        NewProfileButton.Width = 44;
-        NewProfileButton.MinWidth = NewProfileButton.Width;
-        NewProfileButton.Margin = new Thickness(compact ? 1 : 3);
-        MultiSelectActionsPanel.Margin = new Thickness(compact ? 4 : 10, 0, 0, 0);
+        double themeCommandWidth = compact ? 34 : 40;
+        foreach (var control in new System.Windows.Controls.Control[] { LightThemeToggle, DarkThemeToggle })
+        {
+            control.Width = themeCommandWidth;
+            control.MinWidth = themeCommandWidth;
+            control.Margin = new Thickness(0);
+            control.Padding = new Thickness(0);
+        }
+        ProfileToolbarIcon.Margin = new Thickness(0, 0, compact ? 5 : 8, 0);
+        KeyboardLayoutToolbarIcon.Margin = new Thickness(compact ? 10 : 18, 0, compact ? 5 : 8, 0);
+        MultiSelectActionsPanel.Margin = new Thickness(compact ? 10 : 18, 0, 0, 0);
         ToolbarSaveButton.Width = compact ? 78 : 96;
         ToolbarSaveButton.MinWidth = ToolbarSaveButton.Width;
         ToolbarSaveButton.Margin = new Thickness(compact ? 8 : 18, 3, compact ? 6 : 12, 3);
+        ScheduleToolbarKeyboardAlignment();
     }
-    void KeyboardViewbox_SizeChanged(object sender, SizeChangedEventArgs e) => ScheduleLowerKeyboardScaleSync();
+    void KeyboardViewbox_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ScheduleLowerKeyboardScaleSync();
+        ScheduleToolbarKeyboardAlignment();
+    }
+    void ScheduleToolbarKeyboardAlignment()
+    {
+        int generation = ++toolbarKeyboardAlignmentGeneration;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, new Action(() =>
+        {
+            if (generation == toolbarKeyboardAlignmentGeneration)
+                AlignToolbarProfileWithEscapeKey();
+        }));
+    }
+    void AlignToolbarProfileWithEscapeKey()
+    {
+        if (!editorUiInitialized || KeyboardWorkspace.Visibility != Visibility.Visible || !KeyboardViewbox.IsVisible)
+            return;
+        var escapeKey = InputButtons(KeyboardPanel).FirstOrDefault(button => string.Equals(button.Tag?.ToString(), "Esc", StringComparison.OrdinalIgnoreCase));
+        if (escapeKey == null || escapeKey.ActualWidth <= 0 || ProfileToolbarIcon.ActualWidth <= 0)
+            return;
+        try
+        {
+            double escapeLeft = escapeKey.TranslatePoint(new System.Windows.Point(), TopToolbarPane).X;
+            double profileIconLeft = ProfileToolbarIcon.TranslatePoint(new System.Windows.Point(), TopToolbarPane).X;
+            double alignedLeftMargin = Math.Max(0, ToolbarContextPanel.Margin.Left + escapeLeft - profileIconLeft);
+            if (Math.Abs(alignedLeftMargin - ToolbarContextPanel.Margin.Left) <= 0.25)
+                return;
+            ToolbarContextPanel.Margin = new Thickness(alignedLeftMargin, 0, 0, 0);
+        }
+        catch (InvalidOperationException)
+        {
+            // A resize can briefly detach the scaled keyboard visual. The next
+            // layout pass schedules alignment again without disturbing input.
+        }
+    }
     void ScheduleLowerKeyboardScaleSync()
     {
         int generation = ++lowerKeyboardScaleSyncGeneration;

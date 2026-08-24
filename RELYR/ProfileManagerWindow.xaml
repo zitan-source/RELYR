@@ -5,72 +5,151 @@
         WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" ShowInTaskbar="False">
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
-    <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
-      <Setter Property="Margin" Value="3"/>
+    <Style x:Key="QuietIconButton" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+      <Setter Property="Width" Value="44"/><Setter Property="Height" Value="40"/><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="3"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
-    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="{DynamicResource DangerBackground}"/>
-      <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="DangerBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
-          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource DangerActionButtonStyle}">
+      <Setter Property="Width" Value="44"/><Setter Property="Height" Value="40"/><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="3"/>
+    </Style>
+    <Style x:Key="ProfileCommandButton" TargetType="Button" BasedOn="{StaticResource QuietIconButton}">
+      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="36"/><Setter Property="Margin" Value="1"/>
+    </Style>
+    <Style x:Key="ProfileDangerButton" TargetType="Button" BasedOn="{StaticResource DangerButton}">
+      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="36"/><Setter Property="Margin" Value="1"/>
+    </Style>
+    <Style x:Key="ApplicationSourceTab" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="9,0"/><Setter Property="Height" Value="34"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Grid Background="Transparent">
+        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+        <Border x:Name="ActiveIndicator" Height="2" Background="{DynamicResource AccentBrush}" CornerRadius="1" VerticalAlignment="Bottom" Margin="7,0" Opacity="0"/>
+      </Grid><ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+        <Trigger Property="IsChecked" Value="True"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter TargetName="ActiveIndicator" Property="Opacity" Value="1"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+      </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="FlatListBoxItem" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="9,8"/><Setter Property="Margin" Value="0,2"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="RowBackground" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True">
-            <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/>
-            <Setter Property="Foreground" Value="{DynamicResource DangerHoverForeground}"/>
-          </Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.8"/></Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="DangerBorder" Property="Opacity" Value="0.42"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="RowBackground" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="RowBackground" Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style TargetType="ListBox" BasedOn="{StaticResource AppListBoxStyle}"><Setter Property="Background" Value="{DynamicResource InputBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/></Style>
+    <Style x:Key="FlatListBox" TargetType="ListBox" BasedOn="{StaticResource AppListBoxStyle}">
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/>
+      <Setter Property="ItemContainerStyle" Value="{StaticResource FlatListBoxItem}"/>
+    </Style>
     <Style TargetType="CheckBox" BasedOn="{StaticResource AppSwitchCheckBoxStyle}"/>
   </Window.Resources>
-  <Grid Margin="12">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <TextBlock Margin="0,0,0,8" Text="プロファイルはアクティブな対象アプリに合わせて自動切替します" Foreground="{DynamicResource SecondaryText}"/>
-    <Grid Grid.Row="1">
-      <Grid.ColumnDefinitions><ColumnDefinition x:Name="ProfileListColumn" Width="165"/><ColumnDefinition Width="14"/><ColumnDefinition x:Name="ApplicationManagementColumn"/></Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="10">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <TextBlock Text="一覧" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-          <ListBox x:Name="ProfileList" Grid.Row="1" SelectionChanged="ProfileSelectionChanged" PreviewMouseRightButtonDown="ProfileList_PreviewMouseRightButtonDown">
-            <ListBox.ItemTemplate><DataTemplate><Grid Margin="6,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="自動" FontSize="11" Foreground="{DynamicResource AccentTextBrush}" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/></Grid></DataTemplate></ListBox.ItemTemplate>
-            <ListBox.ContextMenu><ContextMenu><MenuItem Header="割り当てをコピー" Click="CopyAssignments_Click"/><MenuItem Header="割り当てを貼り付け" Click="PasteAssignments_Click"/><Separator/><MenuItem Header="名前を変更" Click="RenameProfileManager_Click"/><MenuItem Header="削除" Foreground="{DynamicResource DangerBrush}" Click="DeleteProfileManager_Click"/></ContextMenu></ListBox.ContextMenu>
+
+  <Grid Margin="20,18,20,16">
+    <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="ProfileListColumn" Width="168"/>
+        <ColumnDefinition Width="1"/>
+        <ColumnDefinition Width="26"/>
+        <ColumnDefinition x:Name="ApplicationManagementColumn" Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <Grid Grid.Column="0">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Text="一覧" FontSize="17" FontWeight="SemiBold" Margin="4,2,0,10"/>
+        <ListBox x:Name="ProfileList" Grid.Row="1" Style="{StaticResource FlatListBox}" SelectionChanged="ProfileSelectionChanged" PreviewMouseRightButtonDown="ProfileList_PreviewMouseRightButtonDown">
+          <ListBox.ItemTemplate><DataTemplate>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="自動" FontSize="10" Foreground="{DynamicResource AccentTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/>
+            </Grid>
+          </DataTemplate></ListBox.ItemTemplate>
+          <ListBox.ContextMenu><ContextMenu>
+            <MenuItem Header="割り当てをコピー" Click="CopyAssignments_Click"/>
+            <MenuItem Header="割り当てを貼り付け" Click="PasteAssignments_Click"/>
+            <Separator/>
+            <MenuItem Header="名前を変更" Click="RenameProfileManager_Click"/>
+            <MenuItem Header="削除" Foreground="{DynamicResource DangerBrush}" Click="DeleteProfileManager_Click"/>
+          </ContextMenu></ListBox.ContextMenu>
+        </ListBox>
+        <UniformGrid x:Name="ProfileCommandBar" Grid.Row="2" Columns="5" Margin="0,8,0,0">
+          <Button x:Name="AddProfileButton" Style="{StaticResource ProfileCommandButton}" Click="AddProfileManager_Click" ToolTip="プロファイルを追加" AutomationProperties.Name="プロファイルを追加">
+            <Viewbox Width="16" Height="16"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+          </Button>
+          <Button x:Name="RenameProfileButton" Style="{StaticResource ProfileCommandButton}" Click="RenameProfileManager_Click" ToolTip="プロファイル名を編集" AutomationProperties.Name="プロファイル名を編集">
+            <Viewbox Width="16" Height="16"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+          </Button>
+          <Button x:Name="DeleteProfileButton" Style="{StaticResource ProfileDangerButton}" Click="DeleteProfileManager_Click" ToolTip="プロファイルを削除" AutomationProperties.Name="プロファイルを削除">
+            <Viewbox Width="16" Height="16"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
+          </Button>
+          <Button x:Name="CopyAssignmentsButton" Style="{StaticResource ProfileCommandButton}" Click="CopyAssignments_Click" ToolTip="割り当てをコピー" AutomationProperties.Name="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE8C8;"/></Button>
+          <Button x:Name="PasteAssignmentsButton" Style="{StaticResource ProfileCommandButton}" Click="PasteAssignments_Click" ToolTip="割り当てを貼り付け" AutomationProperties.Name="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE77F;"/></Button>
+        </UniformGrid>
+      </Grid>
+
+      <Border x:Name="ProfilePaneDivider" Grid.Column="1" Width="1" Background="{DynamicResource SubtleBorderBrush}" Opacity="0.7"/>
+
+      <Grid Grid.Column="3">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,16">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="SelectedProfileTitle" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <CheckBox x:Name="AutoSwitchBox" Grid.Column="1" Content="自動切替" MinWidth="118" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="対象アプリが前面に来たとき、このプロファイルへ切り替えます"/>
+        </Grid>
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold" Margin="8,0,0,0"/>
+          <Grid Grid.Column="2"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" Margin="1,0,0,0">
+              <RadioButton x:Name="RunningApplicationsTab" GroupName="ApplicationSource" Style="{StaticResource ApplicationSourceTab}" Content="起動中" Checked="ApplicationSourceChanged" AutomationProperties.Name="起動中のアプリを表示"/>
+              <RadioButton x:Name="InstalledApplicationsTab" GroupName="ApplicationSource" Style="{StaticResource ApplicationSourceTab}" Content="インストール済み" Checked="ApplicationSourceChanged" AutomationProperties.Name="インストール済みのアプリを表示"/>
+            </StackPanel>
+            <Button x:Name="RefreshApplicationsButton" Grid.Column="1" Style="{StaticResource QuietIconButton}" Width="34" Height="34" Margin="1" Click="RefreshApplications_Click" ToolTip="一覧を更新" AutomationProperties.Name="アプリ一覧を更新"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE72C;"/></Button>
+          </Grid>
+        </Grid>
+        <Grid Grid.Row="2">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="64"/><ColumnDefinition/></Grid.ColumnDefinitions>
+          <ListBox x:Name="AssignedApplicationList" Style="{StaticResource FlatListBox}" SelectionChanged="ApplicationSelectionChanged" MouseDoubleClick="RemoveAutoSwitchApplication_Click">
+            <ListBox.ItemTemplate><DataTemplate><Grid Margin="2,1"><Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Image Source="{Binding Icon}" Width="28" Height="28" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></StackPanel></Grid></DataTemplate></ListBox.ItemTemplate>
           </ListBox>
-          <UniformGrid Grid.Row="2" Columns="3" Margin="0,9,0,0">
-            <Button x:Name="AddProfileButton" Click="AddProfileManager_Click" ToolTip="プロファイルを追加" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
-            </Button>
-            <Button x:Name="RenameProfileButton" Click="RenameProfileManager_Click" ToolTip="プロファイル名を編集" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
-            </Button>
-            <Button x:Name="DeleteProfileButton" Style="{StaticResource DangerButton}" Click="DeleteProfileManager_Click" ToolTip="プロファイルを削除" Padding="0">
-              <Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,5 H15 M6,5 V3 H12 V5 M5,5 L6,16 H12 L13,5 M8,8 V13 M10,8 V13" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox>
-            </Button>
-          </UniformGrid>
-          <StackPanel Grid.Row="3" Margin="0,3,0,0"><Button Content="割り当てをコピー" Click="CopyAssignments_Click"/><Button Content="割り当てを貼り付け" Click="PasteAssignments_Click"/></StackPanel>
-        </Grid>
-      </Border>
-      <Border Grid.Column="2" Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource SurfaceCornerRadius}" Padding="12">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="SelectedProfileTitle" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/><CheckBox x:Name="AutoSwitchBox" Grid.Column="1" Style="{StaticResource AppSwitchCheckBoxStyle}" Content="自動切替" MinWidth="128" Checked="AutoSwitchChanged" Unchecked="AutoSwitchChanged" ToolTip="対象アプリがアクティブなとき、このプロファイルへ切り替えます"/></Grid>
-          <Grid Grid.Row="1" Margin="0,10,0,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="対象に登録したアプリ" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="現在起動中のアプリ" FontWeight="SemiBold"/></Grid>
-          <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <ListBox x:Name="AssignedApplicationList" MouseDoubleClick="RemoveAutoSwitchApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Image Source="{Binding Icon}" Width="28" Height="28" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></StackPanel></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
-            <ListBox x:Name="RunningApplicationList" Grid.Column="2" MouseDoubleClick="AddRunningApplication_Click"><ListBox.ItemTemplate><DataTemplate><Grid Margin="8,6"><Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Image Source="{Binding Icon}" Width="28" Height="28" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Value}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></StackPanel></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+          <Grid Grid.Column="1">
+            <Border x:Name="ApplicationTransferDivider" Width="1" Background="{DynamicResource SubtleBorderBrush}" Opacity="0.45" HorizontalAlignment="Center"/>
+            <StackPanel VerticalAlignment="Center">
+              <Button x:Name="RegisterApplicationButton" Style="{StaticResource QuietIconButton}" Click="AddRunningApplication_Click" ToolTip="選択したアプリを対象へ登録" AutomationProperties.Name="選択したアプリを対象へ登録"><Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M14.5,3.5 L6,12 M6,12 H13 M6,12 V5" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Canvas></Viewbox></Button>
+              <Button x:Name="UnregisterApplicationButton" Style="{StaticResource QuietIconButton}" Click="RemoveAutoSwitchApplication_Click" ToolTip="選択したアプリを対象から外す" AutomationProperties.Name="選択したアプリを対象から外す"><Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3.5,14.5 L12,6 M12,6 H5 M12,6 V13" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Canvas></Viewbox></Button>
+            </StackPanel>
           </Grid>
-          <Grid Grid.Row="3" Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal"><Button Content="外す" FontSize="12" ToolTip="選択した登録を外します" Click="RemoveAutoSwitchApplication_Click"/></StackPanel>
-            <WrapPanel Grid.Column="2" HorizontalAlignment="Right"><Button Content="更新" ToolTip="起動中のアプリ一覧を更新します" Click="RefreshRunningApplications_Click"/><Button Content="追加" ToolTip="選択した起動中のアプリを追加します" Click="AddRunningApplication_Click"/><Button Content="アプリを選ぶ…" ToolTip="インストール済みのアプリから選びます" Click="AddInstalledApplication_Click"/></WrapPanel>
+          <Grid Grid.Column="2">
+            <ListBox x:Name="RunningApplicationList" Style="{StaticResource FlatListBox}" SelectionChanged="ApplicationSelectionChanged" MouseDoubleClick="AddRunningApplication_Click">
+              <ListBox.ItemTemplate><DataTemplate><Grid Margin="2,1"><Grid.ColumnDefinitions><ColumnDefinition Width="38"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Image Source="{Binding Icon}" Width="28" Height="28" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Value}" Foreground="{DynamicResource SecondaryText}" FontSize="11" TextTrimming="CharacterEllipsis"/></StackPanel></Grid></DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel x:Name="InstalledApplicationsLoadingPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" MaxWidth="260">
+              <ProgressBar Width="96" Height="3" Margin="0,0,0,12" IsIndeterminate="True" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SubtleBorderBrush}" BorderThickness="0"/>
+              <TextBlock Text="インストール済みアプリを確認しています" FontWeight="SemiBold" TextAlignment="Center" HorizontalAlignment="Center"/>
+              <TextBlock Text="初回のみ少し時間がかかります" Margin="0,5,0,0" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextAlignment="Center" HorizontalAlignment="Center"/>
+            </StackPanel>
           </Grid>
         </Grid>
-      </Border>
+      </Grid>
     </Grid>
-    <Grid Grid.Row="2" Margin="0,6,0,0"><TextBlock x:Name="StatusText" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="キャンセル" Click="Cancel_Click"/><Button Content="適用" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" Click="Apply_Click"/></StackPanel></Grid>
+
+    <Grid Grid.Row="1" Margin="0,14,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Text="対象アプリが前面に来ると、このプロファイルへ自動で切り替わります。" Foreground="{DynamicResource SecondaryText}" FontSize="12"/>
+        <TextBlock Text="標準プロファイルは、対象がない場合の戻り先です。" Foreground="{DynamicResource MutedText}" FontSize="11" Margin="0,3,0,0"/>
+        <TextBlock x:Name="StatusText" Foreground="{DynamicResource AccentTextBrush}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom"><Button Content="キャンセル" Style="{StaticResource AppButtonStyle}" Margin="3" Click="Cancel_Click"/><Button Content="適用" Style="{StaticResource AccentAppButtonStyle}" Margin="3" Click="Apply_Click"/></StackPanel>
+    </Grid>
   </Grid>
 </Window>

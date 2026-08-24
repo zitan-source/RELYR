@@ -18,6 +18,7 @@
         <SolidColorBrush x:Key="ControlBackground" Color="#292C30"/>
         <SolidColorBrush x:Key="DeckPreviewCellBackground" Color="#292C30"/>
         <SolidColorBrush x:Key="ControlHoverBackground" Color="#34383D"/>
+        <SolidColorBrush x:Key="GestureRowHoverBackground" Color="#34383D"/>
         <SolidColorBrush x:Key="ControlPressedBackground" Color="#183F38"/>
         <SolidColorBrush x:Key="InputBackground" Color="#1C1E20"/>
         <SolidColorBrush x:Key="BorderBrush" Color="#41454B"/>
@@ -31,9 +32,9 @@
         <SolidColorBrush x:Key="AccentButtonText" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="AccentSoftBrush" Color="#183F38"/>
         <SolidColorBrush x:Key="WarningBrush" Color="#FFD60A"/>
-        <SolidColorBrush x:Key="DangerBrush" Color="#FF453A"/>
-        <SolidColorBrush x:Key="DangerBackground" Color="#512623"/>
-        <SolidColorBrush x:Key="DangerHoverBackground" Color="#69302C"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#E05A63"/>
+        <SolidColorBrush x:Key="DangerBackground" Color="#C63D47"/>
+        <SolidColorBrush x:Key="DangerHoverBackground" Color="#D94B55"/>
         <SolidColorBrush x:Key="DangerForeground" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="DangerHoverForeground" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="KeyBackground" Color="#272A2E"/>
@@ -111,6 +112,43 @@
             <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentButtonText}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+        <Style x:Key="DangerActionButtonStyle" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
+            <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="DangerBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerBackground}"/>
+                                <Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource DangerForeground}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource DangerHoverBackground}"/>
+                                <Setter TargetName="DangerBorder" Property="Opacity" Value="0.84"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="DangerBorder" Property="Background" Value="{DynamicResource ControlBackground}"/>
+                                <Setter TargetName="DangerBorder" Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+                                <Setter TargetName="DangerBorder" Property="Opacity" Value="0.62"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="{x:Type ContextMenu}">
             <Setter Property="Background" Value="Transparent"/>

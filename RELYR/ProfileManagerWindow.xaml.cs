@@ -10,7 +10,12 @@ public partial class ProfileManagerWindow : Window
 {
     readonly List<Profile> profiles;
     bool loading;
+    bool showingInstalledApplications;
+    bool installedApplicationsLoaded;
+    bool installedApplicationsLoading;
     List<Mapping>? copiedAssignments;
+    List<ApplicationDisplayItem> runningApplications = [];
+    List<ApplicationDisplayItem> installedApplications = [];
     string activeProfile;
 
     internal IReadOnlyList<Profile> ResultProfiles => profiles;
@@ -31,6 +36,7 @@ public partial class ProfileManagerWindow : Window
         MainWindow.FollowWindowsTitleBarTheme(this, value => TitleBarUsesDarkMode = value);
         RefreshProfiles(activeProfile);
         RefreshRunningApplications();
+        RunningApplicationsTab.IsChecked = true;
     }
 
     void RefreshProfiles(string? selectName = null)
@@ -64,6 +70,7 @@ public partial class ProfileManagerWindow : Window
             .Select(ApplicationDisplayItem.FromExecutable)
             .ToList();
         loading = false;
+        UpdateCommandStates();
         StatusText.Text = ReferenceEquals(profile, profiles[0]) ? "標準プロファイルは、自動切替対象がない場合の戻り先です。" : $"割り当て {profile.Mappings.Count}件 / 対象アプリ {profile.AutoSwitchApplications.Count}件";
     }
     void AddProfileManager_Click(object sender, RoutedEventArgs e)
@@ -150,6 +157,7 @@ public partial class ProfileManagerWindow : Window
         if (SelectedProfile == null)
             return;
         copiedAssignments = [.. SelectedProfile.Mappings.Select(CloneMapping)];
+        UpdateCommandStates();
         ShowStatus($"「{SelectedProfile.Name}」の割り当て {copiedAssignments.Count}件をコピーしました。");
     }
     void PasteAssignments_Click(object sender, RoutedEventArgs e)
@@ -188,7 +196,26 @@ public partial class ProfileManagerWindow : Window
         loading = false;
         RefreshSelectedProfile();
     }
-    void RefreshRunningApplications_Click(object sender, RoutedEventArgs e) => RefreshRunningApplications();
+    async void RefreshApplications_Click(object sender, RoutedEventArgs e)
+    {
+        if (showingInstalledApplications)
+            await LoadInstalledApplicationsAsync(true);
+        else
+            RefreshRunningApplications();
+    }
+    async void ApplicationSourceChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsInitialized || sender is not System.Windows.Controls.RadioButton { IsChecked: true } selected)
+            return;
+        showingInstalledApplications = ReferenceEquals(selected, InstalledApplicationsTab);
+        if (showingInstalledApplications)
+            await LoadInstalledApplicationsAsync(false);
+        else
+        {
+            UpdateInstalledApplicationsLoadingState();
+            RefreshAvailableApplications();
+        }
+    }
     void RefreshRunningApplications()
     {
         var apps = new List<ApplicationDisplayItem>();
@@ -207,7 +234,91 @@ public partial class ProfileManagerWindow : Window
                 catch { }
             }
         }
-        RunningApplicationList.ItemsSource = apps.GroupBy(x => x.Value, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+        runningApplications = [.. apps.GroupBy(x => x.Value, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)];
+        if (!showingInstalledApplications)
+            RefreshAvailableApplications();
+    }
+    async Task LoadInstalledApplicationsAsync(bool force)
+    {
+        if (installedApplicationsLoaded && !force)
+        {
+            RefreshAvailableApplications();
+            return;
+        }
+
+        RefreshApplicationsButton.IsEnabled = false;
+        InstalledApplicationsTab.IsEnabled = false;
+        installedApplicationsLoading = true;
+        UpdateInstalledApplicationsLoadingState();
+        ShowStatus("インストール済みのアプリを読み込んでいます。");
+        try
+        {
+            var discovered = await Task.Run(ApplicationPickerWindow.DiscoverApplications);
+            if (!IsLoaded)
+                return;
+            installedApplications = [.. discovered
+                .Select(app => (Application: app, Executable: ExecutableNameForAutoSwitch(app)))
+                .Where(item => !string.IsNullOrWhiteSpace(item.Executable))
+                .GroupBy(item => item.Executable!, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.OrderBy(item => item.Application.Name.Length).First())
+                .Select(item => new ApplicationDisplayItem(item.Application.Name, item.Executable!, item.Application.LaunchPath))
+                .OrderBy(item => item.Label, StringComparer.CurrentCultureIgnoreCase)];
+            installedApplicationsLoaded = true;
+            ShowStatus($"インストール済みのアプリ {installedApplications.Count}件を表示しています。");
+            if (showingInstalledApplications)
+                RefreshAvailableApplications();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("インストール済みのアプリを読み込めませんでした: " + ex.Message, true);
+        }
+        finally
+        {
+            installedApplicationsLoading = false;
+            UpdateInstalledApplicationsLoadingState();
+            if (IsLoaded)
+            {
+                InstalledApplicationsTab.IsEnabled = true;
+                RefreshApplicationsButton.IsEnabled = true;
+            }
+        }
+    }
+    void UpdateInstalledApplicationsLoadingState()
+    {
+        if (!IsInitialized)
+            return;
+        bool visible = showingInstalledApplications && installedApplicationsLoading;
+        InstalledApplicationsLoadingPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        RunningApplicationList.Opacity = visible ? 0.24 : 1;
+        RunningApplicationList.IsHitTestVisible = !visible;
+    }
+    internal void SetInstalledApplicationsLoadingStateForTest(bool showingInstalled, bool loadingInstalled)
+    {
+        showingInstalledApplications = showingInstalled;
+        installedApplicationsLoading = loadingInstalled;
+        UpdateInstalledApplicationsLoadingState();
+    }
+    void RefreshAvailableApplications()
+    {
+        RunningApplicationList.ItemsSource = null;
+        RunningApplicationList.ItemsSource = showingInstalledApplications ? installedApplications : runningApplications;
+        UpdateCommandStates();
+    }
+    void ApplicationSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateCommandStates();
+    void UpdateCommandStates()
+    {
+        if (!IsInitialized || profiles.Count == 0)
+            return;
+        var profile = SelectedProfile;
+        bool editable = profile != null && !ReferenceEquals(profile, profiles[0]);
+        AddProfileButton.IsEnabled = true;
+        RenameProfileButton.IsEnabled = editable;
+        DeleteProfileButton.IsEnabled = editable;
+        CopyAssignmentsButton.IsEnabled = profile != null;
+        PasteAssignmentsButton.IsEnabled = profile != null && copiedAssignments != null;
+        AutoSwitchBox.IsEnabled = editable;
+        RegisterApplicationButton.IsEnabled = editable && RunningApplicationList.SelectedItem != null;
+        UnregisterApplicationButton.IsEnabled = editable && AssignedApplicationList.SelectedItem != null;
     }
     void AddRunningApplication_Click(object sender, RoutedEventArgs e)
     {
@@ -224,19 +335,6 @@ public partial class ProfileManagerWindow : Window
         SelectedProfile.AutoSwitchApplications.RemoveAll(x => x.Equals(app, StringComparison.OrdinalIgnoreCase));
         RefreshSelectedProfile();
         ShowStatus(app + " を対象から外しました。");
-    }
-    void AddInstalledApplication_Click(object sender, RoutedEventArgs e)
-    {
-        var picker = new ApplicationPickerWindow(true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedApplication == null)
-            return;
-        string? executable = ExecutableNameForAutoSwitch(picker.SelectedApplication);
-        if (string.IsNullOrWhiteSpace(executable))
-        {
-            ShowStatus("このアプリの実行ファイル名を取得できませんでした。起動中のアプリ一覧から選んでください。", true);
-            return;
-        }
-        AddAutoSwitchApplication(executable);
     }
     void AddAutoSwitchApplication(string executable)
     {

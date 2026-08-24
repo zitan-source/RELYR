@@ -332,8 +332,19 @@ internal static class UiIntegrationTest
             compactProfileManager.UpdateLayout();
             Check(compactProfileManager.ProfileListColumn.ActualWidth <= 170 && compactProfileManager.ApplicationManagementColumn.ActualWidth > compactProfileManager.ProfileListColumn.ActualWidth * 3 && compactProfileManager.RunningApplicationList.ActualWidth > 250 && compactProfileManager.RunningApplicationList.ActualHeight > 260, $"profile management keeps a compact profile pane and gives the application editor most of the available width and height (list={compactProfileManager.RunningApplicationList.ActualWidth:F0}x{compactProfileManager.RunningApplicationList.ActualHeight:F0}, profile={compactProfileManager.ProfileListColumn.ActualWidth:F0}, editor={compactProfileManager.ApplicationManagementColumn.ActualWidth:F0})");
             Check(ScrollViewer.GetHorizontalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Disabled && ScrollViewer.GetVerticalScrollBarVisibility(compactProfileManager.RunningApplicationList) == ScrollBarVisibility.Hidden, "running application list remains scrollable by wheel without displaying scrollbars");
-            Check(Descendants<Border>(compactProfileManager.AssignedApplicationList).Any(border => border.CornerRadius.TopLeft == 8) && Descendants<Border>(compactProfileManager.RunningApplicationList).Any(border => border.CornerRadius.TopLeft == 8), "profile application lists use the shared eight-pixel control radius instead of square system borders");
-            Check(Descendants<TextBlock>(compactProfileManager).Any(text => text.Text.Contains("アクティブな対象アプリ", StringComparison.Ordinal)) && compactProfileManager.AutoSwitchBox.ToolTip?.ToString()?.Contains("アクティブ", StringComparison.Ordinal) == true, "profile manager clearly explains foreground-based automatic switching");
+            Check(compactProfileManager.AssignedApplicationList.BorderThickness == new Thickness(0)
+                && compactProfileManager.RunningApplicationList.BorderThickness == new Thickness(0)
+                && Math.Abs(compactProfileManager.ProfilePaneDivider.ActualWidth - 1) < .1
+                && Math.Abs(compactProfileManager.ApplicationTransferDivider.ActualWidth - 1) < .1,
+                "profile application lists remain frameless while restrained one-pixel dividers preserve the transfer relationship");
+            compactProfileManager.SetInstalledApplicationsLoadingStateForTest(showingInstalled: true, loadingInstalled: true);
+            Check(compactProfileManager.InstalledApplicationsLoadingPanel.Visibility == Visibility.Visible
+                && compactProfileManager.RunningApplicationList.Opacity < .3
+                && !compactProfileManager.RunningApplicationList.IsHitTestVisible
+                && Descendants<TextBlock>(compactProfileManager.InstalledApplicationsLoadingPanel).Any(text => text.Text.Contains("初回のみ", StringComparison.Ordinal)),
+                "installed-app discovery immediately presents a simple centered loading state instead of appearing frozen");
+            compactProfileManager.SetInstalledApplicationsLoadingStateForTest(showingInstalled: false, loadingInstalled: false);
+            Check(Descendants<TextBlock>(compactProfileManager).Any(text => text.Text.Contains("対象アプリが前面に来る", StringComparison.Ordinal)) && compactProfileManager.AutoSwitchBox.ToolTip?.ToString()?.Contains("対象アプリ", StringComparison.Ordinal) == true, "profile manager clearly explains foreground-based automatic switching in the quiet footer");
             compactProfileManager.AutoSwitchBox.ApplyTemplate();
             var assignedApplicationItems = compactProfileManager.AssignedApplicationList.Items.Cast<ApplicationDisplayItem>().ToArray();
             var runningApplicationItems = compactProfileManager.RunningApplicationList.Items.Cast<ApplicationDisplayItem>().ToArray();
@@ -344,6 +355,9 @@ internal static class UiIntegrationTest
                 "profile automatic switching uses the shared theme switch and every assigned/running application row exposes an application icon");
             var profileCommandButtons = new[] { compactProfileManager.AddProfileButton, compactProfileManager.RenameProfileButton, compactProfileManager.DeleteProfileButton };
             Check(profileCommandButtons.All(button => button.Content is Viewbox && Descendants<System.Windows.Shapes.Path>(button).Any(path => Equals(path.Stroke, button.Foreground))) && profileCommandButtons.All(button => !string.IsNullOrWhiteSpace(button.ToolTip?.ToString())), "profile add, rename, and delete commands use theme-aware vector icons with explanatory tooltips instead of cramped text");
+            Check(compactProfileManager.ProfileCommandBar.Columns == 5
+                && new[] { compactProfileManager.AddProfileButton, compactProfileManager.RenameProfileButton, compactProfileManager.DeleteProfileButton, compactProfileManager.CopyAssignmentsButton, compactProfileManager.PasteAssignmentsButton }.All(button => ReferenceEquals(button.Parent, compactProfileManager.ProfileCommandBar) && button.ActualWidth <= 30.1),
+                "profile add, rename, delete, copy, and paste commands form one compact aligned toolbar");
             CaptureForReview(compactProfileManager, "profile-manager-compact.png");
             SystemCommands.CloseWindow(compactProfileManager);
             Pump(window);
@@ -393,8 +407,14 @@ internal static class UiIntegrationTest
             gestureManager.UpdateLayout();
             var gestureSlots = Descendants<System.Windows.Controls.Button>(gestureManager).Where(x => x.Tag is "Up" or "Down" or "Left" or "Right" or "Center").ToArray();
             var gestureLabels = Descendants<TextBlock>(gestureManager).Select(x => x.Text).ToArray();
-            var gestureChoiceMenu = gestureManager.CreateActionTypeMenu(gestureSlots.First(x => x.Content?.ToString() == "選択…"), "Up");
-            Check(gestureManager.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && gestureSlots.Count(x => x.Content?.ToString() == "選択…") == 5 && gestureManager.ResultGestures[0].Name == "ウィンドウ操作" && gestureLabels.Contains("短押し") && !gestureLabels.Contains("センター") && gestureChoiceMenu.Items.OfType<MenuItem>().Select(x => x.Header?.ToString()).SequenceEqual(["別のキー", "プロファイル", "ショートカット", "文字列", "アプリ・パス", "マクロ"]), "gesture manager follows the Windows title-bar theme and exposes six action types for every direction and short press");
+            var gestureSelectButtons = gestureSlots.Where(x => x.ToolTip?.ToString()?.EndsWith("動作を選択", StringComparison.Ordinal) == true).ToArray();
+            var gestureChoiceMenu = gestureManager.CreateActionTypeMenu(gestureSelectButtons.First(), "Up");
+            Check(gestureManager.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && gestureSelectButtons.Length == 5 && gestureManager.ResultGestures[0].Name == "ウィンドウ操作" && gestureLabels.Contains("短押し") && !gestureLabels.Contains("センター") && gestureChoiceMenu.Items.OfType<MenuItem>().Select(x => x.Header?.ToString()).SequenceEqual(["別のキー", "プロファイル", "ショートカット", "文字列", "アプリ・パス", "マクロ"]), "gesture manager follows the Windows title-bar theme and exposes six action types through compact icon commands for every direction and short press");
+            var gestureActionRows = gestureSelectButtons.Select(button => (Grid)button.Parent).Distinct().ToArray();
+            Check(gestureActionRows.Length == 5
+                && gestureActionRows.All(row => row.ColumnDefinitions[^2].Width.Value >= 50 && row.ColumnDefinitions[^1].Width.Value >= 50)
+                && gestureSlots.All(button => button.ActualWidth + button.Margin.Left + button.Margin.Right <= ((Grid)button.Parent).ColumnDefinitions[Grid.GetColumn(button)].ActualWidth + .1),
+                "gesture row action columns reserve the complete icon-button width so the right edge is never clipped");
             gestureManager.GestureTitle.ApplyTemplate();
             var gestureTitleEditButton = (System.Windows.Controls.Button?)gestureManager.GestureTitle.Template.FindName("GestureTitleEditButton", gestureManager.GestureTitle);
             gestureTitleEditButton?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -451,10 +471,10 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteActionsForTest.Any(action => action.Name == "コピー" && action.Value == "Ctrl+C")
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "Deckパネル")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(2).SequenceEqual(new[] { "すべて", "使用中" })
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Count(item => Equals(item, "使用中")) == 1
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => Equals(item, "アプリ"))
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => Equals(item, "キー"))
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => Equals(item, "ショートカット"))
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Count(item => item.ToString() == "使用中") == 1
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "アプリ")
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "キー")
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "ショートカット")
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "アプリ" && action.Kind == ActionKind.Launch)
                 && window.ActionPaletteActionsForTest.Count(action => action.Category == "キー" && action.Kind == ActionKind.Key) >= 90
                 && window.ActionPaletteList.ActualWidth <= window.ActionPalettePane.ActualWidth + .1,
@@ -465,6 +485,36 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteResultCount.Visibility == Visibility.Collapsed
                 && window.ActionPaletteCategoryBox.MaxDropDownHeight >= 500,
                 "the Action search border is not clipped and its full-width category menu uses a tall minimal-scroll popup without a redundant count");
+            var categoryOptions = window.ActionPaletteCategoryBox.Items.Cast<MainWindow.ActionPaletteCategoryOption>().ToArray();
+            Check(categoryOptions[0] is { Name: "すべて", Section: "ステータス", StartsSection: true, ShowDivider: false }
+                && categoryOptions.First(option => option.Name == "アプリ") is { Section: "カテゴリ", StartsSection: true, ShowDivider: true }
+                && categoryOptions.Where(option => option.Name is not "すべて" and not "使用中").All(option => option.Section == "カテゴリ")
+                && categoryOptions.Count(option => option.StartsSection) == 2
+                && categoryOptions.All(option => !string.IsNullOrWhiteSpace(option.Glyph)),
+                $"the shared Action popup keeps only status separate and groups every available Action type in one clearly ordered icon category ({string.Join(", ", categoryOptions.Select(option => $"{option.Section}:{option.Name}"))})");
+            var actionPaletteTemplate = (DataTemplate)window.Resources["ActionPaletteItemTemplate"];
+            var actionPaletteTemplateRoot = (FrameworkElement)actionPaletteTemplate.LoadContent();
+            var actionPaletteGlyph = (TextBlock)actionPaletteTemplateRoot.FindName("ActionPaletteItemGlyph");
+            Check(actionPaletteGlyph.FontFamily.Source.StartsWith("Segoe UI Variable", StringComparison.Ordinal)
+                && window.ActionPaletteSearchBox.TextAlignment == TextAlignment.Left
+                && window.ActionPaletteSearchBox.FlowDirection == System.Windows.FlowDirection.LeftToRight,
+                "Action rows render both literal letters and icon-font glyphs without tofu while search input always begins at the left edge");
+            window.ActionPaletteSearchBox.Text = "音量";
+            window.ActionPaletteSearchBox.Focus();
+            window.ActionPaletteSearchBox.CaretIndex = window.ActionPaletteSearchBox.Text.Length;
+            Pump(window);
+            var actionSearchContentHost = (ScrollViewer)window.ActionPaletteSearchBox.Template.FindName("PART_ContentHost", window.ActionPaletteSearchBox);
+            double actionSearchHostX = actionSearchContentHost.TranslatePoint(new System.Windows.Point(), window.ActionPaletteSearchBox).X;
+            CaptureForReview(window, "action-search-position.png");
+            Check(actionSearchContentHost.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Left
+                && Math.Abs(actionSearchContentHost.Margin.Left - 30) < .1
+                && actionSearchHostX >= 29 && actionSearchHostX <= 34
+                && window.ActionPaletteSearchBox.TextAlignment == TextAlignment.Left,
+                $"the Action search input host starts immediately after the search icon and keeps typed text left aligned (host={actionSearchHostX:F1}px)");
+            window.ActionPaletteSearchBox.Clear();
+            System.Windows.Input.Keyboard.ClearFocus();
+            window.Focus();
+            Pump(window);
             window.SelectActionPalettePopupItemForTest("キー");
             Pump(window);
             string[] orderedPaletteKeys = window.VisibleActionPaletteActionsForTest.Select(action => action.Value).ToArray();
@@ -503,20 +553,20 @@ internal static class UiIntegrationTest
                 "the Shortcut category and its first-shortcut creation entry remain reachable before any custom shortcut exists");
             window.AddActionPaletteShortcutForTest("Ctrl+Alt+K");
             Pump(window);
-            Check(Equals(window.ActionPaletteCategoryBox.SelectedItem, "ショートカット")
+            Check(window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "ショートカット"
                 && window.ActionPaletteCustomShortcutButton.Visibility == Visibility.Visible
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "任意のショートカット" && action.Kind == ActionKind.Shortcut && action.Value == "Ctrl+Alt+K"),
                 "the shared keyboard and Deck Action pane can create a custom shortcut and expose the completed row for drag assignment");
-            string[] mainActionCategories = window.ActionPaletteCategoryBox.Items.Cast<string>().ToArray();
+            string[] mainActionCategories = window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()!).ToArray();
             foreach (string category in mainActionCategories)
             {
                 window.SelectActionPalettePopupItemForTest(category);
                 Pump(window);
             }
             Check(window.IsActionPaletteOpenForTest
-                && Equals(window.ActionPaletteCategoryBox.SelectedItem, mainActionCategories[^1]),
+                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == mainActionCategories[^1],
                 "choosing every Action category from the detached ComboBox popup keeps the shared Action library open");
-            window.ActionPaletteCategoryBox.SelectedItem = mainActionCategories[0];
+            window.SelectActionPalettePopupItemForTest(mainActionCategories[0]);
             Check(Math.Abs(MainWindow.ActionPaletteDragPreviewWidth(240) - 196.8) < .1
                 && Math.Abs(MainWindow.ActionPaletteDragPreviewHeight - 42) < .1,
                 "action drags use a compact whole-row preview instead of an ambiguous icon-only ghost");
@@ -783,10 +833,12 @@ internal static class UiIntegrationTest
                 && window.DeckProfileSwitchBox.Template.FindName("SwitchTrack", window.DeckProfileSwitchBox) is Border,
                 "first-run and Deck options use the same theme-aware switch instead of a system checkbox");
             manualTutorial.Close();
-            var toolbarControls = new System.Windows.Controls.Control[] { window.ProfileBox, window.NewProfileButton, window.KeyboardLayoutBox, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton, window.ToolbarSaveButton, window.LightThemeToggle, window.DarkThemeToggle };
+            var toolbarControls = new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton, window.ToolbarSaveButton };
             double toolbarControlTop = window.ProfileBox.TranslatePoint(new System.Windows.Point(), window).Y;
             double sidebarLogoTop = window.ProductNameText.TranslatePoint(new System.Windows.Point(), window).Y;
             Check(toolbarControls.All(x => Math.Abs(x.ActualHeight - 44) < .1)
+                && Math.Abs(window.ThemeSegmentPanel.ActualHeight - 44) < .1
+                && new[] { window.LightThemeToggle, window.DarkThemeToggle }.All(x => Math.Abs(x.ActualHeight - 40) < .1)
                 && window.ToolbarSaveButton.ActualWidth >= 77
                 && Math.Abs(window.ToolbarPanel.Margin.Top - 9.5) < .1
                 && Math.Abs(window.ToolbarPanel.Margin.Bottom + 9.5) < .1
@@ -851,7 +903,17 @@ internal static class UiIntegrationTest
             var lowerActionLabels = lowerActionButtons.Select(x => Descendants<TextBlock>(x).Last()).ToArray();
             double taskbarIconLeft = taskbarLayerIcon.TranslatePoint(new System.Windows.Point(), window).X;
             double taskbarLabelLeft = Descendants<TextBlock>(window.TaskbarLayerButton).First(x => x.Text == "タスクバー").TranslatePoint(new System.Windows.Point(), window).X;
-            Check(lowerActionButtons.All(x => x.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Stretch && x.Content is Grid grid && grid.ColumnDefinitions.Count == 2 && Math.Abs(grid.ColumnDefinitions[0].Width.Value - 32) < .1) && lowerActionLabels.All(x => x.TextAlignment == TextAlignment.Left && x.HorizontalAlignment == System.Windows.HorizontalAlignment.Stretch) && lowerActionLabels.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).All(x => Math.Abs(x - taskbarLabelLeft) < .1) && sidebarIconCells.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X + x.ActualWidth / 2).All(x => Math.Abs(x - (taskbarIconLeft + taskbarLayerIcon.ActualWidth / 2)) < .1) && lowerActionLabels.Select(x => x.Text).SequenceEqual(["マクロ", "プロファイル", "ジェスチャー", "Deckパネル", "設定"]), "sidebar command icons and labels share the exact center and text planes of the layer rows");
+            bool sidebarButtonStructureAligned = lowerActionButtons.All(x => x.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Stretch && x.Content is Grid grid && grid.ColumnDefinitions.Count == 2 && Math.Abs(grid.ColumnDefinitions[0].Width.Value - 32) < .1);
+            bool sidebarLabelAlignment = lowerActionLabels.All(x => x.TextAlignment == TextAlignment.Left && x.HorizontalAlignment == System.Windows.HorizontalAlignment.Stretch);
+            double[] sidebarLabelLefts = lowerActionLabels.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).ToArray();
+            double taskbarIconCenter = taskbarIconLeft + taskbarLayerIcon.ActualWidth / 2;
+            double[] sidebarIconCenters = sidebarIconCells.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X + x.ActualWidth / 2).ToArray();
+            bool sidebarLabelsMatch = lowerActionLabels.Select(x => x.Text).SequenceEqual(["マクロ", "プロファイル", "ジェスチャー", "Deckパネル", "設定"]);
+            Check(sidebarButtonStructureAligned && sidebarLabelAlignment
+                && sidebarLabelLefts.All(x => Math.Abs(x - taskbarLabelLeft) < .1)
+                && sidebarIconCenters.All(x => Math.Abs(x - taskbarIconCenter) < .1)
+                && sidebarLabelsMatch,
+                $"sidebar command icons and labels share the exact center and text planes of the layer rows (structure={sidebarButtonStructureAligned}; alignment={sidebarLabelAlignment}; labels={sidebarLabelsMatch}; taskbarLabel={taskbarLabelLeft:F2}; actionLabels={string.Join('/', sidebarLabelLefts.Select(value => value.ToString("F2")))}; taskbarIcon={taskbarIconCenter:F2}; actionIcons={string.Join('/', sidebarIconCenters.Select(value => value.ToString("F2")))})");
             var sidebarDividers = new[] { window.KeyboardLayerDivider, window.MouseLayerDivider, window.ManagementDivider };
             Check(sidebarDividers.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).Max() - sidebarDividers.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).Min() < .1 && sidebarDividers.Select(x => x.ActualWidth).Max() - sidebarDividers.Select(x => x.ActualWidth).Min() < .1, "left-pane section dividers share identical left and right edges");
             window.DeckPanelManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -926,7 +988,7 @@ internal static class UiIntegrationTest
                 "the Deck editor alone exposes the monitor library in the existing Action pane");
             window.SelectActionPalettePopupItemForTest(DeckMonitorCatalog.Category);
             Pump(window);
-            Check(window.IsActionPaletteOpenForTest && Equals(window.ActionPaletteCategoryBox.SelectedItem, DeckMonitorCatalog.Category),
+            Check(window.IsActionPaletteOpenForTest && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == DeckMonitorCatalog.Category,
                 "choosing the Deck-only monitor category filters the shared Action library without dismissing it");
             CaptureForReview(window, "deck-monitor-library.png");
             var deckBeforeMonitor = standardDeck.Mappings.Where(mapping => mapping.Input == "Deck+01").Select(mapping => mapping.Copy()).ToArray();
@@ -2134,12 +2196,28 @@ internal static class UiIntegrationTest
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.ProfileBox.TranslatePoint(new System.Windows.Point(), window).X < window.KeyboardLayoutBox.TranslatePoint(new System.Windows.Point(), window).X, "profile context precedes the less-frequently changed keyboard layout");
+            var toolbarEscapeKey = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "Esc"));
+            double profileToolbarLeft = window.ProfileToolbarIcon.TranslatePoint(new System.Windows.Point(), window).X;
+            double escapeKeyLeft = toolbarEscapeKey.TranslatePoint(new System.Windows.Point(), window).X;
+            Check(Math.Abs(profileToolbarLeft - escapeKeyLeft) <= 1.1, $"the profile mark and Escape key share one exact left edge ({profileToolbarLeft:F1}/{escapeKeyLeft:F1})");
             double keyboardCenter = window.KeyboardSurfaceCard.TranslatePoint(new System.Windows.Point(window.KeyboardSurfaceCard.ActualWidth / 2, 0), window.WorkspaceGrid).X;
             double workspaceCenter = window.WorkspaceGrid.ActualWidth / 2;
             Check(Math.Abs(keyboardCenter - workspaceCenter) <= 1.1, $"the main keyboard is centered in the middle workspace (keyboard={keyboardCenter:F1}, workspace={workspaceCenter:F1})");
             Check(ReferenceEquals(window.LayerNavigationPane.Parent, window.ShellDock) && window.ShellDock.Children.IndexOf(window.LayerNavigationPane) == 0 && Math.Abs(window.HeaderBrandColumn.Width.Value) < .1 && window.ToolbarSaveButton.TranslatePoint(new System.Windows.Point(window.ToolbarSaveButton.ActualWidth, 0), window.ToolbarPanel).X <= window.ToolbarPanel.ActualWidth + 1, "the sidebar spans from the client top while the toolbar begins to its right and stays on one line");
             Check(window.ToolbarPanel.Parent is Grid && !Descendants<ScrollViewer>(window.ToolbarPanel).Any(), "compact toolbar needs neither wrapping nor a horizontal slider");
-            Check(window.NewProfileButton.Content?.ToString() == "＋" && Math.Abs(window.NewProfileButton.Width - 44) < .1 && Math.Abs(window.NewProfileButton.ActualWidth - window.NewProfileButton.ActualHeight) < .1, "new profile uses the larger exact square plus-only button");
+            Check(window.ProfileBox.BorderThickness == new Thickness(0) && window.KeyboardLayoutBox.BorderThickness == new Thickness(0)
+                && Descendants<System.Windows.Shapes.Path>(window.ProfileToolbarIcon).Count() == 2
+                && Descendants<System.Windows.Shapes.Ellipse>(window.ProfileToolbarIcon).Count() == 2,
+                "toolbar profile and layout selectors use quiet frameless surfaces while the profile mark combines RELYR layers with a user glyph");
+            var newProfileMenuItem = window.ProfileBox.Items.OfType<ComboBoxItem>().SingleOrDefault(item => Equals(item.Tag, "NewProfile"));
+            Check(newProfileMenuItem?.Content is Border { Child: TextBlock { Text: "＋  新しいプロファイル" } }
+                && !Descendants<System.Windows.Controls.Button>(window.ToolbarContextPanel).Any(button => button.ToolTip?.ToString()?.Contains("プロファイルを追加", StringComparison.Ordinal) == true),
+                "new profile creation lives inside the profile menu instead of consuming a permanent toolbar button");
+            Check(newProfileMenuItem?.Content is Border newProfileBorder
+                && newProfileBorder.MinHeight >= 40
+                && newProfileBorder.Margin.Bottom >= 4
+                && newProfileBorder.Padding.Bottom >= 6,
+                "the new-profile command keeps enough measured height and bottom breathing room to remain fully visible");
             Check(!ReferenceEquals(window.EngineToggle.Parent, window.LeftBottomActions) && ReferenceEquals(window.MacroManagerButton.Parent, window.LeftBottomActions) && ReferenceEquals(window.ProfileManagerButton.Parent, window.LeftBottomActions) && ReferenceEquals(window.GestureManagerButton.Parent, window.LeftBottomActions) && ReferenceEquals(window.DeckPanelManagerButton.Parent, window.LeftBottomActions) && ReferenceEquals(window.AppSettingsButton.Parent, window.LeftBottomActions) && !window.ToolbarPanel.Children.Contains(window.EngineToggle) && !window.ToolbarPanel.Children.Contains(window.AutoSaveToggle), "macro and management buttons are fixed at lower left while engine and auto-save move to the status bar");
             var visibleText = Descendants<TextBlock>(window).Where(x => x.IsVisible).Select(x => x.Text).ToList();
             double brandLeft = window.ProductNameText.TranslatePoint(new System.Windows.Point(), window).X;
@@ -2218,8 +2296,8 @@ internal static class UiIntegrationTest
             window.UpdateLayout();
             Pump(window);
             Check(Math.Abs(window.ToolbarSaveButton.ActualWidth - 96) < .1
-                && new System.Windows.Controls.Control[] { window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton, window.LightThemeToggle, window.DarkThemeToggle }.All(control => Math.Abs(control.ActualWidth - 44) < .1)
-                && Math.Abs(window.NewProfileButton.ActualWidth - 44) < .1,
+                && new System.Windows.Controls.Control[] { window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton }.All(control => Math.Abs(control.ActualWidth - 44) < .1)
+                && new System.Windows.Controls.Control[] { window.LightThemeToggle, window.DarkThemeToggle }.All(control => Math.Abs(control.ActualWidth - 40) < .1),
                 "wide layouts restore the full reference toolbar button and save dimensions");
             var layerButtons = window.LayerButtonsPanel.Children.OfType<System.Windows.Controls.Button>().ToList();
             Check(ReferenceEquals(window.LayerButtonsPanel.Parent, window.LayerNavigationHost) && layerButtons.Select(x => Math.Round(x.TranslatePoint(new System.Windows.Point(), window.LayerButtonsPanel).Y)).Distinct().Count() == 7, "layer buttons stay vertically arranged in the left pane");
@@ -2287,6 +2365,10 @@ internal static class UiIntegrationTest
             window.UpdateLayout();
             Pump(window);
             double compactCenterWorkspaceWidth = window.ActualWidth - window.LayerNavigationPane.ActualWidth - window.AssignmentPaneColumn.ActualWidth;
+            toolbarEscapeKey = window.KeyboardPanel.Children.OfType<System.Windows.Controls.Button>().First(x => Equals(x.Tag, "Esc"));
+            profileToolbarLeft = window.ProfileToolbarIcon.TranslatePoint(new System.Windows.Point(), window).X;
+            escapeKeyLeft = toolbarEscapeKey.TranslatePoint(new System.Windows.Point(), window).X;
+            Check(Math.Abs(profileToolbarLeft - escapeKeyLeft) <= 1.1, $"compact layouts preserve the shared profile and Escape left edge ({profileToolbarLeft:F1}/{escapeKeyLeft:F1})");
             Check(Math.Abs(window.LayerNavigationPane.ActualWidth - 208) < .1
                 && Math.Abs(window.AssignmentPaneColumn.ActualWidth - 232) < .1
                 && compactCenterWorkspaceWidth > window.ActualWidth - 452,
@@ -2561,7 +2643,10 @@ internal static class UiIntegrationTest
             Check(assignAllLayers?.IsEnabled == true && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" }) && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames) && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "B") == allLayerSource && !window.CreateInputContextMenu("Insert", false).Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる"), "main keyboard context menu copies the complete assignment through every non-default layer without changing the default or exposing the command on lower keys");
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.MultiDeleteButton.IsEnabled && window.MultiDeleteButton.Foreground is SolidColorBrush deleteForeground && deleteForeground.Color == ThemeService.Color("PrimaryText"), "toolbar trash becomes active for one normally selected assigned key and uses a white icon");
+            Check(window.MultiDeleteButton.IsEnabled
+                && window.MultiDeleteButton.Foreground is SolidColorBrush deleteForeground && deleteForeground.Color == ThemeService.Color("DangerBrush")
+                && window.MultiDeleteButton.Background is SolidColorBrush deleteBackground && deleteBackground.Color == ThemeService.Color("ControlBackground"),
+                "toolbar trash becomes active for one normally selected assigned key while remaining neutral until hover");
             window.MultiDeleteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!window.CurrentProfileForTest.Mappings.Any(x => x.Input == "A") && !window.MultiDeleteButton.IsEnabled, "toolbar trash deletes the assignment of one normally selected key and clears its active state");
@@ -2891,7 +2976,9 @@ internal static class UiIntegrationTest
             Check(settings.ArchiveWatchFolderBox.Text == Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) && settings.ArchiveDestinationFolderBox.Text == "" && Descendants<System.Windows.Controls.Button>(settings.ArchivePanel).Count(x => x.Content?.ToString() == "参照…") == 2, "archive settings provide separate browsable watch and destination folders");
             settings.CategoryList.SelectedIndex = 5;
             settings.UpdateLayout();
-            Check(settings.ResetAllButton.Background is SolidColorBrush resetBrush && resetBrush.Color.R > resetBrush.Color.G && resetBrush.Color.R > resetBrush.Color.B, "data settings show a clearly red all-reset action");
+            Check(settings.ResetAllButton.Background is SolidColorBrush resetBrush && resetBrush.Color == ThemeService.Color("ControlBackground")
+                && settings.ResetAllButton.Foreground is SolidColorBrush resetForeground && resetForeground.Color == ThemeService.Color("DangerBrush"),
+                "data settings keep the destructive reset command neutral until hover while retaining a restrained danger cue");
             settings.Close();
             var themeSettings = new SettingsWindow(new AppConfig { ThemeMode = AppThemeMode.System });
             themeSettings.UpdateLayout();
@@ -2964,7 +3051,12 @@ internal static class UiIntegrationTest
             var profileManager = new ProfileManagerWindow([new Profile { Name = "標準" }, new Profile { Name = "編集用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] }], "編集用") { Owner = window, ShowInTaskbar = false };
             profileManager.Show();
             profileManager.UpdateLayout();
-            Check(profileManager.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && profileManager.ProfileList.Items.Count == 2 && Descendants<System.Windows.Controls.Button>(profileManager).Any(x => x.Content?.ToString() == "割り当てをコピー") && Descendants<System.Windows.Controls.Button>(profileManager).Any(x => x.Content?.ToString() == "アプリを選ぶ…"), "dedicated profile manager provides profile editing, assignment clipboard and clear auto-switch app selection");
+            Check(profileManager.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && profileManager.ProfileList.Items.Count == 2
+                && profileManager.CopyAssignmentsButton.Content is TextBlock && profileManager.CopyAssignmentsButton.ToolTip?.ToString() == "割り当てをコピー"
+                && profileManager.RunningApplicationsTab.Content?.ToString() == "起動中"
+                && profileManager.InstalledApplicationsTab.Content?.ToString() == "インストール済み"
+                && profileManager.RunningApplicationsTab.IsChecked == true,
+                "dedicated profile manager provides assignment clipboard and a simple in-place source switch for running and installed applications");
             profileManager.Close();
             var actionPicker = new ActionPickerWindow(window.ProfilesForTest, "JIS", deckLayouts: window.ConfigForTest.DeckLayouts) { Owner = window, ShowInTaskbar = false };
             actionPicker.Show();
@@ -3438,17 +3530,25 @@ internal static class UiIntegrationTest
             coordinateMacro.Close();
             ThemeService.Apply(AppThemeMode.Light);
             Check(ThemeService.Color("AppBackground") == System.Windows.Media.Color.FromRgb(0xF3, 0xF3, 0xF3), "light mode uses the neutral Windows background tone");
+            Check(ThemeService.Color("GestureRowHoverBackground") != ThemeService.Color("AppBackground")
+                && DeckPanelLayout.ContrastRatio(ThemeService.Color("GestureRowHoverBackground"), ThemeService.Color("AppBackground")) > 1.1,
+                "light gesture rows use a visibly distinct but restrained hover surface");
             window.ProfileBox.IsDropDownOpen = true;
             Pump(window);
             var selectedProfileItem = window.ProfileBox.ItemContainerGenerator.ContainerFromItem(window.ProfileBox.SelectedItem) as ComboBoxItem;
-            Check(selectedProfileItem != null && selectedProfileItem.Template != null && selectedProfileItem.Foreground is SolidColorBrush profileItemForeground && profileItemForeground.Color == ThemeService.Color("PrimaryText"), "light profile choices retain a custom theme-aware row and dark readable foreground");
+            var selectedProfileCheck = selectedProfileItem?.Template.FindName("SelectedCheck", selectedProfileItem) as TextBlock;
+            Check(selectedProfileItem != null && selectedProfileItem.Template != null && selectedProfileItem.Foreground is SolidColorBrush profileItemForeground && profileItemForeground.Color == ThemeService.Color("PrimaryText") && selectedProfileCheck?.Opacity == 1, "light profile choices retain a readable theme-aware row with a restrained selected check");
             window.ProfileBox.IsDropDownOpen = false;
             Pump(window);
             var lightProfileManager = new ProfileManagerWindow([new Profile { Name = "標準" }, new Profile { Name = "編集用" }], "標準") { Owner = window, ShowInTaskbar = false };
             lightProfileManager.Show();
             lightProfileManager.UpdateLayout();
-            var lightProfilePrimaryButtons = new[] { lightProfileManager.AddProfileButton, lightProfileManager.RenameProfileButton };
-            Check(lightProfilePrimaryButtons.All(button => Descendants<System.Windows.Shapes.Path>(button).All(path => Equals(path.Stroke, button.Foreground))) && lightProfilePrimaryButtons.All(button => button.Foreground is SolidColorBrush brush && DeckPanelLayout.ContrastRatio(brush.Color, ThemeService.Color("ControlBackground")) >= 4.5) && Descendants<System.Windows.Shapes.Path>(lightProfileManager.DeleteProfileButton).All(path => Equals(path.Stroke, lightProfileManager.DeleteProfileButton.Foreground)), "profile action icons inherit readable button colors in the light theme, including the white trash icon on red");
+            var lightProfilePrimaryButtons = new[] { lightProfileManager.AddProfileButton, lightProfileManager.RenameProfileButton, lightProfileManager.DeleteProfileButton };
+            Check(lightProfilePrimaryButtons.All(button => Descendants<System.Windows.Shapes.Path>(button).All(path => Equals(path.Stroke, button.Foreground)))
+                && !lightProfileManager.DeleteProfileButton.IsEnabled
+                && ReferenceEquals(lightProfileManager.DeleteProfileButton.Background, ThemeService.Brush("ControlBackground"))
+                && ReferenceEquals(lightProfileManager.DeleteProfileButton.Foreground, ThemeService.Brush("MutedText")),
+                "profile action icons inherit theme-aware colors and an unavailable delete command stays neutral instead of permanently red");
             CaptureForReview(lightProfileManager, "profile-manager-light.png");
             lightProfileManager.Close();
             var lightDeckIconPicker = new DeckIconPickerWindow("home") { Owner = window, ShowInTaskbar = false };

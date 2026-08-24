@@ -320,8 +320,9 @@ public static class SelfTest
             var notepadApp = new InstalledApplicationInfo("メモ帳", @"C:\Windows\System32\notepad.exe", "test");
             Check(ApplicationPickerWindow.MatchesSearch(calculatorApp, "C")
                 && !ApplicationPickerWindow.MatchesSearch(notepadApp, "C")
-                && ApplicationPickerWindow.MatchesSearch(notepadApp, "pad"),
-                "single-character app search behaves as an initial-letter jump while longer text keeps broad matching");
+                && ApplicationPickerWindow.MatchesSearch(notepadApp, "pad")
+                && ProfileManagerWindow.ExecutableNameForAutoSwitch(new InstalledApplicationInfo("Example", @"C:\Apps\Example.exe", "test")) == "Example.exe",
+                "single-character app search behaves as an initial-letter jump while installed profile targets retain a precise executable identity");
             var integratedGpuMemory = SystemMonitorService.SelectGpuMemoryUsage(0, 2.5 * 1024 * 1024 * 1024, 1);
             Check(integratedGpuMemory is { Detail: "SHARED VRAM" } && integratedGpuMemory.Bytes > 2d * 1024 * 1024 * 1024
                 && SystemMonitorService.SelectGpuMemoryUsage(0, 0, 1) == null,
