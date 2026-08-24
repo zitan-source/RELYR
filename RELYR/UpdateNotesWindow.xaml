@@ -2,17 +2,18 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="RELYRのアップデート" Width="680" Height="560" MinWidth="480" MinHeight="380"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="{DynamicResource AppBackground}">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}">
   <Grid Margin="28">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <TextBlock Text="アップデートしました" FontSize="26" FontWeight="SemiBold"/>
+    <TextBlock x:Name="HeadingText" Text="アップデートしました" Foreground="{DynamicResource PrimaryText}" FontSize="26" FontWeight="SemiBold"/>
     <TextBlock x:Name="VersionText" Grid.Row="1" Margin="0,5,0,18" Foreground="{DynamicResource AccentTextBrush}" FontSize="14"/>
-    <Border Grid.Row="2" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="18">
+    <Border x:Name="NotesSurface" Grid.Row="2" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="18">
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <TextBlock x:Name="NotesText" TextWrapping="Wrap" FontSize="14" LineHeight="22"/>
+        <TextBlock x:Name="NotesText" Foreground="{DynamicResource PrimaryText}" TextWrapping="Wrap" FontSize="14" LineHeight="22"/>
       </ScrollViewer>
     </Border>
-    <Button Grid.Row="3" Content="確認しました" Width="128" Height="40" HorizontalAlignment="Right" Margin="0,18,0,0" IsDefault="True" Click="Close_Click"
+    <Button x:Name="ConfirmButton" Grid.Row="3" Content="確認しました" Width="128" Height="40" HorizontalAlignment="Right" Margin="0,18,0,0" IsDefault="True" Click="Close_Click"
             Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}"/>
   </Grid>
 </Window>

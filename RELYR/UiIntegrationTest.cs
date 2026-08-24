@@ -2432,7 +2432,26 @@ internal static class UiIntegrationTest
             var updateNotes = new UpdateNotesWindow("9.9.9", "- Deckを見やすく改善\n- 全画面表示を追加");
             updateNotes.Show();
             PumpFor(TimeSpan.FromMilliseconds(80));
-            Check(updateNotes.VersionText.Text.Contains("v9.9.9", StringComparison.Ordinal) && updateNotes.NotesText.Text.Contains("全画面表示", StringComparison.Ordinal), "the post-update window shows the installed version and GitHub release body without rewriting it");
+            Check(updateNotes.VersionText.Text.Contains("v9.9.9", StringComparison.Ordinal)
+                  && updateNotes.NotesText.Text.Contains("全画面表示", StringComparison.Ordinal),
+                "the post-update window shows the installed version and GitHub release body without rewriting it");
+            Check(updateNotes.Background == ThemeService.Brush("AppBackground")
+                  && updateNotes.HeadingText.Foreground == ThemeService.Brush("PrimaryText")
+                  && updateNotes.NotesText.Foreground == ThemeService.Brush("PrimaryText")
+                  && updateNotes.NotesSurface.Background == ThemeService.Brush("SurfaceBackground")
+                  && updateNotes.NotesSurface.BorderBrush == ThemeService.Brush("SubtleBorderBrush")
+                  && updateNotes.ConfirmButton.Foreground == ThemeService.Brush("AccentButtonText"),
+                "the post-update window uses readable dark-theme text and surfaces instead of WPF's black default foreground");
+            ThemeService.Apply(AppThemeMode.Light);
+            PumpFor(TimeSpan.FromMilliseconds(40));
+            Check(updateNotes.Background == ThemeService.Brush("AppBackground")
+                  && updateNotes.HeadingText.Foreground == ThemeService.Brush("PrimaryText")
+                  && updateNotes.NotesText.Foreground == ThemeService.Brush("PrimaryText")
+                  && updateNotes.NotesSurface.Background == ThemeService.Brush("SurfaceBackground")
+                  && updateNotes.ConfirmButton.Foreground == ThemeService.Brush("AccentButtonText"),
+                "the visible post-update window follows a live switch to the readable light palette");
+            ThemeService.Apply(AppThemeMode.Dark);
+            PumpFor(TimeSpan.FromMilliseconds(40));
             CaptureForReview(updateNotes, "update-notes.png");
             updateNotes.Close();
             settings.SelectCategory("Support");

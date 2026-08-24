@@ -12,7 +12,7 @@
     <AssemblyName>RELYR</AssemblyName>
     <Product>RELYR</Product>
     <Description>キーボードとマウスの入力を自由に割り当てるWindowsアプリ</Description>
-    <Version>0.1.324</Version>
+    <Version>0.1.325</Version>
     <Authors>RELYR</Authors>
     <Copyright>Copyright (c) 2026 RELYR contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
