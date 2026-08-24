@@ -37,10 +37,15 @@ sealed class DeckDragPreviewWindow : Window
     readonly double previewHeight;
     internal double PreviewWidthForTest => previewWidth;
     internal double PreviewHeightForTest => previewHeight;
-    internal DeckDragPreviewWindow(FrameworkElement preview, bool compact = false)
+    internal DeckDragPreviewWindow(
+        FrameworkElement preview,
+        bool compact = false,
+        double? customWidth = null,
+        double? customHeight = null,
+        bool preservePreviewSurface = false)
     {
-        previewWidth = compact ? CompactWidthDip : WidthDip;
-        previewHeight = compact ? CompactHeightDip : HeightDip;
+        previewWidth = customWidth ?? (compact ? CompactWidthDip : WidthDip);
+        previewHeight = customHeight ?? (compact ? CompactHeightDip : HeightDip);
         Width = previewWidth;
         Height = previewHeight;
         WindowStyle = WindowStyle.None;
@@ -55,12 +60,12 @@ sealed class DeckDragPreviewWindow : Window
         {
             Width = previewWidth,
             Height = previewHeight,
-            Padding = new Thickness(compact ? 1.5 : 5),
-            CornerRadius = new CornerRadius(compact ? 5 : 9),
-            Opacity = compact ? .88 : .78,
-            Background = new SolidColorBrush(WpfColor.FromArgb(214, 24, 28, 31)),
-            BorderBrush = new SolidColorBrush(WpfColor.FromArgb(210, 120, 225, 210)),
-            BorderThickness = new Thickness(1),
+            Padding = preservePreviewSurface ? new Thickness(0) : new Thickness(compact ? 1.5 : 5),
+            CornerRadius = new CornerRadius(preservePreviewSurface ? 8 : compact ? 5 : 9),
+            Opacity = preservePreviewSurface ? .96 : compact ? .88 : .78,
+            Background = preservePreviewSurface ? WpfBrushes.Transparent : new SolidColorBrush(WpfColor.FromArgb(214, 24, 28, 31)),
+            BorderBrush = preservePreviewSurface ? WpfBrushes.Transparent : new SolidColorBrush(WpfColor.FromArgb(210, 120, 225, 210)),
+            BorderThickness = preservePreviewSurface ? new Thickness(0) : new Thickness(1),
             Effect = new DropShadowEffect { BlurRadius = compact ? 7 : 18, ShadowDepth = compact ? 2 : 4, Opacity = .55, Color = Colors.Black },
             Child = preview
         };

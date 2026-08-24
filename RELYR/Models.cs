@@ -63,6 +63,7 @@ public sealed class Mapping
     public string DeckIcon { get; set; } = "";
     public string DeckIconPath { get; set; } = "";
     public bool DeckIconAutoAssigned { get; set; }
+    public string DeckMonitor { get; set; } = "";
 
     public Mapping Copy() => new()
     {
@@ -81,7 +82,8 @@ public sealed class Mapping
         DeckFilePath = DeckFilePath,
         DeckIcon = DeckIcon,
         DeckIconPath = DeckIconPath,
-        DeckIconAutoAssigned = DeckIconAutoAssigned
+        DeckIconAutoAssigned = DeckIconAutoAssigned,
+        DeckMonitor = DeckMonitor
     };
 }
 
@@ -166,12 +168,13 @@ public sealed class AppConfig
     public WindowActionTarget WindowActionTarget { get; set; } = WindowActionTarget.ActiveWindow;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
+    public bool UiAnimationsEnabled { get; set; } = true;
     public long LastUpdateCheckUtcTicks { get; set; }
     public bool RecordKeyboardInputInMacros { get; set; } = true;
     public bool RecordMappedActionsInMacros { get; set; } = true;
     public bool RecordMouseMovementInMacros { get; set; }
     public bool RecordMouseMovementRelativeInMacros { get; set; } = true;
-    public bool AutoSave { get; set; }
+    public bool AutoSave { get; set; } = true;
     public bool CapsLockLayerWarningAccepted { get; set; }
     public bool CapsLockLayerEnabled { get; set; }
     public bool CapsLockRemapPendingRestart { get; set; }

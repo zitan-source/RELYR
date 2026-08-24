@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force -Path $env:APPDATA|Out-Null
 $isolatedBuildRoot=Join-Path $root ".verification\build-$Configuration"
 $baseOutputPath=(Join-Path $isolatedBuildRoot "bin")+[System.IO.Path]::DirectorySeparatorChar
 $buildProperties=@("-p:BaseOutputPath=$baseOutputPath")
-$buildDirectory=Join-Path $baseOutputPath "$Configuration\net10.0-windows\win-x64"
+$buildDirectory=Join-Path $baseOutputPath "$Configuration\net10.0-windows10.0.17763.0\win-x64"
 $dll=Join-Path $buildDirectory "RELYR.dll"
 $output=if([string]::IsNullOrWhiteSpace($OutputDirectory)){Join-Path $root "artifacts\production"}else{[System.IO.Path]::GetFullPath($OutputDirectory)}
 $productionExecutable=Join-Path $output "RELYR.exe"
@@ -53,10 +53,10 @@ function Remove-OutputDirectoryWithRetry([string]$directory) {
 Stop-ProductionInstance $productionExecutable
 
 $assetsFile=Join-Path $root "RELYR\obj\project.assets.json"
-if(-not (Test-Path -LiteralPath $assetsFile)){
-    dotnet restore $project --configfile $nugetConfig @buildProperties
-    if($LASTEXITCODE -ne 0){throw "Restore failed"}
-}
+# A cancelled or network-blocked restore can leave project.assets.json present
+# but incomplete. Always repair the restore graph before clean evaluates it.
+dotnet restore $project --configfile $nugetConfig @buildProperties
+if($LASTEXITCODE -ne 0){throw "Restore failed"}
 
 # WPF incremental markup output can retain or lose individual BAML files after
 # a forced test shutdown. Production validation must always compile every XAML

@@ -26,6 +26,11 @@ internal static class WindowMonitorService
         "Xaml_WindowedPopupClass",
         "Shell_DimWindow"
     };
+    static readonly HashSet<string> DesktopInputClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Progman",
+        "WorkerW"
+    };
     static readonly Lock foregroundIntegrityLock = new();
     static IntPtr cachedForegroundIntegrityWindow;
     static bool cachedForegroundIsElevated;
@@ -133,6 +138,37 @@ internal static class WindowMonitorService
     internal static bool IsShellSurfaceClass(string className)
         => ShortcutShellClasses.Contains(className);
 
+    // Moving, resizing, hiding, or closing an Explorer desktop host can remove
+    // wallpaper and desktop hit testing until Explorer restarts, so those hosts
+    // remain invalid for window actions.  They are nevertheless valid keyboard
+    // destinations: a remapped Delete, Ctrl+V, or other ordinary shortcut must
+    // still reach the desktop.  Keep that distinction explicit instead of
+    // reusing the destructive-window-action predicate for generated input.
+    internal static bool IsShortcutInputTargetClass(string className)
+        => DesktopInputClasses.Contains(className) || !ShortcutShellClasses.Contains(className);
+
+    internal static bool AreEquivalentShortcutTargetClasses(string expectedClass, string activeClass)
+        => DesktopInputClasses.Contains(expectedClass) && DesktopInputClasses.Contains(activeClass);
+
+    static string WindowClassName(IntPtr window)
+    {
+        var className = new System.Text.StringBuilder(256);
+        _ = GetClassName(window, className, className.Capacity);
+        return className.ToString();
+    }
+
+    static bool IsUsableShortcutInputTarget(IntPtr window)
+        => window != IntPtr.Zero
+           && IsWindow(window)
+           && IsWindowVisible(window)
+           && IsShortcutInputTargetClass(WindowClassName(window));
+
+    static bool ShortcutInputTargetsMatch(IntPtr expected, IntPtr active)
+        => expected == active
+           || (expected != IntPtr.Zero
+               && active != IntPtr.Zero
+               && AreEquivalentShortcutTargetClasses(WindowClassName(expected), WindowClassName(active)));
+
     internal static IntPtr SelectShortcutPreparationTarget(IntPtr? preferred, Func<IntPtr, bool> isUsable)
         => preferred is { } window && isUsable(window) ? window : IntPtr.Zero;
 
@@ -145,16 +181,27 @@ internal static class WindowMonitorService
 
     internal static void ActivateShortcutTargetUnderCursor(IntPtr? preferredActiveWindow = null)
     {
-        IntPtr target = ResolveTarget(WindowActionTarget.WindowUnderCursor, preferredActiveWindow);
-        if (!EnsureShortcutTargetActive(target, VirtualDesktopService.GetForegroundRootWindow, VirtualDesktopService.ActivateWindow))
+        IntPtr target = SelectResolvedTarget(
+            WindowActionTarget.WindowUnderCursor,
+            preferredActiveWindow,
+            IsUsableShortcutInputTarget,
+            RootWindowUnderCursor,
+            VirtualDesktopService.GetForegroundRootWindow);
+        if (!IsUsableShortcutInputTarget(target)
+            || !EnsureShortcutTargetActive(
+                target,
+                VirtualDesktopService.GetForegroundRootWindow,
+                VirtualDesktopService.ActivateWindow,
+                targetsMatch: ShortcutInputTargetsMatch))
             throw new InvalidOperationException("マウスカーソル下のウィンドウをアクティブにできなかったため、Actionを中止しました。");
     }
 
-    internal static bool EnsureShortcutTargetActive(IntPtr target, Func<IntPtr> activeWindow, Func<IntPtr, bool> activateWindow, Action<int>? wait = null, int timeoutMs = 300)
+    internal static bool EnsureShortcutTargetActive(IntPtr target, Func<IntPtr> activeWindow, Func<IntPtr, bool> activateWindow, Action<int>? wait = null, int timeoutMs = 300, Func<IntPtr, IntPtr, bool>? targetsMatch = null)
     {
         if (target == IntPtr.Zero)
             return false;
-        if (activeWindow() == target)
+        targetsMatch ??= static (expected, active) => expected == active;
+        if (targetsMatch(target, activeWindow()))
             return true;
         _ = activateWindow(target);
         // SetForegroundWindow may accept the request before the target's input
@@ -165,12 +212,12 @@ internal static class WindowMonitorService
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         do
         {
-            if (activeWindow() == target)
+            if (targetsMatch(target, activeWindow()))
                 return true;
             wait(10);
         }
         while (elapsed.ElapsedMilliseconds < timeoutMs);
-        return activeWindow() == target;
+        return targetsMatch(target, activeWindow());
     }
 
     internal static void Minimize(WindowActionTarget target) => Minimize(ResolveTarget(target));

@@ -91,6 +91,21 @@ internal static class DeckIconCatalog
             }
             catch { }
         }
+        if (mapping != null && (mapping.DeckIconAutoAssigned || !HasIcon(mapping))
+            && TryGetApplicationLaunchValue(mapping) is { } launchValue
+            && ApplicationIconService.TryGetExtractedIcon(launchValue) is { } applicationIcon)
+        {
+            return new System.Windows.Controls.Image
+            {
+                Source = applicationIcon,
+                Width = size,
+                Height = size,
+                Stretch = Stretch.Uniform,
+                IsHitTestVisible = false,
+                SnapsToDevicePixels = true,
+                Tag = VisualTag
+            };
+        }
         string presetId = mapping?.DeckIcon ?? "";
         bool animated = presetId.StartsWith(AnimatedPrefix, StringComparison.OrdinalIgnoreCase);
         if (animated)
@@ -120,8 +135,17 @@ internal static class DeckIconCatalog
             glyph.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
         if (!animated)
             return glyph;
-        ApplyPresetAnimation(glyph, preset.Id);
+        UiMotionService.RunSafely("deck-icon-animation", () => ApplyPresetAnimation(glyph, preset.Id));
         return glyph;
+    }
+
+    static string? TryGetApplicationLaunchValue(Mapping mapping)
+    {
+        if (mapping.Kind == ActionKind.Launch && !string.IsNullOrWhiteSpace(mapping.Value))
+            return mapping.Value;
+        if (mapping.LongPressKind == ActionKind.Launch && !string.IsNullOrWhiteSpace(mapping.LongPressValue))
+            return mapping.LongPressValue;
+        return null;
     }
 
     static string SoftwareMark(string presetId)
@@ -179,7 +203,10 @@ internal static class DeckIconCatalog
             "ALT+HOME" => "home", "ALT+ENTER" => "properties", "ALT+P" or "ALT+SHIFT+P" => "view",
             "ALT+TAB" or "ALT+SHIFT+TAB" => "switch", "CTRL+SHIFT+ESC" => "app-task-manager",
             "PRINTSCREEN" or "ALT+PRINTSCREEN" or "WIN+SHIFT+S" => "screenshot",
-            "VOLUMEUP" => "volume-up", "VOLUMEDOWN" => "volume-down", "VOLUMEMUTE" => "mute",
+            "VOLUMEUP" or "RELYR:SYSTEM:VOLUMEUP" => "volume-up", "VOLUMEDOWN" or "RELYR:SYSTEM:VOLUMEDOWN" => "volume-down", "VOLUMEMUTE" or "RELYR:SYSTEM:VOLUMEMUTE" => "mute",
+            "RELYR:SYSTEM:MICMUTE" => "microphone", "RELYR:SYSTEM:BRIGHTNESSUP" => "brightness", "RELYR:SYSTEM:BRIGHTNESSDOWN" => "brightness",
+            "RELYR:SYSTEM:WIFION" or "RELYR:SYSTEM:WIFIOFF" or "RELYR:SYSTEM:WIFITOGGLE" or "RELYR:SYSTEM:WIFISETTINGS" => "wifi",
+            "RELYR:SYSTEM:BLUETOOTHSETTINGS" => "bluetooth",
             "MEDIAPLAYPAUSE" => "play", "MEDIASTOP" => "stop", "MEDIANEXTTRACK" => "media-next", "MEDIAPREVIOUSTRACK" => "media-previous",
             "MAXIMIZEWINDOW" or "TOGGLEMAXIMIZEWINDOW" => "window-maximize", "MINIMIZEACTIVEWINDOW" => "window-minimize", "RESTOREORMINIMIZEWINDOW" => "window-restore",
             "SNAPWINDOWLEFT" => "window-snap-left", "SNAPWINDOWRIGHT" => "window-snap-right",

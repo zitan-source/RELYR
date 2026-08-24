@@ -28,8 +28,18 @@ public partial class MainWindow
     bool deckCompactCommandBar;
     DeckCustomizeTab selectedDeckCustomizeTab = DeckCustomizeTab.Layout;
     DeckEditorViewMode selectedDeckEditorViewMode = DeckEditorViewMode.Grid;
+    readonly List<System.Windows.Controls.Button> deckGridButtons = [];
     readonly List<System.Windows.Controls.Button> deckListButtons = [];
     readonly Dictionary<System.Windows.Controls.Button, (TextBlock Type, TextBlock Value)> deckListActionLabels = [];
+    readonly System.Windows.Threading.DispatcherTimer deckCustomizationRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(280)
+    };
+    bool deckCustomizationRefreshTimerHooked;
+    bool deckCustomizationRefreshPending;
+    bool deckManagementListRefreshPending;
+    bool deckCustomizationSliderDragging;
+    bool deckOverlayVisualSynchronized;
     enum DeckEditorLayoutMode { Closed, DrawerSide, DrawerStacked }
     enum DeckCustomizeTab { Layout, Appearance, Behavior }
     enum DeckEditorViewMode { Grid, List }
@@ -87,7 +97,7 @@ public partial class MainWindow
         MarkDirty(refreshDeckPanel: false);
         RefreshSelectedInputVisual(selected.Input);
     }
-    static bool HasDeckButtonContent(Mapping? mapping) => MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping?.Description) || !string.IsNullOrWhiteSpace(mapping?.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
+    static bool HasDeckButtonContent(Mapping? mapping) => MappingHasConfiguredAction(mapping) || DeckMonitorCatalog.IsMonitor(mapping?.DeckMonitor) || !string.IsNullOrWhiteSpace(mapping?.Description) || !string.IsNullOrWhiteSpace(mapping?.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
     void SetDeckButtonFile(string input, string path)
     {
         if (!DeckPanelLayout.IsInputName(input))
@@ -111,8 +121,14 @@ public partial class MainWindow
         if (mapping == null)
             return;
         mapping.DeckFilePath = normalized;
+        if (normalized.Length > 0)
+            mapping.DeckMonitor = string.Empty;
         if (selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true)
+        {
             selected.DeckFilePath = normalized;
+            if (normalized.Length > 0)
+                selected.DeckMonitor = string.Empty;
+        }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
         UpdateDeckFileDropTarget();
@@ -435,6 +451,7 @@ public partial class MainWindow
         CloseDeckEditorMediaPreview();
         DeckManagementGrid.Children.Clear();
         deckManagementButtons.Clear();
+        deckGridButtons.Clear();
         deckManagementNameLabels.Clear();
         var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
         if (layout == null)
@@ -444,48 +461,82 @@ public partial class MainWindow
         DeckManagementGrid.Width = layout.Columns * DeckPanelLayout.CellWidth;
         DeckManagementGrid.Height = layout.Rows * DeckPanelLayout.CellHeight;
         for (int slot = 1; slot <= DeckPanelLayout.VisibleSlotCount(layout); slot++)
-        {
-            int capturedSlot = slot;
-            var button = new System.Windows.Controls.Button
-            {
-                Tag = DeckPanelLayout.InputName(slot),
-                Margin = new Thickness(2),
-                MinWidth = 0,
-                MinHeight = 0,
-                Padding = new Thickness(3),
-                FontSize = 11,
-                AllowDrop = true,
-                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
-                Style = (Style)FindResource("DeckButtonStyle")
-            };
-            button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
-            button.MouseEnter += DeckManagementButton_MouseEnter;
-            button.MouseEnter += InputButtonHoverEntered;
-            button.MouseLeave += InputButtonHoverExited;
-            button.MouseDoubleClick += DeckManagementButton_DoubleClick;
-            button.PreviewMouseRightButtonDown += InputButton_RightClick;
-            button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;
-            button.PreviewMouseMove += DeckButtonReorderMoved;
-            button.PreviewMouseLeftButtonUp += DeckButtonReorderEnded;
-            button.PreviewDragEnter += DeckButtonDragOver;
-            button.PreviewDragOver += DeckButtonDragOver;
-            button.PreviewDragLeave += DeckButtonDragLeave;
-            button.PreviewDrop += DeckButtonDropped;
-            button.Width = DeckPanelLayout.KeyWidth;
-            button.Height = DeckPanelLayout.KeyHeight;
-            button.Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0);
-            button.Padding = new Thickness(3);
-            var nameLabel = DeckPanelLayout.CreateNameLabel(null);
-            var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
-            cell.Children.Add(button);
-            cell.Children.Add(nameLabel);
-            DeckManagementGrid.Children.Add(cell);
-            deckManagementButtons.Add(button);
-            deckManagementNameLabels[button] = nameLabel;
-        }
+            AddDeckManagementGridCell(slot);
         ColorDeckManagementButtons();
         ApplyDeckEditorViewMode();
+        UpdateDeckManagementViewport();
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(UpdateDeckManagementViewport));
+    }
+
+    void AddDeckManagementGridCell(int slot)
+    {
+        int capturedSlot = slot;
+        var button = new System.Windows.Controls.Button
+        {
+            Tag = DeckPanelLayout.InputName(slot),
+            MinWidth = 0,
+            MinHeight = 0,
+            FontSize = 11,
+            AllowDrop = true,
+            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
+            Style = (Style)FindResource("DeckButtonStyle"),
+            Width = DeckPanelLayout.KeyWidth,
+            Height = DeckPanelLayout.KeyHeight,
+            Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0),
+            Padding = new Thickness(3)
+        };
+        button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
+        button.MouseEnter += DeckManagementButton_MouseEnter;
+        button.MouseEnter += InputButtonHoverEntered;
+        button.MouseLeave += InputButtonHoverExited;
+        button.MouseDoubleClick += DeckManagementButton_DoubleClick;
+        button.PreviewMouseRightButtonDown += InputButton_RightClick;
+        button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;
+        button.PreviewMouseMove += DeckButtonReorderMoved;
+        button.PreviewMouseLeftButtonUp += DeckButtonReorderEnded;
+        button.PreviewDragEnter += DeckButtonDragOver;
+        button.PreviewDragOver += DeckButtonDragOver;
+        button.PreviewDragLeave += DeckButtonDragLeave;
+        button.PreviewDrop += DeckButtonDropped;
+        var nameLabel = DeckPanelLayout.CreateNameLabel(null);
+        var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
+        cell.Children.Add(button);
+        cell.Children.Add(nameLabel);
+        DeckManagementGrid.Children.Add(cell);
+        deckGridButtons.Add(button);
+        deckManagementButtons.Add(button);
+        deckManagementNameLabels[button] = nameLabel;
+    }
+
+    void ResizeDeckManagementPanel(int columns, int rows, bool deferListRefresh)
+    {
+        DeckManagementGrid.Rows = rows;
+        DeckManagementGrid.Columns = columns;
+        DeckManagementGrid.Width = columns * DeckPanelLayout.CellWidth;
+        DeckManagementGrid.Height = rows * DeckPanelLayout.CellHeight;
+        int desiredCount = columns * rows;
+        while (deckGridButtons.Count > desiredCount)
+        {
+            var button = deckGridButtons[^1];
+            if (button.Parent is UIElement cell)
+                DeckManagementGrid.Children.Remove(cell);
+            deckGridButtons.RemoveAt(deckGridButtons.Count - 1);
+            deckManagementButtons.Remove(button);
+            deckManagementNameLabels.Remove(button);
+        }
+        while (deckGridButtons.Count < desiredCount)
+        {
+            AddDeckManagementGridCell(deckGridButtons.Count + 1);
+            UpdateDeckManagementButtonVisual(deckGridButtons[^1]);
+        }
+        if (selectedDeckEditorViewMode == DeckEditorViewMode.List)
+        {
+            if (deferListRefresh)
+                deckManagementListRefreshPending = true;
+            else
+                BuildDeckManagementList();
+        }
         UpdateDeckManagementViewport();
         _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(UpdateDeckManagementViewport));
     }
@@ -574,6 +625,8 @@ public partial class MainWindow
 
     static (string Type, string Value) DeckListActionSummary(Mapping? mapping)
     {
+        if (DeckMonitorCatalog.TryGet(mapping?.DeckMonitor, out var monitor))
+            return (DeckMonitorCatalog.Category, monitor.Name);
         if (!MappingInterceptsInput(mapping))
             return ("未設定", "Actionは割り当てられていません");
         string shortText = HasConfiguredShortAction(mapping)
@@ -703,7 +756,11 @@ public partial class MainWindow
     }
 
     void DeckCustomizeClose_Click(object sender, RoutedEventArgs e)
+        => CloseDeckCustomization();
+
+    void CloseDeckCustomization()
     {
+        FlushDeckCustomizationRefresh();
         deckCustomizeOpen = false;
         deckEditorLayoutMode = null;
         UpdateDeckEditorBodyLayout(DeckEditorBody.ActualWidth);
@@ -771,12 +828,13 @@ public partial class MainWindow
         double requiredScale = Math.Min(1, Math.Min(
             (viewportWidth - 40) / Math.Max(1, DeckManagementGrid.Width),
             (viewportHeight - 40) / Math.Max(1, DeckManagementGrid.Height)));
-        // A single long row or column is most useful when its complete shape is
-        // visible. Allow those previews to shrink further before introducing a
-        // scrollbar. Dense two-dimensional Decks retain a larger readability
-        // floor and scroll only inside this surface.
-        bool singleAxisLayout = DeckManagementGrid.Rows == 1 || DeckManagementGrid.Columns == 1;
-        double minimumScale = singleAxisLayout ? .25 : .72;
+        // The editor preview is an overview of the complete configured Deck.
+        // Keep every outer row and column visible even for 18x18; list view is
+        // available when the user needs a larger per-button editing surface.
+        // Very short stacked layouts can leave little more than 100 px for the
+        // overview. Do not impose a readability floor that clips the final row;
+        // list view remains the readable editing alternative.
+        const double minimumScale = .02;
         double scale = Math.Clamp(requiredScale, minimumScale, 1);
         if (Math.Abs(DeckGridScaleTransform.ScaleX - scale) < .001)
             return;
@@ -1010,6 +1068,22 @@ public partial class MainWindow
     {
         if (sender is not System.Windows.Controls.Button { Tag: string input } || !DeckPanelLayout.IsInputName(input))
             return;
+        if (TryGetPaletteMonitor(e.Data, out _))
+        {
+            bool validMonitor = selectedDeckLayout != null;
+            SetDeckReorderTarget(validMonitor ? (System.Windows.Controls.Button)sender : null);
+            e.Effects = validMonitor ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        if (TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
+        {
+            bool paletteValid = CanAssignPaletteAction(input, paletteAction);
+            SetDeckReorderTarget(paletteValid ? (System.Windows.Controls.Button)sender : null);
+            e.Effects = paletteValid ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         bool slot = e.Data.GetDataPresent(DeckPanelLayout.SlotDragFormat);
         bool file = !DeckPanelLayout.IsInternalFileDrag(e.Data) && DeckPanelLayout.GetDroppedFile(e.Data) != null;
         bool validSlot = slot && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && !source.Equals(input, StringComparison.OrdinalIgnoreCase);
@@ -1046,6 +1120,21 @@ public partial class MainWindow
         if (sender is not System.Windows.Controls.Button { Tag: string target } || !DeckPanelLayout.IsInputName(target))
             return;
         ClearDeckReorderTarget();
+        if (TryGetPaletteMonitor(e.Data, out DeckMonitorDefinition monitor))
+        {
+            bool applied = ApplyPaletteMonitorDrop(monitor, target);
+            e.Effects = applied ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        if (TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
+        {
+            bool applied = CanAssignPaletteAction(target, paletteAction)
+                && ApplyPaletteActionDrop(paletteAction, target, target);
+            e.Effects = applied ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (e.Data.GetDataPresent(DeckPanelLayout.SlotDragFormat) && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && DeckPanelLayout.IsInputName(source))
         {
             var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
@@ -1077,7 +1166,6 @@ public partial class MainWindow
         currentLayer = DeckPanelLayout.Layer;
         KeyboardWorkspace.Visibility = Visibility.Collapsed;
         DeckWorkspace.Visibility = Visibility.Visible;
-        DetectInputButton.Visibility = Visibility.Collapsed;
         LongPressExpander.Visibility = Visibility.Collapsed;
         LongPressOnlyButton.Visibility = Visibility.Collapsed;
         KindBox.ItemsSource = DeckActionOptions();
@@ -1100,7 +1188,6 @@ public partial class MainWindow
         DeckLayoutListWorkspace.Visibility = Visibility.Visible;
         DeckEditorWorkspace.Visibility = Visibility.Collapsed;
         ToolbarSaveButton.Visibility = Visibility.Visible;
-        DetectInputButton.Visibility = Visibility.Visible;
         LongPressExpander.Visibility = Visibility.Visible;
         LongPressOnlyButton.Visibility = Visibility.Visible;
         KindBox.ItemsSource = ActionOptions(allowGesture: true);
@@ -1217,9 +1304,9 @@ public partial class MainWindow
         sizeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         sizeRow.Children.Add(new TextBlock { Text = "サイズ", VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") });
         var sizes = new System.Windows.Controls.ComboBox { Name = "NewDeckSizeBox", Style = (Style)FindResource("ToolbarComboBoxStyle"), Width = 220, Height = 40, Margin = new Thickness(0), SelectedIndex = 1 };
-        sizes.Items.Add(new ComboBoxItem { Content = "コンパクト  3×3", Tag = "3x3" });
-        sizes.Items.Add(new ComboBoxItem { Content = "標準  9×5", Tag = "9x5" });
-        sizes.Items.Add(new ComboBoxItem { Content = "ワイド  8×2", Tag = "8x2" });
+        sizes.Items.Add(new ComboBoxItem { Content = "小  3×3（9ボタン）", Tag = "3x3" });
+        sizes.Items.Add(new ComboBoxItem { Content = "中  6×4（24ボタン）", Tag = "6x4" });
+        sizes.Items.Add(new ComboBoxItem { Content = "大  9×5（45ボタン）", Tag = "9x5" });
         sizes.Items.Add(new ComboBoxItem { Content = "カスタム", Tag = "custom" });
         Grid.SetColumn(sizes, 1);
         sizeRow.Children.Add(sizes);
@@ -1299,8 +1386,11 @@ public partial class MainWindow
         (columns, rows) = preset switch
         {
             "3x3" => (3, 3),
+            "6x4" => (6, 4),
             "9x5" => (9, 5),
-            "8x2" => (8, 2),
+            // Saved Decks persist dimensions, not preset tags. Keep the former
+            // wide tag readable while new UI presets use a consistent scale.
+            _ when preset.Equals("8x2", StringComparison.OrdinalIgnoreCase) => (8, 2),
             _ => (0, 0)
         };
         if (!preset.Equals("custom", StringComparison.OrdinalIgnoreCase))
@@ -1352,7 +1442,7 @@ public partial class MainWindow
         DeckSizePresetBox.Style = (Style)FindResource("ToolbarComboBoxStyle");
         DeckSizePresetBox.Height = 36;
         UpdateDeckPanelColorEditor();
-        string preset = layout.Columns == 3 && layout.Rows == 3 ? "3x3" : layout.Columns == 9 && layout.Rows == 5 ? "9x5" : layout.Columns == 8 && layout.Rows == 2 ? "8x2" : "custom";
+        string preset = DeckPresetForSize(layout.Columns, layout.Rows);
         DeckSizePresetBox.SelectedItem = DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x => Equals(x.Tag, preset));
         DeckCustomSizePanel.Visibility = Visibility.Visible;
         UpdateDeckSizeSegmentSelection(preset);
@@ -1550,7 +1640,7 @@ public partial class MainWindow
         var size = tag switch
         {
             "3x3" => (3, 3),
-            "8x2" => (8, 2),
+            "6x4" => (6, 4),
             _ => (9, 5)
         };
         ApplyDeckSize(size.Item1, size.Item2);
@@ -1562,7 +1652,7 @@ public partial class MainWindow
         var size = tag switch
         {
             "3x3" => (3, 3),
-            "8x2" => (8, 2),
+            "6x4" => (6, 4),
             _ => (9, 5)
         };
         ApplyDeckSize(size.Item1, size.Item2);
@@ -1570,14 +1660,31 @@ public partial class MainWindow
     void UpdateDeckSizeSegmentSelection(string preset)
     {
         DeckSmallSizeToggle.IsChecked = preset == "3x3";
-        DeckMediumSizeToggle.IsChecked = preset == "9x5";
-        DeckLargeSizeToggle.IsChecked = preset == "8x2";
+        DeckMediumSizeToggle.IsChecked = preset == "6x4";
+        DeckLargeSizeToggle.IsChecked = preset == "9x5";
     }
+    internal static string DeckPresetForSize(int columns, int rows)
+        => (columns, rows) switch
+        {
+            (3, 3) => "3x3",
+            (6, 4) => "6x4",
+            (9, 5) => "9x5",
+            _ => "custom"
+        };
     void DeckDimensionSliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (updatingDeckEditor || selectedDeckLayout == null || DeckColumnsSlider == null || DeckRowsSlider == null)
             return;
-        ApplyDeckSize((int)Math.Round(DeckColumnsSlider.Value), (int)Math.Round(DeckRowsSlider.Value));
+        // Do not write back to either Slider while its Thumb owns the mouse.
+        // Rebuilding and resynchronizing the complete editor here used to make
+        // the Thumb lag behind the pointer and occasionally jump to an older
+        // value. Resize only the changed tail of the preview and defer the live
+        // overlay rebuild until the drag pauses or ends.
+        ApplyDeckSize(
+            (int)Math.Round(DeckColumnsSlider.Value),
+            (int)Math.Round(DeckRowsSlider.Value),
+            synchronizeSliders: false,
+            deferDeckRefresh: true);
     }
     void DeckCustomSizeKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
@@ -1611,10 +1718,15 @@ public partial class MainWindow
             return;
         ApplyDeckSize(columns, rows, false);
     }
-    void ApplyDeckSize(int columns, int rows, bool updateBoxes = true)
+    void ApplyDeckSize(int columns, int rows, bool updateBoxes = true, bool synchronizeSliders = true, bool deferDeckRefresh = false)
     {
         if (selectedDeckLayout == null)
             return;
+        columns = Math.Clamp(columns, 1, DeckPanelLayout.MaximumColumns);
+        rows = Math.Clamp(rows, 1, DeckPanelLayout.MaximumRows);
+        int previousColumns = selectedDeckLayout.Columns;
+        int previousRows = selectedDeckLayout.Rows;
+        bool dimensionsChanged = previousColumns != columns || previousRows != rows;
         selectedDeckLayout.Columns = columns;
         selectedDeckLayout.Rows = rows;
         selectedDeckLayout.PanelWidth = null;
@@ -1624,17 +1736,32 @@ public partial class MainWindow
             updatingDeckEditor = true;
             DeckColumnsBox.Text = columns.ToString();
             DeckRowsBox.Text = rows.ToString();
-            DeckColumnsSlider.Value = columns;
-            DeckRowsSlider.Value = rows;
-            string preset = columns == 3 && rows == 3 ? "3x3" : columns == 9 && rows == 5 ? "9x5" : columns == 8 && rows == 2 ? "8x2" : "custom";
+            if (synchronizeSliders)
+            {
+                DeckColumnsSlider.Value = columns;
+                DeckRowsSlider.Value = rows;
+            }
+            string preset = DeckPresetForSize(columns, rows);
             DeckSizePresetBox.SelectedItem = DeckSizePresetBox.Items.Cast<ComboBoxItem>().First(x => Equals(x.Tag, preset));
             UpdateDeckSizeSegmentSelection(preset);
             updatingDeckEditor = false;
         }
-        BuildDeckManagementPanel();
-        ClearSelectedInput();
+        if (dimensionsChanged)
+        {
+            int visibleCount = columns * rows;
+            if (selected?.Input is string selectedInput
+                && DeckPanelLayout.IsInputName(selectedInput)
+                && DeckPanelLayout.SlotNumber(selectedInput) > visibleCount)
+                ClearSelectedInput();
+            multiSelectedInputs.RemoveWhere(input => DeckPanelLayout.IsInputName(input) && DeckPanelLayout.SlotNumber(input) > visibleCount);
+            ResizeDeckManagementPanel(columns, rows, deferDeckRefresh);
+        }
         WorkspaceSubtitle.Text = $"列数 {columns}・行数 {rows}・{columns * rows}ボタン";
-        MarkDirty();
+        MarkDirty(refreshDeckPanel: false);
+        if (deferDeckRefresh)
+            QueueDeckCustomizationRefresh();
+        else
+            OverlayService.RefreshDeckPanel();
     }
     void DeckPanelPaddingChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1647,7 +1774,8 @@ public partial class MainWindow
         selectedDeckLayout.PanelPadding = value;
         selectedDeckLayout.PanelWidth = null;
         selectedDeckLayout.PanelHeight = null;
-        MarkDirty();
+        MarkDirty(refreshDeckPanel: false);
+        QueueDeckCustomizationRefresh();
     }
     void DeckPanelCornerRadiusChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1658,7 +1786,65 @@ public partial class MainWindow
         if (updatingDeckEditor || selectedDeckLayout == null)
             return;
         selectedDeckLayout.PanelCornerRadius = value;
-        MarkDirty();
+        MarkDirty(refreshDeckPanel: false);
+        QueueDeckCustomizationRefresh();
+    }
+
+    void QueueDeckCustomizationRefresh()
+    {
+        deckCustomizationRefreshPending = true;
+        // Render the latest layout once per WPF frame. The overlay path updates
+        // dimensions/appearance and only the added or removed tail of cells.
+        OverlayService.RefreshDeckPanelLayoutPreview();
+        deckOverlayVisualSynchronized = true;
+        if (deckCustomizationSliderDragging)
+            autoSaveTimer.Stop();
+        if (!deckCustomizationRefreshTimerHooked)
+        {
+            deckCustomizationRefreshTimer.Tick += (_, _) => FlushDeckCustomizationRefresh();
+            deckCustomizationRefreshTimerHooked = true;
+        }
+        deckCustomizationRefreshTimer.Stop();
+        deckCustomizationRefreshTimer.Start();
+    }
+
+    void FlushDeckCustomizationRefresh()
+    {
+        deckCustomizationRefreshTimer.Stop();
+        if (deckManagementListRefreshPending)
+        {
+            deckManagementListRefreshPending = false;
+            if (selectedDeckEditorViewMode == DeckEditorViewMode.List)
+                BuildDeckManagementList();
+        }
+        if (!deckCustomizationRefreshPending)
+            return;
+        deckCustomizationRefreshPending = false;
+    }
+
+    void DeckCustomizationSliderReleased(object sender, MouseButtonEventArgs e)
+        => CompleteDeckCustomizationSliderInteraction();
+
+    void DeckCustomizationSliderPressed(object sender, MouseButtonEventArgs e)
+    {
+        deckCustomizationSliderDragging = true;
+        autoSaveTimer.Stop();
+    }
+
+    void DeckCustomizationSliderLostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+        => CompleteDeckCustomizationSliderInteraction();
+
+    void CompleteDeckCustomizationSliderInteraction()
+    {
+        if (!deckCustomizationSliderDragging)
+            return;
+        deckCustomizationSliderDragging = false;
+        FlushDeckCustomizationRefresh();
+        if (config.AutoSave)
+        {
+            autoSaveTimer.Stop();
+            autoSaveTimer.Start();
+        }
     }
     void DeckHoverAnimationChanged(object sender, RoutedEventArgs e)
     {
@@ -2028,16 +2214,23 @@ public partial class MainWindow
     void HandleOverlayDeckSlotsChanged(string layoutId, int firstSlot, int secondSlot)
     {
         MarkDirty(refreshDeckPanel: false);
+        // The overlay already updated exactly these live cells. Mark that
+        // visual state as synchronized so auto-save cannot follow the
+        // differential edit with a redundant full Deck rebuild.
+        deckOverlayVisualSynchronized = true;
         if (!deckManagementMode || DeckEditorWorkspace.Visibility != Visibility.Visible || selectedDeckLayout?.Id != layoutId)
             return;
         AnimateDeckManagementSwap(firstSlot, secondSlot);
     }
     void AnimateDeckManagementSwap(int firstSlot, int secondSlot)
+        => UiMotionService.RunSafely("deck-swap", () => AnimateDeckManagementSwapCore(firstSlot, secondSlot));
+
+    void AnimateDeckManagementSwapCore(int firstSlot, int secondSlot)
     {
         string firstInput = DeckPanelLayout.InputName(firstSlot), secondInput = DeckPanelLayout.InputName(secondSlot);
         var first = deckManagementButtons.FirstOrDefault(x => x.Tag is string tag && tag.Equals(firstInput, StringComparison.OrdinalIgnoreCase));
         var second = deckManagementButtons.FirstOrDefault(x => x.Tag is string tag && tag.Equals(secondInput, StringComparison.OrdinalIgnoreCase));
-        if (first == null || second == null || firstSlot == secondSlot)
+        if (first == null || second == null || firstSlot == secondSlot || !UiMotionService.Enabled)
         {
             foreach (var button in new[] { first, second }.Where(x => x != null))
                 UpdateDeckManagementButtonVisual(button!);

@@ -177,6 +177,7 @@ public partial class MainWindow : Window
         Title = "RELYR v" + DisplayVersion;
         config = startupConfig ?? store.Load();
         ThemeService.Apply(config.ThemeMode);
+        UiMotionService.Apply(config.UiAnimationsEnabled);
         ThemeService.ThemeChanged += AppThemeChanged;
         MacroPlayer.PlaybackFinished += MacroPlaybackFinished;
         bool configuredCapsLockRemap = LegacyKeyRemapService.HasCapsLockToF13();
@@ -357,6 +358,7 @@ public partial class MainWindow : Window
             BuildDeckManagementPanel();
             RefreshProfiles();
             UpdateLayerButtons();
+            RefreshActionPalette();
         }
         finally
         {
@@ -1275,6 +1277,26 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left || e.OriginalSource is not DependencyObject source)
             return;
+        bool deckCustomizeBlankClick = deckManagementMode
+            && deckCustomizeOpen
+            && DeckEditorWorkspace.Visibility == Visibility.Visible
+            && !IsDescendantOf(source, DeckSettingsPanel)
+            && !IsDescendantOf(source, DeckCustomizeToggleButton)
+            && !IsInteractiveClick(source);
+        if (deckCustomizeBlankClick)
+            CloseDeckCustomization();
+        bool actionPaletteBlankClick = actionPaletteOpen
+            && !IsDescendantOf(source, ActionPalettePane)
+            && !IsDescendantOf(source, KeyboardPanel)
+            && !IsDescendantOf(source, SecondaryKeyboardPanel)
+            && !IsDescendantOf(source, MousePanel)
+            && !IsInteractiveClick(source);
+        if (actionPaletteBlankClick)
+        {
+            CloseActionPalette(animated: true);
+            e.Handled = true;
+            return;
+        }
         if (IsDescendantOf(source, KeyboardPanel) || IsDescendantOf(source, SecondaryKeyboardPanel) || IsDescendantOf(source, MousePanel) || IsInteractiveClick(source))
             return;
         if (MultiSelectToggle.IsChecked == true && multiSelectedInputs.Count > 0)
@@ -1317,8 +1339,8 @@ public partial class MainWindow : Window
         InputDisplayText.Text = "キーを選択してください";
         InspectorEmptyState.Visibility = Visibility.Visible;
         InspectorHintsPanel.Visibility = Visibility.Visible;
-        InspectorEmptyTitleText.Text = deckManagementMode ? "Deckのキーを選択" : "キーを選択";
-        InspectorEmptyDescriptionText.Text = deckManagementMode ? "Deckボタンを選ぶとActionを編集できます" : "編集するキーを選択してください";
+        InspectorEmptyTitleText.Text = "Actionを選択";
+        InspectorEmptyDescriptionText.Text = deckManagementMode ? "一覧からDeckへドラッグ" : "一覧からキーへドラッグ";
         UpdateInspectorHintsForContext();
         SelectionHeader.Visibility = Visibility.Collapsed;
         AssignmentEditor.Visibility = Visibility.Collapsed;
@@ -1337,6 +1359,7 @@ public partial class MainWindow : Window
         UpdateMultiSelectControls();
         ColorButtons();
         CloseAssignmentPane(false);
+        UpdateAssignmentPaneContentView();
     }
     static bool IsDescendantOf(DependencyObject source, DependencyObject ancestor)
     {
@@ -1349,7 +1372,15 @@ public partial class MainWindow : Window
     {
         for (DependencyObject? current = source; current != null; current = GetParent(current))
         {
-            if (current is System.Windows.Controls.Primitives.ButtonBase || current is System.Windows.Controls.Primitives.TextBoxBase || current is System.Windows.Controls.Primitives.Selector || current is System.Windows.Controls.Primitives.RangeBase || current is System.Windows.Controls.Primitives.Thumb || current is PasswordBox)
+            if (current is System.Windows.Controls.Primitives.ButtonBase
+                or System.Windows.Controls.Primitives.TextBoxBase
+                or System.Windows.Controls.Primitives.Selector
+                or System.Windows.Controls.ComboBoxItem
+                or System.Windows.Controls.ListBoxItem
+                or System.Windows.Controls.Primitives.RangeBase
+                or System.Windows.Controls.Primitives.Thumb
+                or MenuItem
+                or PasswordBox)
                 return true;
             if (current is Window)
                 return false;
@@ -1412,6 +1443,13 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             OpenDeckPanelPicker(list, longPress);
+            return;
+        }
+        if (option.IsDeckMonitor)
+        {
+            e.Handled = true;
+            if (!longPress)
+                OpenDeckMonitorPicker(list);
             return;
         }
         switch (option.Kind)
@@ -1534,8 +1572,50 @@ public partial class MainWindow : Window
         }
         return menu;
     }
+    void OpenDeckMonitorPicker(ListBox placementTarget)
+    {
+        var menu = CreateDeckMonitorPickerMenu(placementTarget);
+        if (menu.Items.Count == 0)
+            return;
+        menu.IsOpen = true;
+    }
+    internal ContextMenu CreateDeckMonitorPickerMenu(ListBox placementTarget)
+    {
+        var menu = new ContextMenu { PlacementTarget = placementTarget, Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint };
+        foreach (var monitor in DeckMonitorCatalog.Items)
+        {
+            var definition = monitor;
+            var header = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+            header.Children.Add(new TextBlock
+            {
+                Text = definition.Glyph,
+                FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+                FontSize = 15,
+                Width = 24,
+                Foreground = ThemeService.Brush("AccentTextBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            });
+            header.Children.Add(new TextBlock
+            {
+                Text = definition.Name,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var item = new MenuItem { Header = header, ToolTip = definition.Description };
+            item.Click += (_, _) =>
+            {
+                if (selected == null || !DeckPanelLayout.IsInputName(selected.Input) || !ApplyPaletteMonitorDrop(definition, selected.Input))
+                    ShowInlineNotice("Deckボタンを選択してからモニターを配置してください");
+            };
+            menu.Items.Add(item);
+        }
+        return menu;
+    }
     void ApplyCatalogAction(CatalogAction action, bool longPress)
     {
+        if (!longPress && selected != null && DeckPanelLayout.IsInputName(selected.Input))
+            selected.DeckMonitor = string.Empty;
         if (!longPress && selected != null
             && DeckPanelLayout.IsInputName(selected.Input)
             && string.IsNullOrWhiteSpace(selected.DeckIconPath)
@@ -1604,27 +1684,15 @@ public partial class MainWindow : Window
     {
         if (InspectorHintOneTitle == null)
             return;
-        if (deckManagementMode)
-        {
-            InspectorHintOneIcon.Data = Geometry.Parse("M4,4 H20 V20 H4 Z M7,7 H11 V11 H7 Z M13,7 H17 V11 H13 Z M7,13 H11 V17 H7 Z M13,13 H17 V17 H13 Z");
-            InspectorHintOneTitle.Text = "Deckボタンをクリック";
-            InspectorHintOneDescription.Text = "編集するボタンを選択";
-            InspectorHintTwoIcon.Data = Geometry.Parse("M12,3 V21 M12,3 L9,6 M12,3 L15,6 M12,21 L9,18 M12,21 L15,18 M3,12 H21 M3,12 L6,9 M3,12 L6,15 M21,12 L18,9 M21,12 L18,15");
-            InspectorHintTwoTitle.Text = "ドラッグ＆ドロップ";
-            InspectorHintTwoDescription.Text = "Actionを移動・入れ替え";
-        }
-        else
-        {
-            InspectorHintOneIcon.Data = Geometry.Parse("M5,3 L5,20 L9.5,15.5 L13,22 L16,20.5 L12.5,14 L19,14 Z");
-            InspectorHintOneTitle.Text = "キーをクリック";
-            InspectorHintOneDescription.Text = "編集するキーを選択";
-            InspectorHintTwoIcon.Data = Geometry.Parse("M3,6 H21 V18 H3 Z M6,9 H7 M10,9 H11 M14,9 H15 M18,9 H19 M6,12 H7 M10,12 H11 M14,12 H15 M18,12 H19 M6,15 H18");
-            InspectorHintTwoTitle.Text = "入力を検出";
-            InspectorHintTwoDescription.Text = "実際の入力からキーを探す";
-        }
-        InspectorHintThreeIcon.Data = Geometry.Parse("M12,3 C7.6,3 5,6.2 5,10 V14 C5,18.4 7.8,21 12,21 C16.2,21 19,18.4 19,14 V10 C19,6.2 16.4,3 12,3 Z M12,3 V10 M12,10 H19");
-        InspectorHintThreeTitle.Text = "右クリック";
-        InspectorHintThreeDescription.Text = "コピー・貼り付け・削除";
+        InspectorHintOneIcon.Data = Geometry.Parse("M4,5 H20 M4,12 H20 M4,19 H20 M2,5 H2.1 M2,12 H2.1 M2,19 H2.1");
+        InspectorHintOneTitle.Text = "Actionを開く";
+        InspectorHintOneDescription.Text = "検索して選択";
+        InspectorHintTwoIcon.Data = Geometry.Parse("M5,5 L19,19 M19,19 L14,19 M19,19 L19,14 M19,5 L5,19 M5,19 L10,19 M5,19 L5,14");
+        InspectorHintTwoTitle.Text = "ドラッグ";
+        InspectorHintTwoDescription.Text = deckManagementMode ? "Deckへ割り当て" : "キーへ割り当て";
+        InspectorHintThreeIcon.Data = Geometry.Parse("M5,3 L5,20 L9.5,15.5 L13,22 L16,20.5 L12.5,14 L19,14 Z");
+        InspectorHintThreeTitle.Text = deckManagementMode ? "Deckボタンをクリック" : "キーをクリック";
+        InspectorHintThreeDescription.Text = "詳細を編集";
     }
     void OpenProfilePicker(bool longPress, ListBox placementTarget)
     {
@@ -1810,8 +1878,22 @@ public partial class MainWindow : Window
             KindBox.SelectedValue = ActionKind.Launch;
             ValueBox.Text = path;
         }
+        AssignAutomaticDeckApplicationIcon(path);
         MarkDirty();
         CompleteDestinationInput();
+    }
+
+    void AssignAutomaticDeckApplicationIcon(string path)
+    {
+        if (selected == null
+            || !DeckPanelLayout.IsInputName(selected.Input)
+            || !string.IsNullOrWhiteSpace(selected.DeckIconPath)
+            || (!string.IsNullOrWhiteSpace(selected.DeckIcon) && !selected.DeckIconAutoAssigned))
+            return;
+
+        selected.DeckIcon = DeckIconCatalog.SuggestedPresetId(new CatalogAction("", "", "", ActionKind.Launch, path));
+        selected.DeckIconAutoAssigned = true;
+        RefreshSelectedInputVisual(selected.Input);
     }
 
     void SelectInput(string input, bool focusExecution = true)
@@ -1837,6 +1919,8 @@ public partial class MainWindow : Window
         InputName.Text = selected.Input;
         InputDisplayText.Text = DisplayInputName(selected.Input);
         SelectActionOptionForMapping(KindBox, selected.Kind, selected.Value);
+        if (DeckMonitorCatalog.IsMonitor(selected.DeckMonitor))
+            KindBox.SelectedItem = KindBox.Items.Cast<ActionOption>().FirstOrDefault(option => option.IsDeckMonitor);
         ValueBox.Text = DisplayConfiguredActionValue(selected.Kind, selected.Value);
         SelectActionOptionForMapping(LongKindBox, selected.LongPressKind, selected.LongPressValue);
         LongValueBox.Text = DisplayConfiguredActionValue(selected.LongPressKind, selected.LongPressValue);
@@ -1857,6 +1941,7 @@ public partial class MainWindow : Window
         UpdateMultiSelectControls();
         ColorButtons();
         ShowAssignmentPane();
+        UpdateAssignmentPaneContentView();
         if (focusExecution && ShouldFocusExecutionForSelectedInput(visibleAssignment))
             FocusExecutionValue(ValueBox);
     }
@@ -1920,6 +2005,9 @@ public partial class MainWindow : Window
         var longAction = NormalizeEditorAction(longEditorKind, LongValueBox.Text, selected.LongPressKind, selected.LongPressValue);
         selected.Kind = Kind;
         selected.Value = Value;
+        if (DeckPanelLayout.IsInputName(selected.Input)
+            && (Kind != ActionKind.None || longAction.Kind != ActionKind.None || !string.IsNullOrWhiteSpace(Value) || !string.IsNullOrWhiteSpace(longAction.Value)))
+            selected.DeckMonitor = string.Empty;
         if (Kind == ActionKind.Gesture)
         {
             selected.LongPressKind = ActionKind.None;
@@ -2474,14 +2562,25 @@ public partial class MainWindow : Window
             : VisualInputButtons().FirstOrDefault(x => string.Equals(x.Tag?.ToString(), selectedBaseInput, StringComparison.OrdinalIgnoreCase));
         if (button == null)
             return;
-        var scale = InputScaleTransform(button);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimationUsingKeyFrames
+        UiMotionService.RunSafely("assignment-commit", () =>
         {
-            KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
-        });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimationUsingKeyFrames
-        {
-            KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
+            var scale = InputScaleTransform(button);
+            if (!UiMotionService.Enabled)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                scale.ScaleX = 1;
+                scale.ScaleY = 1;
+                return;
+            }
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimationUsingKeyFrames
+            {
+                KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
+            });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimationUsingKeyFrames
+            {
+                KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
+            });
         });
     }
     static void SetSelectionPulseVisual(System.Windows.Controls.Button button, bool active, System.Windows.Media.Brush pulseBrush)
@@ -2556,10 +2655,18 @@ public partial class MainWindow : Window
         SetSelectionPulseBrush(button, pulseBrush);
         if (pulseStateChanged)
             SetSelectionPulseVisual(button, pulsing, pulseBrush);
-        if (DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping) || button.Content is not TextBlock || Equals(((TextBlock)button.Content).Tag, DeckIconCatalog.VisualTag))
+        bool monitorContentMatches = DeckMonitorCatalog.TryGet(mapping?.DeckMonitor, out var monitor)
+            && button.Content is DeckMonitorView monitorView
+            && monitorView.MonitorId.Equals(monitor.Id, StringComparison.OrdinalIgnoreCase);
+        if ((DeckMonitorCatalog.IsMonitor(mapping?.DeckMonitor) && !monitorContentMatches)
+            || button.Content is DeckMonitorView && !monitorContentMatches
+            || DeckPanelLayout.HasRegisteredFile(mapping)
+            || DeckIconCatalog.HasIcon(mapping)
+            || button.Content is not TextBlock and not DeckMonitorView
+            || button.Content is TextBlock contentText && Equals(contentText.Tag, DeckIconCatalog.VisualTag))
             button.Content = DeckPanelLayout.CreateButtonContent(input, mapping);
-        else
-            ((TextBlock)button.Content).Text = DeckPanelLayout.ActionLabel(input, mapping);
+        else if (button.Content is TextBlock textContent)
+            textContent.Text = DeckPanelLayout.ActionLabel(input, mapping);
         if (deckManagementNameLabels.TryGetValue(button, out var nameLabel))
         {
             nameLabel.Text = mapping?.Description ?? "";
@@ -2694,10 +2801,14 @@ public partial class MainWindow : Window
     {
         if (config == null)
             return;
+        deckOverlayVisualSynchronized = false;
         if (deckManagementMode && DeckEditorWorkspace?.Visibility == Visibility.Visible)
             UpdateDeckSaveStatus(saved: false);
         if (refreshDeckPanel)
+        {
             OverlayService.RefreshDeckPanel();
+            deckOverlayVisualSynchronized = true;
+        }
         if (config.AutoSave)
         {
             // Execution text is a draft until the user confirms it or clicks away.
@@ -2878,7 +2989,7 @@ public partial class MainWindow : Window
         menu.Items.Add("押下キーをすべて解除", null, (_, _) => InputEngine.ReleaseAllDefensively());
         menu.Items.Add("再起動", null, (_, _) => Dispatcher.BeginInvoke(RequestApplicationRestart));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("終了", null, (_, _) => RequestApplicationExit());
+        menu.Items.Add("終了", null, (_, _) => RequestApplicationExit("tray-exit"));
         TrayMenuTheme.Apply(menu, ThemeService.UsesDark);
         tray.ContextMenuStrip = menu;
         old?.Dispose();
@@ -3507,7 +3618,9 @@ public partial class MainWindow : Window
         // Text and shortcut editors deliberately defer Deck refreshes while the
         // user is typing.  Apply the completed mapping to an already visible
         // overlay once saving has committed the full value.
-        OverlayService.RefreshDeckPanel();
+        if (!deckOverlayVisualSynchronized)
+            OverlayService.RefreshDeckPanel();
+        deckOverlayVisualSynchronized = true;
         LastInput.Text = message;
         LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
         if (deckManagementMode && DeckEditorWorkspace?.Visibility == Visibility.Visible)
@@ -3533,7 +3646,7 @@ public partial class MainWindow : Window
     {
         detectMode = true;
         pendingDetectedLayer = null;
-        ClearExecutionFocus(DetectInputButton);
+        ClearExecutionFocus(ActionPaletteButton);
         LastInput.Text = "入力を待っています… レイヤーボタンは押したまま次のキーを押してください";
         LastInput.Foreground = ThemeService.Brush("WarningBrush");
     }
@@ -3790,6 +3903,8 @@ public partial class MainWindow : Window
         config.ShowProfileSwitchOverlay = window.ShowProfileSwitchOverlay;
         config.WindowActionTarget = window.SelectedWindowActionTarget;
         config.ThemeMode = window.SelectedThemeMode;
+        config.UiAnimationsEnabled = window.UiAnimationsEnabled;
+        UiMotionService.Apply(config.UiAnimationsEnabled);
         config.AutoSave = window.AutoSave;
         config.SpaceHoldRepeatEnabled = window.SpaceHoldRepeat;
         config.InputDisabledApplications = [.. window.InputDisabledApplications];
@@ -3827,6 +3942,7 @@ public partial class MainWindow : Window
         destination.LastShownUpdateNotesVersion = source.LastShownUpdateNotesVersion;
         destination.WindowActionTarget = source.WindowActionTarget;
         destination.ThemeMode = source.ThemeMode;
+        destination.UiAnimationsEnabled = source.UiAnimationsEnabled;
         destination.AutoSave = source.AutoSave;
         destination.SpaceHoldRepeatEnabled = source.SpaceHoldRepeatEnabled;
         destination.InputDisabledApplications = [.. source.InputDisabledApplications];
@@ -3846,6 +3962,7 @@ public partial class MainWindow : Window
     {
         ClearPendingActions();
         config = value;
+        UiMotionService.Apply(config.UiAnimationsEnabled);
         store.Save(config);
         appliedConfig = store.Clone(config);
         bool pending = LegacyKeyRemapService.IsRestartStillPending(config);
@@ -4036,8 +4153,9 @@ public partial class MainWindow : Window
         engine.ResetForSessionTransition();
         InputEngine.ReleaseAllDefensively();
     }
-    public void RequestApplicationExit()
+    public void RequestApplicationExit(string reason = "application-exit")
     {
+        App.MarkShutdownInProgress(reason);
         if (Interlocked.Exchange(ref exitRequested, 1) != 0)
             return;
         allowClose = true;
@@ -4076,7 +4194,7 @@ public partial class MainWindow : Window
             AppDialog.Show(this, "RELYRを再起動できませんでした。\n\n" + ex.Message, "再起動できません", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
-        RequestApplicationExit();
+        RequestApplicationExit("restart");
     }
     string? PromptText(string title, string label, string initial)
     {
@@ -4173,11 +4291,18 @@ public partial class MainWindow : Window
         };
         return [.. options];
     }
-    static ActionOption[] DeckActionOptions() => [.. ActionOptions(false).Where(x => x.Kind != ActionKind.Gesture)];
-    internal FrameworkElement DeckKeypadInputButton => KindBox;
-    sealed record ActionOption(ActionKind Kind, string Icon, string Label, bool IsEnabled = true, bool IsKeypad = false, bool IsDeckPanel = false)
+    static ActionOption[] DeckActionOptions()
     {
-        public ActionKind? SelectionKind => IsKeypad || IsDeckPanel ? null : Kind;
+        var options = ActionOptions(false).Where(option => option.Kind != ActionKind.Gesture).ToList();
+        int keypadIndex = options.FindIndex(option => option.IsKeypad);
+        options.Insert(keypadIndex < 0 ? options.Count : keypadIndex,
+            new ActionOption(ActionKind.None, "\uE9D9", "モニター", IsDeckMonitor: true));
+        return [.. options];
+    }
+    internal FrameworkElement DeckKeypadInputButton => KindBox;
+    sealed record ActionOption(ActionKind Kind, string Icon, string Label, bool IsEnabled = true, bool IsKeypad = false, bool IsDeckPanel = false, bool IsDeckMonitor = false)
+    {
+        public ActionKind? SelectionKind => IsKeypad || IsDeckPanel || IsDeckMonitor ? null : Kind;
         public string DisplayLabel => Label;
         public double LabelFontSize => IsKeypad ? 10 : 11;
     }

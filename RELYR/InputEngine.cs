@@ -388,10 +388,9 @@ public sealed partial class InputEngine : IDisposable
         if (!down && !up)
             return Next(n, w, l);
         Interlocked.Increment(ref lowLevelKeyboardTransitions);
-        if (OverlayService.FullScreenVisible)
+        if (OverlayService.TryDismissFullScreenKeyboard(down))
         {
             ResetCapturedState(false, true);
-            OverlayService.TryDismissFullScreenKeyboard(down);
             return (IntPtr)1;
         }
         int vk = (int)d.vkCode;
@@ -619,10 +618,9 @@ public sealed partial class InputEngine : IDisposable
             Interlocked.Increment(ref lowLevelMouseTransitions);
         if (ObservePhysicalMouseTransition(msg, d.mouseData))
             return (IntPtr)1;
-        if (OverlayService.FullScreenVisible)
+        if (OverlayService.TryDismissFullScreenMouse(msg, d.pt.x, d.pt.y))
         {
             ResetCapturedState(false, true);
-            OverlayService.TryDismissFullScreenMouse(msg, d.pt.x, d.pt.y);
             return (IntPtr)1;
         }
         if (TryHandleCoordinateCapture(msg, d.pt.x, d.pt.y))

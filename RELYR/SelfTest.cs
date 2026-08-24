@@ -9,6 +9,7 @@ public static class SelfTest
     {
         var report = new VerificationReport(output);
         Action<bool, string> Check = report.Check;
+        Check(new AppConfig() is { AutoSave: true, UiAnimationsEnabled: true }, "new installations default auto-save and RELYR animations to on");
         string dir = VerificationPaths.CreateRunDirectory("self-test");
         try
         {
@@ -236,6 +237,7 @@ public static class SelfTest
             config.LastShownUpdateNotesVersion = "9.9.8";
             config.WindowActionTarget = WindowActionTarget.WindowUnderCursor;
             config.ThemeMode = AppThemeMode.Light;
+            config.UiAnimationsEnabled = false;
             config.LastUpdateCheckUtcTicks = DateTimeOffset.UtcNow.UtcTicks;
             config.RecordKeyboardInputInMacros = false;
             config.RecordMappedActionsInMacros = true;
@@ -274,6 +276,7 @@ public static class SelfTest
             config.DeckLayouts[0].PanelPadding = 18;
             config.DeckLayouts[0].PanelCornerRadius = 9;
             config.DeckLayouts[0].HoverAnimationEnabled = false;
+            config.DeckLayouts[0].Mappings.Add(new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, DeckMonitor = "battery" });
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -287,7 +290,81 @@ public static class SelfTest
             Check(!loaded.CheckForUpdates && loaded.DismissedUpdateVersion == "9.9.9" && loaded.PendingUpdateNotesVersion == "9.9.10" && loaded.PendingUpdateNotesBody == "- Deckを改善" && loaded.LastShownUpdateNotesVersion == "9.9.8", "update-check, dismissal, and one-time release-note settings roundtrip");
             Check(loaded.WindowActionTarget == WindowActionTarget.WindowUnderCursor, "window action target setting roundtrip");
             Check(loaded.ThemeMode == AppThemeMode.Light && loaded.LastUpdateCheckUtcTicks == config.LastUpdateCheckUtcTicks, "theme mode and last update check roundtrip");
+            Check(!loaded.UiAnimationsEnabled, "explicitly disabled RELYR animations remain disabled after roundtrip");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
+            Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 2) is { DeckMonitor: "battery" }, "Deck monitor identity roundtrip");
+            Check(DeckMonitorCatalog.Items.Count >= 20 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop"), "Deck monitor catalog includes status, desktop, and direct-control tiles");
+            Check(DeckMonitorCatalog.Items.All(item => item.Glyph.Length == 1 && item.Glyph[0] is >= '\uE000' and <= '\uF8FF'), "every Deck monitor uses one supported private-use Fluent icon instead of text rendered through an icon font");
+            Check(DeckMonitorCatalog.Items.All(item => item.Name.All(character => character <= 0x7f))
+                && DeckMonitorCatalog.TryGet("disk-write", out var writeMonitor) && writeMonitor.Name == "WRITE"
+                && DeckMonitorCatalog.TryGet("volume", out var volumeMonitor) && volumeMonitor.Name == "VOLUME"
+                && DeckMonitorCatalog.TryGet("network-up", out var uploadMonitor) && uploadMonitor.Name == "UPLOAD"
+                && DeckMonitorCatalog.TryGet("network-down", out var downloadMonitor) && downloadMonitor.Name == "DOWNLOAD",
+                "Deck monitor face labels use compact English terminology consistently");
+            var desktopReading = SystemMonitorService.VirtualDesktopReading(4, 2);
+            Check(desktopReading is { Text: "2", Detail: "OF 4", Available: true }
+                && Math.Abs(desktopReading.Level!.Value - .5) < .001
+                && !SystemMonitorService.VirtualDesktopReading(0, 0).Available,
+                "virtual desktop monitor renders a one-based current number and rejects invalid native state safely");
+            Check(SystemMonitorService.WifiReading(true, null) is { Text: "ON", Detail: "CONNECTED", Available: true }
+                && !SystemMonitorService.WifiReading(false, null).Available,
+                "an active Wi-Fi connection remains authoritative when the separate radio-state query is unavailable");
+            Check(DeckPanelOverlayWindow.WheelAdjustedPercent(51, 120, 2) == 53
+                && DeckPanelOverlayWindow.WheelAdjustedPercent(1, -240, 2) == 0,
+                "Deck volume wheel changes in bounded two-percent steps including multi-notch input");
+            var newExplorerStart = SystemInputOutput.CreateLaunchStartInfo(SystemInputOutput.NewExplorerWindowAction);
+            Check(newExplorerStart.FileName.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)
+                && newExplorerStart.Arguments == "/n," && newExplorerStart.UseShellExecute,
+                "the dedicated Explorer action requests a separate Windows Explorer window without changing standard Win+E");
+            var calculatorApp = new InstalledApplicationInfo("Calculator", @"C:\Windows\System32\calc.exe", "test");
+            var notepadApp = new InstalledApplicationInfo("メモ帳", @"C:\Windows\System32\notepad.exe", "test");
+            Check(ApplicationPickerWindow.MatchesSearch(calculatorApp, "C")
+                && !ApplicationPickerWindow.MatchesSearch(notepadApp, "C")
+                && ApplicationPickerWindow.MatchesSearch(notepadApp, "pad"),
+                "single-character app search behaves as an initial-letter jump while longer text keeps broad matching");
+            var integratedGpuMemory = SystemMonitorService.SelectGpuMemoryUsage(0, 2.5 * 1024 * 1024 * 1024, 1);
+            Check(integratedGpuMemory is { Detail: "SHARED VRAM" } && integratedGpuMemory.Bytes > 2d * 1024 * 1024 * 1024
+                && SystemMonitorService.SelectGpuMemoryUsage(0, 0, 1) == null,
+                "integrated GPUs fall back to shared GPU memory and a genuine unavailable value is never formatted as 0M");
+            Check(MainWindow.DeckPresetForSize(3, 3) == "3x3"
+                && MainWindow.DeckPresetForSize(6, 4) == "6x4"
+                && MainWindow.DeckPresetForSize(9, 5) == "9x5"
+                && MainWindow.DeckPresetForSize(8, 2) == "custom"
+                && MainWindow.TryResolveDeckLayoutSize("6x4", "", "", out int mediumDeckColumns, out int mediumDeckRows)
+                && (mediumDeckColumns, mediumDeckRows) == (6, 4),
+                "Deck size presets grow consistently while legacy 8x2 Deck dimensions remain custom data");
+            Check(SystemMonitorService.DiskThroughputQuery.Contains("PerfDisk_PhysicalDisk", StringComparison.Ordinal)
+                && !SystemMonitorService.DiskThroughputQuery.Contains("LogicalDisk", StringComparison.Ordinal)
+                && SystemMonitorService.RateLevel(0, 1024) == 0
+                && SystemMonitorService.RateLevel(1024, 1024) == 1,
+                "disk throughput samples the physical-disk total every monitor tick with a bounded visual scale");
+            Check(DeckMonitorView.VisualKind("cpu") == MonitorVisualKind.Sparkline
+                && DeckMonitorView.VisualKind("disk-read") == MonitorVisualKind.Columns
+                && DeckMonitorView.VisualKind("memory") == MonitorVisualKind.Dots
+                && DeckMonitorView.VisualKind("battery") == MonitorVisualKind.Gauge
+                && DeckMonitorView.MonitorAccentColor("cpu", true) != DeckMonitorView.MonitorAccentColor("temperature", true)
+                && DeckMonitorView.MonitorAccentColor("cpu", true) != DeckMonitorView.MonitorAccentColor("cpu", false),
+                "Deck monitors use live metric-specific graph styles and readable dark/light accent colors");
+            double[] visibleHistory = DeckMonitorView.NormalizeHistoryForDisplay([.14, .15, .13, .16]);
+            double[] flatHistory = DeckMonitorView.NormalizeHistoryForDisplay([.14, .14, .14]);
+            Check(visibleHistory.Max() - visibleHistory.Min() >= .6
+                && flatHistory.All(value => Math.Abs(value - .5) < .001),
+                "compact Deck charts amplify real short-term variation while a genuinely flat signal stays visually flat");
+            Check(RadioMonitorService.AggregateBluetoothState([]) == null
+                && RadioMonitorService.AggregateBluetoothState([Windows.Devices.Radios.RadioState.Off]) == false
+                && RadioMonitorService.AggregateBluetoothState([Windows.Devices.Radios.RadioState.Off, Windows.Devices.Radios.RadioState.On]) == true,
+                "Bluetooth monitor aggregates every radio into unavailable, off, or on without blocking the UI thread");
+            var selectedSensors = HardwareSensorProvider.Select([
+                new HardwareSensorCandidate(LibreHardwareMonitor.Hardware.HardwareType.Cpu, LibreHardwareMonitor.Hardware.SensorType.Temperature, "Core #1", 59),
+                new HardwareSensorCandidate(LibreHardwareMonitor.Hardware.HardwareType.Cpu, LibreHardwareMonitor.Hardware.SensorType.Temperature, "CPU Package", 63),
+                new HardwareSensorCandidate(LibreHardwareMonitor.Hardware.HardwareType.GpuIntel, LibreHardwareMonitor.Hardware.SensorType.Temperature, "GPU Core", 54),
+                new HardwareSensorCandidate(LibreHardwareMonitor.Hardware.HardwareType.Motherboard, LibreHardwareMonitor.Hardware.SensorType.Fan, "CPU Fan", 1280)
+            ]);
+            Check(selectedSensors is { CpuTemperature: 63, GpuTemperature: 54, FanRpm: 1280 }, "hardware sensor selection prefers CPU package, GPU core, and CPU fan readings deterministically");
+            var verifiedSensors = HardwareSensorProvider.KeepVerifiedHardwareSensors(
+                new HardwareSensorSnapshot(CpuTemperature: 63, CpuTemperatureName: "CPU Package"));
+            Check(verifiedSensors is { CpuTemperature: 63, CpuTemperatureName: "CPU Package", FanRpm: null },
+                "hardware monitors keep verified package/RPM readings and never substitute ACPI zones or requested fan targets");
             Check(!loaded.RecordKeyboardInputInMacros, "macro keyboard recording option roundtrip");
             Check(loaded.RecordMappedActionsInMacros, "macro mapped-action recording option roundtrip");
             Check(loaded.RecordMouseMovementInMacros, "macro mouse trajectory option roundtrip");
@@ -673,6 +750,20 @@ public static class SelfTest
                   && !WindowMonitorService.IsShellSurfaceClass("Chrome_WidgetWin_1")
                   && !WindowMonitorService.IsShellSurfaceClass("CabinetWClass"),
                 "window actions reject desktop and taskbar shell surfaces without blocking ordinary application or Explorer folder windows");
+            Check(WindowMonitorService.IsShortcutInputTargetClass("Progman")
+                  && WindowMonitorService.IsShortcutInputTargetClass("WorkerW")
+                  && WindowMonitorService.IsShortcutInputTargetClass("Chrome_WidgetWin_1")
+                  && WindowMonitorService.IsShortcutInputTargetClass("CabinetWClass")
+                  && !WindowMonitorService.IsShortcutInputTargetClass("Shell_TrayWnd")
+                  && !WindowMonitorService.IsShortcutInputTargetClass("Shell_SecondaryTrayWnd")
+                  && !WindowMonitorService.IsShortcutInputTargetClass("XamlExplorerHostIslandWindow"),
+                "mapped keys and shortcuts can reach the Explorer desktop while taskbars and transient shell surfaces remain invalid targets");
+            Check(WindowMonitorService.AreEquivalentShortcutTargetClasses("WorkerW", "Progman")
+                  && WindowMonitorService.AreEquivalentShortcutTargetClasses("Progman", "WorkerW")
+                  && !WindowMonitorService.AreEquivalentShortcutTargetClasses("Chrome_WidgetWin_1", "Chrome_WidgetWin_1")
+                  && !WindowMonitorService.AreEquivalentShortcutTargetClasses("WorkerW", "Chrome_WidgetWin_1")
+                  && !WindowMonitorService.AreEquivalentShortcutTargetClasses("", ""),
+                "Explorer desktop hosts are equivalent only for keyboard input activation acknowledgement");
             Check(ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4], 40, 99)
                   && !ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[0], 40, 99)
                   && !ForegroundWindowTracker.ShouldTrackWindow(shortcutCandidates[4], 99, 99),
@@ -741,6 +832,14 @@ public static class SelfTest
                       () => activeShortcutTarget,
                       _ => false),
                 "cursor-targeted shortcuts fail closed when the resolved window cannot be activated");
+            int desktopActivationCalls = 0;
+            Check(WindowMonitorService.EnsureShortcutTargetActive(
+                      (IntPtr)101,
+                      () => (IntPtr)202,
+                      _ => { desktopActivationCalls++; return false; },
+                      targetsMatch: (expected, active) => expected == (IntPtr)101 && active == (IntPtr)202)
+                  && desktopActivationCalls == 0,
+                "mapped desktop keys do not fail when Explorer reports equivalent Progman and WorkerW roots");
             var hookReturnBarrier = InputEngine.CreateHookReturnBarrierForTest();
             Check(hookReturnBarrier.Barrier is { IsCompleted: false }, "desktop actions queued by a low-level callback wait for that callback to return");
             hookReturnBarrier.Complete();

@@ -4,7 +4,11 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Microsoft.Win32;
+using WpfButton = System.Windows.Controls.Button;
+using WpfCheckBox = System.Windows.Controls.CheckBox;
 
 namespace RELYR;
 
@@ -17,6 +21,8 @@ public partial class App : System.Windows.Application
     internal static string MouseUiTestReportPath => VerificationPaths.GetFile("mouse-ui-test-last.log");
     internal static string SelfTestReportPath => VerificationPaths.GetFile("self-test-last.log");
     internal static string ConfigurationMatrixTestReportPath => VerificationPaths.GetFile("configuration-matrix-last.log");
+    internal static string StartupTestReportPath => VerificationPaths.GetFile("startup-test-last.log");
+    internal static string ShutdownTestReportPath => VerificationPaths.GetFile("shutdown-test-last.log");
 #endif
     internal const string InstanceMutexName = @"Local\RELYR.SingleInstance.v2";
     internal const string HelperMutexName = @"Local\RELYR.ElevatedHelper.v1";
@@ -27,16 +33,35 @@ public partial class App : System.Windows.Application
     EventWaitHandle? showSignal;
     EventWaitHandle? showAcknowledgement;
     EventWaitHandle? shutdownSignal;
+    EventWaitHandle? shutdownInProgressSignal;
     ForegroundWindowTracker? foregroundWindowTracker;
     bool ownsMutex;
+    int shutdownMarked;
     readonly CancellationTokenSource signalStop = new();
     public App()
     {
         // 入力フックを他のマウス常駐ソフトより先に解除できるよう、
         // Windows終了通知をアプリ用の最優先範囲で受け取る。
         SetProcessShutdownParameters(0x3FF, 0);
-        DispatcherUnhandledException += (_, e) => { InputEngine.ReleaseAllDefensively(); e.Handled = true; ShutdownWithExitCode(1); };
-        AppDomain.CurrentDomain.UnhandledException += (_, _) => InputEngine.ReleaseAllDefensively();
+        DispatcherUnhandledException += (_, e) =>
+        {
+            if (UiMotionService.TryHandleDispatcherException(e.Exception))
+            {
+                e.Handled = true;
+                return;
+            }
+            LifecycleDiagnostics.Write("dispatcher-unhandled-exception", e.Exception.ToString());
+            MarkShutdownInProgress("dispatcher-unhandled-exception");
+            InputEngine.ReleaseAllDefensively();
+            e.Handled = true;
+            ShutdownWithExitCode(1);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            LifecycleDiagnostics.Write("appdomain-unhandled-exception", e.ExceptionObject?.ToString());
+            MarkShutdownInProgress("appdomain-unhandled-exception");
+            InputEngine.ReleaseAllDefensively();
+        };
         AppDomain.CurrentDomain.ProcessExit += (_, _) => InputEngine.ReleaseAllDefensively();
         TaskScheduler.UnobservedTaskException += (_, e) => { InputEngine.ReleaseAllDefensively(); e.SetObserved(); };
         SystemEvents.PowerModeChanged += SystemPowerModeChanged;
@@ -91,12 +116,38 @@ public partial class App : System.Windows.Application
             return;
         }
 #endif
+        // Installer and update shutdown is a path-scoped local signal. Handle it
+        // before the production privilege relay so a one-shot shutdown command
+        // cannot wait on Task Scheduler or launch another RELYR executable.
+        if (args.Contains("--shutdown-existing", StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var signal = EventWaitHandle.OpenExisting(BuildShutdownSignalName(Environment.ProcessPath));
+                signal.Set();
+            }
+            catch { }
+            ExitImmediately(0);
+            return;
+        }
 #if PRODUCTION_PUBLISH
         if(args.Length>=2&&args[0].Equals("--elevated-task",StringComparison.OrdinalIgnoreCase))
         {
             if(!StartupService.IsProcessElevated()){AppDialog.Show("管理者モードの起動タスクが正しく構成されていません。RELYRを再インストールしてください。","起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
             try{args=StartupService.DecodeElevatedArguments(args[1]);}
             catch(Exception ex){AppDialog.Show("起動情報を読み取れませんでした。\n\n"+ex.Message,"起動できません",MessageBoxButton.OK,MessageBoxImage.Error);ExitImmediately(1);return;}
+        }
+        if(args.Length==3&&args[0].Equals("--sensor-helper",StringComparison.OrdinalIgnoreCase))
+        {
+            if(!StartupService.IsProcessElevated()||!HardwareSensorProcess.ValidPipeName(args[1])||!HardwareSensorProcess.ValidPipeName(args[2])){ExitImmediately(1);return;}
+            ShutdownMode=ShutdownMode.OnExplicitShutdown;
+            Dispatcher.BeginInvoke(async()=>
+            {
+                try{await HardwareSensorProcess.RunAsync(args[1],args[2]);}
+                catch(Exception ex){LifecycleDiagnostics.Write("hardware-sensor-process-failed",ex.ToString());}
+                finally{Shutdown(0);}
+            });
+            return;
         }
         if (IsRestartLauncher(args))
             args = RestartTargetArguments(args);
@@ -127,15 +178,38 @@ public partial class App : System.Windows.Application
             }
             if(IsMainUiLaunch(args)&&MainInstanceExists())
             {
-                if(NotifyExistingInstance())
+                bool shutdownPending = IsResidentShutdownPending(Environment.ProcessPath);
+                bool notified = false;
+                if (!shutdownPending)
+                {
+                    notified = NotifyExistingInstance();
+                    shutdownPending = IsResidentShutdownPending(Environment.ProcessPath);
+                }
+                if (shutdownPending || !MainInstanceExists())
+                {
+                    LifecycleDiagnostics.Write("launcher-waiting-for-resident-exit", shutdownPending ? "shutdown-pending" : "instance-disappeared-during-notification");
+                    if (!WaitForMainInstanceExit(TimeSpan.FromSeconds(5)))
+                    {
+                        if (!RequestStaleInstanceRecovery(args, out string recoveryError))
+                            AppDialog.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+                        ExitImmediately(0);return;
+                    }
+                    LifecycleDiagnostics.Write("launcher-replacing-exited-resident");
+                }
+                else if(notified)
                 {
                     if(ShouldExplainDuplicate(args))ShowAlreadyRunningMessage();
+                    ExitImmediately(0);return;
                 }
                 else if(!RequestStaleInstanceRecovery(args,out string recoveryError))
                 {
                     AppDialog.Show(recoveryError,"RELYRを再起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
+                    ExitImmediately(0);return;
                 }
-                ExitImmediately(0);return;
+                else
+                {
+                    ExitImmediately(0);return;
+                }
             }
             if(!StartupService.TryRunElevated(args,out string elevatedLaunchError))
                 AppDialog.Show(elevatedLaunchError,"RELYRを起動できません",MessageBoxButton.OK,MessageBoxImage.Error);
@@ -239,16 +313,6 @@ public partial class App : System.Windows.Application
                 ExitImmediately(0);
             }
             catch { ExitImmediately(1); }
-            return;
-        }
-        if (args.Contains("--shutdown-existing", StringComparer.OrdinalIgnoreCase))
-        {
-            try
-            {
-                EventWaitHandle.OpenExisting(BuildShutdownSignalName(Environment.ProcessPath)).Set();
-            }
-            catch { }
-            ExitImmediately(0);
             return;
         }
         if (args.Length >= 2 && args[0].Equals("--configure-startup", StringComparison.OrdinalIgnoreCase))
@@ -366,12 +430,22 @@ public partial class App : System.Windows.Application
         }
         if (e.Args.Contains("--startup-test", StringComparer.OrdinalIgnoreCase))
         {
-            ShutdownWithExitCode(StartupIntegrationTest.Run(Console.Out));
+            try { File.Delete(StartupTestReportPath); } catch { }
+            int result;
+            using (var startupLog = new StreamWriter(StartupTestReportPath, false, Encoding.UTF8) { AutoFlush = true })
+                result = StartupIntegrationTest.Run(startupLog);
+            try { Console.Out.Write(File.ReadAllText(StartupTestReportPath)); } catch { }
+            ShutdownWithExitCode(result);
             return;
         }
         if (e.Args.Contains("--shutdown-test", StringComparer.OrdinalIgnoreCase))
         {
-            ShutdownWithExitCode(ShutdownIntegrationTest.Run(Console.Out));
+            try { File.Delete(ShutdownTestReportPath); } catch { }
+            int result;
+            using (var shutdownLog = new StreamWriter(ShutdownTestReportPath, false, Encoding.UTF8) { AutoFlush = true })
+                result = ShutdownIntegrationTest.Run(shutdownLog);
+            try { Console.Out.Write(File.ReadAllText(ShutdownTestReportPath)); } catch { }
+            ShutdownWithExitCode(result);
             return;
         }
         if (e.Args.Contains("--update-test", StringComparer.OrdinalIgnoreCase))
@@ -408,6 +482,7 @@ public partial class App : System.Windows.Application
         catch { }
         var loadedStartupConfig = new ConfigService().Load();
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
+        UiMotionService.Apply(loadedStartupConfig.UiAnimationsEnabled);
         if (ShouldScanForOrphans(args)
            && !StartupService.TryTerminateOrphanedRelyrInstances(TimeSpan.FromSeconds(3), out string orphanError))
         {
@@ -422,6 +497,8 @@ public partial class App : System.Windows.Application
         showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, SignalName);
         showAcknowledgement = new EventWaitHandle(false, EventResetMode.AutoReset, AcknowledgementName);
         shutdownSignal = new EventWaitHandle(false, EventResetMode.ManualReset, BuildShutdownSignalName(Environment.ProcessPath));
+        shutdownInProgressSignal = new EventWaitHandle(false, EventResetMode.ManualReset, BuildShutdownInProgressSignalName(Environment.ProcessPath));
+        LifecycleDiagnostics.Write("resident-started", $"version={typeof(App).Assembly.GetName().Version} elevated={StartupService.IsProcessElevated()}");
         bool startInputHooks = true;
 #if !PRODUCTION_PUBLISH
         startInputHooks = !args.Contains("--no-input-hooks", StringComparer.OrdinalIgnoreCase);
@@ -443,6 +520,63 @@ public partial class App : System.Windows.Application
         if (args.Contains("--tray-exit-regression-host", StringComparer.OrdinalIgnoreCase))
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(window.ExecuteTrayExitMenuItemForTest));
 #endif
+    }
+
+    void AppButtonMotionEntered(object sender, System.Windows.Input.MouseEventArgs e)
+        => UiMotionService.RunSafely("button-hover-enter", () => AnimateAppButtonSignal(sender as WpfButton, 0.32, 140));
+
+    void AppButtonMotionExited(object sender, System.Windows.Input.MouseEventArgs e)
+        => UiMotionService.RunSafely("button-hover-exit", () => AnimateAppButtonSignal(sender as WpfButton, 0, 190));
+
+    static void AnimateAppButtonSignal(WpfButton? button, double opacity, int durationMs)
+    {
+        if (button == null)
+            return;
+        button.ApplyTemplate();
+        if (button.Template.FindName("ButtonSignal", button) is not UIElement signal)
+            return;
+        signal.BeginAnimation(UIElement.OpacityProperty, null);
+        if (!UiMotionService.Enabled)
+        {
+            signal.Opacity = 0;
+            return;
+        }
+        signal.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(durationMs))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            },
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
+    void AppSwitchMotionEntered(object sender, System.Windows.Input.MouseEventArgs e)
+        => UiMotionService.RunSafely("switch-hover-enter", () => AnimateAppSwitchThumb(sender as WpfCheckBox, 1.08, 140));
+
+    void AppSwitchMotionExited(object sender, System.Windows.Input.MouseEventArgs e)
+        => UiMotionService.RunSafely("switch-hover-exit", () => AnimateAppSwitchThumb(sender as WpfCheckBox, 1, 180));
+
+    static void AnimateAppSwitchThumb(WpfCheckBox? checkBox, double target, int durationMs)
+    {
+        if (checkBox == null)
+            return;
+        checkBox.ApplyTemplate();
+        if (checkBox.Template.FindName("SwitchThumb", checkBox) is not FrameworkElement thumb)
+            return;
+        var scale = UiMotionService.MutableScale(thumb);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        if (!UiMotionService.Enabled)
+        {
+            scale.ScaleX = 1;
+            scale.ScaleY = 1;
+            return;
+        }
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(durationMs);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(target, duration) { EasingFunction = ease }, HandoffBehavior.SnapshotAndReplace);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(target, duration) { EasingFunction = ease }, HandoffBehavior.SnapshotAndReplace);
     }
     internal static bool ShouldStartMediumUiHost(bool processElevated, IReadOnlyList<string> args)
         => !processElevated && IsMainUiLaunch(args);
@@ -495,6 +629,7 @@ public partial class App : System.Windows.Application
         string pipeName = args[1], bootstrapName = args[2];
         var config = new ConfigService().Load();
         ThemeService.Apply(config.ThemeMode);
+        UiMotionService.Apply(config.UiAnimationsEnabled);
         var window = new MainWindow(true, true, config, RuntimeRole.ElevatedHelper);
         MainWindow = window;
         window.Hide();
@@ -548,6 +683,34 @@ public partial class App : System.Windows.Application
             existing.Dispose();
             return true;
         }
+        catch (UnauthorizedAccessException) { return true; }
+    }
+    internal static bool WaitForInstanceExit(Func<bool> instanceExists, int maximumAttempts, Action<int> delay)
+    {
+        for (int attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            if (!instanceExists())
+                return true;
+            delay(100);
+        }
+        return !instanceExists();
+    }
+    static bool WaitForMainInstanceExit(TimeSpan timeout)
+    {
+        int attempts = Math.Max(1, (int)Math.Ceiling(timeout.TotalMilliseconds / 100));
+        return WaitForInstanceExit(MainInstanceExists, attempts, Thread.Sleep);
+    }
+    internal static bool IsResidentShutdownPending(string? executablePath)
+        => IsNamedEventSet(BuildShutdownSignalName(executablePath))
+            || IsNamedEventSet(BuildShutdownInProgressSignalName(executablePath));
+    static bool IsNamedEventSet(string name)
+    {
+        try
+        {
+            using var signal = EventWaitHandle.OpenExisting(name);
+            return signal.WaitOne(0);
+        }
+        catch (WaitHandleCannotBeOpenedException) { return false; }
         catch (UnauthorizedAccessException) { return true; }
     }
     internal static bool NotifyExistingInstance(int timeoutMilliseconds = ExistingInstanceResponseTimeoutMs)
@@ -701,11 +864,12 @@ public partial class App : System.Windows.Application
         {
             if (WaitHandle.WaitAny([shutdownSignal!, signalStop.Token.WaitHandle]) != 0)
                 return;
+            MarkShutdownInProgress("external-shutdown-signal");
             ArmForcedProcessExit(TimeSpan.FromSeconds(3));
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (MainWindow is RELYR.MainWindow window)
-                    window.RequestApplicationExit();
+                    window.RequestApplicationExit("external-shutdown-signal");
                 else
                     ExitImmediately(0);
             }));
@@ -718,6 +882,19 @@ public partial class App : System.Windows.Application
         string normalized = string.IsNullOrWhiteSpace(executablePath) ? "unknown" : Path.GetFullPath(executablePath).ToUpperInvariant();
         string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..20];
         return @"Local\RELYR.ShutdownExisting.v2." + hash;
+    }
+    internal static string BuildShutdownInProgressSignalName(string? executablePath)
+    {
+        string normalized = string.IsNullOrWhiteSpace(executablePath) ? "unknown" : Path.GetFullPath(executablePath).ToUpperInvariant();
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..20];
+        return @"Local\RELYR.ShutdownInProgress.v1." + hash;
+    }
+    internal static void MarkShutdownInProgress(string reason)
+    {
+        if (Current is not App app || !app.ownsMutex || Interlocked.Exchange(ref app.shutdownMarked, 1) != 0)
+            return;
+        try { app.shutdownInProgressSignal?.Set(); } catch { }
+        LifecycleDiagnostics.Write("resident-exit-requested", reason);
     }
     // A saved UI preference alone does not change Windows and must never cause
     // a reboot prompt.  A restart is needed only when the registry remap is
@@ -829,8 +1006,11 @@ public partial class App : System.Windows.Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        if (ownsMutex)
+            LifecycleDiagnostics.Write("resident-exited", $"code={e.ApplicationExitCode}");
         try
         {
+            SystemMonitorService.Shared.Dispose();
             IpcRuntime.StopAsync().GetAwaiter().GetResult();
         }
         catch { }
@@ -844,6 +1024,7 @@ public partial class App : System.Windows.Application
         showSignal?.Dispose();
         showAcknowledgement?.Dispose();
         shutdownSignal?.Dispose();
+        shutdownInProgressSignal?.Dispose();
         if (ownsMutex)
         {
             try

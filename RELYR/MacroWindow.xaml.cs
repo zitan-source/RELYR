@@ -989,9 +989,11 @@ public partial class MacroWindow : Window
         DropIndicator.Margin = new Thickness(5, Math.Max(0, lineY - 1.5), 5, 0);
         if (DropIndicator.Visibility != Visibility.Visible)
         {
-            DropIndicator.Opacity = 0;
+            DropIndicator.Opacity = UiMotionService.Enabled ? 0 : 1;
             DropIndicator.Visibility = Visibility.Visible;
-            DropIndicator.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(110)));
+            if (UiMotionService.Enabled)
+                UiMotionService.RunSafely("macro-drop-indicator", () =>
+                    DropIndicator.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(110))));
         }
         e.Effects = System.Windows.DragDropEffects.Move;
         e.Handled = true;
@@ -1094,9 +1096,23 @@ public partial class MacroWindow : Window
 #endif
 
     void AnimateDragTarget(ListBoxItem? target, bool insertAfter)
+        => UiMotionService.RunSafely("macro-drag-target", () => AnimateDragTargetCore(target, insertAfter));
+
+    void AnimateDragTargetCore(ListBoxItem? target, bool insertAfter)
     {
         if (ReferenceEquals(target, dragTargetContainer) && (target == null || insertAfter == dragTargetAfter))
             return;
+        if (!UiMotionService.Enabled)
+        {
+            if (dragTargetContainer != null)
+                dragTargetContainer.RenderTransform = System.Windows.Media.Transform.Identity;
+            dragTargetContainer = target;
+            dragTargetTransform = null;
+            dragTargetAfter = insertAfter;
+            if (target != null)
+                target.RenderTransform = System.Windows.Media.Transform.Identity;
+            return;
+        }
         if (dragTargetContainer != null && dragTargetTransform != null)
         {
             var oldTarget = dragTargetContainer;

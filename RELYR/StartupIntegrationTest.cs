@@ -52,6 +52,22 @@ public static class StartupIntegrationTest
                 responder.Wait();
                 Check(!App.WaitForExistingInstanceResponse(show, acknowledgement, 5), "an unresponsive instance is not mistaken for a healthy instance");
             }
+            int exitChecks = 0;
+            Check(App.WaitForInstanceExit(() => ++exitChecks < 3, 5, _ => { }),
+                "a launcher waits through a resident shutdown race and continues after the mutex disappears");
+            Check(!App.WaitForInstanceExit(() => true, 3, _ => { }),
+                "a launcher never treats a resident that retained the mutex as stopped");
+            string shutdownInProgress = App.BuildShutdownInProgressSignalName(executable);
+            Check(shutdownInProgress != App.BuildShutdownSignalName(executable)
+                && shutdownInProgress == App.BuildShutdownInProgressSignalName(executable.ToUpperInvariant()),
+                "shutdown-in-progress handoff is path-specific and stable across path casing");
+            string handoffPath = Path.Combine(Path.GetTempPath(), $"RELYR-startup-handoff-{Environment.ProcessId}.exe");
+            using (var handoff = new EventWaitHandle(false, EventResetMode.ManualReset, App.BuildShutdownInProgressSignalName(handoffPath)))
+            {
+                Check(!App.IsResidentShutdownPending(handoffPath), "an ordinary resident is not mistaken for one that is exiting");
+                handoff.Set();
+                Check(App.IsResidentShutdownPending(handoffPath), "a launcher observes the resident shutdown handoff signal");
+            }
             using var current = System.Diagnostics.Process.GetCurrentProcess();
             int before = current.HandleCount;
             for (int index = 0; index < 500; index++)

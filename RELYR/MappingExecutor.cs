@@ -20,6 +20,7 @@ public interface IInputOutput
 
 public sealed class SystemInputOutput(Func<string, MacroDefinition?> findMacro, Action<string>? switchProfile = null, Func<bool>? useUsLayout = null, Func<AppConfig?>? getConfig = null, Func<IntPtr?>? getPreferredActiveWindow = null, Func<string, WindowActionTarget, bool>? ipcShortcut = null, Func<string, bool>? ipcText = null, Func<string, bool>? ipcMouse = null, Func<string, bool>? uiOverlayRequest = null, bool isDeckExecution = false, bool isElevatedInputHelper = false) : IInputOutput
 {
+    internal const string NewExplorerWindowAction = "RELYR:Launch:NewExplorerWindow";
     public void NeutralizeSourceKey(string input) => InputEngine.NeutralizePhysicalSourceKey(input);
     public void SendShortcut(string value)
     {
@@ -69,8 +70,12 @@ public sealed class SystemInputOutput(Func<string, MacroDefinition?> findMacro, 
     }
     public void Launch(string value)
     {
-        using var process = Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
+        using var process = Process.Start(CreateLaunchStartInfo(value));
     }
+    internal static ProcessStartInfo CreateLaunchStartInfo(string value)
+        => value.Equals(NewExplorerWindowAction, StringComparison.OrdinalIgnoreCase)
+            ? new ProcessStartInfo("explorer.exe", "/n,") { UseShellExecute = true }
+            : new ProcessStartInfo(value) { UseShellExecute = true };
     public void ShowOverlay(string value)
     {
         if (uiOverlayRequest != null)

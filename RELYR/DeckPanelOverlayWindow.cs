@@ -128,6 +128,15 @@ internal sealed class DeckPanelOverlayWindow : Window
     readonly DispatcherTimer hoverAudioStartTimer = new() { Interval = HoverAudioDelay };
     readonly DispatcherTimer autoHideTimer = new() { Interval = PointerLeaveAutoHideDelay };
     DeckVideoPreviewPopup? videoPreview;
+    Border? monitorControlPanel;
+    readonly object brightnessWheelSync = new();
+    double? pendingBrightnessWheelPercent;
+    int brightnessWheelWorkerActive;
+    Slider? monitorControlSlider;
+    TextBlock? monitorControlValue;
+    Button? monitorControlSource;
+    DeckMonitorInteraction monitorControlInteraction;
+    bool updatingMonitorControl;
     CancellationTokenSource? previewLoadCancellation;
     Point dragStart;
     double windowStartLeft, windowStartTop;
@@ -135,7 +144,10 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     internal IReadOnlyList<Button> DeckButtons => deckButtons;
     internal int VideoPreviewCountForTest => videoPreview == null ? 0 : 1;
+    internal bool? VideoPreviewUsesSourceHoverForTest => videoPreview?.SourceHoverEnabled;
+    internal bool AudioPreviewActiveForTest => hoverAudioPlayer != null;
     internal Func<System.Drawing.Point>? CursorPositionProviderForTest { get; set; }
+    internal Func<bool>? PointerButtonsPressedProviderForTest { get; set; }
     internal Button CloseButton { get; private set; } = null!;
     internal Button ResetSizeButton { get; private set; } = null!;
     internal Button PinButton { get; private set; } = null!;
@@ -147,6 +159,7 @@ internal sealed class DeckPanelOverlayWindow : Window
     internal void ArmPointerAutoHideForTest() => pointerEnteredSinceShown = true;
     internal void RequestPointerAutoHideForTest() => ScheduleAutoDismiss(pointerLeaveBehavior, PointerLeaveAutoHideDelay, true);
     internal void SetDragActiveForTest(bool value) => internalDeckDragActive = value;
+    internal string AutoHideStateForTest => $"visible={IsVisible}, pinned={layout.PanelPinned}, collapsed={collapsedToEdge}, timer={autoHideTimer.IsEnabled}, behavior={pointerLeaveBehavior}, pending={pendingAutoDismissBehavior}, outside={IsCursorOutsideDeckWindow()}, suspended={ShouldSuspendAutoHide()}, enabled={IsEnabled}, dragging={dragging}, internalDrag={internalDeckDragActive}, reorder={deckReorderDragging}, fileDrag={fileDragButton != null}, menus={openContextMenus}";
     internal double VisualOpacityForTest => panelCard.Opacity;
     internal int GlassOpacityPercentForTest => glassOpacityPercent;
     internal byte BackdropTintAlphaForTest => backdropTintAlpha;
@@ -299,6 +312,11 @@ internal sealed class DeckPanelOverlayWindow : Window
         Content = panelCard;
 
         root = new Grid { ClipToBounds = true };
+        root.PreviewMouseLeftButtonDown += (_, args) =>
+        {
+            if (monitorControlPanel != null && !MonitorControlContains(args.OriginalSource as DependencyObject))
+                CloseMonitorControl();
+        };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HeaderHeight) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HeaderToGridGap) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -316,7 +334,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         StateChanged += WindowStateChanged;
         ThemeService.ThemeChanged += ThemeChanged;
         panelCard.LostMouseCapture += (_, _) => dragging = false;
-        Closed += (_, _) => { ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
+        Closed += (_, _) => { CloseMonitorControl(); ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
     }
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
@@ -682,6 +700,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             button.Foreground = new SolidColorBrush(DeckPanelLayout.TextColorFor(assignmentColor));
         }
         button.Click += DeckButtonClicked;
+        button.PreviewMouseWheel += DeckMonitorMouseWheel;
         button.PreviewMouseLeftButtonDown += DeckButtonDragStarted;
         button.PreviewMouseMove += DeckButtonDragMoved;
         button.PreviewMouseLeftButtonUp += DeckButtonDragEnded;
@@ -717,9 +736,12 @@ internal sealed class DeckPanelOverlayWindow : Window
         Dispatcher.BeginInvoke(() => RefreshDeckSlots(slot, slot), DispatcherPriority.Background);
     }
     void RefreshDeckSlots(int firstSlot, int secondSlot)
+        => RefreshDeckSlots([firstSlot, secondSlot]);
+
+    internal void RefreshDeckSlots(IEnumerable<int> slots)
     {
         var deferredPreviews = new List<Button>();
-        foreach (int slot in new[] { firstSlot, secondSlot }.Distinct())
+        foreach (int slot in slots.Distinct())
         {
             int index = slot - 1;
             if (index < 0 || index >= deckButtons.Count || index >= deckGrid.Children.Count)
@@ -823,6 +845,36 @@ internal sealed class DeckPanelOverlayWindow : Window
             QueueDeckButtonBuild();
     }
 
+    internal void RefreshLayoutPreview(int opacityPercent, bool previewsEnabled, DeckAutoDismissBehavior? afterAction = null, DeckAutoDismissBehavior? pointerLeave = null)
+    {
+        int previousCount = deckButtons.Count;
+        RefreshAppearance(opacityPercent, previewsEnabled, afterAction, pointerLeave);
+        if (!deckButtonsBuilt)
+        {
+            QueueDeckButtonBuild();
+            return;
+        }
+        int desiredCount = DeckPanelLayout.VisibleSlotCount(layout);
+        while (deckButtons.Count > desiredCount)
+        {
+            int last = deckButtons.Count - 1;
+            ClearVideoPreviewFor(deckButtons[last]);
+            deckButtons.RemoveAt(last);
+            deckGrid.Children.RemoveAt(last);
+        }
+        while (deckButtons.Count < desiredCount)
+        {
+            var entry = CreateDeckButtonCell(deckButtons.Count + 1);
+            deckButtons.Add(entry.Button);
+            deckGrid.Children.Add(entry.Cell);
+        }
+        // Existing button content and monitor subscriptions are intentionally
+        // retained. Only the changed tail is touched while a layout Slider is
+        // moving, so a 18x18 Deck never recreates all 324 cells per tick.
+        if (previousCount != desiredCount)
+            UpdateHeaderLayout();
+    }
+
     internal void RefreshAppearance(int opacityPercent, bool previewsEnabled, DeckAutoDismissBehavior? afterAction = null, DeckAutoDismissBehavior? pointerLeave = null)
     {
         hoverPreviewsEnabled = previewsEnabled;
@@ -860,6 +912,12 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     void HandlePanelPointerEntered()
     {
+        // Restoring or resizing the native Deck window can raise a synthetic
+        // WPF MouseEnter even though the physical pointer is still outside.
+        // Such a transition must not cancel a pointer-leave hide/collapse that
+        // was scheduled immediately after the bounds change.
+        if (!collapsedToEdge && IsCursorOutsideDeckWindow())
+            return;
         if (collapsedToEdge && collapsedPointerTransitionPending)
         {
             autoHideTimer.Stop();
@@ -972,7 +1030,8 @@ internal sealed class DeckPanelOverlayWindow : Window
 
     bool ShouldSuspendAutoHide() =>
         !IsEnabled || dragging || internalDeckDragActive || deckReorderDragging || fileDragButton != null || openContextMenus > 0 ||
-        Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed || Mouse.MiddleButton == MouseButtonState.Pressed;
+        (PointerButtonsPressedProviderForTest?.Invoke() ??
+            (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed || Mouse.MiddleButton == MouseButtonState.Pressed));
 
     void TrackContextMenu(System.Windows.Controls.ContextMenu menu)
     {
@@ -1385,7 +1444,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         var sharedRadius = WpfApplication.Current.TryFindResource("ControlCornerRadius") is CornerRadius radius
             ? radius
             : new CornerRadius(6);
-        glassButtonStyle = CreateGlassButtonStyle(sharedRadius, layout.HoverAnimationEnabled);
+        glassButtonStyle = CreateGlassButtonStyle(sharedRadius, layout.HoverAnimationEnabled && UiMotionService.Enabled);
         return glassButtonStyle;
     }
     Style CloseButtonStyle()
@@ -1550,7 +1609,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             : name;
     }
     static bool HasDeckContent(Mapping? mapping) => mapping != null &&
-        (MainWindow.MappingInterceptsInput(mapping) || DeckPanelLayout.HasRegisteredFile(mapping) || !string.IsNullOrWhiteSpace(mapping.Description));
+        (MainWindow.MappingInterceptsInput(mapping) || DeckMonitorCatalog.IsMonitor(mapping.DeckMonitor) || DeckPanelLayout.HasRegisteredFile(mapping) || !string.IsNullOrWhiteSpace(mapping.Description));
     static WpfColor WithAlpha(WpfColor color, byte alpha) => WpfColor.FromArgb(alpha, color.R, color.G, color.B);
     static WpfColor Mix(WpfColor first, WpfColor second, double amount) => WpfColor.FromArgb(255, (byte)(first.R + (second.R - first.R) * amount), (byte)(first.G + (second.G - first.G) * amount), (byte)(first.B + (second.B - first.B) * amount));
 
@@ -1561,13 +1620,373 @@ internal sealed class DeckPanelOverlayWindow : Window
         var mapping = DeckPanelLayout.FindMapping(layout, slot);
         if (mapping == null || mapping.Kind == ActionKind.Gesture)
             return;
+        if (DeckMonitorCatalog.TryGet(mapping.DeckMonitor, out var monitor))
+        {
+            OpenMonitorInteraction((Button)sender, monitor);
+            return;
+        }
         if (MainWindow.MappingInterceptsInput(mapping))
         {
             execute?.Invoke(mapping);
             ScheduleAutoDismiss(afterActionBehavior, ActionAutoHideDelay, false);
         }
         else if (DeckPanelLayout.IsAudioFile(mapping.DeckFilePath))
-            PlayHoverAudio(mapping.DeckFilePath, (Button)sender);
+            PlayFileAudio(mapping.DeckFilePath, (Button)sender, requireHoverEnabled: false);
+        else if (DeckPanelLayout.IsVideoFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
+            ShowVideoPreview((Button)sender, mapping.DeckFilePath, hoverPreviewsEnabled);
+    }
+
+    void DeckMonitorMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not Button { Tag: int slot })
+            return;
+        var mapping = DeckPanelLayout.FindMapping(layout, slot);
+        if (!DeckMonitorCatalog.TryGet(mapping?.DeckMonitor, out var monitor)
+            || !SupportsMonitorWheelAdjustment(monitor.Interaction))
+            return;
+
+        if (monitor.Interaction == DeckMonitorInteraction.Brightness)
+        {
+            double? currentBrightness = InteractiveMonitorPercent((Button)sender, monitor.Interaction);
+            if (currentBrightness is not double brightness)
+                return;
+            double requestedBrightness = WheelAdjustedPercent(brightness, e.Delta, 2);
+            ShowMonitorControl((Button)sender, monitor, requestedBrightness);
+            ApplyInteractiveMonitorValue((Button)sender, monitor, requestedBrightness);
+            QueueBrightnessValue(requestedBrightness);
+            e.Handled = true;
+            return;
+        }
+
+        if (!SystemControlService.TryGetVolume(false, out double current, out bool muted))
+            return;
+
+        double requested = WheelAdjustedPercent(current, e.Delta, 2);
+        if (!SystemControlService.TrySetVolume(false, requested))
+            return;
+        ShowMonitorControl((Button)sender, monitor, requested, muted);
+        ApplyInteractiveMonitorValue((Button)sender, monitor, requested);
+        e.Handled = true;
+        SystemMonitorService.Shared.RequestRefresh();
+    }
+
+    internal static bool SupportsMonitorWheelAdjustment(DeckMonitorInteraction interaction)
+        => interaction is DeckMonitorInteraction.Volume or DeckMonitorInteraction.Brightness;
+
+    double? InteractiveMonitorPercent(Button source, DeckMonitorInteraction interaction)
+    {
+        if (ReferenceEquals(source, monitorControlSource)
+            && monitorControlInteraction == interaction
+            && monitorControlSlider is { IsEnabled: true } openSlider)
+            return openSlider.Value;
+        return source.Content is DeckMonitorView view ? view.CurrentPercent : null;
+    }
+
+    static void ApplyInteractiveMonitorValue(Button source, DeckMonitorDefinition monitor, double requested)
+    {
+        if (source.Content is DeckMonitorView view)
+            view.ApplyInteractivePercent(requested, monitor.Interaction == DeckMonitorInteraction.Microphone ? "MIC" : monitor.Name);
+    }
+
+    void QueueBrightnessValue(double requested)
+    {
+        lock (brightnessWheelSync)
+            pendingBrightnessWheelPercent = requested;
+        StartBrightnessWheelWorker();
+    }
+
+    void StartBrightnessWheelWorker()
+    {
+        if (Interlocked.CompareExchange(ref brightnessWheelWorkerActive, 1, 0) != 0)
+            return;
+        _ = ProcessBrightnessWheelAdjustmentsAsync();
+    }
+
+    async Task ProcessBrightnessWheelAdjustmentsAsync()
+    {
+        try
+        {
+            // Coalesce a physical wheel burst so the WMI brightness provider is
+            // never queried once per raw wheel message on the UI thread.
+            await Task.Delay(45).ConfigureAwait(false);
+            while (true)
+            {
+                double? requested;
+                lock (brightnessWheelSync)
+                {
+                    requested = pendingBrightnessWheelPercent;
+                    pendingBrightnessWheelPercent = null;
+                }
+                if (requested is not double percent)
+                    break;
+                bool changed = SystemControlService.TrySetBrightness(percent);
+                if (changed)
+                    SystemMonitorService.Shared.RequestRefresh();
+                await Task.Delay(45).ConfigureAwait(false);
+            }
+        }
+        catch (Exception error)
+        {
+            LifecycleDiagnostics.Write("deck-brightness-wheel-failed", error.ToString());
+        }
+        finally
+        {
+            Volatile.Write(ref brightnessWheelWorkerActive, 0);
+            bool pending;
+            lock (brightnessWheelSync)
+                pending = pendingBrightnessWheelPercent.HasValue;
+            if (pending)
+                StartBrightnessWheelWorker();
+        }
+    }
+
+    internal static double WheelAdjustedPercent(double current, int wheelDelta, double step)
+    {
+        int direction = Math.Sign(wheelDelta);
+        int notches = Math.Max(1, Math.Abs(wheelDelta) / 120);
+        return Math.Clamp(current + direction * Math.Abs(step) * notches, 0, 100);
+    }
+
+    void OpenMonitorInteraction(Button source, DeckMonitorDefinition monitor)
+    {
+        try
+        {
+            switch (monitor.Interaction)
+            {
+                case DeckMonitorInteraction.TaskManager:
+                    SystemControlService.OpenTaskManager();
+                    break;
+                case DeckMonitorInteraction.WifiSettings:
+                case DeckMonitorInteraction.BluetoothSettings:
+                    InputEngine.SendShortcut("Win+A");
+                    break;
+                case DeckMonitorInteraction.Volume:
+                case DeckMonitorInteraction.Microphone:
+                case DeckMonitorInteraction.Brightness:
+                    ShowMonitorControl(source, monitor);
+                    break;
+            }
+        }
+        catch (Exception error)
+        {
+            LifecycleDiagnostics.Write("deck-monitor-interaction-failed", error.ToString());
+        }
+    }
+
+    void ShowMonitorControl(Button source, DeckMonitorDefinition monitor, double? knownValue = null, bool? knownMuted = null)
+    {
+        if (monitorControlPanel != null
+            && ReferenceEquals(monitorControlSource, source)
+            && monitorControlInteraction == monitor.Interaction)
+        {
+            if (knownValue is double updated)
+                UpdateMonitorControlDisplay(updated);
+            return;
+        }
+        CloseMonitorControl();
+        bool audio = monitor.Interaction is DeckMonitorInteraction.Volume or DeckMonitorInteraction.Microphone;
+        bool capture = monitor.Interaction == DeckMonitorInteraction.Microphone;
+        bool available;
+        double current;
+        bool muted = knownMuted ?? false;
+        if (knownValue is double supplied)
+        {
+            available = true;
+            current = supplied;
+        }
+        else if (audio)
+            available = SystemControlService.TryGetVolume(capture, out current, out muted);
+        else
+            available = SystemControlService.TryGetBrightness(out current);
+
+        double availableWidth = Math.Max(46, root.ActualWidth - 4);
+        double availableHeight = Math.Max(58, root.ActualHeight - 4);
+        bool narrow = availableWidth < 150;
+        var card = new Border
+        {
+            Width = Math.Min(narrow ? availableWidth : 224, availableWidth),
+            Height = Math.Min(narrow ? 166 : 94, availableHeight),
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(narrow ? 7 : 12),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = ThemeService.Brush("CardBackground"),
+            BorderBrush = ThemeService.Brush("AccentBrush")
+        };
+        Panel.SetZIndex(card, 200);
+        Grid.SetRowSpan(card, 3);
+        var body = new Grid();
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var title = new TextBlock
+        {
+            Text = monitor.Name,
+            FontSize = narrow ? 9 : 12,
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = ThemeService.Brush("PrimaryText")
+        };
+        header.Children.Add(title);
+        var close = new Button
+        {
+            Content = "×",
+            Width = 24,
+            Height = 24,
+            MinWidth = 0,
+            MinHeight = 0,
+            Padding = new Thickness(0),
+            Style = GlassButtonStyle(),
+            Focusable = false
+        };
+        close.Click += (_, _) => CloseMonitorControl();
+        Grid.SetColumn(close, 1);
+        header.Children.Add(close);
+        body.Children.Add(header);
+
+        var controls = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+        if (!narrow)
+        {
+            controls.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        }
+        var slider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = available ? current : 0,
+            IsEnabled = available,
+            Orientation = narrow ? System.Windows.Controls.Orientation.Vertical : System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = narrow ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Width = narrow ? 34 : double.NaN,
+            Height = narrow ? Math.Max(42, card.Height - 58) : 32,
+            TickFrequency = 1,
+            IsSnapToTickEnabled = true
+        };
+        var value = new TextBlock
+        {
+            Text = available ? $"{current:0}%" : "—",
+            FontFamily = new System.Windows.Media.FontFamily("Bahnschrift, Segoe UI"),
+            FontSize = narrow ? 10 : 12,
+            FontWeight = FontWeights.SemiBold,
+            MinWidth = narrow ? 0 : 42,
+            Margin = narrow ? new Thickness(0) : new Thickness(9, 0, 0, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            Foreground = available ? ThemeService.Brush("PrimaryText") : ThemeService.Brush("MutedText")
+        };
+        slider.ValueChanged += (_, args) =>
+        {
+            if (!slider.IsEnabled || updatingMonitorControl)
+                return;
+            double requested = Math.Round(args.NewValue);
+            value.Text = $"{requested:0}%";
+            ApplyInteractiveMonitorValue(source, monitor, requested);
+            if (!audio)
+            {
+                QueueBrightnessValue(requested);
+                return;
+            }
+            if (SystemControlService.TrySetVolume(capture, requested))
+                SystemMonitorService.Shared.RequestRefresh();
+        };
+        controls.Children.Add(slider);
+        if (narrow)
+        {
+            value.VerticalAlignment = VerticalAlignment.Bottom;
+            controls.Children.Add(value);
+        }
+        else
+        {
+            Grid.SetColumn(value, 1);
+            controls.Children.Add(value);
+        }
+        if (audio && !narrow)
+        {
+            var mute = new Button
+            {
+                Content = muted ? "解除" : "ミュート",
+                Height = 28,
+                MinWidth = 58,
+                Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(8, 2, 8, 2),
+                Style = GlassButtonStyle(),
+                Focusable = false
+            };
+            controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(mute, 2);
+            mute.Click += (_, _) =>
+            {
+                muted = !muted;
+                if (SystemControlService.TrySetMute(capture, muted))
+                {
+                    mute.Content = muted ? "解除" : "ミュート";
+                    SystemMonitorService.Shared.RequestRefresh();
+                }
+                else
+                    muted = !muted;
+            };
+            controls.Children.Add(mute);
+        }
+        Grid.SetRow(controls, 1);
+        body.Children.Add(controls);
+        card.Child = body;
+        card.PreviewMouseDown += (_, args) => args.Handled = false;
+        monitorControlPanel = card;
+        monitorControlSlider = slider;
+        monitorControlValue = value;
+        monitorControlSource = source;
+        monitorControlInteraction = monitor.Interaction;
+        root.Children.Add(card);
+        openContextMenus++;
+        autoHideTimer.Stop();
+    }
+
+    void UpdateMonitorControlDisplay(double percent)
+    {
+        if (monitorControlSlider == null || monitorControlValue == null)
+            return;
+        updatingMonitorControl = true;
+        try
+        {
+            monitorControlSlider.Value = Math.Clamp(percent, 0, 100);
+            monitorControlValue.Text = $"{percent:0}%";
+        }
+        finally
+        {
+            updatingMonitorControl = false;
+        }
+    }
+
+    void CloseMonitorControl()
+    {
+        if (monitorControlPanel == null)
+            return;
+        root.Children.Remove(monitorControlPanel);
+        monitorControlPanel = null;
+        monitorControlSlider = null;
+        monitorControlValue = null;
+        monitorControlSource = null;
+        monitorControlInteraction = DeckMonitorInteraction.None;
+        openContextMenus = Math.Max(0, openContextMenus - 1);
+    }
+
+    bool MonitorControlContains(DependencyObject? source)
+    {
+        for (DependencyObject? current = source; current != null; current = current is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(current)
+            : LogicalTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, monitorControlPanel))
+                return true;
+        }
+        return false;
     }
     System.Windows.Controls.ContextMenu CreateDeckButtonContextMenu(int slot)
     {
@@ -1641,7 +2060,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         return mapping;
     }
     static bool HasDeckButtonContent(Mapping mapping)
-        => MainWindow.MappingHasConfiguredAction(mapping) || !string.IsNullOrWhiteSpace(mapping.Description) || !string.IsNullOrWhiteSpace(mapping.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
+        => MainWindow.MappingHasConfiguredAction(mapping) || DeckMonitorCatalog.IsMonitor(mapping.DeckMonitor) || !string.IsNullOrWhiteSpace(mapping.Description) || !string.IsNullOrWhiteSpace(mapping.DeckColor) || DeckPanelLayout.HasRegisteredFile(mapping) || DeckIconCatalog.HasIcon(mapping);
     void RenameDeckButton(int slot)
     {
         var existing = DeckPanelLayout.FindMapping(layout, slot);
@@ -1652,7 +2071,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         mapping.Description = name;
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
-        OverlayService.NotifyDeckLayoutChanged();
+        CommitDeckSlotChange(slot);
     }
     string? PromptDeckButtonName(string initial)
     {
@@ -1704,8 +2123,10 @@ internal sealed class DeckPanelOverlayWindow : Window
         string? file = ClipboardFile();
         if (file == null)
             return;
-        GetOrCreateDeckMapping(slot).DeckFilePath = Path.GetFullPath(file);
-        OverlayService.NotifyDeckLayoutChanged();
+        var target = GetOrCreateDeckMapping(slot);
+        target.DeckFilePath = Path.GetFullPath(file);
+        target.DeckMonitor = string.Empty;
+        CommitDeckSlotChange(slot);
     }
     void RevealDeckFile(int slot)
     {
@@ -1751,10 +2172,12 @@ internal sealed class DeckPanelOverlayWindow : Window
         mapping.DeckIconAutoAssigned = false;
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
-        RefreshDeckSlots(slot, slot);
-        OverlayService.NotifyDeckLayoutChanged(false, layout.Id, slot, slot);
+        CommitDeckSlotChange(slot);
     }
     void RefreshDeckColorSlot(int slot)
+        => CommitDeckSlotChange(slot);
+
+    void CommitDeckSlotChange(int slot)
     {
         RefreshDeckSlots(slot, slot);
         OverlayService.NotifyDeckLayoutChanged(false, layout.Id, slot, slot);
@@ -1763,8 +2186,13 @@ internal sealed class DeckPanelOverlayWindow : Window
     {
         string input = DeckPanelLayout.InputName(slot);
         if (layout.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)) > 0)
-            OverlayService.NotifyDeckLayoutChanged();
+            CommitDeckSlotChange(slot);
     }
+
+#if !PRODUCTION_PUBLISH
+    internal void DeleteDeckButtonForTest(int slot) => DeleteDeckButton(slot);
+    internal void AssignDeckFileForTest(int slot, string path) => AssignDeckFile(slot, path);
+#endif
     void ConfigureHoverPreview(Button button, Mapping? mapping)
     {
         if (mapping == null)
@@ -1779,7 +2207,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (DeckPanelLayout.IsVideoFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
         {
             string path = mapping.DeckFilePath;
-            button.MouseEnter += (_, _) => ShowVideoPreview(button, path);
+            button.MouseEnter += (_, _) => ShowVideoPreview(button, path, sourceHoverEnabled: true);
             return;
         }
         if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) && File.Exists(mapping.DeckFilePath))
@@ -1894,14 +2322,14 @@ internal sealed class DeckPanelOverlayWindow : Window
         videoPreview?.Dispose();
         videoPreview = null;
     }
-    void ShowVideoPreview(Button source, string path)
+    void ShowVideoPreview(Button source, string path, bool sourceHoverEnabled)
     {
         try
         {
-            if (videoPreview?.IsFor(source) != true)
+            if (videoPreview?.IsFor(source) != true || videoPreview.SourceHoverEnabled != sourceHoverEnabled)
             {
                 videoPreview?.Dispose();
-                videoPreview = new DeckVideoPreviewPopup(source, path, this);
+                videoPreview = new DeckVideoPreviewPopup(source, path, this, sourceHoverEnabled);
             }
             videoPreview.Show();
         }
@@ -1938,7 +2366,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         string path = pendingHoverAudioPath;
         CancelPendingHoverAudio();
         if (source?.IsMouseOver == true)
-            PlayHoverAudio(path, source);
+            PlayFileAudio(path, source, requireHoverEnabled: true);
     }
     void CancelPendingHoverAudio()
     {
@@ -1953,9 +2381,9 @@ internal sealed class DeckPanelOverlayWindow : Window
         if (ReferenceEquals(hoverAudioSource, source))
             StopHoverAudio();
     }
-    void PlayHoverAudio(string path, Button source)
+    void PlayFileAudio(string path, Button source, bool requireHoverEnabled)
     {
-        if (!hoverPreviewsEnabled || !DeckPanelLayout.IsAudioFile(path) || !File.Exists(path))
+        if ((requireHoverEnabled && !hoverPreviewsEnabled) || !DeckPanelLayout.IsAudioFile(path) || !File.Exists(path))
             return;
         try
         {
@@ -2074,16 +2502,22 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         if (!DeckPanelLayout.IsInternalFileDrag(e.Data) && DeckPanelLayout.GetDroppedFile(e.Data) is string file)
         {
-            var mapping = DeckPanelLayout.FindMapping(layout, target);
-            if (mapping == null)
-            {
-                mapping = new Mapping { Input = DeckPanelLayout.InputName(target), Layer = DeckPanelLayout.Layer };
-                layout.Mappings.Add(mapping);
-            }
-            mapping.DeckFilePath = Path.GetFullPath(file);
-            OverlayService.NotifyDeckLayoutChanged();
+            AssignDeckFile(target, file);
             e.Handled = true;
         }
+    }
+
+    void AssignDeckFile(int slot, string file)
+    {
+        var mapping = DeckPanelLayout.FindMapping(layout, slot);
+        if (mapping == null)
+        {
+            mapping = new Mapping { Input = DeckPanelLayout.InputName(slot), Layer = DeckPanelLayout.Layer };
+            layout.Mappings.Add(mapping);
+        }
+        mapping.DeckFilePath = Path.GetFullPath(file);
+        mapping.DeckMonitor = string.Empty;
+        CommitDeckSlotChange(slot);
     }
     void StartDragPreview(Mapping mapping)
     {
@@ -2223,7 +2657,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         DependencyObject? source = e.OriginalSource as DependencyObject;
         if (collapsedToEdge && !IsInsideElement(source, CollapsedMoveHandle))
             return;
-        if (!collapsedToEdge && IsInsideButton(source))
+        if (!collapsedToEdge && IsInsideInteractiveControl(source))
             return;
         if (!collapsedToEdge && e.ClickCount == 2)
         {
@@ -2239,11 +2673,16 @@ internal sealed class DeckPanelOverlayWindow : Window
         panelCard.CaptureMouse();
         e.Handled = true;
     }
-    static bool IsInsideButton(DependencyObject? source)
+    static bool IsInsideInteractiveControl(DependencyObject? source)
     {
         for (var current = source; current != null;)
         {
-            if (current is System.Windows.Controls.Primitives.ButtonBase)
+            if (current is System.Windows.Controls.Primitives.ButtonBase
+                or System.Windows.Controls.Primitives.RangeBase
+                or System.Windows.Controls.Primitives.Thumb
+                or System.Windows.Controls.Primitives.Selector
+                or System.Windows.Controls.Primitives.TextBoxBase
+                or PasswordBox)
                 return true;
             current = current is Visual ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current);
         }
@@ -2259,7 +2698,7 @@ internal sealed class DeckPanelOverlayWindow : Window
         }
         return false;
     }
-    internal static bool CanDragPanelFromForTest(DependencyObject source) => !IsInsideButton(source);
+    internal static bool CanDragPanelFromForTest(DependencyObject source) => !IsInsideInteractiveControl(source);
     void DragMoved(object sender, MouseEventArgs e)
     {
         if (!dragging || e.LeftButton != MouseButtonState.Pressed)
@@ -2650,14 +3089,7 @@ internal sealed class DeckPanelOverlayWindow : Window
             return;
         if (!string.IsNullOrWhiteSpace(filePath))
         {
-            var mapping = DeckPanelLayout.FindMapping(layout, targetSlot);
-            if (mapping == null)
-            {
-                mapping = new Mapping { Input = DeckPanelLayout.InputName(targetSlot), Layer = DeckPanelLayout.Layer };
-                layout.Mappings.Add(mapping);
-            }
-            mapping.DeckFilePath = Path.GetFullPath(filePath);
-            OverlayService.NotifyDeckLayoutChanged();
+            AssignDeckFile(targetSlot, filePath);
             return;
         }
         if (DeckPanelLayout.IsInputName(sourceSlot))
@@ -2719,14 +3151,7 @@ internal sealed class DeckPanelOverlayWindow : Window
                 string path = buffer.ToString();
                 if (!File.Exists(path))
                     continue;
-                var mapping = DeckPanelLayout.FindMapping(layout, targetSlot);
-                if (mapping == null)
-                {
-                    mapping = new Mapping { Input = DeckPanelLayout.InputName(targetSlot), Layer = DeckPanelLayout.Layer };
-                    layout.Mappings.Add(mapping);
-                }
-                mapping.DeckFilePath = Path.GetFullPath(path);
-                OverlayService.NotifyDeckLayoutChanged();
+                AssignDeckFile(targetSlot, path);
                 return;
             }
         }

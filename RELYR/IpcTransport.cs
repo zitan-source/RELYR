@@ -20,7 +20,8 @@ internal enum IpcCommand
     SetCapsLockRemap,
     ExecuteShortcut,
     ExecuteText,
-    ExecuteMouse
+    ExecuteMouse,
+    ReadHardwareSensors
 }
 
 internal sealed record IpcMessage(IpcCommand Command, string RequestId, string Value, string Nonce);

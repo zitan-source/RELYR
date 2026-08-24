@@ -30,6 +30,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
     const double MaxPreviewHeight = 300;
     readonly Button source;
     readonly FrameworkElement placementBoundary;
+    readonly bool sourceHoverEnabled;
     readonly Popup popup;
     readonly Grid frame;
     readonly MediaElement media;
@@ -53,10 +54,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
     double surfacePointerDownX;
     bool disposed;
 
-    internal DeckVideoPreviewPopup(Button source, string path, FrameworkElement placementBoundary)
+    internal DeckVideoPreviewPopup(Button source, string path, FrameworkElement placementBoundary, bool sourceHoverEnabled = true)
     {
         this.source = source;
         this.placementBoundary = placementBoundary;
+        this.sourceHoverEnabled = sourceHoverEnabled;
         ImageSource? thumbnail = DeckPanelLayout.LoadVideoThumbnail(path, 640, 360);
         System.Windows.Size initialSize = PreviewSize(thumbnail?.Width ?? 0, thumbnail?.Height ?? 0);
         frame = new Grid { Width = initialSize.Width, Height = initialSize.Height, Background = new SolidColorBrush(WpfColor.FromRgb(12, 17, 21)), ClipToBounds = true, SnapsToDevicePixels = true, Cursor = WpfCursors.SizeWE };
@@ -112,8 +114,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
         playbackTimer.Tick += PlaybackTimerTick;
         pointerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         pointerTimer.Tick += PointerTimerTick;
-        source.MouseEnter += SourceMouseEnter;
-        source.MouseLeave += SourceMouseLeave;
+        if (sourceHoverEnabled)
+        {
+            source.MouseEnter += SourceMouseEnter;
+            source.MouseLeave += SourceMouseLeave;
+        }
         source.PreviewMouseLeftButtonDown += SourceMouseLeftButtonDown;
         card.MouseEnter += CardMouseEnter;
         card.MouseLeave += CardMouseLeave;
@@ -137,6 +142,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
         catch { return [new CustomPopupPlacement(new Point(targetSize.Width + 8, 0), PopupPrimaryAxis.None)]; }
     }
     internal bool IsFor(Button button) => ReferenceEquals(source, button);
+    internal bool SourceHoverEnabled => sourceHoverEnabled;
     internal void Hide() => ClosePreview();
     internal void Show() => OpenPreview();
 
@@ -487,8 +493,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
         closeTimer.Tick -= CloseTimerTick;
         playbackTimer.Tick -= PlaybackTimerTick;
         pointerTimer.Tick -= PointerTimerTick;
-        source.MouseEnter -= SourceMouseEnter;
-        source.MouseLeave -= SourceMouseLeave;
+        if (sourceHoverEnabled)
+        {
+            source.MouseEnter -= SourceMouseEnter;
+            source.MouseLeave -= SourceMouseLeave;
+        }
         source.PreviewMouseLeftButtonDown -= SourceMouseLeftButtonDown;
         card.PreviewMouseLeftButtonDown -= CardMouseLeftButtonDown;
         card.PreviewMouseMove -= CardMouseMove;

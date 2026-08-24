@@ -587,7 +587,7 @@ public sealed class ConfigService
     static bool DeckMappingsEqual(IEnumerable<Mapping> left, IEnumerable<Mapping> right)
         => DeckMappingSignature(left) == DeckMappingSignature(right);
 
-    static string DeckMappingSignature(IEnumerable<Mapping> mappings) => string.Join("\n", mappings.Where(x => DeckPanelLayout.IsInputName(x.Input)).OrderBy(x => DeckPanelLayout.SlotNumber(x.Input)).Select(x => $"{x.Input}\u001f{x.Kind}\u001f{x.Value}\u001f{x.LongPressKind}\u001f{x.LongPressValue}\u001f{x.LongPressMs}\u001f{x.Application}\u001f{x.Description}\u001f{x.DeckColor}\u001f{x.DeckFilePath}"));
+    static string DeckMappingSignature(IEnumerable<Mapping> mappings) => string.Join("\n", mappings.Where(x => DeckPanelLayout.IsInputName(x.Input)).OrderBy(x => DeckPanelLayout.SlotNumber(x.Input)).Select(x => $"{x.Input}\u001f{x.Kind}\u001f{x.Value}\u001f{x.LongPressKind}\u001f{x.LongPressValue}\u001f{x.LongPressMs}\u001f{x.Application}\u001f{x.Description}\u001f{x.DeckColor}\u001f{x.DeckFilePath}\u001f{x.DeckMonitor}"));
 
     static DeckLayoutDefinition CreateMigratedLayout(string name, IEnumerable<Mapping> mappings) => new()
     {
@@ -616,6 +616,9 @@ public sealed class ConfigService
             map.DeckFilePath ??= "";
             map.DeckIcon ??= "";
             map.DeckIconPath ??= "";
+            map.DeckMonitor ??= "";
+            if (map.DeckMonitor.Length > 0 && !DeckMonitorCatalog.IsMonitor(map.DeckMonitor))
+                map.DeckMonitor = "";
             if (!string.IsNullOrWhiteSpace(map.DeckIconPath))
                 map.DeckIconAutoAssigned = false;
             if (!Enum.IsDefined(map.Kind))

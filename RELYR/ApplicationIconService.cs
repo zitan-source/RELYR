@@ -12,6 +12,7 @@ internal static class ApplicationIconService
 {
     static readonly object CacheLock = new();
     static readonly Dictionary<string, ImageSource> Cache = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, ImageSource?> ExtractedIconCache = new(StringComparer.OrdinalIgnoreCase);
     static ImageSource? fallbackIcon;
 
     internal static ImageSource GetIcon(string? pathOrExecutable)
@@ -21,10 +22,26 @@ internal static class ApplicationIconService
             if (Cache.TryGetValue(cacheKey, out var cached))
                 return cached;
 
-        string? path = ResolveExecutablePath(pathOrExecutable);
-        ImageSource icon = TryExtractIcon(path) ?? FallbackIcon();
+        ImageSource icon = TryGetExtractedIcon(pathOrExecutable) ?? FallbackIcon();
         lock (CacheLock)
             Cache[cacheKey] = icon;
+        return icon;
+    }
+
+    internal static ImageSource? TryGetExtractedIcon(string? pathOrExecutable)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrExecutable))
+            return null;
+
+        string cacheKey = pathOrExecutable.Trim();
+        lock (CacheLock)
+            if (ExtractedIconCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+        string? path = ResolveExecutablePath(pathOrExecutable);
+        ImageSource? icon = TryExtractIcon(path);
+        lock (CacheLock)
+            ExtractedIconCache[cacheKey] = icon;
         return icon;
     }
 

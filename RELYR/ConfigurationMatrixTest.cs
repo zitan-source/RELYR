@@ -25,6 +25,7 @@ internal static class ConfigurationMatrixTest
             TestMacroGraphs(report, ref cases);
             TestModifierClickOutputOrder(report, ref cases);
             TestLayerStateTransitions(report, ref cases);
+            TestKeyboardFailOpenMatrix(report, ref cases);
             TestUnassignedMouseLayerClicks(report, ref cases);
             TestRightWheelMovementDoesNotCreateContextClick(report, ref cases);
             TestRawReleaseRecovery(report, ref cases);
@@ -40,6 +41,52 @@ internal static class ConfigurationMatrixTest
         }
         output.WriteLine($"CASES={cases}");
         return report.Complete("CONFIGURATION MATRIX PASSED", "CONFIGURATION MATRIX FAILED: ");
+    }
+
+    static void TestKeyboardFailOpenMatrix(VerificationReport report, ref int cases)
+    {
+        const int nextHookResult = 73;
+        using var engine = new InputEngine
+        {
+            Enabled = true,
+            TreatF13AsCapsLock = false,
+            SpaceHoldRepeatEnabled = false,
+            NextHookForTest = (_, _, _) => new IntPtr(nextHookResult),
+            HasMapping = _ => false,
+            InputReceived = _ => false,
+            HasLongPress = _ => false,
+            IsGesturePress = _ => false,
+            IsGestureLongPress = _ => false,
+            IsNativeMouseDrag = _ => false,
+            HasLegacyMouseDrag = _ => false
+        };
+
+        // Reproduce the reported failure state: the transaction flag says a
+        // fullscreen overlay exists, but there is no visible native surface.
+        // Delete and every Ctrl+V transition must reach Windows immediately.
+        OverlayService.ArmStaleFullScreenTransactionForTest();
+        bool staleStatePassedThrough = engine.DirectKeyForTest(0x2E, false) == new IntPtr(nextHookResult)
+            && engine.DirectKeyForTest(0x2E, true) == new IntPtr(nextHookResult)
+            && engine.DirectKeyForTest(0x11, false) == new IntPtr(nextHookResult)
+            && engine.DirectKeyForTest(0x56, false) == new IntPtr(nextHookResult)
+            && engine.DirectKeyForTest(0x56, true) == new IntPtr(nextHookResult)
+            && engine.DirectKeyForTest(0x11, true) == new IntPtr(nextHookResult)
+            && !OverlayService.FullScreenVisible;
+        cases += 7;
+
+        // This is deliberately a complete virtual-key matrix rather than a
+        // Delete special case. With no mapping or layer configured, every
+        // keyboard Down/Up pair must be passed to the next Windows hook.
+        bool allUnassignedKeysPassThrough = true;
+        for (int virtualKey = 0x08; virtualKey <= 0xFE; virtualKey++)
+        {
+            allUnassignedKeysPassThrough &= engine.DirectKeyForTest((ushort)virtualKey, false) == new IntPtr(nextHookResult);
+            allUnassignedKeysPassThrough &= engine.DirectKeyForTest((ushort)virtualKey, true) == new IntPtr(nextHookResult);
+            cases += 2;
+        }
+
+        report.Check(staleStatePassedThrough && allUnassignedKeysPassThrough && !engine.HasCapturedStateForTest(),
+            "a stale fullscreen transaction fails open and every unassigned virtual key preserves its Windows Down/Up path");
     }
 
     static void TestCatalogAndExecution(VerificationReport report, ref int cases)

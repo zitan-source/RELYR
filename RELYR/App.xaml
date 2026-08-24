@@ -71,6 +71,8 @@
             <Setter Property="Padding" Value="8,6"/>
         </Style>
         <Style x:Key="AppButtonStyle" TargetType="Button">
+            <EventSetter Event="MouseEnter" Handler="AppButtonMotionEntered"/>
+            <EventSetter Event="MouseLeave" Handler="AppButtonMotionExited"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -82,12 +84,16 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
-                        </Border>
+                        <Grid>
+                            <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
+                            </Border>
+                            <Border x:Name="ButtonSignal" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" Margin="1" Opacity="0" IsHitTestVisible="False"/>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
@@ -160,6 +166,8 @@
         </Style>
         <Style TargetType="{x:Type Button}" BasedOn="{StaticResource AppButtonStyle}"/>
         <Style x:Key="AppSwitchCheckBoxStyle" TargetType="{x:Type CheckBox}">
+            <EventSetter Event="MouseEnter" Handler="AppSwitchMotionEntered"/>
+            <EventSetter Event="MouseLeave" Handler="AppSwitchMotionExited"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="MinHeight" Value="30"/>
             <Setter Property="Padding" Value="0"/>
@@ -185,7 +193,9 @@
                                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12"
                                         SnapsToDevicePixels="True">
                                     <Ellipse x:Name="SwitchThumb" Width="18" Height="18" Margin="2"
-                                             HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#FFF7F9FA"/>
+                                             HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#FFF7F9FA" RenderTransformOrigin="0.5,0.5">
+                                        <Ellipse.RenderTransform><ScaleTransform ScaleX="1" ScaleY="1"/></Ellipse.RenderTransform>
+                                    </Ellipse>
                                 </Border>
                             </Grid>
                         </Border>

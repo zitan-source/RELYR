@@ -102,6 +102,16 @@ public partial class MainWindow
 
     void InputAssignmentDragOver(object sender, DragEventArgs e)
     {
+        if (sender is Button { Tag: string paletteTargetKey } paletteTarget
+            && TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
+        {
+            string paletteTargetInput = InputForCurrentLayer(paletteTargetKey);
+            bool paletteValid = CanAssignPaletteAction(paletteTargetInput, paletteAction);
+            SetAssignmentDropTarget(paletteValid ? paletteTarget : null);
+            e.Effects = paletteValid ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (sender is not Button { Tag: string targetKey } target
             || !e.Data.GetDataPresent(AssignmentDragFormat)
             || e.Data.GetData(AssignmentDragFormat) is not string sourceInput)
@@ -122,6 +132,17 @@ public partial class MainWindow
 
     void InputAssignmentDropped(object sender, DragEventArgs e)
     {
+        if (sender is Button { Tag: string paletteTargetKey }
+            && TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
+        {
+            string paletteTargetInput = InputForCurrentLayer(paletteTargetKey);
+            ClearAssignmentDropTarget();
+            bool applied = CanAssignPaletteAction(paletteTargetInput, paletteAction)
+                && ApplyPaletteActionDrop(paletteAction, paletteTargetInput, paletteTargetKey);
+            e.Effects = applied ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (sender is not Button { Tag: string targetKey }
             || !e.Data.GetDataPresent(AssignmentDragFormat)
             || e.Data.GetData(AssignmentDragFormat) is not string sourceInput
@@ -238,7 +259,7 @@ public partial class MainWindow
             button.BorderThickness = new Thickness(3);
         }
         SetInputVisualZIndex(button, active ? 50 : button.IsMouseOver ? 20 : 0);
-        AnimateInputScale(button, active ? 1.06 : button.IsMouseOver ? 1.05 : 1, 120);
+        AnimateInputScale(button, UiMotionService.Enabled && active ? 1.06 : UiMotionService.Enabled && button.IsMouseOver ? 1.05 : 1, 120);
     }
 
     void InputButtonHoverEntered(object sender, System.Windows.Input.MouseEventArgs e)
@@ -246,7 +267,7 @@ public partial class MainWindow
         if (sender is Button button && !GetIsAssignmentDropTarget(button))
         {
             SetInputVisualZIndex(button, 20);
-            AnimateInputScale(button, 1.05, 120);
+            AnimateInputScale(button, UiMotionService.Enabled ? 1.05 : 1, 120);
         }
     }
 
@@ -267,20 +288,24 @@ public partial class MainWindow
     }
 
     static ScaleTransform InputScaleTransform(Button button)
-    {
-        button.RenderTransformOrigin = new Point(.5, .5);
-        if (button.RenderTransform is ScaleTransform scale)
-            return scale;
-        scale = new ScaleTransform(1, 1);
-        button.RenderTransform = scale;
-        return scale;
-    }
+        => UiMotionService.MutableScale(button);
 
     static void AnimateInputScale(Button button, double target, int durationMs)
     {
-        var scale = InputScaleTransform(button);
-        var duration = TimeSpan.FromMilliseconds(durationMs);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
+        UiMotionService.RunSafely("input-key-scale", () =>
+        {
+            var scale = InputScaleTransform(button);
+            if (!UiMotionService.Enabled)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                scale.ScaleX = target;
+                scale.ScaleY = target;
+                return;
+            }
+            var duration = TimeSpan.FromMilliseconds(durationMs);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
+        });
     }
 }

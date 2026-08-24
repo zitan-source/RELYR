@@ -192,8 +192,10 @@
           <Separator Margin="4,18,4,18" Background="{DynamicResource SubtleBorderBrush}"/>
           <Border Style="{StaticResource Card}" Margin="0,0,0,12">
             <StackPanel>
-              <TextBlock Text="プロファイル切替" FontSize="18" FontWeight="SemiBold"/>
-              <CheckBox x:Name="ProfileOverlayBox" Margin="0,10,0,0">
+              <TextBlock Text="表示効果" FontSize="18" FontWeight="SemiBold"/>
+              <CheckBox x:Name="UiAnimationsBox" Content="アニメーション" Margin="0,10,0,0"/>
+              <TextBlock Text="操作時の発光・移動・拡大を有効にします。" Foreground="{DynamicResource SecondaryText}" Margin="0,3,0,10"/>
+              <CheckBox x:Name="ProfileOverlayBox">
                 <TextBlock Text="切替時にプロファイル名を画面下部へ表示する" TextWrapping="Wrap"/>
               </CheckBox>
             </StackPanel>

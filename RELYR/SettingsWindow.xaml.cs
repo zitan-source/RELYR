@@ -47,6 +47,7 @@ public partial class SettingsWindow : Window
     public bool ShowProfileSwitchOverlay => ProfileOverlayBox.IsChecked == true;
     public WindowActionTarget SelectedWindowActionTarget => CursorWindowTargetBox.IsChecked == true ? WindowActionTarget.WindowUnderCursor : WindowActionTarget.ActiveWindow;
     public AppThemeMode SelectedThemeMode => LightThemeBox.IsChecked == true ? AppThemeMode.Light : DarkThemeBox.IsChecked == true ? AppThemeMode.Dark : AppThemeMode.System;
+    public bool UiAnimationsEnabled => UiAnimationsBox.IsChecked == true;
     public bool AutoSave => AutoSaveBox.IsChecked == true;
     public bool SpaceHoldRepeat => SpaceRepeatBox.IsChecked == true;
     public IReadOnlyList<string> InputDisabledApplications => inputDisabledApplications;
@@ -105,6 +106,7 @@ public partial class SettingsWindow : Window
         SystemThemeBox.IsChecked = config.ThemeMode == AppThemeMode.System;
         LightThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Light;
         DarkThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Dark;
+        UiAnimationsBox.IsChecked = config.UiAnimationsEnabled;
         themeSelectionLoading = false;
         AutoSaveBox.IsChecked = config.AutoSave;
         SpaceRepeatBox.IsChecked = config.SpaceHoldRepeatEnabled;

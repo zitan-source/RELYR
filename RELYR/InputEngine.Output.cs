@@ -11,6 +11,8 @@ public sealed partial class InputEngine
 {
     public static void SendShortcut(string value, bool useUsLayout = false, WindowActionTarget windowTarget = WindowActionTarget.ActiveWindow, IntPtr? preferredActiveWindow = null)
     {
+        if (SystemControlService.TryExecute(value))
+            return;
         if (TryDispatchApplicationAction(value))
             return;
         if (OverlayService.TryShow(value))
@@ -268,6 +270,8 @@ public sealed partial class InputEngine
     internal static bool TryResolveShiftedSymbolForTest(string value, bool useUsLayout, out ushort key) => TryResolveShiftedSymbol(value, useUsLayout, out key);
     internal static bool IsRecognizedShortcut(string value)
     {
+        if (SystemControlService.IsAction(value))
+            return true;
         if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
             return true;
         if (OverlayService.IsOverlayAction(value))

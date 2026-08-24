@@ -67,11 +67,34 @@ public partial class ApplicationPickerWindow : Window
         if (ApplicationList == null)
             return;
         string query = SearchBox.Text.Trim();
-        var filtered = string.IsNullOrEmpty(query) ? applications : [.. applications.Where(x => x.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || x.LaunchPath.Contains(query, StringComparison.OrdinalIgnoreCase))];
+        var filtered = string.IsNullOrEmpty(query) ? applications : [.. applications.Where(x => MatchesSearch(x, query))];
         ApplicationList.ItemsSource = filtered;
         ResultCount.Text = $"{filtered.Count}件";
         EmptyMessage.Text = applications.Count == 0 ? "起動できるアプリが見つかりませんでした" : "一致するアプリがありません";
         EmptyMessage.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    internal static bool MatchesSearch(InstalledApplicationInfo application, string? query)
+    {
+        string value = (query ?? string.Empty).Trim();
+        if (value.Length == 0)
+            return true;
+
+        // A one-character query is normally used as an alphabet jump.  Keep
+        // that result focused on applications whose visible name (or actual
+        // executable name) begins with the requested character instead of
+        // returning every path which merely contains it somewhere.
+        if (value.Length == 1)
+        {
+            string executable = application.ExecutableName
+                ?? Path.GetFileNameWithoutExtension(ApplicationIconService.ResolveExecutablePath(application.LaunchPath) ?? application.LaunchPath);
+            return application.Name.StartsWith(value, StringComparison.CurrentCultureIgnoreCase)
+                || executable.StartsWith(value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return application.Name.Contains(value, StringComparison.CurrentCultureIgnoreCase)
+            || application.LaunchPath.Contains(value, StringComparison.OrdinalIgnoreCase)
+            || (application.ExecutableName?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     void ApplicationSelectionChanged(object sender, SelectionChangedEventArgs e) => SelectButton.IsEnabled = ApplicationList.SelectedItem is InstalledApplicationInfo;

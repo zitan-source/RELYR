@@ -49,7 +49,75 @@ public partial class MainWindow
     internal AppConfig DeckOverlayConfigForTest => DeckOverlayConfig();
     internal void ShowProfileOverlayForTest(string name) => ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest => VisualInputButtons().ToList();
+    internal bool IsActionPaletteOpenForTest => actionPaletteOpen;
+    internal bool CanUndoPaletteActionForTest => actionPaletteUndoState != null;
+    internal TimeSpan ActionPaletteUndoDurationForTest => actionPaletteUndoTimer.Interval;
+    internal IReadOnlyList<CatalogAction> ActionPaletteActionsForTest => actionPaletteItems.Select(item => item.Action).ToArray();
+    internal IReadOnlyList<CatalogAction> VisibleActionPaletteActionsForTest => ActionPaletteList.Items.Cast<ActionPaletteItem>().Select(item => item.Action).ToArray();
+    internal void SetActionPaletteApplicationsForTest(params InstalledApplicationInfo[] applications)
+    {
+        actionPaletteApplicationDiscoveryStarted = true;
+        actionPaletteApplications = applications;
+        RefreshActionPalette();
+    }
+    internal void AddActionPaletteShortcutForTest(string shortcut) => AddActionPaletteShortcut(shortcut);
+    internal void OpenActionPaletteForTest() => OpenActionPalette_Click(ActionPaletteButton, new RoutedEventArgs());
+    internal void CloseActionPaletteForTest() => CloseActionPalette(animated: false);
+    internal void CloseActionPaletteAnimatedForTest() => CloseActionPalette(animated: true);
+    internal bool ExerciseFrozenActionLaunchMotionForTest()
+    {
+        ActionPaletteButton.ApplyTemplate();
+        if (ActionPaletteButton.Template.FindName("LaunchHalo", ActionPaletteButton) is not FrameworkElement halo
+            || ActionPaletteButton.Template.FindName("LaunchBorder", ActionPaletteButton) is not FrameworkElement border)
+            return false;
+        var frozenHalo = new System.Windows.Media.ScaleTransform(.86, .86);
+        var frozenBorder = new System.Windows.Media.ScaleTransform(1, 1);
+        frozenHalo.Freeze();
+        frozenBorder.Freeze();
+        halo.RenderTransform = frozenHalo;
+        border.RenderTransform = frozenBorder;
+        SetActionPaletteLaunchMotion(ActionPaletteButton, true);
+        return halo.RenderTransform is System.Windows.Media.ScaleTransform { IsFrozen: false, HasAnimatedProperties: true }
+            && border.RenderTransform is System.Windows.Media.ScaleTransform { IsFrozen: false, HasAnimatedProperties: true };
+    }
+    internal void ClickActionPaletteBlankForTest()
+    {
+        var click = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            Environment.TickCount,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent
+        };
+        KeyboardWorkspace.RaiseEvent(click);
+    }
+    internal void SelectActionPalettePopupItemForTest(string category)
+    {
+        var popupItem = new System.Windows.Controls.ComboBoxItem { Content = category };
+        var click = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            Environment.TickCount,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent,
+            Source = popupItem
+        };
+        MainWindow_PreviewMouseDown(this, click);
+        ActionPaletteCategoryBox.SelectedItem = category;
+    }
+    internal bool ApplyPaletteActionForTest(CatalogAction action, string targetInput, string targetKey)
+        => ApplyPaletteActionDrop(action, targetInput, targetKey);
+    internal bool ApplyPaletteMonitorForTest(string monitorId, string targetInput)
+        => DeckMonitorCatalog.TryGet(monitorId, out var monitor) && ApplyPaletteMonitorDrop(monitor, targetInput);
+    internal void UndoPaletteActionForTest() => UndoActionPaletteAssignment_Click(ActionPaletteButton, new RoutedEventArgs());
+    internal bool HasPaletteDropMotionForTest(System.Windows.Controls.Button button)
+    {
+        button.ApplyTemplate();
+        return InputScaleTransform(button).HasAnimatedProperties
+            && button.Template.FindName("DropTargetTint", button) is UIElement { HasAnimatedProperties: true };
+    }
     internal IReadOnlyList<System.Windows.Controls.Button> DeckManagementButtonsForTest => deckManagementButtons;
+    internal IReadOnlyList<System.Windows.Controls.Button> DeckGridButtonsForTest => deckGridButtons;
     internal int DeckVisualUpdateCountForTest { get; private set; }
     internal void ResetDeckVisualUpdateCountForTest() => DeckVisualUpdateCountForTest = 0;
     internal DeckLayoutDefinition? SelectedDeckLayoutForTest => selectedDeckLayout;
@@ -112,6 +180,9 @@ public partial class MainWindow
         return result;
     }
     internal void ApplyDeckSizeForTest(int columns, int rows) => ApplyDeckSize(columns, rows);
+    internal void ApplyDeckSliderSizeForTest(int columns, int rows)
+        => ApplyDeckSize(columns, rows, synchronizeSliders: false, deferDeckRefresh: true);
+    internal void FlushDeckCustomizationRefreshForTest() => FlushDeckCustomizationRefresh();
     internal void ShowDeckLayoutListForTest() => ShowDeckLayoutList();
     internal void ShowNewDeckDialogForTest() => PromptNewDeckLayout();
 
@@ -137,6 +208,9 @@ public partial class MainWindow
     internal void ApplyCatalogActionForTest(CatalogAction action, bool longPress = false)
         => ApplyCatalogAction(action, longPress);
 
+    internal void ApplyApplicationSelectionForTest(bool longPress, string path)
+        => ApplyApplicationSelection(longPress, path);
+
     internal void ApplyProfileActionForTest(string profileName, bool longPress)
         => ApplyProfileAction(profileName, longPress);
 
@@ -146,11 +220,13 @@ public partial class MainWindow
         return button.Template.FindName("SelectionPulse", button) is UIElement pulse && pulse.Opacity > 0;
     }
 
-    internal void BeginInputDetectionForTest() => Detect_Click(DetectInputButton, new RoutedEventArgs());
+    internal void BeginInputDetectionForTest() => Detect_Click(ActionPaletteButton, new RoutedEventArgs());
     internal void FeedDetectedInputForTest(string text) => HandleDetectedInput(text);
     internal void CompleteDestinationInputForTest() => CompleteDestinationInput();
     internal void RefreshLayerButtonsForTest() => UpdateLayerButtons();
     internal void SaveAndApplyForTest() => SaveAndApply("テスト：設定を保存し、エンジンへ反映しました");
+    internal void HandleOverlayDeckSlotsChangedForTest(string layoutId, int firstSlot, int secondSlot)
+        => HandleOverlayDeckSlotsChanged(layoutId, firstSlot, secondSlot);
     internal bool HandleInputForTest(string input) => HandleInput(input);
     internal bool QueueModifierDragForTest(string value, bool start)
         => QueueDragAction(new Mapping { Input = "Space+MouseLeft", Layer = "Space", Kind = ActionKind.Mouse, Value = value }, "Space+MouseLeft:" + (start ? "PressStart" : "PressEnd"));

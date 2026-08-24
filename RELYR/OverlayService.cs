@@ -67,13 +67,21 @@ internal static class OverlayService
     static int fullScreenDismissArmed;
     static int deckRefreshQueued;
     static int deckRefreshContentRequired;
+    static int deckLayoutPreviewQueued;
     static System.Drawing.Point fullScreenStartCursor;
 #if !PRODUCTION_PUBLISH
     internal static Action<string>? ActionRequestedForTest;
     internal static int DeckRefreshRequestCountForTest;
+    internal static int DeckSlotRefreshRequestCountForTest;
+    internal static int DeckLayoutPreviewRequestCountForTest;
     internal static DeckPanelOverlayWindow? DeckPanelInstanceForTest => deckPanels.TryGetValue(lastDeckPanelKey, out var entry) ? entry.Window : deckPanels.Values.LastOrDefault()?.Window;
     internal static IReadOnlyList<DeckPanelOverlayWindow> DeckPanelInstancesForTest => deckPanels.Values.Select(entry => entry.Window).ToArray();
-    internal static void ResetDeckRefreshRequestCountForTest() => Interlocked.Exchange(ref DeckRefreshRequestCountForTest, 0);
+    internal static void ResetDeckRefreshRequestCountForTest()
+    {
+        Interlocked.Exchange(ref DeckRefreshRequestCountForTest, 0);
+        Interlocked.Exchange(ref DeckSlotRefreshRequestCountForTest, 0);
+        Interlocked.Exchange(ref DeckLayoutPreviewRequestCountForTest, 0);
+    }
     internal static bool RecoverFromFullScreenFailureForTest()
     {
         Interlocked.Exchange(ref fullScreenActive, 1);
@@ -97,8 +105,29 @@ internal static class OverlayService
         bool recovered = SpinWait.SpinUntil(() => !FullScreenVisible, TimeSpan.FromSeconds(2));
         return recovered && Volatile.Read(ref fullScreenClosing) == 0 && Volatile.Read(ref fullScreenDismissArmed) == 0;
     }
+    internal static void ArmStaleFullScreenTransactionForTest()
+    {
+        Interlocked.Exchange(ref fullScreenActive, 1);
+        Interlocked.Exchange(ref fullScreenClosing, 0);
+        Interlocked.Exchange(ref fullScreenDismissArmed, 1);
+    }
 #endif
-    internal static bool FullScreenVisible => Volatile.Read(ref fullScreenActive) != 0;
+    internal static bool FullScreenVisible
+    {
+        get
+        {
+            if (Volatile.Read(ref fullScreenActive) == 0)
+                return false;
+            // The low-level hooks must never consume input for a bookkeeping
+            // flag alone. A display/session transition can destroy the native
+            // HWND before WPF raises Closed; fail open as soon as no real,
+            // visible fullscreen surface remains.
+            if (SnapshotScreenOverlays().Any(window => window.HasVisibleNativeSurface))
+                return true;
+            ResetFullScreenTransaction();
+            return false;
+        }
+    }
 
     internal static void Configure(Func<AppConfig>? provider, Func<bool>? inputDownProvider = null, Action<Mapping>? deckAction = null, Action<string, double, double>? positionChanged = null, Action<bool, double, double>? inputPositionChanged = null, Action? layoutChanged = null, Action<string, int, int>? slotsChanged = null, Action<string, double, double>? sizeChanged = null, Action<string, bool>? pinnedChanged = null, Action<string, double, double>? collapsedPositionChanged = null, Action? presentationStateChanged = null)
     {
@@ -247,6 +276,55 @@ internal static class OverlayService
 #endif
         Interlocked.Exchange(ref deckRefreshContentRequired, 1);
         QueueDeckPanelRefresh();
+    }
+
+    internal static void RefreshDeckPanelSlots(string layoutId, IEnumerable<int> slots)
+    {
+        int[] requested = [.. slots.Where(slot => slot > 0).Distinct()];
+        if (requested.Length == 0)
+            return;
+#if !PRODUCTION_PUBLISH
+        Interlocked.Increment(ref DeckSlotRefreshRequestCountForTest);
+#endif
+        void Refresh()
+        {
+            foreach (var entry in deckPanels.Values.Where(entry => entry.Window.LayoutId.Equals(layoutId, StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                try { entry.Window.RefreshDeckSlots(requested); }
+                catch (Exception exception) { LogOverlayFailure("refresh Deck slots", exception); }
+            }
+        }
+        var dispatcher = WpfApplication.Current?.Dispatcher;
+        if (dispatcher?.CheckAccess() == true)
+            Refresh();
+        else if (dispatcher != null)
+            _ = dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(Refresh));
+    }
+
+    internal static void RefreshDeckPanelLayoutPreview()
+    {
+#if !PRODUCTION_PUBLISH
+        Interlocked.Increment(ref DeckLayoutPreviewRequestCountForTest);
+#endif
+        var dispatcher = WpfApplication.Current?.Dispatcher;
+        if (dispatcher == null || Interlocked.Exchange(ref deckLayoutPreviewQueued, 1) != 0)
+            return;
+        _ = dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        {
+            RunOverlayUiSafely(() =>
+            {
+                Interlocked.Exchange(ref deckLayoutPreviewQueued, 0);
+                var config = configProvider?.Invoke();
+                if (config == null)
+                    return;
+                foreach (var entry in deckPanels.Values.ToArray())
+                    entry.Window.RefreshLayoutPreview(
+                        config.InputPanelOpacityPercent,
+                        config.DeckHoverPreviewsEnabled,
+                        config.DeckAfterActionBehavior,
+                        config.DeckPointerLeaveBehavior);
+            }, "preview Deck layout");
+        }));
     }
 
     internal static void RefreshDeckPanelForProfileChange()
@@ -444,13 +522,19 @@ internal static class OverlayService
         lock (screenOverlayGate)
             screenOverlays.AddRange(overlaysToShow);
         fullScreenStartCursor = System.Windows.Forms.Cursor.Position;
-        Interlocked.Exchange(ref fullScreenActive, 1);
         Interlocked.Exchange(ref fullScreenClosing, 0);
         // 物理キーから起動した場合は、その起動キーのUpを受け取るまで解除を
         // 許可しない。マクロ等からの起動は、最初の新しい入力ですぐ解除できる。
         Interlocked.Exchange(ref fullScreenDismissArmed, physicalInputDownProvider?.Invoke() == true ? 0 : 1);
         foreach (var overlay in overlaysToShow)
             overlay.Show();
+        // Publish input consumption only after at least one native fullscreen
+        // surface is actually visible. Construction or Show failure is handled
+        // by RunOverlayUiSafely and can therefore never leave a flag-only wall.
+        if (overlaysToShow.Any(overlay => overlay.HasVisibleNativeSurface))
+            Interlocked.Exchange(ref fullScreenActive, 1);
+        else
+            CloseScreenOverlays();
     }
 
     /// <summary>起動に使ったキーを離すまでは待ち、次の新しいキー操作で全画面表示を閉じます。</summary>

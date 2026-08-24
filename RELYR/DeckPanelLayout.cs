@@ -334,7 +334,7 @@ internal static class DeckPanelLayout
     static string DeckSignature(IEnumerable<Mapping> mappings) => string.Join("\n", mappings
         .Where(map => IsInputName(map.Input))
         .OrderBy(map => SlotNumber(map.Input))
-        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}\u001f{map.DeckIcon}\u001f{map.DeckIconPath}"));
+        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}\u001f{map.DeckIcon}\u001f{map.DeckIconPath}\u001f{map.DeckMonitor}"));
 
     internal static string ActionLabel(string input, Mapping? mapping)
     {
@@ -384,6 +384,8 @@ internal static class DeckPanelLayout
 
     internal static FrameworkElement CreateButtonContent(string input, Mapping? mapping, bool loadThumbnail = true)
     {
+        if (DeckMonitorCatalog.TryGet(mapping?.DeckMonitor, out var monitor))
+            return new DeckMonitorView(monitor);
         if (HasRegisteredFile(mapping) && !File.Exists(mapping!.DeckFilePath))
             return CreateMissingFileIcon(22);
         var configuredIcon = DeckIconCatalog.CreateVisual(mapping, 22);

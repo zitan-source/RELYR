@@ -246,7 +246,7 @@ public partial class MainWindow
             reportProgress?.Invoke("RELYRを再起動してアップデートします…");
             const string silentArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RELYRUPDATE=1";
             using var process = Process.Start(new ProcessStartInfo(installer, silentArguments) { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden }) ?? throw new InvalidOperationException("更新用インストーラーを起動できませんでした。");
-            RequestApplicationExit();
+            RequestApplicationExit("update-install");
             return true;
         }
         catch (OperationCanceledException)

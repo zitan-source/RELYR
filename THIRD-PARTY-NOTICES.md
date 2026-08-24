@@ -89,6 +89,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## LibreHardwareMonitorLib 0.9.6
+
+RELYR uses the unmodified LibreHardwareMonitorLib package in an isolated
+sensor process to read hardware telemetry exposed by supported devices.
+
+- Project: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+- Package: https://www.nuget.org/packages/LibreHardwareMonitorLib/0.9.6
+- License: Mozilla Public License 2.0
+- License text: https://www.mozilla.org/MPL/2.0/
+
+Libre Hardware Monitor is copyright (c) 2010-2026 Michael Möller and
+LibreHardwareMonitor contributors. The distributed library remains subject to
+the Mozilla Public License 2.0 and its upstream third-party notices. RELYR does
+not modify or relink the library.
+
+## Microsoft.Windows.SDK.Contracts 10.0.26100.1742
+
+RELYR uses the official Microsoft Windows SDK contracts package to read the
+effective Bluetooth radio state exposed by Windows.
+
+- Package: https://www.nuget.org/packages/Microsoft.Windows.SDK.Contracts/10.0.26100.1742
+- Publisher: Microsoft Corporation
+- License: included with the package distribution
+
 ## Inno Setup
 
 The optional RELYR installer is generated with Inno Setup. The Inno Setup

@@ -73,7 +73,8 @@ public static class ActionCatalog
     } =
     [
         new("Windowsの基本機能","設定を開く","Windows設定を表示します",ActionKind.Shortcut,"Win+I"),
-        new("Windowsの基本機能","エクスプローラー","ファイルエクスプローラーを開きます",ActionKind.Shortcut,"Win+E"),
+        new("Windowsの基本機能","エクスプローラーを開く","Windows標準の方法でファイルエクスプローラーを開きます",ActionKind.Shortcut,"Win+E"),
+        new("Windowsの基本機能","新しいエクスプローラーを開く","既存のウィンドウとは別に新しいエクスプローラーを開きます",ActionKind.Launch,SystemInputOutput.NewExplorerWindowAction),
         new("Windowsの基本機能","デスクトップ表示","すべてのウィンドウを隠します",ActionKind.Shortcut,"Win+D"),
         new("Windowsの基本機能","タスクビュー","開いているウィンドウを一覧表示します",ActionKind.Shortcut,"Win+Tab"),
         new("Windowsの基本機能","画面をロック","Windowsをロックします",ActionKind.Shortcut,"Win+L"),
@@ -236,7 +237,6 @@ public static class ActionCatalog
 
         new("Windowsアプリ・基本","設定","Windowsの設定を開きます",ActionKind.Launch,"ms-settings:"),
         new("Windowsアプリ・基本","コントロールパネル","従来のコントロールパネルを開きます",ActionKind.Launch,"control.exe"),
-        new("Windowsアプリ・基本","エクスプローラー","ファイルエクスプローラーを開きます",ActionKind.Launch,"explorer.exe"),
         new("Windowsアプリ・基本","タスクマネージャー","実行中のアプリやシステム負荷を確認します",ActionKind.Launch,"taskmgr.exe"),
         new("Windowsアプリ・基本","Windows ターミナル","Windows ターミナルを開きます",ActionKind.Launch,"wt.exe"),
         new("Windowsアプリ・基本","コマンドプロンプト","コマンドプロンプトを開きます",ActionKind.Launch,"cmd.exe"),
@@ -256,6 +256,17 @@ public static class ActionCatalog
         new("Windowsアプリ・診断","DirectX 診断ツール","DirectXとグラフィックス環境を確認します",ActionKind.Launch,"dxdiag.exe"),
 
         new("RELYR","RELYRを表示","RELYRのメイン画面を表示して前面へ移動します",ActionKind.Shortcut,ShowRelyrMainWindowAction)
+        , new("システム操作", "音量を上げる", "音量を5%上げます", ActionKind.Shortcut, SystemControlService.Prefix + "VolumeUp")
+        , new("システム操作", "音量を下げる", "音量を5%下げます", ActionKind.Shortcut, SystemControlService.Prefix + "VolumeDown")
+        , new("システム操作", "音量ミュート", "音量のミュートを切り替えます", ActionKind.Shortcut, SystemControlService.Prefix + "VolumeMute")
+        , new("システム操作", "マイクミュート", "マイクのミュートを切り替えます", ActionKind.Shortcut, SystemControlService.Prefix + "MicMute")
+        , new("システム操作", "明るさを上げる", "画面の明るさを10%上げます", ActionKind.Shortcut, SystemControlService.Prefix + "BrightnessUp")
+        , new("システム操作", "明るさを下げる", "画面の明るさを10%下げます", ActionKind.Shortcut, SystemControlService.Prefix + "BrightnessDown")
+        , new("システム操作", "Wi-Fiをオン", "Wi-Fiのソフトウェア無線をオンにします", ActionKind.Shortcut, SystemControlService.Prefix + "WifiOn")
+        , new("システム操作", "Wi-Fiをオフ", "Wi-Fiのソフトウェア無線をオフにします", ActionKind.Shortcut, SystemControlService.Prefix + "WifiOff")
+        , new("システム操作", "Wi-Fiを切り替え", "Wi-Fiのオン・オフを切り替えます", ActionKind.Shortcut, SystemControlService.Prefix + "WifiToggle")
+        , new("システム操作", "Wi-Fi設定", "WindowsのWi-Fi設定を開きます", ActionKind.Shortcut, SystemControlService.Prefix + "WifiSettings")
+        , new("システム操作", "Bluetooth設定", "WindowsのBluetooth設定を開きます", ActionKind.Shortcut, SystemControlService.Prefix + "BluetoothSettings")
     ];
 
     public static string GetMajorCategory(string category) => category switch

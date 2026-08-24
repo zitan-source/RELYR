@@ -204,6 +204,15 @@ internal sealed class ScreenOverlayWindow : Window
             ShowWindow(handle, 0);
     }
 
+    internal bool HasVisibleNativeSurface
+    {
+        get
+        {
+            IntPtr handle = Volatile.Read(ref nativeHandle);
+            return handle != IntPtr.Zero && IsWindow(handle) && IsWindowVisible(handle);
+        }
+    }
+
     void RestoreVisibleSystemCursor()
     {
         Cursor = WpfCursors.Arrow;
@@ -224,6 +233,8 @@ internal sealed class ScreenOverlayWindow : Window
 
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
     [DllImport("user32.dll")] static extern IntPtr SetCursor(IntPtr cursor);
     [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr value);
