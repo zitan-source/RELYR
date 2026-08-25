@@ -156,6 +156,7 @@ public sealed class AppConfig
     public List<string> InputDisabledApplications { get; set; } = [];
     public bool StartWithWindows { get; set; }
     public bool AutoExtractDesktopArchives { get; set; }
+    public bool ShowArchiveExtractionOverlay { get; set; } = true;
     public string ArchiveWatchFolder { get; set; } = "";
     public string ArchiveDestinationFolder { get; set; } = "";
     public bool ShowDesktopNumberInTray { get; set; }

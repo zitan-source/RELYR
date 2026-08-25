@@ -18,6 +18,7 @@ public partial class App : System.Windows.Application
 #if !PRODUCTION_PUBLISH
     internal static string EngineTestReportPath => VerificationPaths.GetFile("engine-test-last.log");
     internal static string UiTestReportPath => VerificationPaths.GetFile("ui-test-last.log");
+    internal static string ContextMenuReviewReportPath => VerificationPaths.GetFile("context-menu-review-last.log");
     internal static string MouseUiTestReportPath => VerificationPaths.GetFile("mouse-ui-test-last.log");
     internal static string SelfTestReportPath => VerificationPaths.GetFile("self-test-last.log");
     internal static string ConfigurationMatrixTestReportPath => VerificationPaths.GetFile("configuration-matrix-last.log");
@@ -358,6 +359,20 @@ public partial class App : System.Windows.Application
             using var mouseUiLog = new StreamWriter(MouseUiTestReportPath, false, Encoding.UTF8) { AutoFlush = true };
             int result = UiIntegrationTest.RunMouseLayout(mouseUiLog);
             ShutdownWithExitCode(result);
+            return;
+        }
+        if (e.Args.Contains("--context-menu-review", StringComparer.OrdinalIgnoreCase))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try { File.Delete(ContextMenuReviewReportPath); } catch { }
+                int result;
+                using (var reviewLog = new StreamWriter(ContextMenuReviewReportPath, false, Encoding.UTF8) { AutoFlush = true })
+                    result = await UiIntegrationTest.CaptureContextMenuReviewAsync(reviewLog);
+                try { Console.Out.Write(File.ReadAllText(ContextMenuReviewReportPath)); } catch { }
+                ShutdownWithExitCode(result);
+            }));
             return;
         }
         if (e.Args.Contains("--ui-test", StringComparer.OrdinalIgnoreCase))

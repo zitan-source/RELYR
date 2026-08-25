@@ -95,7 +95,7 @@ internal static class TrayMenuTheme
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
             int y = e.Item.Height / 2;
-            using var pen = new Pen(palette.Border);
+            using var pen = new Pen(palette.Separator);
             e.Graphics.DrawLine(pen, 12, y, Math.Max(12, e.Item.Width - 12), y);
         }
 
@@ -122,8 +122,8 @@ internal static class TrayMenuTheme
         public override Color MenuItemPressedGradientBegin => palette.Pressed;
         public override Color MenuItemPressedGradientMiddle => palette.Pressed;
         public override Color MenuItemPressedGradientEnd => palette.Pressed;
-        public override Color SeparatorDark => palette.Border;
-        public override Color SeparatorLight => palette.Border;
+        public override Color SeparatorDark => palette.Separator;
+        public override Color SeparatorLight => palette.Separator;
         public override Color ToolStripBorder => palette.Border;
         public override Color CheckBackground => palette.AccentSoft;
         public override Color CheckSelectedBackground => palette.AccentSoft;
@@ -139,6 +139,7 @@ internal static class TrayMenuTheme
             Hover = dark ? Color.FromArgb(47, 47, 49) : Color.FromArgb(231, 243, 240);
             Pressed = dark ? Color.FromArgb(42, 65, 61) : Color.FromArgb(207, 233, 227);
             Border = dark ? Color.FromArgb(67, 67, 70) : Color.FromArgb(184, 197, 212);
+            Separator = dark ? Color.FromArgb(52, 52, 55) : Color.FromArgb(226, 229, 233);
             Accent = dark ? Color.FromArgb(114, 224, 193) : Color.FromArgb(8, 123, 105);
             AccentSoft = dark ? Color.FromArgb(36, 75, 74) : Color.FromArgb(221, 242, 237);
         }
@@ -160,6 +161,10 @@ internal static class TrayMenuTheme
             get;
         }
         internal Color Border
+        {
+            get;
+        }
+        internal Color Separator
         {
             get;
         }

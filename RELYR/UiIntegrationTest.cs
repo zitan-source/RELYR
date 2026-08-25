@@ -108,6 +108,84 @@ internal static class UiIntegrationTest
         return report.Complete("MOUSE UI TEST PASSED", "MOUSE UI TEST FAILED: ");
     }
 
+    internal static async Task<int> CaptureContextMenuReviewAsync(TextWriter output)
+    {
+        var report = new VerificationReport(output);
+        Action<bool, string> Check = report.Check;
+        string? previousConfigDirectory = Environment.GetEnvironmentVariable("RELYR_CONFIG_DIR");
+        string testConfigDirectory = VerificationPaths.CreateRunDirectory("context-menu-review");
+        AppThemeMode previousTheme = ThemeService.CurrentMode;
+        MainWindow? window = null;
+        try
+        {
+            Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", testConfigDirectory);
+            var config = new AppConfig { FirstRunCompleted = true, CapsLockLayerWarningAccepted = true, CheckForUpdates = false, AutoSave = false, ThemeMode = AppThemeMode.Dark };
+            config.Profiles[0].Mappings.Add(new Mapping { Input = "B", Layer = "通常", Kind = ActionKind.Text, Value = "visual-review" });
+            new ConfigService().Save(config);
+            ThemeService.Apply(AppThemeMode.Dark);
+            window = new MainWindow(true, suppressTray: true, startupConfig: config, runtimeRole: RuntimeRole.Standard, startInputHooks: false)
+            {
+                Width = 1500,
+                Height = 900,
+                Topmost = true,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            System.Windows.Application.Current.MainWindow = window;
+            window.Show();
+            window.Activate();
+            await window.Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.Render);
+            await Task.Delay(320);
+            var target = window.VisualInputButtonsForTest.First(button => Equals(button.Tag, "B"));
+
+            var darkMenu = window.CreateInputContextMenu("B");
+            target.ContextMenu = darkMenu;
+            darkMenu.PlacementTarget = target;
+            darkMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            darkMenu.IsOpen = true;
+            await Task.Delay(360);
+            Check(darkMenu.IsOpen && darkMenu.ActualWidth >= 180 && darkMenu.ActualHeight > 0,
+                $"dark context menu is visibly open ({darkMenu.ActualWidth:F1}x{darkMenu.ActualHeight:F1})");
+            Check(CaptureContextMenuForReview(darkMenu, "context-menu-dark.png"), "dark context menu screenshot saved");
+            Check(CaptureDesktopForReview(window, "context-menu-dark-full.png"), "dark RELYR window with context menu screenshot saved");
+            Check(CaptureElementsForReview(window, [window.KeyboardLayoutToolbarIcon, window.KeyboardLayoutBox], "keyboard-layout-alignment-dark.png"), "keyboard-layout alignment screenshot saved");
+            darkMenu.IsOpen = false;
+            target.ContextMenu = null;
+
+            ThemeService.Apply(AppThemeMode.Light);
+            await window.Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.Render);
+            await Task.Delay(260);
+            var lightMenu = window.CreateInputContextMenu("B");
+            target.ContextMenu = lightMenu;
+            lightMenu.PlacementTarget = target;
+            lightMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            lightMenu.IsOpen = true;
+            await Task.Delay(360);
+            Check(lightMenu.IsOpen && lightMenu.ActualWidth >= 180 && lightMenu.ActualHeight > 0,
+                $"light context menu is visibly open ({lightMenu.ActualWidth:F1}x{lightMenu.ActualHeight:F1})");
+            Check(CaptureContextMenuForReview(lightMenu, "context-menu-light.png"), "light context menu screenshot saved");
+            Check(CaptureDesktopForReview(window, "context-menu-light-full.png"), "light RELYR window with context menu screenshot saved");
+            lightMenu.IsOpen = false;
+            target.ContextMenu = null;
+        }
+        catch (Exception error)
+        {
+            report.RecordException("Context menu review exception", "FAIL context menu review exception: ", error);
+        }
+        finally
+        {
+            ThemeService.Apply(previousTheme);
+            if (window != null)
+            {
+                window.Topmost = false;
+                window.PrepareForSystemShutdown();
+                window.Close();
+            }
+            Environment.SetEnvironmentVariable("RELYR_CONFIG_DIR", previousConfigDirectory);
+            try { if (Directory.Exists(testConfigDirectory)) Directory.Delete(testConfigDirectory, true); } catch { }
+        }
+        return report.Complete("CONTEXT MENU REVIEW PASSED", "CONTEXT MENU REVIEW FAILED: ");
+    }
+
     internal static int Run(TextWriter output)
     {
         var report = new VerificationReport(output);
@@ -434,8 +512,8 @@ internal static class UiIntegrationTest
             Check(window.AssignmentPane.BorderThickness == new Thickness(0) && window.AssignmentPane.CornerRadius == new CornerRadius(0) && window.AssignmentPane.Effect == null && ReferenceEquals(window.AssignmentPane.Background, ThemeService.Brush("AppBackground")) && window.InspectorEmptyState.VerticalAlignment == System.Windows.VerticalAlignment.Stretch && window.InspectorEmptyState.RenderTransform is TranslateTransform emptyStateShift && Math.Abs(emptyStateShift.Y + 96) <= .1 && Math.Abs(emptyTitleCenter.Y - (window.AssignmentPane.ActualHeight / 2 - 96)) <= 1.1 && emptyButtonTop >= 0, "the inspector lifts the complete empty-state composition another two-centimeter-equivalent step without clipping its input button");
             Check(!Descendants<TextBlock>(window.AssignmentPane).Any(text => text.Text == "インスペクター")
                 && window.ActionPaletteButton.Content is TextBlock { Text: "\uE8FD" }
-                && Math.Abs(window.ActionPaletteButton.ActualWidth - 64) < .1
-                && Math.Abs(window.ActionPaletteButton.ActualHeight - 64) < .1
+                && Math.Abs(window.ActionPaletteButton.ActualWidth - 68) < .1
+                && Math.Abs(window.ActionPaletteButton.ActualHeight - 70) < .1
                 && window.ActionPaletteButton.HorizontalAlignment == System.Windows.HorizontalAlignment.Center
                 && ReferenceEquals(window.ActionPaletteButton.Parent, window.InspectorEmptyState)
                 && Math.Abs(window.ActionPaletteButton.Margin.Top) < .1
@@ -443,7 +521,7 @@ internal static class UiIntegrationTest
                 && Math.Abs(window.ActionPaletteButton.TranslatePoint(new System.Windows.Point(window.ActionPaletteButton.ActualWidth / 2, 0), window.AssignmentPane).X - window.AssignmentPane.ActualWidth / 2) < 1
                 && window.ActionPaletteButton.TranslatePoint(new System.Windows.Point(0, window.ActionPaletteButton.ActualHeight), window.AssignmentPane).Y < emptyTitleCenter.Y
                 && window.ActionPaletteButton.ToolTip?.ToString() == "Action一覧を開く",
-                "the inspector keeps the action-library launcher centered at the established empty-state position");
+                "the inspector keeps a simple circular icon-only Action launcher with a shallow raised surface");
             string[] mainInspectorHintIcons = [window.InspectorHintOneIcon.Data.ToString(), window.InspectorHintTwoIcon.Data.ToString(), window.InspectorHintThreeIcon.Data.ToString()];
             Check(window.InspectorHintsPanel.HorizontalAlignment == System.Windows.HorizontalAlignment.Center
                 && Math.Abs(window.InspectorHintsPanel.Margin.Top - 48) < .1
@@ -470,12 +548,13 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteActionsForTest.Count > 100
                 && window.ActionPaletteActionsForTest.Any(action => action.Name == "コピー" && action.Value == "Ctrl+C")
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "Deckパネル")
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(2).SequenceEqual(new[] { "すべて", "使用中" })
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(3).SequenceEqual(new[] { "おすすめ", "すべて", "使用中" })
+                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "おすすめ"
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Count(item => item.ToString() == "使用中") == 1
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "アプリ")
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "インストールアプリ")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "キー")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "ショートカット")
-                && window.ActionPaletteActionsForTest.Any(action => action.Category == "アプリ" && action.Kind == ActionKind.Launch)
+                && window.ActionPaletteActionsForTest.Any(action => action.Category == "インストールアプリ" && action.Kind == ActionKind.Launch)
                 && window.ActionPaletteActionsForTest.Count(action => action.Category == "キー" && action.Kind == ActionKind.Key) >= 90
                 && window.ActionPaletteList.ActualWidth <= window.ActionPalettePane.ActualWidth + .1,
                 "the fixed right pane opens a searchable concrete-action library without adding width or a second column");
@@ -486,12 +565,21 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteCategoryBox.MaxDropDownHeight >= 500,
                 "the Action search border is not clipped and its full-width category menu uses a tall minimal-scroll popup without a redundant count");
             var categoryOptions = window.ActionPaletteCategoryBox.Items.Cast<MainWindow.ActionPaletteCategoryOption>().ToArray();
-            Check(categoryOptions[0] is { Name: "すべて", Section: "ステータス", StartsSection: true, ShowDivider: false }
-                && categoryOptions.First(option => option.Name == "アプリ") is { Section: "カテゴリ", StartsSection: true, ShowDivider: true }
-                && categoryOptions.Where(option => option.Name is not "すべて" and not "使用中").All(option => option.Section == "カテゴリ")
-                && categoryOptions.Count(option => option.StartsSection) == 2
+            Check(categoryOptions[0] is { Name: "おすすめ", Section: "ステータス", StartsSection: true, ShowDivider: false }
+                && categoryOptions.First(option => option.Name == "キー") is { Section: "キー入力", StartsSection: true, ShowDivider: true }
+                && categoryOptions.First(option => option.Name == "Windows") is { Section: "機能", StartsSection: true, ShowDivider: true }
+                && categoryOptions.First(option => option.Name == "入力・編集") is { Section: "ショートカット", StartsSection: true, ShowDivider: true }
+                && categoryOptions.Where(option => option.Name is "キー" or "マウス" or "ショートカット").All(option => option.Section == "キー入力")
+                && categoryOptions.Where(option => option.Name is "Windows" or "Windowsアプリ" or "インストールアプリ" or "プロファイル" or "マクロ" or "ジェスチャー" or "Deckパネル" or "オーバーレイ" or "モニター").All(option => option.Section == "機能")
+                && categoryOptions.Count(option => option.StartsSection) == 4
                 && categoryOptions.All(option => !string.IsNullOrWhiteSpace(option.Glyph)),
-                $"the shared Action popup keeps only status separate and groups every available Action type in one clearly ordered icon category ({string.Join(", ", categoryOptions.Select(option => $"{option.Section}:{option.Name}"))})");
+                $"the shared Action popup uses the ordered status, input, feature, and shortcut sections in both main and Deck editors ({string.Join(", ", categoryOptions.Select(option => $"{option.Section}:{option.Name}"))})");
+            string[] recommendedNames = window.VisibleActionPaletteActionsForTest.Select(action => action.Name).ToArray();
+            string[] recommendedValues = window.VisibleActionPaletteActionsForTest.Select(action => action.Value).ToArray();
+            Check(recommendedNames.SequenceEqual(["コピー", "貼り付け", "切り取り", "元に戻す", "やり直す", "保存", "すべて選択", "検索", "範囲をスクリーンショット", "エクスプローラーを開く"])
+                && recommendedValues.SequenceEqual(["Ctrl+C", "Ctrl+V", "Ctrl+X", "Ctrl+Z", "Ctrl+Y", "Ctrl+S", "Ctrl+A", "Ctrl+F", "Win+Shift+S", "Win+E"]),
+                "the Action library opens on a concise recommended set with familiar names and exact shortcut values");
+            CaptureForReview(window, "action-palette-recommended.png");
             var actionPaletteTemplate = (DataTemplate)window.Resources["ActionPaletteItemTemplate"];
             var actionPaletteTemplateRoot = (FrameworkElement)actionPaletteTemplate.LoadContent();
             var actionPaletteGlyph = (TextBlock)actionPaletteTemplateRoot.FindName("ActionPaletteItemGlyph");
@@ -499,6 +587,11 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteSearchBox.TextAlignment == TextAlignment.Left
                 && window.ActionPaletteSearchBox.FlowDirection == System.Windows.FlowDirection.LeftToRight,
                 "Action rows render both literal letters and icon-font glyphs without tofu while search input always begins at the left edge");
+            Check(MainWindow.ActionPaletteItemDetail(new CatalogAction("編集・クリップボード", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), "入力・編集") == "Ctrl + C"
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction("画面キャプチャ", "画面全体をスクリーンショット", "", ActionKind.Key, "PrintScreen"), "Windows") == "PrintScreen"
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction("アプリ", "Sample App", "", ActionKind.Launch, "sample.exe"), "アプリ") == "アプリ"
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction("マクロ", "Sample Macro", "", ActionKind.Macro, "sample"), "マクロ") == "マクロ",
+                "Action rows show the actual key or shortcut below keyboard actions while non-key actions keep a concise type label");
             window.ActionPaletteSearchBox.Text = "音量";
             window.ActionPaletteSearchBox.Focus();
             window.ActionPaletteSearchBox.CaretIndex = window.ActionPaletteSearchBox.Text.Length;
@@ -518,15 +611,18 @@ internal static class UiIntegrationTest
             window.SelectActionPalettePopupItemForTest("キー");
             Pump(window);
             string[] orderedPaletteKeys = window.VisibleActionPaletteActionsForTest.Select(action => action.Value).ToArray();
-            string[] expectedFunctionRow = ["Esc", .. Enumerable.Range(1, 12).Select(number => $"F{number}"), "PrintScreen", "ScrollLock", "Pause"];
+            string[] expectedLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".Select(letter => letter.ToString()).ToArray();
+            string[] expectedDigits = Enumerable.Range(0, 10).Select(number => number.ToString()).ToArray();
+            string[] expectedFunctionKeys = Enumerable.Range(1, 24).Select(number => $"F{number}").ToArray();
             int upKeyIndex = Array.IndexOf(orderedPaletteKeys, "Up");
             int leftKeyIndex = Array.IndexOf(orderedPaletteKeys, "Left");
             int downKeyIndex = Array.IndexOf(orderedPaletteKeys, "Down");
             int rightKeyIndex = Array.IndexOf(orderedPaletteKeys, "Right");
-            Check(orderedPaletteKeys.Take(expectedFunctionRow.Length).SequenceEqual(expectedFunctionRow)
-                && orderedPaletteKeys.SkipWhile(key => key != "Q").Take(10).SequenceEqual("QWERTYUIOP".Select(letter => letter.ToString()))
+            Check(orderedPaletteKeys.Take(expectedLetters.Length).SequenceEqual(expectedLetters)
+                && orderedPaletteKeys.Skip(expectedLetters.Length).Take(expectedDigits.Length).SequenceEqual(expectedDigits)
+                && orderedPaletteKeys.Skip(expectedLetters.Length + expectedDigits.Length).Take(expectedFunctionKeys.Length).SequenceEqual(expectedFunctionKeys)
                 && upKeyIndex >= 0 && upKeyIndex < leftKeyIndex && leftKeyIndex < downKeyIndex && downKeyIndex < rightKeyIndex,
-                "the Key category follows physical keyboard rows instead of mixing arrows, letters, and digits by assignment frequency");
+                "the Key category begins with A-Z, then 0-9 and F1-F24 before the remaining special keys");
             window.ActionPaletteSearchBox.Text = "excel";
             Pump(window);
             bool clearButtonAppeared = window.ActionPaletteSearchClearButton.Visibility == Visibility.Visible;
@@ -572,8 +668,19 @@ internal static class UiIntegrationTest
                 "action drags use a compact whole-row preview instead of an ambiguous icon-only ghost");
             Check(DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.Volume)
                 && DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.Brightness)
-                && !DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.TaskManager),
+                && !DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.TaskManager)
+                && !DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.AutoExtractToggle),
                 "volume and brightness Deck monitors accept wheel adjustment without making passive monitors consume scrolling");
+            bool originalArchiveState = ArchiveAutomationState.Enabled;
+            ArchiveAutomationState.Set(true);
+            Check(ArchiveAutomationState.Reading() is { Text: "ON", Detail: "監視中", Level: 1 }
+                && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor)
+                && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle,
+                "the auto-extraction Deck monitor exposes an immediately readable and clickable ON state");
+            ArchiveAutomationState.Set(false);
+            Check(ArchiveAutomationState.Reading() is { Text: "OFF", Detail: "停止中", Level: 0 },
+                "the auto-extraction Deck monitor immediately reflects the OFF state");
+            ArchiveAutomationState.Set(originalArchiveState);
             UiMotionService.Apply(true);
             Check(window.ExerciseFrozenActionLaunchMotionForTest(),
                 "Action hover clones production-frozen template transforms before animation instead of terminating the resident process");
@@ -605,6 +712,17 @@ internal static class UiIntegrationTest
             window.ClickActionPaletteBlankForTest();
             Check(!window.IsActionPaletteOpenForTest,
                 "one blank workspace click closes the action library without requiring a second click");
+            window.OpenActionPaletteForTest();
+            Pump(window);
+            window.ClickVisualInputForTest("F22");
+            Pump(window);
+            Check(!window.IsActionPaletteOpenForTest
+                && window.InputName.Text == "F22"
+                && window.AssignmentScrollViewer.Visibility == Visibility.Visible
+                && window.AssignmentEditor.Visibility == Visibility.Visible,
+                "one main-keyboard click replaces the open Action library with that key's assignment editor");
+            window.ClickActionPaletteBlankForTest();
+            Pump(window);
             window.CloseActionPaletteForTest();
             window.OpenActionPaletteForTest();
             Pump(window);
@@ -838,12 +956,16 @@ internal static class UiIntegrationTest
             double sidebarLogoTop = window.ProductNameText.TranslatePoint(new System.Windows.Point(), window).Y;
             Check(toolbarControls.All(x => Math.Abs(x.ActualHeight - 44) < .1)
                 && Math.Abs(window.ThemeSegmentPanel.ActualHeight - 44) < .1
-                && new[] { window.LightThemeToggle, window.DarkThemeToggle }.All(x => Math.Abs(x.ActualHeight - 40) < .1)
+                && new[] { window.LightThemeToggle, window.DarkThemeToggle }.All(x => Math.Abs(x.ActualHeight - 44) < .1)
                 && window.ToolbarSaveButton.ActualWidth >= 77
+                && window.ToolbarSaveButton.BorderThickness == new Thickness(0)
+                && window.ThemeSegmentPanel.Background is SolidColorBrush themePanelBrush && themePanelBrush.Color.A == 0
+                && new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton }.All(control => control.BorderThickness == new Thickness(0))
                 && Math.Abs(window.ToolbarPanel.Margin.Top - 9.5) < .1
                 && Math.Abs(window.ToolbarPanel.Margin.Bottom + 9.5) < .1
+                && window.KeyboardLayoutToolbarIcon.RenderTransform is TranslateTransform keyboardIconShift && Math.Abs(keyboardIconShift.Y - 5) < .1
                 && Math.Abs(toolbarControlTop - sidebarLogoTop) <= 1.1,
-                $"toolbar uses the larger reference dimensions and aligns its top plane to the untouched sidebar logo ({toolbarControlTop:F1}/{sidebarLogoTop:F1})");
+                $"toolbar is flat, the keyboard glyph is optically centered on its layout label, and the 44 px controls align to the untouched sidebar logo ({toolbarControlTop:F1}/{sidebarLogoTop:F1})");
             double layoutRight = window.KeyboardLayoutBox.TranslatePoint(new System.Windows.Point(window.KeyboardLayoutBox.ActualWidth, 0), window.ToolbarPanel).X;
             double selectionLeft = window.MultiSelectActionsPanel.TranslatePoint(new System.Windows.Point(), window.ToolbarPanel).X;
             double selectionRight = window.MultiSelectActionsPanel.TranslatePoint(new System.Windows.Point(window.MultiSelectActionsPanel.ActualWidth, 0), window.ToolbarPanel).X;
@@ -887,9 +1009,22 @@ internal static class UiIntegrationTest
             window.LightThemeToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Pump(window);
             bool lightToolbarApplied = ThemeService.CurrentMode == AppThemeMode.Light && window.ConfigForTest.ThemeMode == AppThemeMode.Light && window.LightThemeToggle.IsChecked == true && window.DarkThemeToggle.IsChecked == false;
+            bool lightTrayMenuApplied = window.TrayMenuBackColorForTest.GetBrightness() > .9;
             window.DarkThemeToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Pump(window);
-            Check(lightToolbarApplied && ThemeService.CurrentMode == AppThemeMode.Dark && window.ConfigForTest.ThemeMode == AppThemeMode.Dark && window.LightThemeToggle.IsChecked == false && window.DarkThemeToggle.IsChecked == true, "the visible light and dark toolbar buttons apply and persist the selected theme immediately");
+            window.LightThemeToggle.ApplyTemplate();
+            window.DarkThemeToggle.ApplyTemplate();
+            var lightThemeSurface = (Border)window.LightThemeToggle.Template.FindName("SegmentSurface", window.LightThemeToggle)!;
+            var darkThemeSurface = (Border)window.DarkThemeToggle.Template.FindName("SegmentSurface", window.DarkThemeToggle)!;
+            var darkThemeLine = (Border)window.DarkThemeToggle.Template.FindName("SegmentLine", window.DarkThemeToggle)!;
+            Check(lightToolbarApplied && lightTrayMenuApplied
+                && ThemeService.CurrentMode == AppThemeMode.Dark && window.ConfigForTest.ThemeMode == AppThemeMode.Dark && window.LightThemeToggle.IsChecked == false && window.DarkThemeToggle.IsChecked == true
+                && window.TrayMenuBackColorForTest.GetBrightness() < .25
+                && window.ThemeSegmentPanel.ClipToBounds
+                && lightThemeSurface.CornerRadius == new CornerRadius(0) && darkThemeSurface.CornerRadius == new CornerRadius(0)
+                && darkThemeSurface.Background is SolidColorBrush selectedThemeSurface && selectedThemeSurface.Color.A == 0
+                && darkThemeLine.Opacity == 1,
+                "the connected light/dark control applies the theme immediately and marks selection with only a restrained underline");
             Check(window.TopToolbarPane.BorderThickness == new Thickness(0) && window.BottomStatusPane.BorderThickness == new Thickness(0) && window.LayerNavigationPane.BorderThickness == new Thickness(0) && ReferenceEquals(window.TopToolbarPane.Background, ThemeService.Brush("AppBackground")) && ReferenceEquals(window.BottomStatusPane.Background, ThemeService.Brush("AppBackground")) && ReferenceEquals(window.LayerNavigationPane.Background, ThemeService.Brush("AppBackground")) && !Descendants<Separator>(window.SidebarStatusPanel).Any(), "all outer panes share one flat background without full-height toolbar, sidebar, or status borders");
             double leftDividerRight = window.LeftPaneSoftDivider.TranslatePoint(new System.Windows.Point(window.LeftPaneSoftDivider.ActualWidth, 0), window.LayerNavigationPane).X;
             double rightDividerLeft = window.RightPaneSoftDivider.TranslatePoint(new System.Windows.Point(), window.MainContentGrid).X;
@@ -918,7 +1053,12 @@ internal static class UiIntegrationTest
             Check(sidebarDividers.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).Max() - sidebarDividers.Select(x => x.TranslatePoint(new System.Windows.Point(), window).X).Min() < .1 && sidebarDividers.Select(x => x.ActualWidth).Max() - sidebarDividers.Select(x => x.ActualWidth).Min() < .1, "left-pane section dividers share identical left and right edges");
             window.DeckPanelManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.DeckWorkspace.Visibility == Visibility.Visible && window.KeyboardWorkspace.Visibility == Visibility.Collapsed && window.DeckLayoutListWorkspace.Visibility == Visibility.Visible && window.DeckEditorWorkspace.Visibility == Visibility.Collapsed && window.DeckLayoutCardsPanel.Children.Count == window.ConfigForTest.DeckLayouts.Count + 1, "Deck management opens a layout-card list with a permanent New card");
+            var flatDeckGalleryButtons = window.DeckLayoutCardsPanel.Children.OfType<System.Windows.Controls.Button>().ToArray();
+            Check(window.DeckWorkspace.Visibility == Visibility.Visible && window.KeyboardWorkspace.Visibility == Visibility.Collapsed && window.DeckLayoutListWorkspace.Visibility == Visibility.Visible && window.DeckEditorWorkspace.Visibility == Visibility.Collapsed && window.DeckLayoutCardsPanel.Children.Count == window.ConfigForTest.DeckLayouts.Count + 1
+                && flatDeckGalleryButtons.All(button => button.BorderThickness == new Thickness(0) && Math.Abs(button.ActualHeight - 164) < .1)
+                && window.DeckPanelManagerButton.BorderThickness == new Thickness(0)
+                && window.DeckNavigationActiveIndicator.Visibility == Visibility.Visible,
+                "Deck management opens a flat layout gallery and marks its sidebar destination with the shared active dot");
             var extraDeck = window.AddDeckLayoutForTest("配信用", 8, 2);
             Pump(window);
             Check(window.DeckLayoutCardsPanel.Children.OfType<System.Windows.Controls.Button>().Any(x => ReferenceEquals(x.Tag, extraDeck)) && window.ConfigForTest.DeckLayouts.Count >= 2, "multiple named Deck layouts appear in the list");
@@ -950,6 +1090,17 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(unassignedDeckSelectedWithoutImplicitEdit && window.InputName.Text.Length == 0 && window.InspectorEmptyState.Visibility == Visibility.Visible,
                 "an unassigned Deck slot does not force the value editor and one preview-background click clears its selection");
+            window.OpenActionPaletteForTest();
+            Pump(window);
+            unassignedDeckButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(!window.IsActionPaletteOpenForTest
+                && window.InputName.Text == unassignedDeckInput
+                && window.AssignmentScrollViewer.Visibility == Visibility.Visible
+                && window.AssignmentEditor.Visibility == Visibility.Visible,
+                "one Deck-slot click replaces the open Action library with that slot's assignment editor");
+            window.ClickDeckPreviewBackgroundForTest();
+            Pump(window);
             window.SetInputHoverForTest(deckButtons[0], true);
             PumpFor(TimeSpan.FromMilliseconds(150));
             Check(deckButtons[0].RenderTransform is ScaleTransform deckHoverScale && deckHoverScale.HasAnimatedProperties && deckHoverScale.ScaleX >= 1.049 && deckHoverScale.ScaleY >= 1.049,
@@ -2121,7 +2272,12 @@ internal static class UiIntegrationTest
                 && window.DeckLayoutNameBox.BorderThickness == new Thickness(0)
                 && Math.Abs(window.DeckAfterActionBehaviorBox.Height - 36) < .1
                 && Math.Abs(window.DeckPointerLeaveBehaviorBox.Height - 36) < .1
-                && Math.Abs(window.DeckOverlayToggleButton.ActualHeight - 36) < .1
+                && Math.Abs(window.DeckOverlayToggleButton.ActualHeight - 44) < .1
+                && window.DeckBackButton.BorderThickness == new Thickness(0)
+                && window.DeckGridViewToggle.BorderThickness == new Thickness(0)
+                && window.DeckListViewToggle.BorderThickness == new Thickness(0)
+                && window.DeckCustomizeToggleButton.BorderThickness == new Thickness(0)
+                && window.DeckOverlayToggleButton.BorderThickness == new Thickness(0)
                 && window.DeckSaveButton.Visibility == Visibility.Collapsed
                 && window.ToolbarSaveButton.Visibility == Visibility.Visible
                 && window.DeckSettingsPanel.Visibility == Visibility.Collapsed
@@ -2428,7 +2584,9 @@ internal static class UiIntegrationTest
             window.CompleteDestinationInputForTest();
             Pump(window);
             Check(up.Background is SolidColorBrush assignedArrowBrush && assignedArrowBrush.Color.G > assignedArrowBrush.Color.R * 2 && !window.IsEditingSelectedInputForTest && !MainWindow.GetIsSelectionPulseActive(up) && !MainWindow.HasSelectionPulseAnimationForTest(up), "input completion retains the assigned-action color and stops the selection pulse");
-            Check(window.CurrentProfileForTest.Mappings.Any(x => x.Input == "Up" && x.Value == "Enter") && window.AppliedMappingForTest("Up") == null && window.LastInput.Text.Contains("未保存"), "input completion keeps edits pending when auto-save is off");
+            Check(window.CurrentProfileForTest.Mappings.Any(x => x.Input == "Up" && x.Value == "Enter") && window.AppliedMappingForTest("Up") == null && window.LastInput.Text.Contains("未保存")
+                && window.UnsavedChangesIndicator.Visibility == Visibility.Visible,
+                "input completion keeps edits pending and shows the persistent bottom-center unsaved indicator when auto-save is off");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(ReferenceEquals(window.MouseHost.Child, window.MousePanel), "mouse diagram is placed to the right of the lower keyboard block");
@@ -2443,9 +2601,12 @@ internal static class UiIntegrationTest
             Check(Math.Abs(engineTextCenter - engineToggle.ActualHeight / 2) < 1, "engine status text is vertically centered");
             Check(window.AutoSaveToggle.IsVisible && window.AutoSaveStatus.Text.Contains("自動保存 オフ"), "auto-save state is visible at the sidebar foot");
             window.AutoSaveToggle.IsChecked = true;
-            Check(window.AutoSaveStatus.Text.Contains("自動保存 オン") && new ConfigService().Load().AutoSave && window.AppliedMappingForTest("Up") is { Value: "Enter" }, "turning auto-save on saves and applies the pending edit");
+            Check(window.AutoSaveStatus.Text.Contains("自動保存 オン") && new ConfigService().Load().AutoSave && window.AppliedMappingForTest("Up") is { Value: "Enter" }
+                && window.UnsavedChangesIndicator.Visibility == Visibility.Collapsed,
+                "turning auto-save on saves and applies the pending edit, then clears the unsaved indicator");
             window.AutoSaveToggle.IsChecked = false;
-            Check(!new ConfigService().Load().AutoSave, "turning auto-save off is persisted immediately");
+            Check(!new ConfigService().Load().AutoSave && window.UnsavedChangesIndicator.Visibility == Visibility.Collapsed,
+                "turning auto-save off is persisted immediately without claiming that a clean document is unsaved");
             window.AutoSaveToggle.IsChecked = true;
             Check(ReferenceEquals(window.SidebarStatusPanel.Parent, ((Grid)window.LayerNavigationPane.Child)) && !Descendants<TextBlock>(window.SidebarStatusPanel).Any(x => x.Text.StartsWith("プロファイル:", StringComparison.Ordinal)), "sidebar status row omits the redundant active-profile label");
             Check(!Descendants<TextBlock>(window).Any(x => x.Text.StartsWith("レイヤーボタンを押しながら")), "redundant layer explanation banner is removed");
@@ -2637,6 +2798,25 @@ internal static class UiIntegrationTest
             allLayerSource.Application = "notepad.exe";
             var mainKeyboardMenu = window.CreateInputContextMenu("B");
             var assignAllLayers = mainKeyboardMenu.Items.OfType<MenuItem>().SingleOrDefault(item => item.Header?.ToString() == "全レイヤーに割り当てる");
+            mainKeyboardMenu.ApplyTemplate();
+            assignAllLayers?.ApplyTemplate();
+            var contextMenuSurface = (Border?)mainKeyboardMenu.Template.FindName("ContextMenuSurface", mainKeyboardMenu);
+            var contextMenuItemSurface = assignAllLayers == null ? null : (Border?)assignAllLayers.Template.FindName("MenuItemBorder", assignAllLayers);
+            var contextMenuSeparatorStyle = System.Windows.Application.Current.TryFindResource(MenuItem.SeparatorStyleKey) as Style;
+            var contextMenuSeparator = contextMenuSeparatorStyle == null ? null : new Separator { Style = contextMenuSeparatorStyle };
+            contextMenuSeparator?.ApplyTemplate();
+            var contextMenuSeparatorLine = contextMenuSeparator == null ? null : (Border?)contextMenuSeparator.Template.FindName("ContextMenuSeparatorLine", contextMenuSeparator);
+            Check(contextMenuSurface != null && contextMenuItemSurface != null
+                && mainKeyboardMenu.MinWidth >= 180 && mainKeyboardMenu.BorderThickness == new Thickness(0)
+                && contextMenuSurface.CornerRadius == new CornerRadius(10)
+                && ReferenceEquals(contextMenuSurface.Background, ThemeService.Brush("CardBackground"))
+                && contextMenuItemSurface.CornerRadius == new CornerRadius(6)
+                && contextMenuSeparatorLine != null
+                && ReferenceEquals(contextMenuSeparatorStyle?.BasedOn, System.Windows.Application.Current.Resources["ContextMenuSeparatorStyle"])
+                && ReferenceEquals(contextMenuSeparatorLine.Background, ThemeService.Brush("SubtleBorderBrush"))
+                && contextMenuSeparatorLine.Opacity <= 0.42
+                && contextMenuSeparatorLine.Margin.Left >= 13,
+                "the WPF menu separator resource key and all right-click menus share the same compact theme-aware surface, row treatment, and quiet separators");
             assignAllLayers?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+B", StringComparison.OrdinalIgnoreCase))).ToArray();
@@ -2644,9 +2824,10 @@ internal static class UiIntegrationTest
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.MultiDeleteButton.IsEnabled
-                && window.MultiDeleteButton.Foreground is SolidColorBrush deleteForeground && deleteForeground.Color == ThemeService.Color("DangerBrush")
-                && window.MultiDeleteButton.Background is SolidColorBrush deleteBackground && deleteBackground.Color == ThemeService.Color("ControlBackground"),
-                "toolbar trash becomes active for one normally selected assigned key while remaining neutral until hover");
+                && window.MultiDeleteButton.Foreground is SolidColorBrush deleteForeground && deleteForeground.Color == ThemeService.Color("SecondaryText")
+                && window.MultiDeleteButton.Background is SolidColorBrush deleteBackground && deleteBackground.Color.A == 0
+                && window.MultiDeleteButton.BorderThickness == new Thickness(0),
+                "toolbar trash becomes active for one normally selected assigned key while staying flat and neutral until hover");
             window.MultiDeleteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!window.CurrentProfileForTest.Mappings.Any(x => x.Input == "A") && !window.MultiDeleteButton.IsEnabled, "toolbar trash deletes the assignment of one normally selected key and clears its active state");
@@ -2914,8 +3095,8 @@ internal static class UiIntegrationTest
             var settingsSwitches = Descendants<System.Windows.Controls.CheckBox>(settings).ToArray();
             foreach (var appSwitch in settingsSwitches)
                 appSwitch.ApplyTemplate();
-            Check(settingsSwitches.Length == 11 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
-                "all eleven settings checkboxes render through the shared RELYR switch template");
+            Check(settingsSwitches.Length == 12 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
+                "all twelve settings checkboxes render through the shared RELYR switch template");
             Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll => ReferenceEquals(scroll, settings.LayersScrollPanel)), "only the longer layer category uses a bounded scroll surface");
             settings.CategoryList.SelectedIndex = 6;
             settings.UpdateLayout();
@@ -2973,7 +3154,21 @@ internal static class UiIntegrationTest
             settings.CategoryList.SelectedIndex = 4;
             settings.UpdateLayout();
             Check(settings.ArchivePanel.Visibility == Visibility.Visible, "archive settings fit on their own category page");
-            Check(settings.ArchiveWatchFolderBox.Text == Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) && settings.ArchiveDestinationFolderBox.Text == "" && Descendants<System.Windows.Controls.Button>(settings.ArchivePanel).Count(x => x.Content?.ToString() == "参照…") == 2, "archive settings provide separate browsable watch and destination folders");
+            Check(settings.ArchiveWatchFolderBox.Text == Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
+                && settings.ArchiveDestinationFolderBox.Text == ""
+                && settings.ArchiveOverlayBox.IsChecked == true
+                && !settings.ArchiveOverlayBox.IsEnabled
+                && Descendants<System.Windows.Controls.Button>(settings.ArchivePanel).Count(x => x.Content?.ToString() == "参照…") == 2,
+                "archive settings provide separate folders and a default-on overlay switch that follows the auto-extraction master switch");
+            settings.ExtractBox.IsChecked = true;
+            Check(settings.ArchiveOverlayBox.IsEnabled && settings.ShowArchiveExtractionOverlay,
+                "enabling auto extraction also enables its compact progress-overlay preference");
+            var archiveOverlay = new ArchiveProgressOverlay();
+            archiveOverlay.ShowActivity(new ArchiveActivity(ArchiveActivityState.Extracting, "sample.zip"));
+            PumpFor(TimeSpan.FromMilliseconds(40));
+            Check(archiveOverlay.UsesCompactClickThroughSurfaceForTest && archiveOverlay.UsesNativeClickThroughStylesForTest,
+                "the archive progress surface is compact, non-activating, and native click-through so it cannot block the desktop or taskbar");
+            archiveOverlay.CloseForProcessExit();
             settings.CategoryList.SelectedIndex = 5;
             settings.UpdateLayout();
             Check(settings.ResetAllButton.Background is SolidColorBrush resetBrush && resetBrush.Color == ThemeService.Color("ControlBackground")
@@ -3185,9 +3380,15 @@ internal static class UiIntegrationTest
             Check(macroConfig.Macros.Count == 0 && macro.EmptyHint.IsVisible && !macro.EditorPanel.IsEnabled, "macro window starts empty and waits for New");
             Check(macro.UseButton.Visibility == Visibility.Collapsed, "main macro manager hides the ambiguous assign button");
             Check(macro.MacroList.ActualWidth > 140 && macro.StepList.ActualWidth > 300 && macro.EditorTabs.ActualWidth > 240, "macro manager uses a readable three-pane layout");
+            Check(new[] { macro.MacroListPane, macro.MacroStepsPane, macro.MacroToolsPane }.All(pane => pane.BorderThickness == new Thickness(0) && pane.Background is SolidColorBrush brush && brush.Color.A == 0)
+                && macro.MacroList.BorderThickness == new Thickness(0) && macro.StepList.BorderThickness == new Thickness(0),
+                "macro manager panes and working lists are separated by spacing instead of nested permanent frames");
             var macroListActions = new[] { macro.NewMacroButton, macro.DuplicateMacroButton, macro.EditMacroButton, macro.DeleteMacroButton };
-            Check(macroListActions.All(button => button.Content is TextBlock text && text.FontFamily.Source == "Segoe MDL2 Assets" && Math.Abs(button.ActualHeight - 40) < .1) && macroListActions.Max(button => button.ActualWidth) - macroListActions.Min(button => button.ActualWidth) < .1 && macroListActions.All(button => button.ToolTip != null), "macro list actions use four equal icon-only controls with descriptive tooltips");
-            Check(new[] { macro.ManualModeButton, macro.RecordModeButton, macro.StepEditModeButton }.SelectMany(Descendants<TextBlock>).Select(x => x.Text).Where(x => x is "手動追加" or "自動記録" or "手順編集").SequenceEqual(["手動追加", "自動記録", "手順編集"]) && macro.EditorTabs.Template != null && macro.DropIndicator.Visibility == Visibility.Collapsed, "macro editing modes use icon-labelled app buttons and keep the drag insertion guide hidden until needed");
+            Check(macroListActions.All(button => button.Content is TextBlock text && text.FontFamily.Source == "Segoe MDL2 Assets" && Math.Abs(button.ActualHeight - 40) < .1 && button.ActualWidth >= 40 && button.BorderThickness == new Thickness(0)) && macroListActions.Max(button => button.ActualWidth) - macroListActions.Min(button => button.ActualWidth) < .1 && macroListActions.All(button => button.ToolTip != null), "macro list actions use four equal flat icon-only controls with complete hit targets and descriptive tooltips");
+            Check(new[] { macro.ManualModeButton, macro.RecordModeButton, macro.StepEditModeButton }.SelectMany(Descendants<TextBlock>).Select(x => x.Text).Where(x => x is "追加" or "記録" or "編集").SequenceEqual(["追加", "記録", "編集"]) && macro.EditorTabs.Template != null && macro.DropIndicator.Visibility == Visibility.Collapsed, "macro editing modes use compact icon-labelled controls and keep the drag insertion guide hidden until needed");
+            var macroCommandIcons = Descendants<TextBlock>(macro).Where(text => Equals(text.Tag, "MacroCommandIcon")).ToArray();
+            Check(macroCommandIcons.Length >= 7 && macroCommandIcons.All(icon => Math.Abs(icon.ActualWidth - 28) < .1 && Math.Abs(icon.ActualHeight - 22) < .1 && icon.TextAlignment == TextAlignment.Center),
+                "manual macro command icons, including the text T, use one centered alignment plane");
             macro.RecordModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(macro.EditorTabs.SelectedIndex == 1, "macro mode buttons switch the editor without old tab headers");
             macro.ManualModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -3210,8 +3411,8 @@ internal static class UiIntegrationTest
             var macroStepHandles = Descendants<Border>(macro.StepList).Where(border => Equals(border.Tag, "MacroStepDragHandle")).ToArray();
             var macroStepNumbers = Descendants<Border>(macro.StepList).Where(border => Equals(border.Tag, "MacroStepNumber")).ToArray();
             Check(macroStepHandles.Length == macroConfig.Macros[0].Steps.Count && macroStepHandles.All(handle => handle.Cursor == System.Windows.Input.Cursors.SizeAll && !string.IsNullOrWhiteSpace(handle.ToolTip?.ToString()))
-                && macroStepNumbers.Length == macroConfig.Macros[0].Steps.Count && macroStepNumbers.All(number => Math.Abs(number.ActualWidth - 34) < .1),
-                "every macro step has a readable fixed number badge and an explicit three-dot drag handle");
+                && macroStepNumbers.Length == macroConfig.Macros[0].Steps.Count && macroStepNumbers.All(number => Math.Abs(number.ActualWidth - 34) < .1 && number.BorderThickness == new Thickness(0)),
+                "every macro step has a readable flat fixed number and an explicit three-dot drag handle");
             Check(macro.OpenSafeStepDragPreviewForTest(), "the visual-only macro drag preview is also click-through at the native popup-window level");
             CaptureForReview(macro, "macro-manager.png");
             Check(Descendants<TextBlock>(macro).Any(x => x.Text.Contains("Ctrl + Shift + F12")), "macro stop shortcut is explained");
@@ -3646,15 +3847,19 @@ internal static class UiIntegrationTest
             var lightDeckPreviewCells = Descendants<Border>(window.DeckLayoutCardsPanel).Where(border => ReferenceEquals(border.Background, ThemeService.Brush("DeckPreviewCellBackground"))).ToArray();
             var lightDeckCards = window.DeckLayoutCardsPanel.Children.OfType<System.Windows.Controls.Button>().Where(button => Descendants<TextBlock>(button).Any(text => Equals(text.Tag, "DeckLayoutName"))).ToArray();
             var lightDeckCellColor = ThemeService.Color("DeckPreviewCellBackground");
-            var lightDeckCardColor = ThemeService.Color("CardBackground");
-            int lightDeckContrast = Math.Abs(lightDeckCellColor.R - lightDeckCardColor.R) + Math.Abs(lightDeckCellColor.G - lightDeckCardColor.G) + Math.Abs(lightDeckCellColor.B - lightDeckCardColor.B);
+            var lightDeckSurfaceColor = ThemeService.Color("AppBackground");
+            int lightDeckContrast = Math.Abs(lightDeckCellColor.R - lightDeckSurfaceColor.R) + Math.Abs(lightDeckCellColor.G - lightDeckSurfaceColor.G) + Math.Abs(lightDeckCellColor.B - lightDeckSurfaceColor.B);
             var lightDeckNameTops = lightDeckCards.Select(card => Descendants<TextBlock>(card).Single(text => Equals(text.Tag, "DeckLayoutName")).TranslatePoint(new System.Windows.Point(), card).Y).ToArray();
-            Check(lightDeckPreviewCells.Length > 0 && lightDeckContrast >= 60, $"light-theme Deck thumbnails remain visible against white cards (cells={lightDeckPreviewCells.Length}, contrast={lightDeckContrast})");
+            Check(lightDeckPreviewCells.Length > 0 && lightDeckContrast >= 36 && lightDeckCards.All(card => card.BorderThickness == new Thickness(0)), $"light-theme Deck thumbnails remain visible in the borderless gallery (cells={lightDeckPreviewCells.Length}, contrast={lightDeckContrast})");
             Check(lightDeckNameTops.Length > 0 && lightDeckNameTops.Max() - lightDeckNameTops.Min() < .1, $"every Deck card places its name on one horizontal line (spread={lightDeckNameTops.Max() - lightDeckNameTops.Min():F2})");
             ThemeService.Apply(AppThemeMode.Dark);
             Pump(window);
             var darkDeckCardsAfterSwitch = window.DeckLayoutCardsPanel.Children.OfType<System.Windows.Controls.Button>().Where(button => Descendants<TextBlock>(button).Any(text => Equals(text.Tag, "DeckLayoutName"))).ToArray();
-            Check(darkDeckCardsAfterSwitch.Length == lightDeckCards.Length && darkDeckCardsAfterSwitch.All(card => card.Background is SolidColorBrush brush && brush.Color == ThemeService.Color("CardBackground")) && darkDeckCardsAfterSwitch.All(card => Descendants<TextBlock>(card).Single(text => Equals(text.Tag, "DeckLayoutName")).Foreground is SolidColorBrush brush && brush.Color == ThemeService.Color("PrimaryText")), "Deck cards fully recolor when switching directly from light to dark theme");
+            Check(darkDeckCardsAfterSwitch.Length == lightDeckCards.Length
+                && darkDeckCardsAfterSwitch.All(card => card.BorderThickness == new Thickness(0))
+                && darkDeckCardsAfterSwitch.Where(card => card.Tag is DeckLayoutDefinition layout && !window.CurrentProfileForTest.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase)).All(card => card.Background is SolidColorBrush brush && brush.Color.A == 0)
+                && darkDeckCardsAfterSwitch.All(card => Descendants<TextBlock>(card).Single(text => Equals(text.Tag, "DeckLayoutName")).Foreground is SolidColorBrush brush && brush.Color == ThemeService.Color("PrimaryText")),
+                "Deck gallery remains flat and fully recolors when switching directly from light to dark theme");
             ThemeService.Apply(AppThemeMode.Light);
             Pump(window);
             CaptureForReview(window, "redesign-light-deck.png");
@@ -3768,6 +3973,94 @@ internal static class UiIntegrationTest
             using var bitmap = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
             using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
                 graphics.CopyFromScreen(rect.Left - padding, rect.Top - padding, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
+            Directory.CreateDirectory(directory);
+            bitmap.Save(Path.Combine(directory, fileName), System.Drawing.Imaging.ImageFormat.Png);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    static bool CaptureContextMenuForReview(System.Windows.Controls.ContextMenu menu, string fileName)
+    {
+        IntPtr hwnd = (System.Windows.PresentationSource.FromVisual(menu) as System.Windows.Interop.HwndSource)?.Handle ?? IntPtr.Zero;
+        if (hwnd != IntPtr.Zero && CaptureNativeWindowForReview(hwnd, fileName, 18))
+            return true;
+        string? directory = Environment.GetEnvironmentVariable("RELYR_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+        try
+        {
+            menu.UpdateLayout();
+            System.Windows.Point topLeft = menu.PointToScreen(new System.Windows.Point());
+            return CaptureScreenRegionForReview(
+                (int)Math.Floor(topLeft.X) - 18,
+                (int)Math.Floor(topLeft.Y) - 18,
+                (int)Math.Ceiling(menu.ActualWidth) + 36,
+                (int)Math.Ceiling(menu.ActualHeight) + 36,
+                fileName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    static bool CaptureElementsForReview(Window window, IReadOnlyCollection<FrameworkElement> elements, string fileName)
+    {
+        string? directory = Environment.GetEnvironmentVariable("RELYR_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+        try
+        {
+            var visible = elements.Where(element => element.IsVisible && element.ActualWidth > 0 && element.ActualHeight > 0).ToArray();
+            if (visible.Length == 0)
+                return false;
+            var topLeft = visible.Select(element => element.PointToScreen(new System.Windows.Point())).ToArray();
+            var bottomRight = visible.Select(element => element.PointToScreen(new System.Windows.Point(element.ActualWidth, element.ActualHeight))).ToArray();
+            const int padding = 16;
+            int left = (int)Math.Floor(topLeft.Min(point => point.X)) - padding;
+            int top = (int)Math.Floor(topLeft.Min(point => point.Y)) - padding;
+            int right = (int)Math.Ceiling(bottomRight.Max(point => point.X)) + padding;
+            int bottom = (int)Math.Ceiling(bottomRight.Max(point => point.Y)) + padding;
+            return CaptureScreenRegionForReview(left, top, right - left, bottom - top, fileName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    static bool CaptureNativeWindowForReview(IntPtr hwnd, string fileName, int padding)
+    {
+        string? directory = Environment.GetEnvironmentVariable("RELYR_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+        try
+        {
+            if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var rect))
+                return false;
+            return CaptureScreenRegionForReview(
+                rect.Left - padding,
+                rect.Top - padding,
+                rect.Right - rect.Left + padding * 2,
+                rect.Bottom - rect.Top + padding * 2,
+                fileName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    static bool CaptureScreenRegionForReview(int left, int top, int width, int height, string fileName)
+    {
+        string? directory = Environment.GetEnvironmentVariable("RELYR_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+        try
+        {
+            using var bitmap = new System.Drawing.Bitmap(Math.Max(1, width), Math.Max(1, height), System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+                graphics.CopyFromScreen(left, top, 0, 0, bitmap.Size, System.Drawing.CopyPixelOperation.SourceCopy);
             Directory.CreateDirectory(directory);
             bitmap.Save(Path.Combine(directory, fileName), System.Drawing.Imaging.ImageFormat.Png);
             return true;

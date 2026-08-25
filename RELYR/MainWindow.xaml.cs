@@ -79,6 +79,7 @@ public partial class MainWindow : Window
     Mapping? selected;
     string selectedBaseInput = "";
     private bool loading;
+    private bool hasUnsavedChanges;
     private bool detectMode;
     private bool allowClose;
     private readonly bool engineStarted;
@@ -97,6 +98,7 @@ public partial class MainWindow : Window
     internal static IReadOnlyList<string> AllAssignmentLayerNames { get; } = ["Space", "CapsLock", "MouseRight", "MouseForward", "MouseBack", "Taskbar"];
     MacroWindow? macroWindow; bool engineBeforeMacroRecording, macroEmergencyStop, macroIsRecording;
     ProfileSwitchOverlay? profileOverlay;
+    ArchiveProgressOverlay? archiveProgressOverlay;
     string lastProfileOverlayName = "";
     Mapping? copiedMapping;
     Mapping? copiedDeckMapping;
@@ -178,6 +180,7 @@ public partial class MainWindow : Window
         VersionText.Text = "v" + DisplayVersion;
         Title = "RELYR v" + DisplayVersion;
         config = startupConfig ?? store.Load();
+        ArchiveAutomationState.Set(config.AutoExtractDesktopArchives);
         ThemeService.Apply(config.ThemeMode);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         ThemeService.ThemeChanged += AppThemeChanged;
@@ -303,7 +306,8 @@ public partial class MainWindow : Window
         EngineToggle.IsChecked = engine.Enabled;
         EngineToggle.IsEnabled = engineStarted;
         archiveWatcher.Status += text => Dispatcher.BeginInvoke(() => LastInput.Text = text);
-        archiveWatcher.Apply(config);
+        archiveWatcher.ActivityChanged += activity => Dispatcher.BeginInvoke(() => HandleArchiveActivity(activity));
+        ApplyArchiveWatcherConfiguration();
         if (!this.suppressTray)
         {
             SetupTray();
@@ -507,6 +511,7 @@ public partial class MainWindow : Window
         }
         ApplyWindowsTitleBarTheme();
         UpdateThemeToolbarControls();
+        RebuildTrayMenu();
         if (editorUiInitialized && KeyboardPanel != null)
         {
             BuildKeyboard();
@@ -933,6 +938,8 @@ public partial class MainWindow : Window
             return;
         }
         ClearExecutionFocus();
+        if (actionPaletteOpen)
+            CloseActionPalette(animated: false);
         SelectInput(currentLayer == "通常" ? key : currentLayer + "+" + key, false);
     }
     void OpenShortcutForVisualInput(string key)
@@ -2830,6 +2837,8 @@ public partial class MainWindow : Window
     {
         if (config == null)
             return;
+        hasUnsavedChanges = true;
+        UpdateUnsavedChangesIndicator();
         deckOverlayVisualSynchronized = false;
         if (deckManagementMode && DeckEditorWorkspace?.Visibility == Visibility.Visible)
             UpdateDeckSaveStatus(saved: false);
@@ -2901,8 +2910,9 @@ public partial class MainWindow : Window
         }
         bool deckActive = deckManagementMode;
         DeckPanelManagerButton.Background = deckActive ? ThemeService.Brush("LayerActiveBackground") : System.Windows.Media.Brushes.Transparent;
-        DeckPanelManagerButton.BorderBrush = deckActive ? ThemeService.Brush("AccentBrush") : System.Windows.Media.Brushes.Transparent;
+        DeckPanelManagerButton.BorderBrush = System.Windows.Media.Brushes.Transparent;
         DeckPanelManagerButton.Foreground = ThemeService.Brush("PrimaryText");
+        DeckNavigationActiveIndicator.Visibility = deckActive ? Visibility.Visible : Visibility.Collapsed;
         WorkspaceHeader.Visibility = Visibility.Collapsed;
         if (!deckActive)
             WorkspaceSubtitle.Text = LayerDisplayName(currentLayer);
@@ -3686,6 +3696,8 @@ public partial class MainWindow : Window
         }
         store.Save(config);
         appliedConfig = store.Clone(config);
+        hasUnsavedChanges = false;
+        UpdateUnsavedChangesIndicator();
         if (deckManagementMode && appliedConfig.Profiles.Any(profile => profile.Name.Equals(runtimeProfileBeforeSave, StringComparison.OrdinalIgnoreCase)))
             appliedConfig.ActiveProfile = runtimeProfileBeforeSave;
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
@@ -3869,6 +3881,7 @@ public partial class MainWindow : Window
             store.Save(persisted);
             LastInput.Text = "自動保存をオフにしました";
             LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
+            UpdateUnsavedChangesIndicator();
         }
     }
     void UpdateAutoSaveToggleText()
@@ -3878,6 +3891,7 @@ public partial class MainWindow : Window
             AutoSaveStatus.Text = AutoSaveToggle.IsChecked == true ? "● 自動保存 オン" : "○ 自動保存 オフ";
             AutoSaveStatus.Foreground = ThemeService.Brush(AutoSaveToggle.IsChecked == true ? "AccentTextBrush" : "SecondaryText");
         }
+        UpdateUnsavedChangesIndicator();
     }
     void ClearPendingActions()
     {
@@ -3956,7 +3970,7 @@ public partial class MainWindow : Window
                 IpcRuntime.RequestReload();
 
             ThemeService.Apply(config.ThemeMode);
-            archiveWatcher.Apply(config);
+            ApplyArchiveWatcherConfiguration();
             UpdateTrayNumber();
             ApplyUpdateCheckPreference(previousUpdateSetting);
             if (config.AutoSave)
@@ -3976,6 +3990,7 @@ public partial class MainWindow : Window
             StartupService.SetEnabled(window.StartWithWindows);
         config.StartWithWindows = window.StartWithWindows;
         config.AutoExtractDesktopArchives = window.AutoExtract;
+        config.ShowArchiveExtractionOverlay = window.ShowArchiveExtractionOverlay;
         config.ArchiveWatchFolder = window.ArchiveWatchFolder;
         config.ArchiveDestinationFolder = window.ArchiveDestinationFolder;
         config.DeleteArchiveAfterExtract = window.DeleteAfterExtract;
@@ -4011,6 +4026,7 @@ public partial class MainWindow : Window
     {
         destination.StartWithWindows = source.StartWithWindows;
         destination.AutoExtractDesktopArchives = source.AutoExtractDesktopArchives;
+        destination.ShowArchiveExtractionOverlay = source.ShowArchiveExtractionOverlay;
         destination.ArchiveWatchFolder = source.ArchiveWatchFolder;
         destination.ArchiveDestinationFolder = source.ArchiveDestinationFolder;
         destination.DeleteArchiveAfterExtract = source.DeleteArchiveAfterExtract;
@@ -4069,7 +4085,7 @@ public partial class MainWindow : Window
         UpdateLayerButtons();
         ColorButtons();
         UpdateAutoSaveToggleText();
-        archiveWatcher.Apply(config);
+        ApplyArchiveWatcherConfiguration();
         UpdateTrayNumber();
         UpdateStatus();
         RebuildTrayMenu();
@@ -4104,6 +4120,76 @@ public partial class MainWindow : Window
         Topmost = false;
         Focus();
         EnsureUpdateCheckStarted();
+    }
+
+    void ApplyArchiveWatcherConfiguration()
+    {
+        ArchiveAutomationState.Set(config.AutoExtractDesktopArchives);
+        if (!OwnsArchiveAutomation(runtimeRole))
+        {
+            // The medium UI process is the sole archive owner. Running the same
+            // FileSystemWatcher in the elevated helper races two extractions of
+            // one archive and can create a second "(2)" destination folder.
+            archiveWatcher.Dispose();
+            return;
+        }
+        archiveWatcher.Apply(config);
+        if (!config.ShowArchiveExtractionOverlay || !config.AutoExtractDesktopArchives)
+            archiveProgressOverlay?.HideImmediately();
+    }
+
+    internal static bool OwnsArchiveAutomation(RuntimeRole role)
+        => role != RuntimeRole.ElevatedHelper;
+
+    void HandleArchiveActivity(ArchiveActivity activity)
+    {
+        try
+        {
+            if (runtimeRole == RuntimeRole.ElevatedHelper || !config.ShowArchiveExtractionOverlay)
+            {
+                archiveProgressOverlay?.HideImmediately();
+                return;
+            }
+            archiveProgressOverlay ??= new ArchiveProgressOverlay();
+            archiveProgressOverlay.ShowActivity(activity);
+        }
+        catch (Exception error)
+        {
+            LifecycleDiagnostics.Write("archive-progress-overlay-failed", error.ToString());
+            try { archiveProgressOverlay?.CloseForProcessExit(); } catch { }
+            archiveProgressOverlay = null;
+        }
+    }
+
+    internal void ToggleAutoExtractFromAction()
+    {
+        if (runtimeRole == RuntimeRole.ElevatedHelper)
+        {
+            _ = OverlayUiBridge.RequestShow(ActionCatalog.ToggleAutoExtractAction);
+            return;
+        }
+
+        bool previous = config.AutoExtractDesktopArchives;
+        bool enabled = !previous;
+        try
+        {
+            config.AutoExtractDesktopArchives = enabled;
+            appliedConfig.AutoExtractDesktopArchives = enabled;
+            store.Save(config);
+            ApplyArchiveWatcherConfiguration();
+            if (runtimeRole == RuntimeRole.UiHost)
+                IpcRuntime.RequestReload();
+            LastInput.Text = enabled ? "自動解凍をオンにしました" : "自動解凍をオフにしました";
+            LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
+        }
+        catch (Exception error)
+        {
+            config.AutoExtractDesktopArchives = previous;
+            appliedConfig.AutoExtractDesktopArchives = previous;
+            try { ApplyArchiveWatcherConfiguration(); } catch { }
+            LifecycleDiagnostics.Write("auto-extract-toggle-failed", error.ToString());
+            ShowInlineError("自動解凍の設定を保存できませんでした");
+        }
     }
     // アップデートの定期確認、通知表示、検証済みインストーラーの起動をまとめて管理する。
     void Delete_Click(object s, RoutedEventArgs e)
@@ -4155,6 +4241,7 @@ public partial class MainWindow : Window
         MacroPlayer.PlaybackFinished -= MacroPlaybackFinished;
         updateCancellation.Cancel();
         profileOverlay?.Close();
+        archiveProgressOverlay?.CloseForProcessExit();
         OverlayService.Shutdown();
         trayNumberTimer.Stop();
         profileSwitchTimer.Stop();
@@ -4212,6 +4299,11 @@ public partial class MainWindow : Window
         catch { }
         try
         {
+            archiveProgressOverlay?.HideImmediately();
+        }
+        catch { }
+        try
+        {
             Hide();
         }
         catch { }
@@ -4224,6 +4316,7 @@ public partial class MainWindow : Window
         ClearPendingActions();
         InputEngine.ReleaseAllDefensively();
         engine.Dispose();
+        archiveProgressOverlay?.CloseForProcessExit();
         archiveWatcher.Dispose();
     }
     public void ResetInputStateForSessionTransition()
@@ -4252,6 +4345,14 @@ public partial class MainWindow : Window
         {
             App.ExitImmediately(1);
         }
+    }
+    void UpdateUnsavedChangesIndicator()
+    {
+        if (UnsavedChangesIndicator == null)
+            return;
+        UnsavedChangesIndicator.Visibility = config != null && !config.AutoSave && hasUnsavedChanges
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
     void RequestApplicationRestart()
     {

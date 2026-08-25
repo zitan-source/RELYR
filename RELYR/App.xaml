@@ -150,18 +150,34 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ContextMenuSeparatorStyle" TargetType="{x:Type Separator}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Separator}">
+                        <Border x:Name="ContextMenuSeparatorLine" Height="1"
+                                Background="{DynamicResource SubtleBorderBrush}"
+                                Margin="13,5" Opacity="0.28" SnapsToDevicePixels="True"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}"
+               TargetType="{x:Type Separator}"
+               BasedOn="{StaticResource ContextMenuSeparatorStyle}"/>
         <Style TargetType="{x:Type ContextMenu}">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinWidth" Value="180"/>
             <Setter Property="HasDropShadow" Value="True"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ContextMenu}">
-                        <Border Background="{DynamicResource CardBackground}"
-                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource ControlCornerRadius}" Padding="6" SnapsToDevicePixels="True">
+                        <Border x:Name="ContextMenuSurface" Background="{DynamicResource CardBackground}"
+                                BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+                                CornerRadius="10" Padding="5" SnapsToDevicePixels="True"
+                                Effect="{DynamicResource GroupCardShadowEffect}">
                             <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
                         </Border>
                     </ControlTemplate>
@@ -171,22 +187,60 @@
         <Style TargetType="{x:Type MenuItem}">
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="Padding" Value="13,7"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type MenuItem}">
-                        <Border x:Name="MenuItemBorder" Background="{TemplateBinding Background}"
-                                CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
-                        </Border>
+                        <Grid>
+                            <Border x:Name="MenuItemBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="Transparent" BorderThickness="1"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="MenuCheckGlyph" Text="✓" Width="14" Margin="0,0,7,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource AccentTextBrush}"
+                                               FontSize="12" FontWeight="SemiBold" Visibility="Collapsed" Opacity="0"/>
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                                      VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="18,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource MutedText}" FontSize="11.5"/>
+                                    <TextBlock x:Name="SubmenuGlyph" Grid.Column="3" Text="›" Margin="13,-1,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}"
+                                               FontSize="17" Visibility="Collapsed"/>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                                   IsOpen="{TemplateBinding IsSubmenuOpen}" Placement="Right"
+                                   HorizontalOffset="-3" VerticalOffset="-5" PopupAnimation="Fade">
+                                <Border Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}"
+                                        BorderThickness="1" CornerRadius="10" Padding="5"
+                                        Effect="{DynamicResource GroupCardShadowEffect}">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                </Border>
+                            </Popup>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="MenuItemBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="MenuItemBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsCheckable" Value="True"><Setter TargetName="MenuCheckGlyph" Property="Visibility" Value="Visible"/></Trigger>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="MenuCheckGlyph" Property="Opacity" Value="1"/></Trigger>
+                            <Trigger Property="HasItems" Value="True"><Setter TargetName="SubmenuGlyph" Property="Visibility" Value="Visible"/></Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.42"/>
+                                <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+                                <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.64"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

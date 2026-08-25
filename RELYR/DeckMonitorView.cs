@@ -198,7 +198,10 @@ internal sealed class DeckMonitorView : Grid
             return;
         subscribed = true;
         ThemeService.ThemeChanged += ApplyTheme;
+        ArchiveAutomationState.Changed += ArchiveAutomationStateChanged;
         SystemMonitorService.Shared.Subscribe(SnapshotChanged);
+        if (definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase))
+            Apply(ArchiveAutomationState.Reading());
     }
 
     void OnUnloaded(object sender, RoutedEventArgs e)
@@ -207,7 +210,22 @@ internal sealed class DeckMonitorView : Grid
             return;
         subscribed = false;
         ThemeService.ThemeChanged -= ApplyTheme;
+        ArchiveAutomationState.Changed -= ArchiveAutomationStateChanged;
         SystemMonitorService.Shared.Unsubscribe(SnapshotChanged);
+    }
+
+    void ArchiveAutomationStateChanged()
+    {
+        if (!definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (Dispatcher.CheckAccess())
+            Apply(ArchiveAutomationState.Reading());
+        else
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                if (subscribed)
+                    Apply(ArchiveAutomationState.Reading());
+            });
     }
 
     void ApplyTheme()
@@ -232,12 +250,16 @@ internal sealed class DeckMonitorView : Grid
         try
         {
             if (Dispatcher.CheckAccess())
-                Apply(snapshot.Get(definition.Id));
+                Apply(definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase)
+                    ? ArchiveAutomationState.Reading()
+                    : snapshot.Get(definition.Id));
             else
                 _ = Dispatcher.BeginInvoke(() =>
                 {
                     if (subscribed)
-                        Apply(snapshot.Get(definition.Id));
+                        Apply(definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase)
+                            ? ArchiveAutomationState.Reading()
+                            : snapshot.Get(definition.Id));
                 });
         }
         catch (Exception error) { LifecycleDiagnostics.Write("deck-monitor-view-failed", error.ToString()); }
@@ -368,7 +390,7 @@ internal sealed class DeckMonitorView : Grid
         {
             "cpu" or "temperature" or "gpu-temperature" or "gpu" or "fan" or "network-latency" => MonitorVisualKind.Sparkline,
             "disk-read" or "disk-write" or "network-up" or "network-down" => MonitorVisualKind.Columns,
-            "memory" or "vram" or "wifi" or "bluetooth" or "network-status" or "system-status" or "virtual-desktop" => MonitorVisualKind.Dots,
+            "memory" or "vram" or "wifi" or "bluetooth" or "network-status" or "system-status" or "virtual-desktop" or "auto-extract" => MonitorVisualKind.Dots,
             _ => MonitorVisualKind.Gauge
         };
 
@@ -413,6 +435,7 @@ internal sealed class DeckMonitorView : Grid
             "bluetooth" => dark ? "#7F9DFF" : "#405DB8",
             "clock" or "date" or "uptime" or "virtual-desktop" => dark ? "#A98CFF" : "#6246A9",
             "system-status" => dark ? "#74DD77" : "#2F8132",
+            "auto-extract" => dark ? "#35D0C5" : "#087B69",
             _ => dark ? "#35D0C5" : "#087B69"
         };
         return (WpfColor)System.Windows.Media.ColorConverter.ConvertFromString(value);

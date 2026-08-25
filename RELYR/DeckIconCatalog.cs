@@ -187,6 +187,7 @@ internal static class DeckIconCatalog
         if (value.Equals(OverlayService.BlankAction, StringComparison.OrdinalIgnoreCase)) return "hide";
         if (value.Equals(OverlayService.ClockAction, StringComparison.OrdinalIgnoreCase)) return "clock";
         if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase)) return "home";
+        if (value.Equals(ActionCatalog.ToggleAutoExtractAction, StringComparison.OrdinalIgnoreCase)) return "archive";
 
         string? exact = normalized switch
         {

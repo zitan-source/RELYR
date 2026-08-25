@@ -43,6 +43,7 @@ public sealed partial class InputEngine : IDisposable
     internal static Action<Action>? DesktopActionOutputForTest = null;
     internal static Func<bool>? LockWorkStationOutputForTest = null;
     internal static Action? ShowRelyrMainWindowOutputForTest = null;
+    internal static Action? ToggleAutoExtractOutputForTest = null;
     internal Func<int, IntPtr, IntPtr, IntPtr>? NextHookForTest
     {
         get; set;
@@ -1804,17 +1805,32 @@ public sealed partial class InputEngine : IDisposable
     }
     static bool TryDispatchApplicationAction(string value)
     {
-        if (!value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
+        if (!ActionCatalog.IsApplicationAction(value))
             return false;
 #if !PRODUCTION_PUBLISH
-        if (ShowRelyrMainWindowOutputForTest is { } test)
+        if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase)
+            && ShowRelyrMainWindowOutputForTest is { } showTest)
         {
-            test();
+            showTest();
+            return true;
+        }
+        if (value.Equals(ActionCatalog.ToggleAutoExtractAction, StringComparison.OrdinalIgnoreCase)
+            && ToggleAutoExtractOutputForTest is { } toggleTest)
+        {
+            toggleTest();
             return true;
         }
 #endif
         if (System.Windows.Application.Current is { } app)
-            _ = app.Dispatcher.BeginInvoke(() => { if (app.MainWindow is MainWindow window) window.ShowFromExternalLaunch(); });
+            _ = app.Dispatcher.BeginInvoke(() =>
+            {
+                if (app.MainWindow is not MainWindow window)
+                    return;
+                if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
+                    window.ShowFromExternalLaunch();
+                else
+                    window.ToggleAutoExtractFromAction();
+            });
         return true;
     }
     bool CapturedMouseInputIsDown()

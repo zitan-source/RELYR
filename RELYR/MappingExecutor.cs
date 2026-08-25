@@ -28,6 +28,21 @@ public sealed class SystemInputOutput(Func<string, MacroDefinition?> findMacro, 
         using var helperInput = isElevatedInputHelper ? DeckIpcDiagnostics.BeginHelperInput(value, target) : null;
         try
         {
+            // RELYR-owned UI actions must execute in the medium UI process.
+            // Do not send a Deck click to the elevated input helper merely
+            // because the foreground application happens to be elevated.
+            if (ActionCatalog.IsApplicationAction(value))
+            {
+                if (isElevatedInputHelper && uiOverlayRequest != null)
+                {
+                    if (!uiOverlayRequest(value))
+                        throw new InvalidOperationException("RELYR UIへ操作を送信できません。");
+                }
+                else
+                    InputEngine.SendShortcut(value, useUsLayout?.Invoke() == true, target, getPreferredActiveWindow?.Invoke());
+                helperInput?.Complete();
+                return;
+            }
             if (ipcShortcut != null)
             {
                 bool sent = ipcShortcut(value, target);

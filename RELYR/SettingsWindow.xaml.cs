@@ -40,6 +40,7 @@ public partial class SettingsWindow : Window
     internal bool StartWithWindowsChanged => StartWithWindows != initialStartWithWindows;
     public bool AutoExtract => ExtractBox.IsChecked == true;
     public bool DeleteAfterExtract => DeleteBox.IsChecked == true;
+    public bool ShowArchiveExtractionOverlay => ArchiveOverlayBox.IsChecked == true;
     public string ArchiveWatchFolder => ArchiveWatchFolderBox.Text.Trim();
     public string ArchiveDestinationFolder => ArchiveDestinationFolderBox.Text.Trim();
     public bool ShowDesktopNumberInTray => DesktopNumberTrayBox.IsChecked == true;
@@ -128,14 +129,21 @@ public partial class SettingsWindow : Window
         ArchiveDestinationFolderBox.Text = config.ArchiveDestinationFolder;
         ExtractBox.IsChecked = config.AutoExtractDesktopArchives;
         DeleteBox.IsChecked = config.DeleteArchiveAfterExtract;
-        ExtractBox.Checked += (_, _) => DeleteBox.IsEnabled = true;
-        ExtractBox.Unchecked += (_, _) => DeleteBox.IsEnabled = false;
-        DeleteBox.IsEnabled = ExtractBox.IsChecked == true;
+        ArchiveOverlayBox.IsChecked = config.ShowArchiveExtractionOverlay;
+        ExtractBox.Checked += (_, _) => SetArchiveDependentControlsEnabled(true);
+        ExtractBox.Unchecked += (_, _) => SetArchiveDependentControlsEnabled(false);
+        SetArchiveDependentControlsEnabled(ExtractBox.IsChecked == true);
         Loaded += SettingsWindow_Loaded;
         Closed += SettingsWindow_Closed;
         CurrentVersionText.Text = "v" + MainWindow.DisplayVersion;
         ApplyUpdateResult(knownUpdate, false);
         RefreshCapsRemapStatus();
+    }
+
+    void SetArchiveDependentControlsEnabled(bool enabled)
+    {
+        DeleteBox.IsEnabled = enabled;
+        ArchiveOverlayBox.IsEnabled = enabled;
     }
 
     void RefreshInputDisabledApplications()

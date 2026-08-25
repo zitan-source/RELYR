@@ -16,7 +16,8 @@ public enum DeckMonitorInteraction
     Microphone,
     Brightness,
     WifiSettings,
-    BluetoothSettings
+    BluetoothSettings,
+    AutoExtractToggle
 }
 
 public static class DeckMonitorCatalog
@@ -49,6 +50,7 @@ public static class DeckMonitorCatalog
         new("brightness", "BRIGHTNESS", "画面の明るさ。クリックまたはホイールで調整", "\uE706", Category, DeckMonitorInteraction.Brightness),
         new("wifi", "WI-FI", "Wi-Fi接続状態。クリックで設定", "\uE701", Category, DeckMonitorInteraction.WifiSettings),
         new("bluetooth", "BLUETOOTH", "BluetoothのON／OFF状態。クリックで設定", "\uE702", Category, DeckMonitorInteraction.BluetoothSettings),
+        new("auto-extract", "AUTO EXTRACT", "自動解凍の状態。クリックでオン／オフ", "\uE7B8", Category, DeckMonitorInteraction.AutoExtractToggle),
         new("system-status", "STATUS", "CPU・メモリ・バッテリーの状態", "\uE9D9", Category)
     ];
 

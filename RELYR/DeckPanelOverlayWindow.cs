@@ -1765,6 +1765,15 @@ internal sealed class DeckPanelOverlayWindow : Window
                 case DeckMonitorInteraction.Brightness:
                     ShowMonitorControl(source, monitor);
                     break;
+                case DeckMonitorInteraction.AutoExtractToggle:
+                    execute?.Invoke(new Mapping
+                    {
+                        Input = "DeckMonitor:auto-extract",
+                        Layer = DeckPanelLayout.Layer,
+                        Kind = ActionKind.Shortcut,
+                        Value = ActionCatalog.ToggleAutoExtractAction
+                    });
+                    break;
             }
         }
         catch (Exception error)

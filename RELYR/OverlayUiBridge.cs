@@ -19,7 +19,7 @@ internal static class OverlayUiBridge
 
     internal static bool RequestShow(string value)
     {
-        if (!OverlayService.IsOverlayAction(value))
+        if (!IsSupportedUiRequest(value))
             return false;
         IntPtr destination = FindWindow(null, $"RELYR v{MainWindow.DisplayVersion}");
         if (destination == IntPtr.Zero)
@@ -44,14 +44,26 @@ internal static class OverlayUiBridge
                 return IntPtr.Zero;
             string? value = Marshal.PtrToStringUni(data.Payload, data.ByteCount / sizeof(char));
             value = value?.TrimEnd('\0');
-            if (string.IsNullOrWhiteSpace(value) || !OverlayService.IsOverlayAction(value))
+            if (string.IsNullOrWhiteSpace(value) || !IsSupportedUiRequest(value))
                 return IntPtr.Zero;
-            OverlayService.TryShow(value);
+            if (OverlayService.IsOverlayAction(value))
+                OverlayService.TryShow(value);
+            else if (System.Windows.Application.Current?.MainWindow is MainWindow window)
+            {
+                if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
+                    window.ShowFromExternalLaunch();
+                else
+                    window.ToggleAutoExtractFromAction();
+            }
             handled = true;
             return new IntPtr(1);
         }
         catch { return IntPtr.Zero; }
     }
+
+    static bool IsSupportedUiRequest(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+            && (OverlayService.IsOverlayAction(value) || ActionCatalog.IsApplicationAction(value));
 
     [StructLayout(LayoutKind.Sequential)]
     struct CopyData

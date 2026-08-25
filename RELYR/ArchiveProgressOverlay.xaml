@@ -1,0 +1,45 @@
+<Window x:Class="RELYR.ArchiveProgressOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="292" Height="62" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
+        ShowActivated="False" Topmost="True" Focusable="False" IsHitTestVisible="False">
+  <Border x:Name="OverlaySurface"
+          Background="{DynamicResource CardBackground}"
+          BorderBrush="{DynamicResource SubtleBorderBrush}"
+          BorderThickness="1" CornerRadius="12" Padding="14,10,14,9"
+          SnapsToDevicePixels="True">
+    <Border.Effect>
+      <DropShadowEffect Color="#70000000" BlurRadius="18" ShadowDepth="3" Opacity="0.34"/>
+    </Border.Effect>
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="22"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="StateGlyph" Text="&#xE7B8;"
+                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                   Foreground="{DynamicResource AccentTextBrush}"
+                   HorizontalAlignment="Left" VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock x:Name="StateText" Text="解凍中" FontSize="13" FontWeight="SemiBold"
+                     Foreground="{DynamicResource PrimaryText}"/>
+          <TextBlock Text=" · " FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+          <TextBlock x:Name="FileNameText" FontSize="12" Foreground="{DynamicResource SecondaryText}"
+                     TextTrimming="CharacterEllipsis" MaxWidth="190"/>
+        </StackPanel>
+      </Grid>
+      <Grid x:Name="ProgressTrack" Grid.Row="1" Height="3" Margin="22,8,0,0"
+            ClipToBounds="True" HorizontalAlignment="Stretch">
+        <Border Background="{DynamicResource DividerBrush}" CornerRadius="1.5" Opacity="0.7"/>
+        <Border x:Name="ProgressFill" Width="0" HorizontalAlignment="Left"
+                Background="{DynamicResource AccentBrush}" CornerRadius="1.5"/>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

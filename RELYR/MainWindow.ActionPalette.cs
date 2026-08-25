@@ -25,15 +25,32 @@ public partial class MainWindow
     internal const double ActionPaletteDragPreviewMinWidth = 172;
     internal const double ActionPaletteDragPreviewMaxWidth = 220;
     internal const double ActionPaletteDragPreviewHeight = 42;
+    const string ActionPaletteRecommendedCategory = "おすすめ";
     const string ActionPaletteAllCategory = "すべて";
     const string ActionPaletteUsedCategory = "使用中";
-    const string ActionPaletteApplicationsCategory = "アプリ";
+    const string ActionPaletteApplicationsCategory = "インストールアプリ";
     const string ActionPaletteKeysCategory = "キー";
     const string ActionPaletteShortcutsCategory = "ショートカット";
     static readonly string[] ActionPaletteKeySequence = BuildActionPaletteKeySequence();
     static readonly IReadOnlyDictionary<string, int> ActionPaletteKeyOrder = ActionPaletteKeySequence
         .Select((key, index) => (key, index))
         .ToDictionary(entry => entry.key, entry => entry.index, StringComparer.OrdinalIgnoreCase);
+    static readonly ActionPaletteRecommendation[] ActionPaletteRecommendations =
+    [
+        new("基本操作", "コピー", "選択内容をコピーします", "Ctrl+C"),
+        new("基本操作", "貼り付け", "コピーした内容を貼り付けます", "Ctrl+V"),
+        new("基本操作", "切り取り", "選択内容を切り取ります", "Ctrl+X"),
+        new("基本操作", "元に戻す", "直前の操作を取り消します", "Ctrl+Z"),
+        new("基本操作", "やり直す", "取り消した操作をやり直します", "Ctrl+Y"),
+        new("基本操作", "保存", "現在のファイルを保存します", "Ctrl+S"),
+        new("選択・検索", "すべて選択", "すべての項目を選択します", "Ctrl+A"),
+        new("選択・検索", "検索", "ページや文書内を検索します", "Ctrl+F"),
+        new("Windows", "範囲をスクリーンショット", "範囲を選んでクリップボードへコピーします", "Win+Shift+S"),
+        new("Windows", "エクスプローラーを開く", "Windows標準のエクスプローラーを開きます", "Win+E")
+    ];
+    static readonly IReadOnlyDictionary<string, int> ActionPaletteRecommendationOrder = ActionPaletteRecommendations
+        .Select((recommendation, index) => (Signature: ActionPaletteSignature(ActionKind.Shortcut, recommendation.Value), index))
+        .ToDictionary(entry => entry.Signature, entry => entry.index, StringComparer.OrdinalIgnoreCase);
 
     bool actionPaletteOpen;
     bool refreshingActionPalette;
@@ -49,7 +66,10 @@ public partial class MainWindow
     bool actionPaletteApplicationDiscoveryStarted;
     readonly System.Windows.Threading.DispatcherTimer actionPaletteUndoTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
-    sealed record ActionPaletteItem(CatalogAction Action, string Name, string Group, string Glyph, int UsageCount)
+    sealed record ActionPaletteRecommendation(string Section, string Name, string Description, string Value);
+
+    sealed record ActionPaletteItem(CatalogAction Action, string Name, string Group, string Detail, string Glyph, int UsageCount,
+        string RecommendationSection = "", bool StartsRecommendationSection = false)
     {
         internal string ToolTipText => string.IsNullOrWhiteSpace(Action.Description)
             ? Name
@@ -160,6 +180,7 @@ public partial class MainWindow
             // imported/runtime value must not leave the inspector half-switched
             // or escape through WPF's dispatcher exception handler.
             RefreshActionPalette();
+            SelectActionPaletteCategory(ActionPaletteRecommendedCategory);
             StartActionPaletteApplicationDiscovery();
             ++actionPaletteMotionGeneration;
             actionPaletteOpen = true;
@@ -287,6 +308,12 @@ public partial class MainWindow
         }
 
         var actions = new List<CatalogAction>();
+        actions.AddRange(ActionPaletteRecommendations.Select(recommendation => new CatalogAction(
+            ActionPaletteRecommendedCategory,
+            recommendation.Name,
+            recommendation.Description,
+            ActionKind.Shortcut,
+            recommendation.Value)));
         actions.AddRange(ActionPaletteKeyActions());
         actions.AddRange(actionPaletteCustomShortcuts);
         actions.AddRange(ActionCatalog.Items);
@@ -331,6 +358,7 @@ public partial class MainWindow
                 action,
                 action.Name,
                 ActionPaletteGroup(action),
+                ActionPaletteItemDetail(action, ActionPaletteGroup(action)),
                 ActionPaletteGlyph(action),
                 usage.GetValueOrDefault(ActionPaletteSignature(action.Kind, action.Value))))
             .GroupBy(item => $"{item.Group}\n{ActionPaletteSignature(item.Action.Kind, item.Action.Value)}", StringComparer.OrdinalIgnoreCase)
@@ -338,16 +366,18 @@ public partial class MainWindow
 
         string previousCategory = SelectedActionPaletteCategory();
         var groups = actionPaletteItems.Select(item => item.Group).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        groups.RemoveAll(group => string.Equals(group, ActionPaletteAllCategory, StringComparison.OrdinalIgnoreCase)
+        groups.RemoveAll(group => string.Equals(group, ActionPaletteRecommendedCategory, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(group, ActionPaletteAllCategory, StringComparison.OrdinalIgnoreCase)
             || string.Equals(group, ActionPaletteUsedCategory, StringComparison.OrdinalIgnoreCase));
         if (!groups.Contains(ActionPaletteShortcutsCategory, StringComparer.OrdinalIgnoreCase))
             groups.Add(ActionPaletteShortcutsCategory);
         var preferredOrder = new[]
         {
-            ActionPaletteApplicationsCategory, ActionPaletteKeysCategory, ActionPaletteShortcutsCategory,
-            "入力・編集", "Windows", "ファイル・文書", "エクスプローラー", "ブラウザー",
-            "ウィンドウ・デスクトップ", "メディア", "マウス", "Windowsアプリ", "オーバーレイ",
-            "プロファイル", "マクロ", "ジェスチャー", "Deckパネル", "その他"
+            ActionPaletteKeysCategory, "マウス", ActionPaletteShortcutsCategory,
+            "Windows", "Windowsアプリ", ActionPaletteApplicationsCategory, "プロファイル", "マクロ",
+            "ジェスチャー", "Deckパネル", "オーバーレイ", DeckMonitorCatalog.Category,
+            "入力・編集", "ファイル・文書", "メディア", "ウィンドウ・デスクトップ",
+            "ブラウザー", "エクスプローラー", "システム操作", "その他"
         };
         var orderedGroups = preferredOrder.Where(group => groups.Remove(group)).Concat(groups.OrderBy(group => group, StringComparer.CurrentCultureIgnoreCase)).ToList();
 
@@ -355,11 +385,11 @@ public partial class MainWindow
         try
         {
             var categoryOptions = BuildActionPaletteCategoryOptions(
-                new[] { ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups));
+                new[] { ActionPaletteRecommendedCategory, ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups));
             ActionPaletteCategoryBox.ItemsSource = categoryOptions;
             SelectActionPaletteCategory(categoryOptions.Any(option => option.Name.Equals(previousCategory, StringComparison.OrdinalIgnoreCase))
                 ? previousCategory
-                : ActionPaletteAllCategory);
+                : ActionPaletteRecommendedCategory);
         }
         finally
         {
@@ -389,13 +419,20 @@ public partial class MainWindow
 
     static string ActionPaletteCategorySection(string category)
     {
-        if (category is ActionPaletteAllCategory or ActionPaletteUsedCategory)
+        if (category is ActionPaletteRecommendedCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
             return "ステータス";
-        return "カテゴリ";
+        if (category is ActionPaletteKeysCategory or "マウス" or ActionPaletteShortcutsCategory)
+            return "キー入力";
+        if (category is "Windows" or "Windowsアプリ" or ActionPaletteApplicationsCategory
+            or "プロファイル" or "マクロ" or "ジェスチャー" or "Deckパネル" or "オーバーレイ"
+            || string.Equals(category, DeckMonitorCatalog.Category, StringComparison.OrdinalIgnoreCase))
+            return "機能";
+        return "ショートカット";
     }
 
     static string ActionPaletteCategoryGlyph(string category) => category switch
     {
+        ActionPaletteRecommendedCategory => "\uE734",
         ActionPaletteAllCategory => "\uE80A",
         ActionPaletteUsedCategory => "\uE73E",
         ActionPaletteApplicationsCategory => "\uE71D",
@@ -447,8 +484,32 @@ public partial class MainWindow
         return ActionPaletteGroupCore(action);
     }
 
+    internal static string ActionPaletteItemDetail(CatalogAction action, string group)
+    {
+        string value = action.Value?.Trim() ?? string.Empty;
+        if (action.Kind == ActionKind.Key
+            || (action.Kind == ActionKind.Shortcut
+                && (value.Contains('+')
+                    || string.Equals(action.Category, "任意のショートカット", StringComparison.OrdinalIgnoreCase))))
+            return DisplayInputName(value);
+
+        return action.Kind switch
+        {
+            ActionKind.Launch => "アプリ",
+            ActionKind.Text => "文字列",
+            ActionKind.Mouse => "マウス",
+            ActionKind.Macro => "マクロ",
+            ActionKind.Profile => "プロファイル",
+            ActionKind.Gesture => "ジェスチャー",
+            ActionKind.Disabled when string.Equals(action.Category, DeckMonitorCatalog.Category, StringComparison.OrdinalIgnoreCase) => "モニター",
+            ActionKind.Disabled => "無効化",
+            _ => group
+        };
+    }
+
     static string ActionPaletteGroupCore(CatalogAction action) => (action.Category ?? string.Empty) switch
     {
+        ActionPaletteRecommendedCategory => ActionPaletteRecommendedCategory,
         "使用中のAction" => ActionPaletteUsedCategory,
         ActionPaletteApplicationsCategory => ActionPaletteApplicationsCategory,
         ActionPaletteKeysCategory => ActionPaletteKeysCategory,
@@ -465,20 +526,13 @@ public partial class MainWindow
 
     static string[] BuildActionPaletteKeySequence()
     {
-        var keys = new List<string> { "Esc" };
-        keys.AddRange(Enumerable.Range(1, 12).Select(number => $"F{number}"));
-        keys.AddRange(["PrintScreen", "ScrollLock", "Pause"]);
-        keys.AddRange(Enumerable.Range(13, 12).Select(number => $"F{number}"));
-        keys.AddRange(["半角/全角"]);
-        keys.AddRange(Enumerable.Range(1, 9).Select(number => number.ToString()));
-        keys.AddRange(["0", "Backspace", "Tab"]);
-        keys.AddRange("QWERTYUIOP".Select(letter => letter.ToString()));
-        keys.AddRange(["CapsLock"]);
-        keys.AddRange("ASDFGHJKL".Select(letter => letter.ToString()));
-        keys.AddRange(["Enter", "Shift"]);
-        keys.AddRange("ZXCVBNM".Select(letter => letter.ToString()));
-        keys.AddRange(["Ctrl", "Win", "Alt", "無変換", "Space", "変換", "カタカナ"]);
+        var keys = new List<string>();
+        keys.AddRange("ABCDEFGHIJKLMNOPQRSTUVWXYZ".Select(letter => letter.ToString()));
+        keys.AddRange(Enumerable.Range(0, 10).Select(number => number.ToString()));
+        keys.AddRange(Enumerable.Range(1, 24).Select(number => $"F{number}"));
+        keys.AddRange(["Esc", "Tab", "CapsLock", "Shift", "Ctrl", "Win", "Alt", "Space", "Enter", "Backspace"]);
         keys.AddRange(["Insert", "Home", "PageUp", "Delete", "End", "PageDown", "Up", "Left", "Down", "Right"]);
+        keys.AddRange(["PrintScreen", "ScrollLock", "Pause", "半角/全角", "無変換", "変換", "カタカナ"]);
         keys.AddRange(["NumLock", "Divide", "Multiply", "Subtract", "NumPad7", "NumPad8", "NumPad9", "Add", "NumPad4", "NumPad5", "NumPad6", "NumPad1", "NumPad2", "NumPad3", "NumPadEnter", "NumPad0", "Decimal"]);
         return [.. keys.Distinct(StringComparer.OrdinalIgnoreCase)];
     }
@@ -583,6 +637,11 @@ public partial class MainWindow
             ActionPaletteSearchHint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         if (ActionPaletteSearchClearButton != null)
             ActionPaletteSearchClearButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        if (!empty && SelectedActionPaletteCategory() == ActionPaletteRecommendedCategory)
+        {
+            SelectActionPaletteCategory(ActionPaletteAllCategory);
+            return;
+        }
         FilterActionPalette();
     }
 
@@ -616,7 +675,9 @@ public partial class MainWindow
         string query = ActionPaletteSearchBox?.Text.Trim() ?? string.Empty;
         string category = SelectedActionPaletteCategory();
         IEnumerable<ActionPaletteItem> filtered = actionPaletteItems;
-        if (category == ActionPaletteUsedCategory)
+        if (category == ActionPaletteRecommendedCategory)
+            filtered = filtered.Where(item => item.Group == ActionPaletteRecommendedCategory);
+        else if (category == ActionPaletteUsedCategory)
             filtered = filtered.Where(item => item.UsageCount > 0);
         else if (category != ActionPaletteAllCategory)
             filtered = filtered.Where(item => string.Equals(item.Group, category, StringComparison.OrdinalIgnoreCase));
@@ -631,7 +692,22 @@ public partial class MainWindow
             .Select((option, index) => (option.Name, index))
             .ToDictionary(entry => entry.Name, entry => entry.index, StringComparer.OrdinalIgnoreCase);
         List<ActionPaletteItem> result;
-        if (category == ActionPaletteUsedCategory)
+        if (category == ActionPaletteRecommendedCategory)
+        {
+            string previousSection = string.Empty;
+            result = filtered
+                .OrderBy(item => ActionPaletteRecommendationOrder.GetValueOrDefault(ActionPaletteSignature(item.Action.Kind, item.Action.Value), int.MaxValue))
+                .Select(item =>
+                {
+                    string section = ActionPaletteRecommendations.FirstOrDefault(recommendation =>
+                        recommendation.Value.Equals(item.Action.Value, StringComparison.OrdinalIgnoreCase))?.Section ?? string.Empty;
+                    bool startsSection = !section.Equals(previousSection, StringComparison.Ordinal);
+                    previousSection = section;
+                    return item with { RecommendationSection = section, StartsRecommendationSection = startsSection };
+                })
+                .ToList();
+        }
+        else if (category == ActionPaletteUsedCategory)
         {
             result = filtered
                 .OrderByDescending(item => item.UsageCount)

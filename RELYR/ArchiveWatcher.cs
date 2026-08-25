@@ -6,6 +6,16 @@ using SharpCompress.Readers;
 
 namespace RELYR;
 
+internal enum ArchiveActivityState
+{
+    Extracting,
+    Completed,
+    Failed,
+    Cancelled
+}
+
+internal readonly record struct ArchiveActivity(ArchiveActivityState State, string FileName, string Message = "");
+
 public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
 {
     static readonly string[] SupportedSuffixes =
@@ -17,16 +27,23 @@ public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
     const long MaximumExpandedBytes = 20L * 1024 * 1024 * 1024;
     readonly string? watchFolderOverride = watchFolder;
     readonly HashSet<string> processing = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, ArchiveFileStamp> completed = new(StringComparer.OrdinalIgnoreCase);
+    readonly SemaphoreSlim extractionGate = new(1, 1);
     FileSystemWatcher? watcher;
     int generation;
 
+    readonly record struct ArchiveFileStamp(long Length, long CreationTimeUtcTicks, long LastWriteTimeUtcTicks);
+
     public event Action<string>? Status;
+    internal event Action<ArchiveActivity>? ActivityChanged;
 
     public void Apply(AppConfig config)
     {
         generation++;
         watcher?.Dispose();
         watcher = null;
+        lock (processing)
+            completed.Clear();
         if (!config.AutoExtractDesktopArchives)
             return;
 
@@ -37,10 +54,10 @@ public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
             watchFolder = watchFolderOverride ?? ResolveWatchFolder(config);
             destinationFolder = ResolveDestinationFolder(config, watchFolder);
         }
-        catch (Exception ex) { Status?.Invoke($"自動解凍のフォルダー設定が正しくありません: {ex.Message}"); return; }
+        catch (Exception ex) { ReportStatus($"自動解凍のフォルダー設定が正しくありません: {ex.Message}"); return; }
         if (!Directory.Exists(watchFolder))
         {
-            Status?.Invoke($"自動解凍の監視フォルダーが見つかりません: {watchFolder}");
+            ReportStatus($"自動解凍の監視フォルダーが見つかりません: {watchFolder}");
             return;
         }
         try
@@ -49,68 +66,177 @@ public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
         }
         catch (Exception ex)
         {
-            Status?.Invoke($"自動解凍の保存先を使用できません: {ex.Message}");
+            ReportStatus($"自動解凍の保存先を使用できません: {ex.Message}");
             return;
         }
-        watcher = new FileSystemWatcher(watchFolder)
+        FileSystemWatcher? nextWatcher = null;
+        try
         {
-            Filter = "*",
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size
-        };
-        watcher.Created += (_, e) => StartExtract(e.FullPath, destinationFolder, config.DeleteArchiveAfterExtract, currentGeneration);
-        watcher.Renamed += (_, e) => StartExtract(e.FullPath, destinationFolder, config.DeleteArchiveAfterExtract, currentGeneration);
-        watcher.EnableRaisingEvents = true;
+            nextWatcher = new FileSystemWatcher(watchFolder)
+            {
+                Filter = "*",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size
+            };
+            nextWatcher.Created += (_, e) => StartExtract(e.FullPath, destinationFolder, config.DeleteArchiveAfterExtract, currentGeneration);
+            nextWatcher.Renamed += (_, e) =>
+            {
+                ForgetCompleted(e.OldFullPath);
+                StartExtract(e.FullPath, destinationFolder, config.DeleteArchiveAfterExtract, currentGeneration);
+            };
+            nextWatcher.Deleted += (_, e) => ForgetCompleted(e.FullPath);
+            nextWatcher.EnableRaisingEvents = true;
+            watcher = nextWatcher;
+        }
+        catch (Exception ex)
+        {
+            nextWatcher?.Dispose();
+            watcher = null;
+            ReportStatus($"自動解凍の監視を開始できません: {ex.Message}");
+        }
     }
 
     void StartExtract(string path, string destinationFolder, bool deleteArchive, int currentGeneration)
     {
         if (!IsSupported(path))
             return;
+        try { path = Path.GetFullPath(path); }
+        catch { return; }
+        ArchiveFileStamp? observedStamp = TryGetArchiveFileStamp(path);
         lock (processing)
-        if (!processing.Add(path))
-            return;
+        {
+            if (observedStamp is { } currentStamp && completed.TryGetValue(path, out ArchiveFileStamp completedStamp) && completedStamp == currentStamp)
+                return;
+            if (observedStamp is { } && completed.ContainsKey(path))
+                completed.Remove(path);
+            if (!processing.Add(path))
+                return;
+        }
         _ = ExtractWhenReady(path, destinationFolder, deleteArchive, currentGeneration);
     }
 
+    internal void StartExtractForTest(string path, string destinationFolder, bool deleteArchive = false) =>
+        StartExtract(path, destinationFolder, deleteArchive, generation);
+
     async Task ExtractWhenReady(string path, string destinationFolder, bool deleteArchive, int currentGeneration)
     {
+        bool gateEntered = false;
+        bool activityStarted = false;
+        bool activityFinished = false;
+        string fileName = Path.GetFileName(path);
         try
         {
+            await extractionGate.WaitAsync().ConfigureAwait(false);
+            gateEntered = true;
             for (int attempt = 0; attempt < 15 && currentGeneration == generation; attempt++)
             {
                 try
                 {
-                    await Task.Delay(700);
+                    await Task.Delay(700).ConfigureAwait(false);
                     if (currentGeneration != generation || !File.Exists(path))
                         return;
                     using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
                     {
                     }
+                    if (!activityStarted)
+                    {
+                        activityStarted = true;
+                        ReportActivity(new ArchiveActivity(ArchiveActivityState.Extracting, fileName));
+                    }
+                    ArchiveFileStamp? completedStamp = TryGetArchiveFileStamp(path);
                     string destination = ExtractArchive(path, destinationFolder, () => currentGeneration != generation);
                     if (deleteArchive)
                         File.Delete(path);
-                    Status?.Invoke($"自動解凍しました: {Path.GetFileName(path)} → {Path.GetFileName(destination)}");
+                    if (completedStamp is { } stamp)
+                    {
+                        lock (processing)
+                            completed[path] = stamp;
+                    }
+                    activityFinished = true;
+                    ReportActivity(new ArchiveActivity(ArchiveActivityState.Completed, fileName, Path.GetFileName(destination)));
+                    ReportStatus($"自動解凍しました: {Path.GetFileName(path)} → {Path.GetFileName(destination)}");
                     return;
                 }
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
                 catch (InvalidDataException ex)
                 {
-                    Status?.Invoke($"解凍できません: {Path.GetFileName(path)}（{ex.Message}）");
+                    ReportStatus($"解凍できません: {Path.GetFileName(path)}（{ex.Message}）");
+                    activityFinished = true;
+                    ReportActivity(new ArchiveActivity(ArchiveActivityState.Failed, fileName, ex.Message));
                     return;
                 }
                 catch (NotSupportedException)
                 {
-                    Status?.Invoke($"未対応または暗号化された圧縮ファイルです: {Path.GetFileName(path)}");
+                    ReportStatus($"未対応または暗号化された圧縮ファイルです: {Path.GetFileName(path)}");
+                    activityFinished = true;
+                    ReportActivity(new ArchiveActivity(ArchiveActivityState.Failed, fileName, "未対応または暗号化された圧縮ファイルです"));
                     return;
                 }
             }
             if (currentGeneration == generation)
-                Status?.Invoke($"圧縮ファイルを使用中のため解凍できませんでした: {Path.GetFileName(path)}");
+            {
+                ReportStatus($"圧縮ファイルを使用中のため解凍できませんでした: {Path.GetFileName(path)}");
+                activityFinished = true;
+                ReportActivity(new ArchiveActivity(ArchiveActivityState.Failed, fileName, "圧縮ファイルを使用中です"));
+            }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { Status?.Invoke($"自動解凍エラー: {ex.Message}"); }
-        finally { lock (processing) processing.Remove(path); }
+        catch (OperationCanceledException)
+        {
+            activityFinished = true;
+            if (activityStarted)
+                ReportActivity(new ArchiveActivity(ArchiveActivityState.Cancelled, fileName));
+        }
+        catch (Exception ex)
+        {
+            ReportStatus($"自動解凍エラー: {ex.Message}");
+            activityFinished = true;
+            ReportActivity(new ArchiveActivity(ArchiveActivityState.Failed, fileName, ex.Message));
+        }
+        finally
+        {
+            if (activityStarted && !activityFinished)
+                ReportActivity(new ArchiveActivity(ArchiveActivityState.Cancelled, fileName));
+            if (gateEntered)
+                extractionGate.Release();
+            lock (processing)
+                processing.Remove(path);
+        }
+    }
+
+    void ReportActivity(ArchiveActivity activity)
+    {
+        try { ActivityChanged?.Invoke(activity); }
+        catch (Exception error) { LifecycleDiagnostics.Write("archive-activity-listener-failed", error.ToString()); }
+    }
+
+    void ReportStatus(string message)
+    {
+        foreach (Action<string> listener in Status?.GetInvocationList().Cast<Action<string>>() ?? [])
+        {
+            try { listener(message); }
+            catch (Exception error) { LifecycleDiagnostics.Write("archive-status-listener-failed", error.ToString()); }
+        }
+    }
+
+    void ForgetCompleted(string path)
+    {
+        try { path = Path.GetFullPath(path); }
+        catch { return; }
+        lock (processing)
+            completed.Remove(path);
+    }
+
+    static ArchiveFileStamp? TryGetArchiveFileStamp(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists)
+                return null;
+            return new ArchiveFileStamp(file.Length, file.CreationTimeUtc.Ticks, file.LastWriteTimeUtc.Ticks);
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     internal static bool IsSupported(string path) =>
@@ -254,5 +380,7 @@ public sealed class ArchiveWatcher(string? watchFolder = null) : IDisposable
         generation++;
         watcher?.Dispose();
         watcher = null;
+        lock (processing)
+            completed.Clear();
     }
 }

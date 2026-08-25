@@ -880,6 +880,8 @@ public partial class MainWindow
         // its editor without forcing the execution field into edit mode. This
         // lets one background click clear the selection instead of spending a
         // first click only completing an implicit edit session.
+        if (actionPaletteOpen)
+            CloseActionPalette(animated: false);
         SelectInput(input, false);
         CloseDeckEditorMediaPreview();
         var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
@@ -1224,13 +1226,15 @@ public partial class MainWindow
         var add = new System.Windows.Controls.Button
         {
             Width = 236,
-            Height = 190,
-            Margin = new Thickness(0, 0, 14, 14),
-            Padding = new Thickness(16),
-            Content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = "＋", FontSize = 28, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") }, new TextBlock { Text = "新規レイアウト", FontSize = 14, Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Center } } },
+            Height = 164,
+            Margin = new Thickness(0, 0, 18, 18),
+            Padding = new Thickness(14),
+            Tag = "NewDeckLayout",
+            ToolTip = "新しいDeckレイアウトを作成",
+            Content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = "＋", FontSize = 26, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") }, new TextBlock { Text = "新規レイアウト", FontSize = 14, FontWeight = FontWeights.Medium, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Center } } },
             Background = WpfBrushes.Transparent,
-            BorderBrush = ThemeService.Brush("BorderBrush"),
-            BorderThickness = new Thickness(1)
+            BorderBrush = WpfBrushes.Transparent,
+            BorderThickness = new Thickness(0)
         };
         add.Click += NewDeckLayout_Click;
         DeckLayoutCardsPanel.Children.Add(add);
@@ -1247,12 +1251,14 @@ public partial class MainWindow
         }
         bool isDefault = CurrentProfile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
         var content = new StackPanel();
-        content.Children.Add(new Grid { Height = 88, Margin = new Thickness(0, 0, 0, 12), Children = { preview } });
+        content.Children.Add(new Grid { Height = 72, Margin = new Thickness(0, 0, 0, 8), Children = { preview } });
         content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 5, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentTextBrush" : "SecondaryText") });
-        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 190, Margin = new Thickness(0, 0, 14, 14), Padding = new Thickness(16), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, BorderThickness = new Thickness(1) };
-        card.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "CardBackground");
-        card.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, isDefault ? "AccentBrush" : "BorderBrush");
+        content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 4, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentTextBrush" : "SecondaryText") });
+        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 164, Margin = new Thickness(0, 0, 18, 18), Padding = new Thickness(14), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, BorderBrush = WpfBrushes.Transparent, BorderThickness = new Thickness(0), ToolTip = $"{layout.Name}を編集" };
+        if (isDefault)
+            card.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "AccentSoftBrush");
+        else
+            card.Background = WpfBrushes.Transparent;
         card.Click += (_, _) => EditDeckLayout(layout);
         var menu = new ContextMenu();
         var toggleOverlay = new MenuItem { Header = "オーバーレイを表示／非表示" };

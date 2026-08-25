@@ -1166,8 +1166,9 @@ public partial class MacroWindow : Window
         for (int index = 0; index < buttons.Length; index++)
         {
             bool active = EditorTabs.SelectedIndex == index;
-            buttons[index].Background = ThemeService.Brush(active ? "AccentSoftBrush" : "ControlBackground");
-            buttons[index].BorderBrush = ThemeService.Brush(active ? "AccentBrush" : "BorderBrush");
+            buttons[index].Background = active ? ThemeService.Brush("AccentSoftBrush") : System.Windows.Media.Brushes.Transparent;
+            buttons[index].BorderBrush = System.Windows.Media.Brushes.Transparent;
+            buttons[index].BorderThickness = new Thickness(0);
             buttons[index].Foreground = ThemeService.Brush(active ? "AccentTextBrush" : "PrimaryText");
         }
     }

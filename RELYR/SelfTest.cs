@@ -245,6 +245,7 @@ public static class SelfTest
             config.RecordMouseMovementRelativeInMacros = false;
             config.ArchiveWatchFolder = @"C:\Watch";
             config.ArchiveDestinationFolder = @"D:\Extracted";
+            config.ShowArchiveExtractionOverlay = false;
             config.AutoSave = true;
             config.KeyboardLayout = "US";
             config.SpaceHoldRepeatEnabled = true;
@@ -293,7 +294,7 @@ public static class SelfTest
             Check(!loaded.UiAnimationsEnabled, "explicitly disabled RELYR animations remain disabled after roundtrip");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
             Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 2) is { DeckMonitor: "battery" }, "Deck monitor identity roundtrip");
-            Check(DeckMonitorCatalog.Items.Count >= 20 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop"), "Deck monitor catalog includes status, desktop, and direct-control tiles");
+            Check(DeckMonitorCatalog.Items.Count >= 20 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop") && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor) && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle, "Deck monitor catalog includes status, desktop, direct-control, and auto-extraction toggle tiles");
             Check(DeckMonitorCatalog.Items.All(item => item.Glyph.Length == 1 && item.Glyph[0] is >= '\uE000' and <= '\uF8FF'), "every Deck monitor uses one supported private-use Fluent icon instead of text rendered through an icon font");
             Check(DeckMonitorCatalog.Items.All(item => item.Name.All(character => character <= 0x7f))
                 && DeckMonitorCatalog.TryGet("disk-write", out var writeMonitor) && writeMonitor.Name == "WRITE"
@@ -370,7 +371,11 @@ public static class SelfTest
             Check(loaded.RecordMappedActionsInMacros, "macro mapped-action recording option roundtrip");
             Check(loaded.RecordMouseMovementInMacros, "macro mouse trajectory option roundtrip");
             Check(!loaded.RecordMouseMovementRelativeInMacros, "macro mouse fixed/relative movement mode roundtrip");
-            Check(loaded.ArchiveWatchFolder == @"C:\Watch" && loaded.ArchiveDestinationFolder == @"D:\Extracted", "archive watch and destination folders roundtrip");
+            Check(loaded.ArchiveWatchFolder == @"C:\Watch" && loaded.ArchiveDestinationFolder == @"D:\Extracted" && !loaded.ShowArchiveExtractionOverlay, "archive folders and extraction overlay preference roundtrip");
+            Check(MainWindow.OwnsArchiveAutomation(RuntimeRole.Standard)
+                && MainWindow.OwnsArchiveAutomation(RuntimeRole.UiHost)
+                && !MainWindow.OwnsArchiveAutomation(RuntimeRole.ElevatedHelper),
+                "only the medium UI process owns archive watching so the elevated helper cannot create a duplicate destination");
             Check(loaded.AutoSave, "auto-save setting roundtrip");
             Check(loaded.KeyboardLayout == "US", "keyboard layout setting roundtrip");
             Check(loaded.SpaceHoldRepeatEnabled && loaded.SpaceHoldRepeatDelayMs == 450, "Space hold repeat setting roundtrip");
@@ -480,14 +485,31 @@ public static class SelfTest
             Directory.CreateDirectory(watchedDesktop);
             Directory.CreateDirectory(watchedOutput);
             using (var extracted = new ManualResetEventSlim())
+            using (var duplicateExtraction = new ManualResetEventSlim())
             using (var watcher = new ArchiveWatcher(watchedDesktop))
             {
-                watcher.Status += message => { if (message.StartsWith("自動解凍しました")) extracted.Set(); };
+                int extractionCount = 0;
+                var archiveActivities = new System.Collections.Concurrent.ConcurrentQueue<ArchiveActivityState>();
+                watcher.ActivityChanged += activity => archiveActivities.Enqueue(activity.State);
+                watcher.Status += message =>
+                {
+                    if (!message.StartsWith("自動解凍しました"))
+                        return;
+                    if (Interlocked.Increment(ref extractionCount) == 1)
+                        extracted.Set();
+                    else
+                        duplicateExtraction.Set();
+                };
                 watcher.Apply(new AppConfig { AutoExtractDesktopArchives = true, ArchiveDestinationFolder = watchedOutput });
                 string watchedZip = Path.Combine(watchedDesktop, "watched.zip");
                 System.IO.Compression.ZipFile.CreateFromDirectory(archiveSource, watchedZip);
                 bool watcherDone = extracted.Wait(8000);
-                Check(watcherDone && File.Exists(Path.Combine(watchedOutput, "watched", "hello.txt")), "custom watch folder automatically extracts into the selected destination folder");
+                Check(watcherDone && File.Exists(Path.Combine(watchedOutput, "watched", "hello.txt"))
+                    && archiveActivities.ToArray().SequenceEqual([ArchiveActivityState.Extracting, ArchiveActivityState.Completed]),
+                    "custom watch folder extracts once and reports a truthful start/completion lifecycle for the compact progress overlay");
+                watcher.StartExtractForTest(watchedZip, watchedOutput);
+                bool extractedTwice = duplicateExtraction.Wait(1800);
+                Check(!extractedTwice && extractionCount == 1 && !Directory.Exists(Path.Combine(watchedOutput, "watched (2)")), "duplicate Created and Renamed notifications never extract the same archive twice");
             }
             service.Save(loaded);
             Check(Directory.GetFiles(dir, "*.bak.json").Length >= 1, "automatic backup");
@@ -695,10 +717,18 @@ public static class SelfTest
             missingDeckReference.Profiles[0].Mappings.Add(new Mapping { Input = "Q", Kind = ActionKind.Shortcut, Value = DeckPanelLayout.ActionValue("missing") });
             Check(ConfigValidator.Validate(missingDeckReference).Any(x => x.Contains("Deckレイアウト")), "missing Deck layout references are rejected before saving");
             bool showMainRequested = false;
+            bool toggleAutoExtractRequested = false;
             InputEngine.ShowRelyrMainWindowOutputForTest = () => showMainRequested = true;
+            InputEngine.ToggleAutoExtractOutputForTest = () => toggleAutoExtractRequested = true;
             InputEngine.SendShortcut(ActionCatalog.ShowRelyrMainWindowAction);
+            InputEngine.SendShortcut(ActionCatalog.ToggleAutoExtractAction);
             InputEngine.ShowRelyrMainWindowOutputForTest = null;
-            Check(showMainRequested && InputEngine.IsRecognizedShortcut(ActionCatalog.ShowRelyrMainWindowAction) && ActionCatalog.Items.Last().MajorCategory == "その他", "the last Other category exposes a native RELYR main-window action without sending keys");
+            InputEngine.ToggleAutoExtractOutputForTest = null;
+            Check(showMainRequested && toggleAutoExtractRequested
+                && InputEngine.IsRecognizedShortcut(ActionCatalog.ShowRelyrMainWindowAction)
+                && InputEngine.IsRecognizedShortcut(ActionCatalog.ToggleAutoExtractAction)
+                && ActionCatalog.Items.Last() is { MajorCategory: "その他", Value: ActionCatalog.ToggleAutoExtractAction },
+                "the Other category exposes native RELYR display and auto-extraction actions without sending physical keys");
             Check(ActionCatalog.Items.Any(x => x.Value == "ToggleMaximizeWindow" && x.Name.Contains("元のサイズ")), "target-aware toggle maximize action");
             Check(ActionCatalog.Items.Any(x => x.Category == "ウィンドウ・基本操作" && x.Name == "最小化" && x.Value == "MinimizeActiveWindow") && ActionCatalog.Items.Any(x => x.Category == "ウィンドウ・基本操作" && x.Name == "ウィンドウを閉じる" && x.Value == "CloseActiveWindow"), "target-aware minimize and close-window actions");
             InputEngine.ResetMinimizeAllToggleForTest();

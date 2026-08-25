@@ -53,7 +53,9 @@ public partial class MainWindow
     internal bool CanUndoPaletteActionForTest => actionPaletteUndoState != null;
     internal TimeSpan ActionPaletteUndoDurationForTest => actionPaletteUndoTimer.Interval;
     internal IReadOnlyList<CatalogAction> ActionPaletteActionsForTest => actionPaletteItems.Select(item => item.Action).ToArray();
+    internal IReadOnlyList<(CatalogAction Action, string Detail)> ActionPaletteDetailsForTest => actionPaletteItems.Select(item => (item.Action, item.Detail)).ToArray();
     internal IReadOnlyList<CatalogAction> VisibleActionPaletteActionsForTest => ActionPaletteList.Items.Cast<ActionPaletteItem>().Select(item => item.Action).ToArray();
+    internal void ClickVisualInputForTest(string key) => SelectVisualInput(key);
     internal void SetActionPaletteApplicationsForTest(params InstalledApplicationInfo[] applications)
     {
         actionPaletteApplicationDiscoveryStarted = true;
@@ -189,6 +191,8 @@ public partial class MainWindow
 #if !PRODUCTION_PUBLISH
     internal string[] TrayMenuItemTextsForTest()
         => tray.ContextMenuStrip?.Items.OfType<System.Windows.Forms.ToolStripItem>().Select(item => item.Text ?? "").ToArray() ?? [];
+    internal System.Drawing.Color TrayMenuBackColorForTest
+        => tray.ContextMenuStrip?.BackColor ?? System.Drawing.Color.Empty;
 
     internal void ExecuteTrayExitMenuItemForTest()
     {

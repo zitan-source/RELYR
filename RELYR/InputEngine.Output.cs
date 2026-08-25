@@ -272,7 +272,7 @@ public sealed partial class InputEngine
     {
         if (SystemControlService.IsAction(value))
             return true;
-        if (value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
+        if (ActionCatalog.IsApplicationAction(value))
             return true;
         if (OverlayService.IsOverlayAction(value))
             return true;

@@ -8,6 +8,11 @@ public sealed record CatalogAction(string Category, string Name, string Descript
 public static class ActionCatalog
 {
     public const string ShowRelyrMainWindowAction = "ShowRelyrMainWindow";
+    public const string ToggleAutoExtractAction = "RELYR:ToggleAutoExtract";
+
+    public static bool IsApplicationAction(string? value)
+        => value?.Equals(ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase) == true
+            || value?.Equals(ToggleAutoExtractAction, StringComparison.OrdinalIgnoreCase) == true;
     static readonly IReadOnlyDictionary<string, string> MouseActionLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["MouseLeft"] = "左クリック",
@@ -86,9 +91,9 @@ public static class ActionCatalog
         new("Windowsの基本機能","クリップボード履歴","コピー履歴を表示します",ActionKind.Shortcut,"Win+V"),
         new("Windowsの基本機能","クイックリンクメニュー","管理ツールにすぐアクセスできるメニューを開きます",ActionKind.Shortcut,"Win+X"),
 
-        new("画面キャプチャ","画面全体をコピー","画面全体をクリップボードへコピーします",ActionKind.Key,"PrintScreen"),
-        new("画面キャプチャ","使用中のウィンドウをコピー","アクティブウィンドウだけをクリップボードへコピーします",ActionKind.Shortcut,"Alt+PrintScreen"),
-        new("画面キャプチャ","範囲を選んでコピー","切り取り領域を選択します",ActionKind.Shortcut,"Win+Shift+S"),
+        new("画面キャプチャ","画面全体をスクリーンショット","画面全体をクリップボードへコピーします",ActionKind.Key,"PrintScreen"),
+        new("画面キャプチャ","使用中のウィンドウをスクリーンショット","アクティブウィンドウだけをクリップボードへコピーします",ActionKind.Shortcut,"Alt+PrintScreen"),
+        new("画面キャプチャ","範囲をスクリーンショット","範囲を選んでクリップボードへコピーします",ActionKind.Shortcut,"Win+Shift+S"),
 
         new("音量・メディア","音量を上げる","システム音量を上げます",ActionKind.Key,"VolumeUp"),
         new("音量・メディア","音量を下げる","システム音量を下げます",ActionKind.Key,"VolumeDown"),
@@ -267,6 +272,7 @@ public static class ActionCatalog
         , new("システム操作", "Wi-Fiを切り替え", "Wi-Fiのオン・オフを切り替えます", ActionKind.Shortcut, SystemControlService.Prefix + "WifiToggle")
         , new("システム操作", "Wi-Fi設定", "WindowsのWi-Fi設定を開きます", ActionKind.Shortcut, SystemControlService.Prefix + "WifiSettings")
         , new("システム操作", "Bluetooth設定", "WindowsのBluetooth設定を開きます", ActionKind.Shortcut, SystemControlService.Prefix + "BluetoothSettings")
+        , new("RELYR", "自動解凍を切り替え", "自動解凍のオン／オフを切り替えます", ActionKind.Shortcut, ToggleAutoExtractAction)
     ];
 
     public static string GetMajorCategory(string category) => category switch

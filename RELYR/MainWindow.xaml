@@ -14,17 +14,36 @@
       <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Grid SnapsToDevicePixels="True">
+          <Border x:Name="ToolbarSurface" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
+          </Border>
+          <Border x:Name="ToolbarFocusLine" Width="20" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ToolbarSurface" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="ToolbarSurface" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="ToolbarSurface" Property="Opacity" Value="0.78"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ToolbarFocusLine" Property="Opacity" Value="1"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToolbarSurface" Property="Opacity" Value="0.42"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style x:Key="ToolbarDangerButtonStyle" TargetType="Button" BasedOn="{StaticResource DangerActionButtonStyle}">
+    <Style x:Key="ToolbarDangerButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
       <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="0"/>
       <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Style.Triggers>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsEnabled" Value="True"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></MultiTrigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="ToolbarToggleStyle" TargetType="ToggleButton">
       <Setter Property="Height" Value="44"/><Setter Property="MinWidth" Value="44"/>
       <Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="12,0"/>
-      <Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
         <Grid SnapsToDevicePixels="True">
@@ -36,19 +55,49 @@
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/></Trigger>
-          <Trigger Property="IsChecked" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/><Setter TargetName="SelectionLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="SelectionLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ToggleBorder" Property="Opacity" Value="0.45"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DeckHeaderButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+      <Setter Property="Height" Value="44"/>
+      <Setter Property="MinHeight" Value="44"/>
+      <Setter Property="MinWidth" Value="44"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="DeckHeaderToggleStyle" TargetType="ToggleButton">
+      <Setter Property="Height" Value="44"/><Setter Property="MinHeight" Value="44"/><Setter Property="MinWidth" Value="44"/>
+      <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="12,0"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+        <Grid SnapsToDevicePixels="True">
+          <Border x:Name="HeaderToggleSurface" Background="Transparent" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/>
+          </Border>
+          <Border x:Name="HeaderToggleLine" Width="24" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1" Opacity="0" IsHitTestVisible="False"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HeaderToggleSurface" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="HeaderToggleSurface" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="HeaderToggleSurface" Property="Opacity" Value="0.78"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="HeaderToggleLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HeaderToggleLine" Property="Opacity" Value="1"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="HeaderToggleSurface" Property="Opacity" Value="0.42"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="ThemeSegmentToggleStyle" TargetType="ToggleButton">
-      <Setter Property="Width" Value="40"/><Setter Property="MinWidth" Value="40"/><Setter Property="Height" Value="40"/>
+      <Setter Property="Width" Value="44"/><Setter Property="MinWidth" Value="44"/><Setter Property="Height" Value="44"/>
       <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="0"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
         <Grid SnapsToDevicePixels="True">
-          <Border x:Name="SegmentSurface" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}">
+          <Border x:Name="SegmentSurface" Background="{TemplateBinding Background}" CornerRadius="0">
             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
           </Border>
           <Border x:Name="SegmentLine" Width="20" Height="2" Margin="0,0,0,2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1" Opacity="0" IsHitTestVisible="False"/>
@@ -56,7 +105,7 @@
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SegmentSurface" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="SegmentSurface" Property="Opacity" Value="0.76"/></Trigger>
-          <Trigger Property="IsChecked" Value="True"><Setter TargetName="SegmentSurface" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="SegmentLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="SegmentLine" Property="Opacity" Value="1"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="SegmentLine" Property="Opacity" Value="1"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
@@ -75,9 +124,22 @@
     </Style>
     <Style x:Key="SidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
       <Setter Property="Height" Value="42"/><Setter Property="Margin" Value="0,1"/>
-      <Setter Property="Padding" Value="8,0"/><Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="9,0"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="FocusVisualStyle"><Setter.Value><Style TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
+        <Border Width="2" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" CornerRadius="1"/>
+      </ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="SidebarSurface" Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SidebarSurface" Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="SidebarSurface" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="SidebarSurface" Property="Opacity" Value="0.78"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="SidebarSurface" Property="Opacity" Value="0.42"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="SidebarLabel" TargetType="TextBlock">
       <Setter Property="Margin" Value="10,0,0,0"/><Setter Property="VerticalAlignment" Value="Center"/>
@@ -297,28 +359,30 @@
     <Style x:Key="ActionPaletteLaunchButton" TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
       <EventSetter Event="MouseEnter" Handler="ActionPaletteLaunchMotionEntered"/>
       <EventSetter Event="MouseLeave" Handler="ActionPaletteLaunchMotionExited"/>
-      <Setter Property="Width" Value="64"/>
-      <Setter Property="Height" Value="64"/>
-      <Setter Property="MinHeight" Value="64"/>
+      <Setter Property="Width" Value="68"/>
+      <Setter Property="Height" Value="70"/>
+      <Setter Property="MinHeight" Value="70"/>
       <Setter Property="Padding" Value="0"/>
       <Setter Property="HorizontalAlignment" Value="Center"/>
-      <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="Background" Value="{DynamicResource SurfaceBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Grid Width="64" Height="64">
-          <Border x:Name="LaunchHalo" Width="64" Height="64" CornerRadius="32" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+        <Grid Width="68" Height="70">
+          <Border x:Name="LaunchDepth" Width="68" Height="68" Margin="0,2,0,0" VerticalAlignment="Top" CornerRadius="34" Background="{DynamicResource KeyDepthBrush}" Opacity="0.72" IsHitTestVisible="False"/>
+          <Border x:Name="LaunchHalo" Width="68" Height="68" VerticalAlignment="Top" CornerRadius="34" BorderThickness="0" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
             <Border.RenderTransform><ScaleTransform ScaleX="0.86" ScaleY="0.86"/></Border.RenderTransform>
           </Border>
-          <Border x:Name="LaunchBorder" Width="64" Height="64" CornerRadius="32" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="True" RenderTransformOrigin="0.5,0.5">
+          <Border x:Name="LaunchBorder" Width="68" Height="68" VerticalAlignment="Top" CornerRadius="34" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True" RenderTransformOrigin="0.5,0.5">
             <Border.RenderTransform><ScaleTransform ScaleX="1" ScaleY="1"/></Border.RenderTransform>
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
         </Grid>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="LaunchBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="LaunchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="LaunchBorder" Property="Opacity" Value="0.76"/></Trigger>
-          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="LaunchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="LaunchBorder" Property="BorderThickness" Value="2"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="LaunchBorder" Property="Background" Value="{DynamicResource ControlHoverBackground}"/><Setter TargetName="LaunchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="LaunchBorder" Property="Background" Value="{DynamicResource ControlPressedBackground}"/><Setter TargetName="LaunchBorder" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.98" ScaleY="0.98"/></Setter.Value></Setter><Setter TargetName="LaunchDepth" Property="Opacity" Value="0.35"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="LaunchBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="LaunchBorder" Property="BorderThickness" Value="1"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
@@ -346,18 +410,25 @@
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ActionRow" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="ActionRow" Property="BorderThickness" Value="1"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding StartsRecommendationSection}" Value="True"><Setter Property="Height" Value="70"/></DataTrigger>
+      </Style.Triggers>
     </Style>
     <DataTemplate x:Key="ActionPaletteItemTemplate">
       <Grid MinWidth="0" ToolTip="{Binding ToolTipText}">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
-        <Border Width="26" Height="26" CornerRadius="6" Background="{DynamicResource SurfaceBackground}" HorizontalAlignment="Left" VerticalAlignment="Center">
-          <TextBlock x:Name="ActionPaletteItemGlyph" Text="{Binding Glyph}" FontFamily="Segoe UI Variable, Segoe UI Symbol, Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
-        </Border>
-        <StackPanel Grid.Column="1" Margin="7,0,4,0" VerticalAlignment="Center" MinWidth="0">
-          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Text="{Binding Group}" FontSize="9.5" Foreground="{DynamicResource MutedText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
-        </StackPanel>
-        <TextBlock Grid.Column="2" Text="⋮⋮" FontSize="10" Foreground="{DynamicResource MutedText}" HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="ドラッグして割り当て"/>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBlock Text="{Binding RecommendationSection}" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource MutedText}" Margin="0,0,0,3" Visibility="{Binding StartsRecommendationSection,Converter={StaticResource BooleanToVisibilityConverter}}"/>
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+          <Border Width="26" Height="26" CornerRadius="6" Background="{DynamicResource SurfaceBackground}" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <TextBlock x:Name="ActionPaletteItemGlyph" Text="{Binding Glyph}" FontFamily="Segoe UI Variable, Segoe UI Symbol, Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+          </Border>
+          <StackPanel Grid.Column="1" Margin="7,0,4,0" VerticalAlignment="Center" MinWidth="0">
+            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding Detail}" FontSize="9.5" Foreground="{DynamicResource MutedText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+          </StackPanel>
+          <TextBlock Grid.Column="2" Text="⋮⋮" FontSize="10" Foreground="{DynamicResource MutedText}" HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="ドラッグして割り当て"/>
+        </Grid>
       </Grid>
     </DataTemplate>
     <Style TargetType="TextBox" BasedOn="{StaticResource AppTextBoxStyle}">
@@ -448,12 +519,13 @@
     </Style>
     <Style x:Key="ToolbarHeaderComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ToolbarComboBoxStyle}">
       <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Background" Value="Transparent"/>
       <Setter Property="FocusVisualStyle"><Setter.Value><Style TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
         <Border Height="2" Margin="6,0" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" CornerRadius="1"/>
       </ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter>
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
-        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
       </Style.Triggers>
     </Style>
     <Style x:Key="ActionPaletteCategoryItemStyle" TargetType="ComboBoxItem">
@@ -572,7 +644,9 @@
               </Canvas></Viewbox>
             </Grid>
             <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
-            <TextBlock x:Name="KeyboardLayoutToolbarIcon" Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="24" Height="24" TextAlignment="Center" VerticalAlignment="Center" Margin="18,0,8,0" Foreground="{DynamicResource SecondaryText}" ToolTip="キーボード配列" AutomationProperties.Name="キーボード配列"/>
+            <TextBlock x:Name="KeyboardLayoutToolbarIcon" Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="24" Height="24" TextAlignment="Center" VerticalAlignment="Center" Margin="18,0,8,0" Foreground="{DynamicResource SecondaryText}" ToolTip="キーボード配列" AutomationProperties.Name="キーボード配列">
+              <TextBlock.RenderTransform><TranslateTransform Y="5"/></TextBlock.RenderTransform>
+            </TextBlock>
             <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
             <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
               <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>
@@ -582,8 +656,8 @@
             </StackPanel>
           </StackPanel>
           <StackPanel x:Name="ToolbarPrimaryActionsPanel" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button x:Name="ToolbarSaveButton" Style="{StaticResource ToolbarButtonStyle}" Content="保存" Width="96" MinWidth="96" Click="Save_Click" Margin="18,3,12,3" FontWeight="SemiBold" Background="{DynamicResource AccentStrongBrush}" Foreground="{DynamicResource AccentButtonText}" BorderBrush="{DynamicResource AccentBrush}" ToolTip="変更を保存して反映"/>
-            <Border x:Name="ThemeSegmentPanel" Height="44" Margin="0" Padding="2" Background="{DynamicResource ControlBackground}" CornerRadius="{StaticResource ControlCornerRadius}">
+            <Button x:Name="ToolbarSaveButton" Style="{StaticResource AccentAppButtonStyle}" Height="44" Content="保存" Width="96" MinWidth="96" Click="Save_Click" Margin="18,3,12,3" FontWeight="SemiBold" BorderThickness="0" ToolTip="変更を保存して反映"/>
+            <Border x:Name="ThemeSegmentPanel" Height="44" Margin="0" Padding="0" Background="Transparent" CornerRadius="{StaticResource ControlCornerRadius}" ClipToBounds="True">
               <StackPanel Orientation="Horizontal">
                 <ToggleButton x:Name="LightThemeToggle" Style="{StaticResource ThemeSegmentToggleStyle}" Click="LightThemeToggle_Click" ToolTip="ライトモード" AutomationProperties.Name="ライトモード"><TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
                 <ToggleButton x:Name="DarkThemeToggle" Style="{StaticResource ThemeSegmentToggleStyle}" Click="DarkThemeToggle_Click" ToolTip="ダークモード" AutomationProperties.Name="ダークモード"><TextBlock Text="&#xE708;" FontFamily="Segoe Fluent Icons" FontSize="16"/></ToggleButton>
@@ -619,7 +693,22 @@
     </Border>
 
     <Border x:Name="BottomStatusPane" DockPanel.Dock="Bottom" Background="{DynamicResource AppBackground}" BorderThickness="0" Padding="14,5">
-      <TextBlock x:Name="LastInput" Text="入力: —" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel x:Name="UnsavedChangesIndicator" Grid.Column="1" Orientation="Horizontal"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"
+                    IsHitTestVisible="False">
+          <Ellipse Width="6" Height="6" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{DynamicResource WarningBrush}"/>
+          <TextBlock Text="未保存の変更があります" FontSize="11" Foreground="{DynamicResource SecondaryText}"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock x:Name="LastInput" Grid.Column="2" Text="入力: —" VerticalAlignment="Center"
+                   HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+      </Grid>
     </Border>
 
     <Grid x:Name="MainContentGrid" ClipToBounds="True" SizeChanged="MainContent_SizeChanged">
@@ -669,7 +758,7 @@
               <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Canvas Tag="SidebarIcon" Style="{StaticResource SidebarCommandIconCanvas}"><Line X1="16" Y1="3" X2="16" Y2="17" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6"/><Line X1="9" Y1="10" X2="23" Y2="10" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.6"/><Ellipse Width="3" Height="3" Canvas.Left="14.5" Canvas.Top="8.5" Fill="{DynamicResource PrimaryText}"/></Canvas><TextBlock Style="{StaticResource SidebarLabel}" Grid.Column="1" Text="ジェスチャー"/></Grid>
             </Button>
             <Button x:Name="DeckPanelManagerButton" Style="{StaticResource SidebarButtonStyle}" HorizontalAlignment="Stretch" Click="OpenDeckPanelManager_Click" ToolTip="Deckオーバーレイの45個のボタンを管理します">
-              <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Canvas Tag="SidebarIcon" Style="{StaticResource SidebarCommandIconCanvas}"><Path Data="M 9,3 H 23 V 17 H 9 Z M 13.67,3 V 17 M 18.33,3 V 17 M 9,7.67 H 23 M 9,12.33 H 23" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.5" Fill="Transparent"/></Canvas><TextBlock Style="{StaticResource SidebarLabel}" Grid.Column="1" Text="Deckパネル"/></Grid>
+              <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Canvas Tag="SidebarIcon" Style="{StaticResource SidebarCommandIconCanvas}"><Path Data="M 9,3 H 23 V 17 H 9 Z M 13.67,3 V 17 M 18.33,3 V 17 M 9,7.67 H 23 M 9,12.33 H 23" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.5" Fill="Transparent"/></Canvas><TextBlock Style="{StaticResource SidebarLabel}" Grid.Column="1" Text="Deckパネル"/><Ellipse x:Name="DeckNavigationActiveIndicator" Grid.ColumnSpan="2" Width="8" Height="8" Margin="8,0,4,0" HorizontalAlignment="Right" VerticalAlignment="Center" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" IsHitTestVisible="False"/></Grid>
             </Button>
             <Button x:Name="AppSettingsButton" Style="{StaticResource SidebarButtonStyle}" HorizontalAlignment="Stretch" Click="OpenSettings_Click" ToolTip="自動起動や自動解凍を設定します">
               <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Canvas Tag="SidebarIcon" Style="{StaticResource SidebarCommandIconCanvas}"><Ellipse Width="12" Height="12" Canvas.Left="10" Canvas.Top="4" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.5" Fill="Transparent"/><Ellipse Width="4" Height="4" Canvas.Left="14" Canvas.Top="8" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.5" Fill="Transparent"/><Path Data="M 16,1 V 4 M 16,16 V 19 M 7,10 H 10 M 22,10 H 25 M 9.64,3.64 L 11.76,5.76 M 20.24,14.24 L 22.36,16.36 M 9.64,16.36 L 11.76,14.24 M 20.24,5.76 L 22.36,3.64" Stroke="{DynamicResource PrimaryText}" StrokeThickness="1.5"/></Canvas><TextBlock Style="{StaticResource SidebarLabel}" Grid.Column="1" Text="設定"/></Grid>
@@ -736,21 +825,19 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid x:Name="DeckEditorCommandBar" Margin="0,0,0,12" UseLayoutRounding="True">
               <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <Button x:Name="DeckBackButton" Style="{StaticResource DeckAppearanceAction}" Click="DeckBack_Click" Width="44" Height="44" MinWidth="44" MinHeight="44" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
+              <Button x:Name="DeckBackButton" Style="{StaticResource DeckHeaderButtonStyle}" Click="DeckBack_Click" Width="44" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="0" Margin="0,0,12,0" ToolTip="Deck一覧へ戻る">
                 <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Button>
               <TextBox x:Name="DeckLayoutNameBox" Style="{StaticResource DeckTitleTextBox}" Grid.Column="1" Height="44" MinWidth="110" MaxWidth="420" Margin="0,0,16,0" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Left" VerticalAlignment="Center" VerticalContentAlignment="Center" TextChanged="DeckLayoutNameChanged" ToolTip="クリックしてDeck名を編集" AutomationProperties.Name="Deck名"/>
               <TextBlock x:Name="DeckSaveStatusText" Grid.Column="2" Text="未保存" Visibility="Collapsed" FontSize="11" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-              <Border Grid.Column="3" Background="{DynamicResource ControlBackground}" CornerRadius="8" Padding="3" Margin="0,0,10,0">
-                <UniformGrid Columns="2">
-                  <ToggleButton x:Name="DeckGridViewToggle" Style="{StaticResource DeckCustomizeTabStyle}" Width="42" IsChecked="True" Click="DeckViewMode_Click" Tag="Grid" ToolTip="実際のDeck配置で表示" AutomationProperties.Name="グリッド表示"><TextBlock Text="&#xE80A;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
-                  <ToggleButton x:Name="DeckListViewToggle" Style="{StaticResource DeckCustomizeTabStyle}" Width="42" Click="DeckViewMode_Click" Tag="List" ToolTip="DeckボタンとActionを一覧表示" AutomationProperties.Name="リスト表示"><TextBlock Text="&#xEA37;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
-                </UniformGrid>
-              </Border>
-              <ToggleButton x:Name="DeckCustomizeToggleButton" Grid.Column="4" Style="{StaticResource DeckEditorCompactToggle}" Click="DeckCustomizeToggle_Click" Margin="0,0,10,0" ToolTip="レイアウト・見た目・表示動作を設定" AutomationProperties.Name="Deckをカスタマイズ">
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,10,0">
+                <ToggleButton x:Name="DeckGridViewToggle" Style="{StaticResource DeckHeaderToggleStyle}" Width="44" IsChecked="True" Click="DeckViewMode_Click" Tag="Grid" ToolTip="実際のDeck配置で表示" AutomationProperties.Name="グリッド表示"><TextBlock Text="&#xE80A;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
+                <ToggleButton x:Name="DeckListViewToggle" Style="{StaticResource DeckHeaderToggleStyle}" Width="44" Click="DeckViewMode_Click" Tag="List" ToolTip="DeckボタンとActionを一覧表示" AutomationProperties.Name="リスト表示"><TextBlock Text="&#xEA37;" FontFamily="Segoe Fluent Icons" FontSize="14"/></ToggleButton>
+              </StackPanel>
+              <ToggleButton x:Name="DeckCustomizeToggleButton" Grid.Column="4" Style="{StaticResource DeckHeaderToggleStyle}" Click="DeckCustomizeToggle_Click" Margin="0,0,10,0" ToolTip="レイアウト・見た目・表示動作を設定" AutomationProperties.Name="Deckをカスタマイズ">
                 <StackPanel Orientation="Horizontal"><TextBlock x:Name="DeckCustomizeGlyph" Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="14" Margin="0,0,7,0"/><TextBlock x:Name="DeckCustomizeLabel" Text="カスタマイズ" TextWrapping="NoWrap"/></StackPanel>
               </ToggleButton>
-              <Button x:Name="DeckOverlayToggleButton" Grid.Column="5" Style="{StaticResource DeckEditorCompactAction}" Content="Deckを表示" Click="DeckOverlayToggle_Click" Margin="0" ToolTip="このDeckを実際のオーバーレイとして表示します"/>
+              <Button x:Name="DeckOverlayToggleButton" Grid.Column="5" Style="{StaticResource DeckHeaderButtonStyle}" Content="Deckを表示" Click="DeckOverlayToggle_Click" Margin="0" ToolTip="このDeckを実際のオーバーレイとして表示します"/>
               <Button x:Name="DeckSaveButton" Grid.Column="6" Visibility="Collapsed" Content="保存" Click="DeckSave_Click"/>
             </Grid>
             <Grid x:Name="DeckEditorBody" Grid.Row="1" MinWidth="0" ClipToBounds="True" SizeChanged="DeckEditorBody_SizeChanged">
@@ -952,7 +1039,7 @@
           <Grid.RenderTransform><TranslateTransform x:Name="InspectorEmptyStateTransform" Y="-96"/></Grid.RenderTransform>
           <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
           <Button x:Name="ActionPaletteButton" Grid.Row="0" Style="{StaticResource ActionPaletteLaunchButton}" Click="OpenActionPalette_Click" Margin="0,0,0,24" VerticalAlignment="Bottom" ToolTip="Action一覧を開く" AutomationProperties.Name="Action一覧を開く">
-            <TextBlock Text="&#xE8FD;" FontFamily="Segoe Fluent Icons" FontSize="23"/>
+            <TextBlock Text="&#xE8FD;" FontFamily="Segoe Fluent Icons" FontSize="22"/>
           </Button>
           <TextBlock x:Name="InspectorEmptyTitleText" Grid.Row="1" Text="Actionを選択" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           <StackPanel Grid.Row="2" VerticalAlignment="Top" HorizontalAlignment="Stretch">
