@@ -73,6 +73,8 @@ CapsLockレイヤーを有効にすると、Windowsのキー割り当て変更�
 - .NET 10 SDK
 - インストーラーを作る場合のみInno Setup 6
 
+コードの責務と変更時の入口は[アーキテクチャ概要](docs/architecture.md)を参照してください。
+
 本番アプリを全テスト後に生成します。
 
 ```powershell
@@ -89,19 +91,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build-installer.ps1
 
 ```powershell
 dotnet build .\RELYR\RELYR.csproj -c Release -warnaserror
-$dll = ".\RELYR\bin\Release\net10.0-windows\win-x64\RELYR.dll"
+$dll = ".\RELYR\bin\Release\net10.0-windows10.0.17763.0\win-x64\RELYR.dll"
 dotnet $dll --self-test
-dotnet $dll --engine-test-no-real
+dotnet $dll --configuration-matrix-test
 dotnet $dll --ui-test
 dotnet $dll --startup-test
+dotnet $dll --shutdown-test
 ```
 
 `--ui-test` は、サインイン済みのWindowsデスクトップ上で実行してください。
-実際の低レベル入力フックまで検証する場合は `--engine-test-no-real` を
-`--engine-test` に置き換えます。`build-production.ps1` と
-`build-installer.ps1` は既定でこの実入力テストを含むため、通常はスクリプトを
-1回実行するだけでビルド、全テスト、成果物生成まで完了します。実入力テストを
-意図的に省く場合だけ `-SkipRealHookTest` を指定します。
+`build-production.ps1` と `build-installer.ps1` は、通常利用中のWindowsへ入力を
+注入しないよう、入力エンジンテストを既定で省略します。`--engine-test`、
+`--engine-test-no-real`、`ModifierClickScenarioTest` は専用の未使用Windows
+セッションでのみ実行してください。固定仕様と安全な検証順序は
+[stability-contract.md](docs/stability-contract.md)を参照してください。
 
 本番成果物は `artifacts\production` のみに生成します。初回用Setup版と軽量なUpdate版を生成し、ZIPやポータブル版は作成しません。
 

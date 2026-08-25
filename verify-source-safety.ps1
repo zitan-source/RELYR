@@ -9,13 +9,19 @@ function Read-Source([string]$relativePath) {
     Get-Content -LiteralPath (Join-Path $root $relativePath) -Raw -Encoding UTF8
 }
 
+function Read-AppSourceSet([string]$filter) {
+    (Get-ChildItem -LiteralPath $appDirectory -File -Filter $filter |
+        Sort-Object Name |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }) -join [Environment]::NewLine
+}
+
 function Assert-Safety([bool]$condition, [string]$message) {
     if (-not $condition) {
         throw "Source safety check failed: $message"
     }
 }
 
-$mainWindow = Read-Source "RELYR\MainWindow.xaml.cs"
+$mainWindow = Read-AppSourceSet "MainWindow*.cs"
 $inputEngine = Read-Source "RELYR\InputEngine.cs"
 $inputOutput = Read-Source "RELYR\InputEngine.Output.cs"
 $conditionMatcher = Read-Source "RELYR\ConditionMatcher.cs"
@@ -24,7 +30,7 @@ $project = Read-Source "RELYR\RELYR.csproj"
 $productionBuild = Read-Source "build-production.ps1"
 $installerBuild = Read-Source "build-installer.ps1"
 $deckLayout = Read-Source "RELYR\DeckPanelLayout.cs"
-$deckOverlay = Read-Source "RELYR\DeckPanelOverlayWindow.cs"
+$deckOverlay = Read-AppSourceSet "DeckPanelOverlayWindow*.cs"
 $inputPanelOverlay = Read-Source "RELYR\InputPanelOverlayWindow.cs"
 $deckDragPreview = Read-Source "RELYR\DeckDragPreviewWindow.cs"
 $stableTrayIcon = Read-Source "RELYR\StableNotifyIcon.cs"
