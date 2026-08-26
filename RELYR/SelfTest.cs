@@ -545,8 +545,13 @@ public static class SelfTest
             using (var excludedApplicationEngine = new InputEngine { Enabled = true })
             {
                 bool excludedApplicationActive = false;
-                excludedApplicationEngine.HasMapping = input => input.Equals("A", StringComparison.OrdinalIgnoreCase);
-                excludedApplicationEngine.InputReceived = input => input.Equals("A", StringComparison.OrdinalIgnoreCase);
+                var excludedApplicationActions = new List<string>();
+                excludedApplicationEngine.HasMapping = input => input is "A" or "Space+*" or "Space+K";
+                excludedApplicationEngine.InputReceived = input =>
+                {
+                    excludedApplicationActions.Add(input);
+                    return input is "A" or "Space+K";
+                };
                 excludedApplicationEngine.ShouldInterceptInput = () => excludedApplicationEngine.HasCapturedPhysicalInput || !excludedApplicationActive;
                 excludedApplicationEngine.ShouldInterceptMouseInput = excludedApplicationEngine.ShouldInterceptInput;
                 IntPtr mappedDown = excludedApplicationEngine.DirectKeyForTest(0x41, false);
@@ -558,6 +563,37 @@ public static class SelfTest
                     && excludedKey != (IntPtr)1 && excludedMouse != (IntPtr)1
                     && !excludedApplicationEngine.HasCapturedStateForTest(),
                     "an input-disabled foreground app finishes only an already captured press, then passes every keyboard and mouse input through");
+
+                excludedApplicationActive = false;
+                excludedApplicationActions.Clear();
+                IntPtr oneSidedOemDown = excludedApplicationEngine.DirectKeyForTest(0xF2, false);
+                bool oneSidedOemIsNotOwned = !excludedApplicationEngine.HasCapturedPhysicalInput;
+                excludedApplicationActive = true;
+                IntPtr[] excludedLayerInput =
+                [
+                    excludedApplicationEngine.DirectKeyForTest(0x20, false),
+                    excludedApplicationEngine.DirectKeyForTest(0x4B, false),
+                    excludedApplicationEngine.DirectKeyForTest(0x4B, true),
+                    excludedApplicationEngine.DirectKeyForTest(0x20, true)
+                ];
+                bool disabledApplicationDidNotRunLayer = excludedApplicationActions.Count == 0;
+                excludedApplicationActive = false;
+                IntPtr[] restoredLayerInput =
+                [
+                    excludedApplicationEngine.DirectKeyForTest(0x20, false),
+                    excludedApplicationEngine.DirectKeyForTest(0x4B, false),
+                    excludedApplicationEngine.DirectKeyForTest(0x4B, true),
+                    excludedApplicationEngine.DirectKeyForTest(0x20, true)
+                ];
+                IntPtr oneSidedOemCleanup = excludedApplicationEngine.DirectKeyForTest(0xF2, true);
+                Check(oneSidedOemDown != (IntPtr)1 && oneSidedOemIsNotOwned
+                    && excludedLayerInput.All(result => result != (IntPtr)1)
+                    && disabledApplicationDidNotRunLayer
+                    && restoredLayerInput.All(result => result == (IntPtr)1)
+                    && excludedApplicationActions.SequenceEqual(["Space+K"])
+                    && oneSidedOemCleanup != (IntPtr)1
+                    && !excludedApplicationEngine.HasCapturedStateForTest(),
+                    "a missing Up from an unassigned OEM/IME key cannot bypass an input-disabled app, and leaving that app restores the original Space layer");
             }
             var defensiveMouseReleases = new List<(uint Flag, uint Data)>();
             try

@@ -1909,7 +1909,13 @@ public sealed partial class InputEngine : IDisposable
         get
         {
             lock (stateLock)
-                return deferredLayer != null || held.Count > 0 || presses.Values.Any(x => x.IsDown);
+                // Only input that RELYR actually swallowed is allowed to keep this
+                // hook's routing ownership across a foreground/integrity change.
+                // `held` and unhandled PressStates also contain ordinary pass-through
+                // keys. Some Japanese IME/OEM keys can report a Down without a
+                // matching low-level Up, so counting those states here would bypass a
+                // user-managed disabled application indefinitely.
+                return deferredLayer != null || presses.Values.Any(x => x.IsDown && x.Handled);
         }
     }
     internal bool IsDisposedForTest => disposed;

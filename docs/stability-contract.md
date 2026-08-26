@@ -75,7 +75,7 @@ Every change must preserve already-working behavior. A feature request does not 
 Before reporting completion, explicitly review this permanent regression set:
 
 1. RELYR main window: standard, Space, CapsLock, MouseRight, MouseBack, and MouseForward layers remain active.
-2. Ordinary applications: the same layers retain their existing behavior.
+2. Ordinary applications: the same layers retain their existing behavior. In an input-disabled application, a missing Up from an unassigned OEM/IME key must never reactivate mappings or layers; leaving the application restores every layer immediately.
 3. Normal left click is never assigned, replaced, or captured; ordinary right/back/forward clicks still replay correctly. Unassigned child clicks pass through held mouse layers even when the layer is released first. A mapped MouseRight wheel/tilt layer still permits native right-drag, and its generated Down is always followed by movement before any generated Up so it cannot become a context click. Direct `Taskbar+MouseMiddle` shortcuts execute without treating the taskbar as a cursor-target window, while taskbar shell surfaces remain rejected for window actions.
 4. Profile auto-switching follows the foreground application only, remains stable, and does not change the editor dropdown unless the user selects it. Opening an owned RELYR management dialog must not preserve an unrelated application's runtime profile, and the dialog's title-bar close command remains usable.
 5. Deck editor and live overlay synchronize in both directions without restart, including profile-linked layouts with different dimensions.
