@@ -87,6 +87,10 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     static readonly TimeSpan HoverAudioDelay = TimeSpan.FromMilliseconds(220);
     static readonly TimeSpan PointerLeaveAutoHideDelay = TimeSpan.FromMilliseconds(500);
     static readonly TimeSpan ActionAutoHideDelay = TimeSpan.FromMilliseconds(140);
+    static readonly TimeSpan PresentationFadeDuration = TimeSpan.FromMilliseconds(155);
+    static readonly TimeSpan PresentationScaleDuration = TimeSpan.FromMilliseconds(135);
+    static readonly TimeSpan PresentationFadeWatchdog = TimeSpan.FromMilliseconds(230);
+    const double PresentationDepartureScale = .975;
     static readonly WpfColor AcrylicCharcoal = WpfColor.FromRgb(0x1C, 0x1F, 0x22);
     static readonly WpfColor DeckPrimaryText = WpfColor.FromRgb(0xF2, 0xF2, 0xF2);
     static readonly WpfColor DeckSecondaryText = WpfColor.FromRgb(0x9A, 0x9E, 0xA5);
@@ -127,6 +131,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     string pendingHoverAudioPath = "";
     readonly DispatcherTimer hoverAudioStartTimer = new() { Interval = HoverAudioDelay };
     readonly DispatcherTimer autoHideTimer = new() { Interval = PointerLeaveAutoHideDelay };
+    readonly DispatcherTimer presentationFadeTimer = new() { Interval = PresentationFadeWatchdog };
     DeckVideoPreviewPopup? videoPreview;
     Border? monitorControlPanel;
     readonly object brightnessWheelSync = new();
@@ -228,6 +233,9 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     double interactiveSizingStartWidth;
     double interactiveSizingStartHeight;
     int headerLayoutMode = -1;
+    int presentationGeneration;
+    int presentationFadeTimerGeneration;
+    bool presentationFadePending;
 
     enum DeckBackdropMode
     {
@@ -248,6 +256,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         stateChanged = presentationStateChanged;
         hoverAudioStartTimer.Tick += HoverAudioStartTimerTick;
         autoHideTimer.Tick += AutoHideTimerTick;
+        presentationFadeTimer.Tick += PresentationFadeTimerTick;
         hoverPreviewsEnabled = config.DeckHoverPreviewsEnabled;
         afterActionBehavior = config.DeckAfterActionBehavior;
         pointerLeaveBehavior = config.DeckPointerLeaveBehavior;
@@ -334,7 +343,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         StateChanged += WindowStateChanged;
         ThemeService.ThemeChanged += ThemeChanged;
         panelCard.LostMouseCapture += (_, _) => dragging = false;
-        Closed += (_, _) => { CloseMonitorControl(); ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
+        Closed += (_, _) => { CloseMonitorControl(); ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); presentationFadeTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
     }
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
@@ -475,6 +484,9 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     internal void HideForReuse()
     {
+        presentationGeneration++;
+        presentationFadePending = false;
+        presentationFadeTimer.Stop();
         autoHideTimer.Stop();
         pointerEnteredSinceShown = false;
         ReleaseOwnedMouseCapture();
@@ -484,10 +496,122 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         // Hide first so a pointer that is still over a Deck button cannot raise
         // another MouseEnter and recreate a media preview during teardown.
         Hide();
+        ResetPresentationVisualsBestEffort();
+        panelCard.IsHitTestVisible = true;
         NotifyPresentationStateChanged();
         ClearVideoPreviews();
         CancelPendingHoverAudio();
         StopHoverAudio();
+    }
+
+    internal void RequestHideForReuse()
+    {
+        if (!IsVisible || !UiMotionService.Enabled)
+        {
+            HideForReuse();
+            return;
+        }
+
+        int generation = ++presentationGeneration;
+        presentationFadePending = true;
+        presentationFadeTimerGeneration = generation;
+        autoHideTimer.Stop();
+        pointerEnteredSinceShown = false;
+        ReleaseOwnedMouseCapture();
+        PersistPosition();
+        PersistCollapsedPosition();
+        PersistSize();
+        panelCard.IsHitTestVisible = false;
+        ClearVideoPreviews();
+        CancelPendingHoverAudio();
+        StopHoverAudio();
+
+        if (!FreezePresentationContentForDeparture())
+        {
+            HideForReuse();
+            return;
+        }
+
+        presentationFadeTimer.Stop();
+        presentationFadeTimer.Start();
+        var (departureScale, _) = UiMotionService.MutableMotionTransform(root);
+        UiMotionService.AnimateDouble(
+            "deck-hide-scale-x",
+            departureScale,
+            ScaleTransform.ScaleXProperty,
+            PresentationDepartureScale,
+            PresentationScaleDuration,
+            UiMotionService.ResponsiveEaseOut());
+        UiMotionService.AnimateDouble(
+            "deck-hide-scale-y",
+            departureScale,
+            ScaleTransform.ScaleYProperty,
+            PresentationDepartureScale,
+            PresentationScaleDuration,
+            UiMotionService.ResponsiveEaseOut());
+        bool started = UiMotionService.AnimateDouble(
+            "deck-hide-opacity",
+            this,
+            UIElement.OpacityProperty,
+            .12,
+            PresentationFadeDuration,
+            UiMotionService.ResponsiveEaseOut(),
+            completed: () => CompletePresentationFade(generation));
+        if (!started)
+            CompletePresentationFade(generation);
+    }
+
+    bool FreezePresentationContentForDeparture()
+        => UiMotionService.TryRunSafely("deck-hide-content-freeze", () =>
+        {
+            var (scale, translate) = UiMotionService.MutableMotionTransform(root);
+            double rootOpacity = root.Opacity;
+            double scaleX = scale.ScaleX;
+            double scaleY = scale.ScaleY;
+            double translateX = translate.X;
+            double translateY = translate.Y;
+            UiMotionService.StopAndSetDouble(root, UIElement.OpacityProperty, rootOpacity);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, scaleX);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, scaleY);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, translateX);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, translateY);
+        });
+
+    void CompletePresentationFade(int generation)
+    {
+        if (!presentationFadePending || generation != presentationGeneration)
+            return;
+        HideForReuse();
+    }
+
+    void PresentationFadeTimerTick(object? sender, EventArgs e)
+    {
+        presentationFadeTimer.Stop();
+        CompletePresentationFade(presentationFadeTimerGeneration);
+    }
+
+    void ResetPresentationVisualsBestEffort()
+    {
+        try
+        {
+            UiMotionService.StopAndSetDouble(this, UIElement.OpacityProperty, 1);
+            UiMotionService.StopAndSetDouble(root, UIElement.OpacityProperty, 1);
+            var (scale, translate) = UiMotionService.MutableMotionTransform(root);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, 1);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, 1);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, 0);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, 0);
+        }
+        catch
+        {
+            try
+            {
+                Opacity = 1;
+                root.Opacity = 1;
+                root.RenderTransform = Transform.Identity;
+            }
+            catch { }
+        }
     }
 
     void ReleaseOwnedMouseCapture()
@@ -503,6 +627,21 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     internal bool OwnsMouseCaptureForTest => Mouse.Captured == panelCard || Mouse.Captured is Button button && deckButtons.Contains(button);
 
     internal bool IsCollapsedToEdge => collapsedToEdge;
+    internal bool IsPresentationHiding => presentationFadePending;
+    internal bool PresentationMotionActiveForTest => HasAnimatedProperties || root.HasAnimatedProperties
+        || root.RenderTransform is TransformGroup group && group.Children.Any(transform => transform.HasAnimatedProperties);
+    internal bool DepartureUsesScaleFadeOnlyForTest => presentationFadePending
+        && HasAnimatedProperties
+        && root.RenderTransform is TransformGroup group
+        && group.Children.OfType<ScaleTransform>().FirstOrDefault() is { HasAnimatedProperties: true }
+        && group.Children.OfType<TranslateTransform>().FirstOrDefault() is { HasAnimatedProperties: false };
+    internal double PresentationScaleForTest => root.RenderTransform is TransformGroup group
+        ? group.Children.OfType<ScaleTransform>().FirstOrDefault()?.ScaleX ?? 1
+        : 1;
+    internal bool PresentationContentHitTestVisibleForTest => panelCard.IsHitTestVisible;
+    internal double PresentationOffsetForTest => root.RenderTransform is TransformGroup group
+        ? group.Children.OfType<TranslateTransform>().FirstOrDefault()?.Y ?? 0
+        : 0;
     internal bool EdgeExpansionArmedForTest => edgeExpansionArmed;
     internal void ArmEdgeExpansionForTest()
     {
@@ -542,6 +681,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     {
         if (!collapsedToEdge)
             return;
+        Rect previousBounds = new(Left, Top, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
         collapsedToEdge = false;
         edgeExpansionArmed = false;
         collapsedPointerTransitionPending = false;
@@ -565,6 +705,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             UpdateHeaderLayout();
         }
         finally { changingWindowState = false; }
+        PlayDeckStateReveal(previousBounds, new Rect(Left, Top, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height));
         NotifyPresentationStateChanged();
     }
 
@@ -610,6 +751,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         var pointerAtCollapse = CurrentCursorPosition();
         bool pointerStartedOutsideCollapsedBounds = !collapsedBounds.Contains(new Point(pointerAtCollapse.X, pointerAtCollapse.Y));
         ApplyCollapsedBounds(collapsedBounds);
+        PlayDeckStateReveal(expandedBounds, collapsedBounds);
         // Moving the collapsed tab to the nearest screen edge can place it
         // underneath a stationary pointer.  Do not treat the resulting
         // synthetic MouseEnter as an intentional request to expand: that
@@ -656,14 +798,88 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     internal void PrepareForShow()
     {
+        int generation = ++presentationGeneration;
+        presentationFadePending = false;
+        presentationFadeTimer.Stop();
+        panelCard.IsHitTestVisible = true;
         autoHideTimer.Stop();
         pointerEnteredSinceShown = false;
         autoHideRequiresPointerOutside = true;
+        if (!UiMotionService.Enabled)
+            ResetPresentationVisualsBestEffort();
+        else
+        {
+            UiMotionService.RunSafely("deck-presentation-prepare", () =>
+            {
+                var (scale, translate) = UiMotionService.MutableMotionTransform(root);
+                bool inFlight = HasAnimatedProperties || root.HasAnimatedProperties || scale.HasAnimatedProperties || translate.HasAnimatedProperties;
+                if (!inFlight)
+                {
+                    UiMotionService.StopAndSetDouble(this, UIElement.OpacityProperty, .74);
+                    UiMotionService.StopAndSetDouble(root, UIElement.OpacityProperty, .72);
+                    UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, .985);
+                    UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, .985);
+                    UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, 10);
+                }
+                _ = Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() => BeginDeckPresentationReveal(generation)));
+            });
+        }
         _ = Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
             if (IsVisible && IsMouseOver)
                 pointerEnteredSinceShown = true;
         }));
+    }
+
+    void BeginDeckPresentationReveal(int generation)
+    {
+        if (!IsVisible || generation != presentationGeneration)
+            return;
+        if (!UiMotionService.Enabled)
+        {
+            ResetPresentationVisualsBestEffort();
+            return;
+        }
+        UiMotionService.RunSafely("deck-presentation-reveal", () =>
+        {
+            var (scale, translate) = UiMotionService.MutableMotionTransform(root);
+            UiMotionService.AnimateDouble("deck-show-window-opacity", this, UIElement.OpacityProperty, 1, TimeSpan.FromMilliseconds(190));
+            UiMotionService.AnimateDouble("deck-show-root-opacity", root, UIElement.OpacityProperty, 1, TimeSpan.FromMilliseconds(205));
+            UiMotionService.AnimateDouble("deck-show-root-scale-x", scale, ScaleTransform.ScaleXProperty, 1, TimeSpan.FromMilliseconds(220));
+            UiMotionService.AnimateDouble("deck-show-root-scale-y", scale, ScaleTransform.ScaleYProperty, 1, TimeSpan.FromMilliseconds(220));
+            UiMotionService.AnimateDouble("deck-show-root-translate", translate, TranslateTransform.YProperty, 0, TimeSpan.FromMilliseconds(220));
+        });
+    }
+
+    void PlayDeckStateReveal(Rect fromBounds, Rect toBounds)
+    {
+        if (!UiMotionService.Enabled)
+        {
+            ResetPresentationVisualsBestEffort();
+            return;
+        }
+        UiMotionService.RunSafely("deck-state-reveal", () =>
+        {
+            var (scale, translate) = UiMotionService.MutableMotionTransform(root);
+            bool inFlight = root.HasAnimatedProperties || scale.HasAnimatedProperties || translate.HasAnimatedProperties;
+            if (!inFlight)
+            {
+                var fromCenter = new Point(fromBounds.Left + fromBounds.Width / 2, fromBounds.Top + fromBounds.Height / 2);
+                var toCenter = new Point(toBounds.Left + toBounds.Width / 2, toBounds.Top + toBounds.Height / 2);
+                double x = Math.Abs(fromCenter.X - toCenter.X) < 1 ? 0 : Math.Sign(fromCenter.X - toCenter.X) * 10;
+                double y = Math.Abs(fromCenter.Y - toCenter.Y) < 1 ? 0 : Math.Sign(fromCenter.Y - toCenter.Y) * 10;
+                UiMotionService.StopAndSetDouble(root, UIElement.OpacityProperty, .76);
+                UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, .97);
+                UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, .97);
+                UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, x);
+                UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, y);
+            }
+            UiMotionService.AnimateDouble("deck-state-opacity", root, UIElement.OpacityProperty, 1, TimeSpan.FromMilliseconds(180));
+            UiMotionService.AnimateDouble("deck-state-scale-x", scale, ScaleTransform.ScaleXProperty, 1, TimeSpan.FromMilliseconds(210));
+            UiMotionService.AnimateDouble("deck-state-scale-y", scale, ScaleTransform.ScaleYProperty, 1, TimeSpan.FromMilliseconds(210));
+            UiMotionService.AnimateDouble("deck-state-translate-x", translate, TranslateTransform.XProperty, 0, TimeSpan.FromMilliseconds(210));
+            UiMotionService.AnimateDouble("deck-state-translate-y", translate, TranslateTransform.YProperty, 0, TimeSpan.FromMilliseconds(210));
+        });
     }
     (Button Button, StackPanel Cell) CreateDeckButtonCell(int slot)
     {
@@ -877,6 +1093,13 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     internal void RefreshAppearance(int opacityPercent, bool previewsEnabled, DeckAutoDismissBehavior? afterAction = null, DeckAutoDismissBehavior? pointerLeave = null)
     {
+        if (!UiMotionService.Enabled)
+        {
+            if (presentationFadePending)
+                HideForReuse();
+            else
+                ResetPresentationVisualsBestEffort();
+        }
         hoverPreviewsEnabled = previewsEnabled;
         if (afterAction != null || pointerLeave != null)
             autoHideTimer.Stop();
@@ -1023,7 +1246,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         if (autoHideRequiresPointerOutside && !IsCursorOutsideDeckWindow())
             return;
         if (pendingAutoDismissBehavior == DeckAutoDismissBehavior.Hide)
-            HideForReuse();
+            RequestHideForReuse();
         else if (pendingAutoDismissBehavior == DeckAutoDismissBehavior.CollapseToEdge)
             CollapseToEdge();
     }
@@ -1246,7 +1469,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         ((System.Windows.Shapes.Path)close.Content).SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "PrimaryText");
         close.Style = CloseButtonStyle();
         close.ToolTip = "Deckを非表示";
-        close.Click += (_, _) => HideForReuse();
+        close.Click += (_, _) => RequestHideForReuse();
         CloseButton = close;
         CollapsedMoveHandle = CreateCollapsedMoveHandle();
         CollapsedMoveHandle.MouseLeave += CollapsedMoveHandle_MouseLeave;
@@ -1444,7 +1667,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         var sharedRadius = WpfApplication.Current.TryFindResource("ControlCornerRadius") is CornerRadius radius
             ? radius
             : new CornerRadius(6);
-        glassButtonStyle = CreateGlassButtonStyle(sharedRadius, layout.HoverAnimationEnabled && UiMotionService.Enabled);
+        glassButtonStyle = CreateGlassButtonStyle(sharedRadius);
         return glassButtonStyle;
     }
     Style CloseButtonStyle()
@@ -1472,14 +1695,12 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         closeButtonStyle = style;
         return closeButtonStyle;
     }
-    static Style CreateGlassButtonStyle(CornerRadius cornerRadius, bool animateHover)
+    static Style CreateGlassButtonStyle(CornerRadius cornerRadius)
     {
         var style = new Style(typeof(Button));
         style.Setters.Add(new Setter(System.Windows.Controls.Control.CursorProperty, WpfCursors.Hand));
         var template = new ControlTemplate(typeof(Button));
         var root = new FrameworkElementFactory(typeof(Grid)) { Name = "HoverRoot" };
-        root.SetValue(FrameworkElement.RenderTransformOriginProperty, new Point(.5, .5));
-        root.SetValue(UIElement.RenderTransformProperty, new ScaleTransform(1, 1));
         var surface = new FrameworkElementFactory(typeof(Border)) { Name = "GlassSurface" };
         surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BackgroundProperty));
         surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BorderBrushProperty));
@@ -1525,34 +1746,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         });
         template.Triggers.Add(new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true, Setters = { new Setter(UIElement.OpacityProperty, .84d, "GlassSurface") } });
         template.Triggers.Add(new Trigger { Property = UIElement.IsEnabledProperty, Value = false, Setters = { new Setter(UIElement.OpacityProperty, .42d) } });
-        if (animateHover)
-        {
-            AddDeckHoverTransition(template, UIElement.MouseEnterEvent, true);
-            AddDeckHoverTransition(template, UIElement.MouseLeaveEvent, false);
-        }
         style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, template));
         return style;
-    }
-    static void AddDeckHoverTransition(ControlTemplate template, RoutedEvent routedEvent, bool entering)
-    {
-        var duration = TimeSpan.FromMilliseconds(entering ? 120 : 150);
-        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-        var storyboard = new Storyboard();
-        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleXProperty), entering ? 1.05 : 1, duration, easing);
-        AddDeckHoverAnimation(storyboard, "HoverRoot", new PropertyPath("(0).(1)", UIElement.RenderTransformProperty, ScaleTransform.ScaleYProperty), entering ? 1.05 : 1, duration, easing);
-        var trigger = new EventTrigger(routedEvent);
-        trigger.Actions.Add(new BeginStoryboard { Storyboard = storyboard });
-        template.Triggers.Add(trigger);
-    }
-    static void AddDeckHoverAnimation(Storyboard storyboard, string targetName, PropertyPath property, double value, TimeSpan duration, IEasingFunction easing)
-    {
-        var animation = new DoubleAnimation(value, duration)
-        {
-            EasingFunction = easing
-        };
-        Storyboard.SetTargetName(animation, targetName);
-        Storyboard.SetTargetProperty(animation, property);
-        storyboard.Children.Add(animation);
     }
 
     static System.Windows.Media.Brush FlatSurfaceBrush(WpfColor color, byte opacity)

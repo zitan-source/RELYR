@@ -488,8 +488,6 @@ public partial class MainWindow
         };
         button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
         button.MouseEnter += DeckManagementButton_MouseEnter;
-        button.MouseEnter += InputButtonHoverEntered;
-        button.MouseLeave += InputButtonHoverExited;
         button.MouseDoubleClick += DeckManagementButton_DoubleClick;
         button.PreviewMouseRightButtonDown += InputButton_RightClick;
         button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;
@@ -566,8 +564,6 @@ public partial class MainWindow
             };
             button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
             button.MouseEnter += DeckManagementButton_MouseEnter;
-            button.MouseEnter += InputButtonHoverEntered;
-            button.MouseLeave += InputButtonHoverExited;
             button.MouseDoubleClick += DeckManagementButton_DoubleClick;
             button.PreviewMouseRightButtonDown += InputButton_RightClick;
             button.PreviewMouseLeftButtonDown += DeckButtonReorderStarted;

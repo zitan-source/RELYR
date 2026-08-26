@@ -1,6 +1,19 @@
 namespace RELYR;
 
-public sealed record CatalogAction(string Category, string Name, string Description, ActionKind Kind, string Value)
+public enum CatalogActionValueRequest
+{
+    None,
+    Text,
+    Launch
+}
+
+public sealed record CatalogAction(
+    string Category,
+    string Name,
+    string Description,
+    ActionKind Kind,
+    string Value,
+    CatalogActionValueRequest ValueRequest = CatalogActionValueRequest.None)
 {
     public string MajorCategory => ActionCatalog.GetMajorCategory(Category);
 }

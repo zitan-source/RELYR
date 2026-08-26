@@ -14,6 +14,7 @@ internal sealed record InstalledApplicationInfo(string Name, string LaunchPath, 
 public partial class ApplicationPickerWindow : Window
 {
     List<InstalledApplicationInfo> applications = [];
+    bool updatingTargetSelection;
     public string? SelectedPath
     {
         get; private set;
@@ -45,6 +46,7 @@ public partial class ApplicationPickerWindow : Window
             return;
         Title = "自動切替するインストール済みアプリを選択";
         SelectButton.Content = "自動切替の対象に追加";
+        BrowseFolderButton.Visibility = Visibility.Collapsed;
     }
 
     async void ApplicationPickerWindow_Loaded(object sender, RoutedEventArgs e)
@@ -97,7 +99,31 @@ public partial class ApplicationPickerWindow : Window
             || (application.ExecutableName?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
-    void ApplicationSelectionChanged(object sender, SelectionChangedEventArgs e) => SelectButton.IsEnabled = ApplicationList.SelectedItem is InstalledApplicationInfo;
+    void ApplicationSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!updatingTargetSelection && ApplicationList.SelectedItem is InstalledApplicationInfo)
+        {
+            updatingTargetSelection = true;
+            ManualTargetBox.Clear();
+            updatingTargetSelection = false;
+        }
+        UpdateSelectButtonState();
+    }
+
+    void ManualTargetChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!updatingTargetSelection && !string.IsNullOrWhiteSpace(ManualTargetBox.Text))
+        {
+            updatingTargetSelection = true;
+            ApplicationList.SelectedItem = null;
+            updatingTargetSelection = false;
+        }
+        UpdateSelectButtonState();
+    }
+
+    void UpdateSelectButtonState()
+        => SelectButton.IsEnabled = ApplicationList.SelectedItem is InstalledApplicationInfo
+            || !string.IsNullOrWhiteSpace(ManualTargetBox.Text);
     void ApplicationDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (ApplicationList.SelectedItem is InstalledApplicationInfo)
@@ -106,6 +132,14 @@ public partial class ApplicationPickerWindow : Window
     void Select_Click(object sender, RoutedEventArgs e) => UseSelection();
     void UseSelection()
     {
+        string? manualTarget = NormalizeManualTarget(ManualTargetBox.Text);
+        if (manualTarget != null)
+        {
+            SelectedPath = manualTarget;
+            SelectedApplication = new(ManualTargetDisplayName(manualTarget), manualTarget, "直接指定");
+            DialogResult = true;
+            return;
+        }
         if (ApplicationList.SelectedItem is not InstalledApplicationInfo selected)
             return;
         SelectedApplication = selected;
@@ -118,13 +152,40 @@ public partial class ApplicationPickerWindow : Window
     }
     void BrowseFile_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "起動するアプリを選択", Filter = "アプリケーション (*.exe)|*.exe|ショートカット (*.lnk;*.appref-ms)|*.lnk;*.appref-ms|すべてのファイル|*.*", CheckFileExists = true };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "起動するアプリまたはファイルを選択", Filter = "すべてのファイル|*.*|アプリケーション (*.exe)|*.exe|ショートカット (*.lnk;*.appref-ms)|*.lnk;*.appref-ms", CheckFileExists = true };
         if (dialog.ShowDialog(this) == true)
         {
             SelectedPath = dialog.FileName;
             SelectedApplication = new(Path.GetFileNameWithoutExtension(dialog.FileName), dialog.FileName, "参照");
             DialogResult = true;
         }
+    }
+
+    void BrowseFolder_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "割り当てるフォルダーを選択",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
+        };
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+            return;
+        SelectedPath = dialog.SelectedPath;
+        SelectedApplication = new(ManualTargetDisplayName(dialog.SelectedPath), dialog.SelectedPath, "フォルダー");
+        DialogResult = true;
+    }
+
+    internal static string? NormalizeManualTarget(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    static string ManualTargetDisplayName(string value)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && !uri.IsFile)
+            return string.IsNullOrWhiteSpace(uri.Host) ? value : uri.Host;
+        string trimmed = value.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string name = Path.GetFileNameWithoutExtension(trimmed);
+        return string.IsNullOrWhiteSpace(name) ? value : name;
     }
 
     internal static IReadOnlyList<InstalledApplicationInfo> DiscoverApplications()

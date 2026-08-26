@@ -941,6 +941,49 @@ public partial class MainWindow : Window
         if (actionPaletteOpen)
             CloseActionPalette(animated: false);
         SelectInput(currentLayer == "通常" ? key : currentLayer + "+" + key, false);
+        AnimateAssignmentEditorReveal();
+    }
+
+    void AnimateAssignmentEditorReveal()
+        => UiMotionService.RunSafely("assignment-editor-reveal", AnimateAssignmentEditorRevealCore);
+
+    void AnimateAssignmentEditorRevealCore()
+    {
+        if (!UiMotionService.Enabled)
+        {
+            SettleAssignmentEditorMotion();
+            return;
+        }
+        var (scale, translate) = UiMotionService.MutableMotionTransform(AssignmentEditor);
+        bool inFlight = AssignmentEditor.HasAnimatedProperties || scale.HasAnimatedProperties || translate.HasAnimatedProperties;
+        if (!inFlight)
+        {
+            UiMotionService.StopAndSetDouble(AssignmentEditor, UIElement.OpacityProperty, .74);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, .992);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, .992);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, 14);
+        }
+        UiMotionService.AnimateDouble("assignment-editor-opacity", AssignmentEditor, UIElement.OpacityProperty, 1, TimeSpan.FromMilliseconds(175));
+        UiMotionService.AnimateDouble("assignment-editor-scale-x", scale, ScaleTransform.ScaleXProperty, 1, TimeSpan.FromMilliseconds(205));
+        UiMotionService.AnimateDouble("assignment-editor-scale-y", scale, ScaleTransform.ScaleYProperty, 1, TimeSpan.FromMilliseconds(205));
+        UiMotionService.AnimateDouble("assignment-editor-translate", translate, TranslateTransform.XProperty, 0, TimeSpan.FromMilliseconds(205));
+    }
+
+    void SettleAssignmentEditorMotion()
+    {
+        UiMotionService.StopAndSetDouble(AssignmentEditor, UIElement.OpacityProperty, 1);
+        if (AssignmentEditor.RenderTransform is not TransformGroup group)
+            return;
+        foreach (var scale in group.Children.OfType<ScaleTransform>())
+        {
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, 1);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, 1);
+        }
+        foreach (var translate in group.Children.OfType<TranslateTransform>())
+        {
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, 0);
+            UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, 0);
+        }
     }
     void OpenShortcutForVisualInput(string key)
     {
@@ -2609,13 +2652,26 @@ public partial class MainWindow : Window
                 scale.ScaleY = 1;
                 return;
             }
+            double rest = button.IsMouseOver ? 1.05 : 1;
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimationUsingKeyFrames
             {
-                KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
+                FillBehavior = FillBehavior.Stop,
+                KeyFrames =
+                [
+                    new EasingDoubleKeyFrame(.94, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(65))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                    new EasingDoubleKeyFrame(rest + .025, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(145))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                    new EasingDoubleKeyFrame(rest, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(235))) { EasingFunction = UiMotionService.GentleSettleEase() }
+                ]
             });
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimationUsingKeyFrames
             {
-                KeyFrames = [new EasingDoubleKeyFrame(.965, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55))), new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)))]
+                FillBehavior = FillBehavior.Stop,
+                KeyFrames =
+                [
+                    new EasingDoubleKeyFrame(.94, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(65))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                    new EasingDoubleKeyFrame(rest + .025, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(145))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                    new EasingDoubleKeyFrame(rest, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(235))) { EasingFunction = UiMotionService.GentleSettleEase() }
+                ]
             });
         });
     }

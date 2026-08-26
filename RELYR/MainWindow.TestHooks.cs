@@ -109,15 +109,70 @@ public partial class MainWindow
     }
     internal bool ApplyPaletteActionForTest(CatalogAction action, string targetInput, string targetKey)
         => ApplyPaletteActionDrop(action, targetInput, targetKey);
+    internal void SetActionPaletteValueResolverForTest(Func<CatalogAction, string?>? resolver)
+        => actionPaletteValueResolverForTest = resolver;
+    internal void ShowActionPaletteDragPreviewForTest()
+    {
+        DismissActionPaletteDragPreview();
+        actionPaletteDragPreview = new DeckDragPreviewWindow(
+            new System.Windows.Controls.Border(),
+            customWidth: ActionPaletteDragPreviewMinWidth,
+            customHeight: ActionPaletteDragPreviewHeight,
+            preservePreviewSurface: true);
+        actionPaletteDragPreview.Show();
+    }
+    internal bool IsActionPaletteDragPreviewVisibleForTest => actionPaletteDragPreview?.IsVisible == true;
     internal bool ApplyPaletteMonitorForTest(string monitorId, string targetInput)
         => DeckMonitorCatalog.TryGet(monitorId, out var monitor) && ApplyPaletteMonitorDrop(monitor, targetInput);
     internal void UndoPaletteActionForTest() => UndoActionPaletteAssignment_Click(ActionPaletteButton, new RoutedEventArgs());
     internal bool HasPaletteDropMotionForTest(System.Windows.Controls.Button button)
     {
         button.ApplyTemplate();
-        return InputScaleTransform(button).HasAnimatedProperties
-            && button.Template.FindName("DropTargetTint", button) is UIElement { HasAnimatedProperties: true };
+        return button.Template.FindName("DropTargetTint", button) is UIElement { HasAnimatedProperties: true };
     }
+    internal bool HasCenteredPaletteDropWaveForTest(System.Windows.Controls.Button button)
+    {
+        button.ApplyTemplate();
+        if (button.Template.FindName("DropTargetTint", button) is not FrameworkElement wave
+            || wave.RenderTransform is not System.Windows.Media.ScaleTransform waveScale)
+            return false;
+        var brush = wave switch
+        {
+            System.Windows.Controls.Border border => border.Background as System.Windows.Media.RadialGradientBrush,
+            System.Windows.Shapes.Shape shape => shape.Fill as System.Windows.Media.RadialGradientBrush,
+            _ => null
+        };
+        var parent = System.Windows.Media.VisualTreeHelper.GetParent(wave) as System.Windows.Controls.Panel;
+        var accent = ThemeService.Color("AccentBrush");
+        return brush is { Center.X: .5, Center.Y: .5, GradientOrigin.X: .5, GradientOrigin.Y: .5 }
+            && brush.GradientStops.Any(stop => stop.Color.R == accent.R && stop.Color.G == accent.G && stop.Color.B == accent.B)
+            && parent?.ClipToBounds == true
+            && waveScale.ScaleX < .5
+            && waveScale.ScaleY < .5;
+    }
+    internal bool PaletteDropWaveSettledForTest(System.Windows.Controls.Button button)
+    {
+        button.ApplyTemplate();
+        return button.Template.FindName("DropTargetTint", button) is UIElement wave
+            && wave.Opacity == 0
+            && !wave.HasAnimatedProperties
+            && InputScaleTransform(button) is { ScaleX: 1, ScaleY: 1, HasAnimatedProperties: false };
+    }
+    internal bool HasLayerEditorTransitionForTest => KeyboardWorkspace.HasAnimatedProperties
+        || KeyboardWorkspace.RenderTransform is System.Windows.Media.TransformGroup group && group.Children.Any(transform => transform.HasAnimatedProperties);
+    internal bool InputTransformStableForTest(System.Windows.Controls.Button button)
+        => button.RenderTransform is not System.Windows.Media.ScaleTransform scale
+            || !scale.HasAnimatedProperties
+                && Math.Abs(scale.ScaleX - 1) < .001
+                && Math.Abs(scale.ScaleY - 1) < .001;
+    internal void ApplyUiAnimationsForTest(bool enabled)
+    {
+        UiMotionService.Apply(enabled);
+        if (!enabled)
+            SettleLayerEditorMotion();
+    }
+    internal bool HasAssignmentEditorRevealForTest => AssignmentEditor.HasAnimatedProperties
+        || AssignmentEditor.RenderTransform is System.Windows.Media.TransformGroup group && group.Children.Any(transform => transform.HasAnimatedProperties);
     internal IReadOnlyList<System.Windows.Controls.Button> DeckManagementButtonsForTest => deckManagementButtons;
     internal IReadOnlyList<System.Windows.Controls.Button> DeckGridButtonsForTest => deckGridButtons;
     internal int DeckVisualUpdateCountForTest { get; private set; }
@@ -166,13 +221,6 @@ public partial class MainWindow
             UpdateDeckManagementButtonVisual(button);
         else
             UpdateInputButtonVisual(button, IsDescendantOf(button, KeyboardPanel) || IsDescendantOf(button, SecondaryKeyboardPanel));
-    }
-    internal void SetInputHoverForTest(System.Windows.Controls.Button button, bool active)
-    {
-        if (active)
-            InputButtonHoverEntered(button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount));
-        else
-            InputButtonHoverExited(button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount));
     }
     internal AssignmentTransferResult TransferCurrentLayerAssignmentsForTest(string sourceKey, string targetKey)
     {

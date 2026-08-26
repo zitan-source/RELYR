@@ -44,6 +44,82 @@ public partial class MainWindow
         dialog.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
         return dialog.ShowDialog() == true ? box.Text.Trim() : null;
     }
+
+    string? PromptMultilineText(string title, string label)
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = 500,
+            Height = 330,
+            MinWidth = 420,
+            MinHeight = 280,
+            Background = ThemeService.Brush("SurfaceBackground"),
+            Foreground = ThemeService.Brush("PrimaryText"),
+            ShowInTaskbar = false
+        };
+        var grid = new Grid { Margin = new Thickness(24) };
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+        var box = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Padding = new Thickness(12, 9, 12, 9),
+            Background = ThemeService.Brush("InputBackground"),
+            Foreground = ThemeService.Brush("PrimaryText"),
+            BorderBrush = ThemeService.Brush("BorderBrush"),
+            FontSize = 15
+        };
+        Grid.SetRow(box, 1);
+        grid.Children.Add(box);
+        var buttons = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        var cancel = new System.Windows.Controls.Button
+        {
+            Content = "キャンセル",
+            Width = 112,
+            Height = 40,
+            Margin = new Thickness(6, 0, 0, 0),
+            Style = (Style)System.Windows.Application.Current.FindResource("AppButtonStyle"),
+            IsCancel = true
+        };
+        var ok = new System.Windows.Controls.Button
+        {
+            Content = "割り当てる",
+            Width = 112,
+            Height = 40,
+            Margin = new Thickness(6, 0, 0, 0),
+            Style = (Style)System.Windows.Application.Current.FindResource("AccentAppButtonStyle"),
+            IsEnabled = false
+        };
+        box.TextChanged += (_, _) => ok.IsEnabled = !string.IsNullOrWhiteSpace(box.Text);
+        cancel.Click += (_, _) => dialog.DialogResult = false;
+        ok.Click += (_, _) => dialog.DialogResult = true;
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(ok);
+        Grid.SetRow(buttons, 2);
+        grid.Children.Add(buttons);
+        dialog.Content = grid;
+        FollowWindowsTitleBarTheme(dialog);
+        dialog.Loaded += (_, _) => box.Focus();
+        return dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(box.Text) ? box.Text : null;
+    }
     Profile? SelectProfile(string title, bool allowNoCopy) => SelectProfile(title, allowNoCopy, out _);
     Profile? SelectProfile(string title, bool allowNoCopy, out bool cancelled)
     {
@@ -95,7 +171,7 @@ public partial class MainWindow
         }
         var uniqueApps = apps.GroupBy(x => x.ExecutableName, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderBy(x => x.Name).ToList();
         var dialog = new ApplicationPickerWindow(uniqueApps) { Title = title, Owner = owner };
-        dialog.BrowseApplicationButton.Visibility = Visibility.Collapsed;
+        dialog.ManualTargetPanel.Visibility = Visibility.Collapsed;
         if (dialog.ShowDialog() != true || dialog.SelectedApplication == null)
             return null;
         return dialog.SelectedApplication.ExecutableName

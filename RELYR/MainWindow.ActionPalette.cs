@@ -31,6 +31,7 @@ public partial class MainWindow
     const string ActionPaletteApplicationsCategory = "インストールアプリ";
     const string ActionPaletteKeysCategory = "キー";
     const string ActionPaletteShortcutsCategory = "ショートカット";
+    const string ActionPaletteCreateCategory = "パス・文字列";
     static readonly string[] ActionPaletteKeySequence = BuildActionPaletteKeySequence();
     static readonly IReadOnlyDictionary<string, int> ActionPaletteKeyOrder = ActionPaletteKeySequence
         .Select((key, index) => (key, index))
@@ -59,11 +60,13 @@ public partial class MainWindow
     int actionPaletteUndoMotionGeneration;
     Point actionPaletteDragStart;
     ActionPaletteItem? actionPaletteDragItem;
+    DeckDragPreviewWindow? actionPaletteDragPreview;
     ActionPaletteUndoState? actionPaletteUndoState;
     List<ActionPaletteItem> actionPaletteItems = [];
     IReadOnlyList<InstalledApplicationInfo> actionPaletteApplications = [];
     readonly List<CatalogAction> actionPaletteCustomShortcuts = [];
     bool actionPaletteApplicationDiscoveryStarted;
+    Func<CatalogAction, string?>? actionPaletteValueResolverForTest;
     readonly System.Windows.Threading.DispatcherTimer actionPaletteUndoTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
     sealed record ActionPaletteRecommendation(string Section, string Name, string Description, string Value);
@@ -307,7 +310,23 @@ public partial class MainWindow
             usage[signature] = usage.GetValueOrDefault(signature) + 1;
         }
 
-        var actions = new List<CatalogAction>();
+        var actions = new List<CatalogAction>
+        {
+            new(
+                ActionPaletteCreateCategory,
+                "文字列を入力…",
+                "ドロップ後に入力した文字列をそのまま送信します",
+                ActionKind.Text,
+                string.Empty,
+                CatalogActionValueRequest.Text),
+            new(
+                ActionPaletteCreateCategory,
+                "アプリ・パス・URLを指定…",
+                "ドロップ後にアプリ、ファイル、フォルダー、URLを指定します",
+                ActionKind.Launch,
+                string.Empty,
+                CatalogActionValueRequest.Launch)
+        };
         actions.AddRange(ActionPaletteRecommendations.Select(recommendation => new CatalogAction(
             ActionPaletteRecommendedCategory,
             recommendation.Name,
@@ -373,7 +392,7 @@ public partial class MainWindow
             groups.Add(ActionPaletteShortcutsCategory);
         var preferredOrder = new[]
         {
-            ActionPaletteKeysCategory, "マウス", ActionPaletteShortcutsCategory,
+            ActionPaletteCreateCategory, ActionPaletteKeysCategory, "マウス", ActionPaletteShortcutsCategory,
             "Windows", "Windowsアプリ", ActionPaletteApplicationsCategory, "プロファイル", "マクロ",
             "ジェスチャー", "Deckパネル", "オーバーレイ", DeckMonitorCatalog.Category,
             "入力・編集", "ファイル・文書", "メディア", "ウィンドウ・デスクトップ",
@@ -421,6 +440,8 @@ public partial class MainWindow
     {
         if (category is ActionPaletteRecommendedCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
             return "ステータス";
+        if (category is ActionPaletteCreateCategory)
+            return "作成";
         if (category is ActionPaletteKeysCategory or "マウス" or ActionPaletteShortcutsCategory)
             return "キー入力";
         if (category is "Windows" or "Windowsアプリ" or ActionPaletteApplicationsCategory
@@ -435,6 +456,7 @@ public partial class MainWindow
         ActionPaletteRecommendedCategory => "\uE734",
         ActionPaletteAllCategory => "\uE80A",
         ActionPaletteUsedCategory => "\uE73E",
+        ActionPaletteCreateCategory => "\uE710",
         ActionPaletteApplicationsCategory => "\uE71D",
         ActionPaletteKeysCategory => "\uE765",
         ActionPaletteShortcutsCategory => "\uE8D7",
@@ -486,6 +508,8 @@ public partial class MainWindow
 
     internal static string ActionPaletteItemDetail(CatalogAction action, string group)
     {
+        if (action.ValueRequest != CatalogActionValueRequest.None)
+            return "ドロップ後に指定";
         string value = action.Value?.Trim() ?? string.Empty;
         if (action.Kind == ActionKind.Key
             || (action.Kind == ActionKind.Shortcut
@@ -510,6 +534,7 @@ public partial class MainWindow
     static string ActionPaletteGroupCore(CatalogAction action) => (action.Category ?? string.Empty) switch
     {
         ActionPaletteRecommendedCategory => ActionPaletteRecommendedCategory,
+        ActionPaletteCreateCategory => ActionPaletteCreateCategory,
         "使用中のAction" => ActionPaletteUsedCategory,
         ActionPaletteApplicationsCategory => ActionPaletteApplicationsCategory,
         ActionPaletteKeysCategory => ActionPaletteKeysCategory,
@@ -778,7 +803,7 @@ public partial class MainWindow
     internal static double ActionPaletteDragPreviewWidth(double sourceWidth)
         => Math.Clamp(sourceWidth * ActionPaletteDragPreviewScale, ActionPaletteDragPreviewMinWidth, ActionPaletteDragPreviewMaxWidth);
 
-    static void RunActionPaletteDrag(ListBoxItem container, ActionPaletteItem item, DataObject data)
+    void RunActionPaletteDrag(ListBoxItem container, ActionPaletteItem item, DataObject data)
     {
         DeckDragPreviewWindow? preview = null;
         GiveFeedbackEventHandler? feedback = null;
@@ -853,6 +878,7 @@ public partial class MainWindow
                 Child = row
             };
             preview = new DeckDragPreviewWindow(face, customWidth: previewWidth, customHeight: ActionPaletteDragPreviewHeight, preservePreviewSurface: true);
+            actionPaletteDragPreview = preview;
             feedback = (_, args) =>
             {
                 var cursor = System.Windows.Forms.Cursor.Position;
@@ -870,8 +896,26 @@ public partial class MainWindow
         {
             if (feedback != null)
                 container.GiveFeedback -= feedback;
-            preview?.Close();
+            if (ReferenceEquals(actionPaletteDragPreview, preview))
+                DismissActionPaletteDragPreview();
+            else if (preview?.IsVisible == true)
+            {
+                try { preview.Hide(); } catch { }
+                try { preview.Close(); } catch { }
+            }
         }
+    }
+
+    void DismissActionPaletteDragPreview()
+    {
+        var preview = actionPaletteDragPreview;
+        actionPaletteDragPreview = null;
+        if (preview == null)
+            return;
+        // A parameterized drop opens another surface. Hide the drag material
+        // synchronously on pointer release so it can never float above that dialog.
+        try { preview.Hide(); } catch { }
+        try { preview.Close(); } catch { }
     }
 
     internal static bool TryGetPaletteAction(IDataObject data, out CatalogAction action)
@@ -919,6 +963,11 @@ public partial class MainWindow
 
     bool ApplyPaletteActionDrop(CatalogAction action, string targetInput, string targetKey)
     {
+        CatalogAction? resolvedAction = ResolvePaletteDropAction(action);
+        if (resolvedAction == null)
+            return false;
+        action = resolvedAction;
+
         var targets = PaletteDropTargets(targetInput, targetKey)
             .Where(input => CanAssignPaletteAction(input, action))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -944,6 +993,45 @@ public partial class MainWindow
         PlayPaletteDropSuccess(targets);
         RefreshActionPalette();
         return true;
+    }
+
+    CatalogAction? ResolvePaletteDropAction(CatalogAction action)
+    {
+        if (action.ValueRequest == CatalogActionValueRequest.None)
+            return action;
+
+        DismissActionPaletteDragPreview();
+        string? value = actionPaletteValueResolverForTest != null
+            ? actionPaletteValueResolverForTest(action)
+            : action.ValueRequest switch
+            {
+                CatalogActionValueRequest.Text => PromptMultilineText(
+                    "文字列Actionを作成",
+                    "送信する文字列を入力してください"),
+                CatalogActionValueRequest.Launch => SelectPaletteLaunchTarget(),
+                _ => null
+            };
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        string concreteValue = action.ValueRequest == CatalogActionValueRequest.Launch ? value.Trim() : value;
+        return action with
+        {
+            Name = FriendlyActionValue(action.Kind, concreteValue),
+            Value = concreteValue,
+            ValueRequest = CatalogActionValueRequest.None
+        };
+    }
+
+    string? SelectPaletteLaunchTarget()
+    {
+        var dialog = new ApplicationPickerWindow
+        {
+            Owner = this,
+            Title = "割り当てるアプリ・パス・URLを指定"
+        };
+        dialog.SelectButton.Content = "この内容を割り当てる";
+        return dialog.ShowDialog() == true ? dialog.SelectedPath : null;
     }
 
     bool ApplyPaletteMonitorDrop(DeckMonitorDefinition monitor, string targetInput)
@@ -1087,25 +1175,26 @@ public partial class MainWindow
             return;
         if (!UiMotionService.Enabled)
         {
-            wave.BeginAnimation(UIElement.OpacityProperty, null);
-            wave.Opacity = 0;
+            ResetActionDropSuccessVisual(button, wave);
             return;
         }
 
-        var finalColor = button.Background is SolidColorBrush solid
-            ? solid.Color
-            : ThemeService.Color("AccentBrush");
+        var accent = ThemeService.Color("AccentBrush");
+        var highlight = MediaColor.FromRgb(
+            (byte)((accent.R + byte.MaxValue) / 2),
+            (byte)((accent.G + byte.MaxValue) / 2),
+            (byte)((accent.B + byte.MaxValue) / 2));
         var waveBrush = new RadialGradientBrush
         {
             Center = new Point(.5, .5),
             GradientOrigin = new Point(.5, .5),
-            RadiusX = .72,
-            RadiusY = .72,
+            RadiusX = .68,
+            RadiusY = .68,
             GradientStops =
             {
-                new GradientStop(MediaColor.FromArgb(235, finalColor.R, finalColor.G, finalColor.B), 0),
-                new GradientStop(MediaColor.FromArgb(190, finalColor.R, finalColor.G, finalColor.B), .62),
-                new GradientStop(MediaColor.FromArgb(0, finalColor.R, finalColor.G, finalColor.B), 1)
+                new GradientStop(MediaColor.FromArgb(242, highlight.R, highlight.G, highlight.B), 0),
+                new GradientStop(MediaColor.FromArgb(220, accent.R, accent.G, accent.B), .58),
+                new GradientStop(MediaColor.FromArgb(0, accent.R, accent.G, accent.B), 1)
             }
         };
         if (wave is Border border)
@@ -1114,43 +1203,47 @@ public partial class MainWindow
             shape.Fill = waveBrush;
 
         wave.RenderTransformOrigin = new Point(.5, .5);
-        var waveScale = new ScaleTransform(.08, .08);
-        wave.RenderTransform = waveScale;
-        wave.Opacity = 1;
-        var expansion = new DoubleAnimation(1.22, TimeSpan.FromMilliseconds(480))
+        var waveScale = UiMotionService.MutableScale(wave, .06, .06);
+        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
+        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
+        UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 1);
+        var expansion = new DoubleAnimation(1.34, TimeSpan.FromMilliseconds(260))
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            EasingFunction = UiMotionService.ResponsiveEaseOut(),
             FillBehavior = FillBehavior.Stop
         };
         var fade = new DoubleAnimationUsingKeyFrames
         {
             KeyFrames =
             {
-                new DiscreteDoubleKeyFrame(.95, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(.78, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(250))),
-                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(540)))
+                new DiscreteDoubleKeyFrame(.96, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new EasingDoubleKeyFrame(.82, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(105))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280))) { EasingFunction = UiMotionService.ResponsiveEaseOut() }
             },
             FillBehavior = FillBehavior.Stop
         };
-        fade.Completed += (_, _) => wave.Opacity = 0;
-        waveScale.BeginAnimation(ScaleTransform.ScaleXProperty, expansion, HandoffBehavior.SnapshotAndReplace);
-        waveScale.BeginAnimation(ScaleTransform.ScaleYProperty, expansion, HandoffBehavior.SnapshotAndReplace);
-        wave.BeginAnimation(UIElement.OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-
-        double restingScale = button.IsMouseOver ? 1.05 : 1;
-        var spring = new DoubleAnimationUsingKeyFrames
+        fade.Completed += (_, _) => UiMotionService.RunSafely("action-drop-wave-settle", () =>
         {
-            KeyFrames =
-            {
-                new EasingDoubleKeyFrame(1.08, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(105)), new CubicEase { EasingMode = EasingMode.EaseOut }),
-                new EasingDoubleKeyFrame(.985, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(245)), new CubicEase { EasingMode = EasingMode.EaseInOut }),
-                new EasingDoubleKeyFrame(restingScale + .015, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(365)), new CubicEase { EasingMode = EasingMode.EaseOut }),
-                new EasingDoubleKeyFrame(restingScale, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(520)), new CubicEase { EasingMode = EasingMode.EaseOut })
-            }
-        };
+            UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 0);
+            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
+            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
+        });
+        waveScale.BeginAnimation(ScaleTransform.ScaleXProperty, expansion, HandoffBehavior.SnapshotAndReplace);
+        waveScale.BeginAnimation(ScaleTransform.ScaleYProperty, expansion.Clone(), HandoffBehavior.SnapshotAndReplace);
+        wave.BeginAnimation(UIElement.OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    static void ResetActionDropSuccessVisual(Button button, FrameworkElement wave)
+    {
+        UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 0);
+        if (wave.RenderTransform is ScaleTransform waveScale)
+        {
+            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
+            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
+        }
         var buttonScale = InputScaleTransform(button);
-        buttonScale.BeginAnimation(ScaleTransform.ScaleXProperty, spring, HandoffBehavior.SnapshotAndReplace);
-        buttonScale.BeginAnimation(ScaleTransform.ScaleYProperty, spring, HandoffBehavior.SnapshotAndReplace);
+        UiMotionService.StopAndSetDouble(buttonScale, ScaleTransform.ScaleXProperty, 1);
+        UiMotionService.StopAndSetDouble(buttonScale, ScaleTransform.ScaleYProperty, 1);
     }
 
     ActionPaletteMappingSnapshot CapturePaletteAssignment(string input)

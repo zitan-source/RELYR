@@ -116,6 +116,8 @@ public partial class MainWindow
         config.ThemeMode = window.SelectedThemeMode;
         config.UiAnimationsEnabled = window.UiAnimationsEnabled;
         UiMotionService.Apply(config.UiAnimationsEnabled);
+        if (!config.UiAnimationsEnabled)
+            SettleLayerEditorMotion();
         config.AutoSave = window.AutoSave;
         config.SpaceHoldRepeatEnabled = window.SpaceHoldRepeat;
         config.InputDisabledApplications = [.. window.InputDisabledApplications];
@@ -175,6 +177,8 @@ public partial class MainWindow
         ClearPendingActions();
         config = value;
         UiMotionService.Apply(config.UiAnimationsEnabled);
+        if (!config.UiAnimationsEnabled && editorUiInitialized)
+            SettleLayerEditorMotion();
         store.Save(config);
         appliedConfig = store.Clone(config);
         bool pending = LegacyKeyRemapService.IsRestartStillPending(config);

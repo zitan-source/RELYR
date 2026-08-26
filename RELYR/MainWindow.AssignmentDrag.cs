@@ -258,26 +258,8 @@ public partial class MainWindow
             button.BorderBrush = ThemeService.Brush("AccentBrush");
             button.BorderThickness = new Thickness(3);
         }
-        SetInputVisualZIndex(button, active ? 50 : button.IsMouseOver ? 20 : 0);
-        AnimateInputScale(button, UiMotionService.Enabled && active ? 1.06 : UiMotionService.Enabled && button.IsMouseOver ? 1.05 : 1, 120);
-    }
-
-    void InputButtonHoverEntered(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (sender is Button button && !GetIsAssignmentDropTarget(button))
-        {
-            SetInputVisualZIndex(button, 20);
-            AnimateInputScale(button, UiMotionService.Enabled ? 1.05 : 1, 120);
-        }
-    }
-
-    void InputButtonHoverExited(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (sender is Button button && !GetIsAssignmentDropTarget(button))
-        {
-            SetInputVisualZIndex(button, 0);
-            AnimateInputScale(button, 1, 150);
-        }
+        SetInputVisualZIndex(button, active ? 50 : 0);
+        SetInputScaleImmediately(button, 1);
     }
 
     static void SetInputVisualZIndex(Button button, int value)
@@ -290,13 +272,26 @@ public partial class MainWindow
     static ScaleTransform InputScaleTransform(Button button)
         => UiMotionService.MutableScale(button);
 
-    static void AnimateInputScale(Button button, double target, int durationMs)
+    static void SetInputScaleImmediately(Button button, double value)
+    {
+        UiMotionService.RunSafely("input-key-scale-settle", () =>
+        {
+            var scale = InputScaleTransform(button);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, value);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, value);
+        });
+    }
+
+    static void AnimateInputScale(Button button, double target, int durationMs, IEasingFunction? easing = null)
     {
         UiMotionService.RunSafely("input-key-scale", () =>
         {
             var scale = InputScaleTransform(button);
             if (!UiMotionService.Enabled)
             {
+                button.ApplyTemplate();
+                if (button.Template.FindName("DropTargetTint", button) is FrameworkElement wave)
+                    ResetActionDropSuccessVisual(button, wave);
                 scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                 scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
                 scale.ScaleX = target;
@@ -304,8 +299,9 @@ public partial class MainWindow
                 return;
             }
             var duration = TimeSpan.FromMilliseconds(durationMs);
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(target, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } }, HandoffBehavior.SnapshotAndReplace);
+            var motionEase = easing ?? UiMotionService.ResponsiveEaseOut();
+            UiMotionService.AnimateDouble("input-key-scale-x", scale, ScaleTransform.ScaleXProperty, target, duration, motionEase);
+            UiMotionService.AnimateDouble("input-key-scale-y", scale, ScaleTransform.ScaleYProperty, target, duration, motionEase);
         });
     }
 }

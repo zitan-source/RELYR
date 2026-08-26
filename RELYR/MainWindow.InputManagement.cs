@@ -9,7 +9,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using Microsoft.Win32;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using ListBox = System.Windows.Controls.ListBox;
@@ -124,6 +123,43 @@ public partial class MainWindow
         currentLayer = layer;
         ClearSelectedInput(button);
         UpdateLayerButtons();
+    }
+
+    void SettleLayerEditorMotion()
+    {
+        SettleAssignmentEditorMotion();
+        foreach (var button in VisualInputButtons().Concat(deckManagementButtons).Distinct())
+        {
+            button.ApplyTemplate();
+            if (button.Template.FindName("DropTargetTint", button) is FrameworkElement wave)
+                ResetActionDropSuccessVisual(button, wave);
+            else if (button.RenderTransform is ScaleTransform inputScale)
+            {
+                UiMotionService.StopAndSetDouble(inputScale, ScaleTransform.ScaleXProperty, 1);
+                UiMotionService.StopAndSetDouble(inputScale, ScaleTransform.ScaleYProperty, 1);
+            }
+        }
+        UiMotionService.StopAndSetDouble(KeyboardWorkspace, UIElement.OpacityProperty, 1);
+        if (KeyboardWorkspace.RenderTransform is TransformGroup workspaceGroup)
+        {
+            foreach (var scale in workspaceGroup.Children.OfType<ScaleTransform>())
+            {
+                UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, 1);
+                UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, 1);
+            }
+            foreach (var translate in workspaceGroup.Children.OfType<TranslateTransform>())
+            {
+                UiMotionService.StopAndSetDouble(translate, TranslateTransform.XProperty, 0);
+                UiMotionService.StopAndSetDouble(translate, TranslateTransform.YProperty, 0);
+            }
+        }
+        foreach (var layerButton in new[] { NormalLayerButton, SpaceLayerButton, CapsLockLayerButton, RightMouseLayerButton, ForwardMouseLayerButton, BackMouseLayerButton, TaskbarLayerButton })
+        {
+            if (layerButton.Content is not Grid layerGrid || layerGrid.Children.OfType<Border>().FirstOrDefault() is not Border iconFrame || iconFrame.RenderTransform is not ScaleTransform scale)
+                continue;
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleXProperty, 1);
+            UiMotionService.StopAndSetDouble(scale, ScaleTransform.ScaleYProperty, 1);
+        }
     }
     bool ConfirmCapsLockLayer()
     {

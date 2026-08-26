@@ -457,12 +457,18 @@ internal static class OverlayService
                     lastDeckPanelKey = key;
                     if (existing.IsVisible)
                     {
+                        if (existing.IsPresentationHiding)
+                        {
+                            existing.PrepareForShow();
+                            NotifyDeckPresentationStateChanged();
+                            return;
+                        }
                         if (existing.IsCollapsedToEdge)
                         {
                             existing.ExpandFromEdge();
                             return;
                         }
-                        existing.HideForReuse();
+                        existing.RequestHideForReuse();
                         return;
                     }
                     existing.RefreshAppearance(deckConfig.InputPanelOpacityPercent, deckConfig.DeckHoverPreviewsEnabled, deckConfig.DeckAfterActionBehavior, deckConfig.DeckPointerLeaveBehavior);
