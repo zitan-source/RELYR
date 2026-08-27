@@ -138,6 +138,7 @@
           <ListBoxItem Content="データ管理" Tag="Data"/>
           <ListBoxItem Content="アップデート" Tag="Update"/>
           <ListBoxItem Content="無効" Tag="Disabled"/>
+          <ListBoxItem Content="プライバシー" Tag="Privacy"/>
           <ListBoxItem Content="開発を支援" Tag="Support"/>
         </ListBox>
       </Grid>
@@ -165,7 +166,7 @@
               <CheckBox x:Name="AutoSaveBox" Content="変更をすぐに保存して反映する"/>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
               <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center"><TextBlock Text="使い方" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="基本操作を3ページで確認できます。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,10,0"/></StackPanel>
+                <StackPanel VerticalAlignment="Center"><TextBlock Text="使い方" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="画像中心のクイックガイドです。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,10,0"/></StackPanel>
                 <Button x:Name="TutorialButton" Grid.Column="1" Content="チュートリアルを見る" Click="ShowTutorial_Click" VerticalAlignment="Center"/>
               </Grid>
             </StackPanel>
@@ -328,6 +329,40 @@
                 <Button Content="アプリを選ぶ…" ToolTip="インストール済みのアプリから選びます" Click="AddInstalledInputDisabledApplication_Click"/>
               </WrapPanel>
             </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <StackPanel x:Name="PrivacyPanel" Visibility="Collapsed">
+          <TextBlock Text="プライバシー" FontSize="27" FontWeight="Bold"/>
+          <TextBlock Text="診断情報の保存内容を確認・管理します。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+            <StackPanel>
+              <TextBlock Text="通常の診断ログ" FontSize="18" FontWeight="SemiBold"/>
+              <TextBlock Text="起動・終了・接続状態などのイベント名だけを、このPC内へ保存します。キー入力や割り当て内容は記録しません。"
+                         TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0"/>
+              <TextBlock Text="ログがRELYRから外部へ送信されることはありません。各ファイルは最大512KBで、14日以上更新されていないログは自動的に消去されます。"
+                         TextWrapping="Wrap" Foreground="{DynamicResource AccentTextBrush}" Margin="0,8,0,0"/>
+              <TextBlock Text="保存先: %AppData%\RELYR と %LocalAppData%\RELYR"
+                         TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" FontSize="12" Margin="0,8,0,0"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+            <StackPanel>
+              <TextBlock Text="問題調査用の詳細ログ" FontSize="18" FontWeight="SemiBold"/>
+              <CheckBox x:Name="DetailedDiagnosticsBox" Content="詳細な診断ログを記録する" Margin="0,10,0,0"/>
+              <TextBlock Text="問題の再現を調べるときだけ有効にしてください。実行した割り当ての入力名・内容や、前面アプリのパスが記録される場合があります。通常のキー入力を連続して記録する機能ではありません。"
+                         TextWrapping="Wrap" Foreground="{DynamicResource WarningBrush}" Margin="25,5,0,0"/>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Margin="0,0,14,0">
+                <TextBlock Text="保存済みログを削除" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="通常ログと詳細ログを、このPCからまとめて削除します。" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0"/>
+              </StackPanel>
+              <Button Grid.Column="1" Content="診断ログを削除" Click="DeleteDiagnosticLogs_Click" VerticalAlignment="Center"/>
+            </Grid>
           </Border>
         </StackPanel>
 

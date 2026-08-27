@@ -34,6 +34,11 @@ $deckOverlay = Read-AppSourceSet "DeckPanelOverlayWindow*.cs"
 $inputPanelOverlay = Read-Source "RELYR\InputPanelOverlayWindow.cs"
 $deckDragPreview = Read-Source "RELYR\DeckDragPreviewWindow.cs"
 $stableTrayIcon = Read-Source "RELYR\StableNotifyIcon.cs"
+$diagnosticStorage = Read-Source "RELYR\DiagnosticLogStorage.cs"
+$deckDiagnostics = Read-Source "RELYR\DeckIpcDiagnostics.cs"
+$lifecycleDiagnostics = Read-Source "RELYR\LifecycleDiagnostics.cs"
+$models = Read-Source "RELYR\Models.cs"
+$configService = Read-Source "RELYR\ConfigService.cs"
 
 $handleInput = [regex]::Match($mainWindow, '(?s)bool\s+HandleInput\s*\(.*?\n\s*void\s+CaptureInputMapping').Value
 Assert-Safety (-not [string]::IsNullOrWhiteSpace($handleInput)) "HandleInput could not be inspected"
@@ -69,6 +74,12 @@ Assert-Safety ($productionBuild -match '--configuration-matrix-test') "productio
 Assert-Safety ($mainWindow -notmatch 'System\.Windows\.Forms\.NotifyIcon') "the legacy path-scoped NotifyIcon must not recreate duplicate Windows tray rows"
 Assert-Safety ($mainWindow -match 'NativeTrayRegistrationAllowed' -and $mainWindow -match '#if\s+PRODUCTION_PUBLISH') "non-production processes must be unable to register the native tray icon"
 Assert-Safety ($stableTrayIcon -match 'NifGuid' -and $stableTrayIcon -match 'guidItem\s*=\s*Identifier') "the production tray icon must use one permanent Shell GUID"
+Assert-Safety ($models -match 'DetailedDiagnosticsEnabled\s*\{\s*get;\s*set;\s*\}' -and $models -notmatch 'DetailedDiagnosticsEnabled\s*\{\s*get;\s*set;\s*\}\s*=\s*true') "detailed diagnostics must remain opt-in"
+Assert-Safety ($diagnosticStorage -match 'MaximumLogBytes\s*=\s*512\s*\*\s*1024' -and $diagnosticStorage -match 'MaximumLogAge\s*=\s*TimeSpan\.FromDays\(14\)') "diagnostic logs must remain size- and age-bounded"
+Assert-Safety ($diagnosticStorage -match 'DeleteLegacySensitiveLogsOnce' -and $diagnosticStorage -match 'elevated-ipc-startup\.log' -and $diagnosticStorage -match 'lifecycle\.log') "legacy logs that may contain sensitive details must be removed"
+Assert-Safety ($deckDiagnostics -match 'LogElevatedHookAction[\s\S]*?=>\s*Write\(' -and $deckDiagnostics -notmatch 'LogElevatedHookAction[\s\S]*?=>\s*LogIpcStartup\(') "mapped actions must never enter the always-on IPC status log"
+Assert-Safety ($lifecycleDiagnostics -match 'WriteStatus\(LogPath,\s*"lifecycle",\s*eventName\)' -and $lifecycleDiagnostics -match 'WriteDetailed\("lifecycle",\s*eventName,\s*detail\)') "lifecycle details must remain separated from the always-on status log"
+Assert-Safety ($configService -match 'DeleteAllUserData\(\)[\s\S]*?LocalDataDirectoryPath') "complete user-data removal must include locally stored diagnostic logs"
 
 $standaloneTests = Get-ChildItem -LiteralPath $appDirectory -File -Filter "*Test.cs"
 foreach ($testSource in $standaloneTests) {

@@ -115,6 +115,8 @@ public partial class MainWindow
         config.WindowActionTarget = window.SelectedWindowActionTarget;
         config.ThemeMode = window.SelectedThemeMode;
         config.UiAnimationsEnabled = window.UiAnimationsEnabled;
+        config.DetailedDiagnosticsEnabled = window.DetailedDiagnosticsEnabled;
+        DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         if (!config.UiAnimationsEnabled)
             SettleLayerEditorMotion();
@@ -157,6 +159,7 @@ public partial class MainWindow
         destination.WindowActionTarget = source.WindowActionTarget;
         destination.ThemeMode = source.ThemeMode;
         destination.UiAnimationsEnabled = source.UiAnimationsEnabled;
+        destination.DetailedDiagnosticsEnabled = source.DetailedDiagnosticsEnabled;
         destination.AutoSave = source.AutoSave;
         destination.SpaceHoldRepeatEnabled = source.SpaceHoldRepeatEnabled;
         destination.InputDisabledApplications = [.. source.InputDisabledApplications];
@@ -176,6 +179,7 @@ public partial class MainWindow
     {
         ClearPendingActions();
         config = value;
+        DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         if (!config.UiAnimationsEnabled && editorUiInitialized)
             SettleLayerEditorMotion();

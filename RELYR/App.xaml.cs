@@ -496,6 +496,7 @@ public partial class App : System.Windows.Application
         }
         catch { }
         var loadedStartupConfig = new ConfigService().Load();
+        DiagnosticLogStorage.Configure(loadedStartupConfig.DetailedDiagnosticsEnabled);
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
         UiMotionService.Apply(loadedStartupConfig.UiAnimationsEnabled);
         if (ShouldScanForOrphans(args)
@@ -643,6 +644,7 @@ public partial class App : System.Windows.Application
         }
         string pipeName = args[1], bootstrapName = args[2];
         var config = new ConfigService().Load();
+        DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         ThemeService.Apply(config.ThemeMode);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         var window = new MainWindow(true, true, config, RuntimeRole.ElevatedHelper);

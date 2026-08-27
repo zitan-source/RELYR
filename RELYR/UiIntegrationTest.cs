@@ -998,15 +998,48 @@ internal static class UiIntegrationTest
             var firstRun = new SetupWindow { Owner = window, ShowInTaskbar = false };
             firstRun.Show();
             firstRun.UpdateLayout();
+            CaptureForReview(firstRun, "tutorial-page-1.png");
             Check(!Descendants<TextBlock>(firstRun).Any(x => x.Text.Contains("自動起動", StringComparison.Ordinal) || x.Text.Contains("サインイン時", StringComparison.Ordinal)), "first-run tutorial does not duplicate the installer startup choice");
             Check(firstRun.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && firstRun.UsesDarkPalette == MainWindow.IsWindowsAppDarkMode(), "tutorial content and title bar follow the Windows app theme");
             Check(firstRun.TutorialAppIcon.Source != null, "tutorial header uses the packaged RELYR application icon");
-            Check(Descendants<TextBlock>(firstRun.PageOne).Any(x => x.Text.Contains("Spaceを長押しで連打していた方へ", StringComparison.Ordinal)) && Descendants<TextBlock>(firstRun.PageOne).Any(x => x.Text.Contains("2回目を長押し", StringComparison.Ordinal)), "tutorial explains how former Space hold-repeat users can repeat Space");
-            Check(firstRun.CurrentPage == 0 && firstRun.PageOne.Visibility == Visibility.Visible && firstRun.PageTwo.Visibility == Visibility.Collapsed && firstRun.PageThree.Visibility == Visibility.Collapsed, "tutorial opens on the layer introduction page");
+            Check(Descendants<System.Windows.Controls.Image>(firstRun).Count(x => x.Source != null) >= 12, "tutorial loads the supplied screenshots and packaged RELYR icon");
+            Check(Descendants<TextBlock>(firstRun.PageOne).Any(x => x.Text == "レイヤーを選ぶ")
+                && Descendants<TextBlock>(firstRun.PageOne).Any(x => x.Text == "Actionを開く")
+                && Descendants<TextBlock>(firstRun.PageOne).Any(x => x.Text == "キーへドラッグ"),
+                "tutorial starts with the three short assignment steps");
+            Check(firstRun.CurrentPage == 0 && firstRun.PageCounterText.Text == "1 / 5"
+                && firstRun.PageOne.Visibility == Visibility.Visible
+                && new[] { firstRun.PageTwo, firstRun.PageThree, firstRun.PageFour, firstRun.PageFive }.All(page => page.Visibility == Visibility.Collapsed),
+                "tutorial opens on page one of the five-page visual guide");
             firstRun.ShowPageForTest(1);
-            Check(firstRun.PageTwo.Visibility == Visibility.Visible && firstRun.BackButton.Visibility == Visibility.Visible && firstRun.NextButton.Content?.ToString() == "次へ", "tutorial moves to the three-step assignment page");
+            firstRun.UpdateLayout();
+            CaptureForReview(firstRun, "tutorial-page-2.png");
+            Check(firstRun.PageTwo.Visibility == Visibility.Visible && firstRun.BackButton.Visibility == Visibility.Visible
+                && firstRun.NextButton.Content?.ToString() == "次へ"
+                && Descendants<TextBlock>(firstRun.PageTwo).Any(x => x.Text == "パス・文字列"),
+                "tutorial explains assignment details without a text-heavy page");
             firstRun.ShowPageForTest(2);
-            Check(firstRun.PageThree.Visibility == Visibility.Visible && firstRun.NextButton.Content?.ToString() == "RELYRを使い始める" && Descendants<TextBlock>(firstRun.PageThree).Any(x => x.Text.Contains("CapsLock", StringComparison.Ordinal) && x.Text.Contains("Windowsの再起動が必要", StringComparison.Ordinal)), "tutorial finishes with the CapsLock restart requirement on the safety and recovery page");
+            firstRun.UpdateLayout();
+            CaptureForReview(firstRun, "tutorial-page-3.png");
+            Check(firstRun.PageThree.Visibility == Visibility.Visible
+                && Descendants<TextBlock>(firstRun.PageThree).Any(x => x.Text == "Spaceを2回続けて押し、2回目を押したままにする")
+                && Descendants<TextBlock>(firstRun.PageThree).Any(x => x.Text == "変更後はWindowsを再起動"),
+                "tutorial states the exact Space repeat gesture and CapsLock restart requirement");
+            firstRun.ShowPageForTest(3);
+            firstRun.UpdateLayout();
+            CaptureForReview(firstRun, "tutorial-page-4.png");
+            Check(firstRun.PageFour.Visibility == Visibility.Visible
+                && Descendants<TextBlock>(firstRun.PageFour).Any(x => x.Text == "初期値は自動保存オン。")
+                && Descendants<TextBlock>(firstRun.PageFour).Any(x => x.Text.Contains("設定 → 一般 → 保存", StringComparison.Ordinal)),
+                "tutorial explains the default auto-save state and both ways to turn it off");
+            firstRun.ShowPageForTest(4);
+            firstRun.UpdateLayout();
+            CaptureForReview(firstRun, "tutorial-page-5.png");
+            Check(firstRun.PageFive.Visibility == Visibility.Visible && firstRun.PageCounterText.Text == "5 / 5"
+                && firstRun.NextButton.Content?.ToString() == "RELYRを使い始める"
+                && new[] { "アプリ別プロファイル", "ジェスチャー", "Deck", "マクロ" }
+                    .All(label => Descendants<TextBlock>(firstRun.PageFive).Any(x => x.Text == label)),
+                "tutorial finishes with a compact visual index of advanced features");
             firstRun.Close();
             var manualTutorial = new SetupWindow(true);
             Check(manualTutorial.DoNotShowAgainBox.Visibility == Visibility.Collapsed && manualTutorial.SkipButton.Visibility == Visibility.Collapsed, "tutorial opened from settings does not change first-run preferences");
@@ -3266,8 +3299,8 @@ internal static class UiIntegrationTest
             var settingsSwitches = Descendants<System.Windows.Controls.CheckBox>(settings).ToArray();
             foreach (var appSwitch in settingsSwitches)
                 appSwitch.ApplyTemplate();
-            Check(settingsSwitches.Length == 12 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
-                "all twelve settings checkboxes render through the shared RELYR switch template");
+            Check(settingsSwitches.Length == 13 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
+                "all thirteen settings checkboxes render through the shared RELYR switch template");
             Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll => ReferenceEquals(scroll, settings.LayersScrollPanel)), "only the longer layer category uses a bounded scroll surface");
             settings.CategoryList.SelectedIndex = 6;
             settings.UpdateLayout();
@@ -3379,6 +3412,13 @@ internal static class UiIntegrationTest
             settingsWithAutoSave.SelectCategory("Disabled");
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.DisabledPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.DisabledPanel.Parent).ActualHeight + .5, "disabled-app settings fit above the footer without clipping");
+            settingsWithAutoSave.SelectCategory("Privacy");
+            settingsWithAutoSave.UpdateLayout();
+            Check(settingsWithAutoSave.PrivacyPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.PrivacyPanel.Parent).ActualHeight + .5
+                && settingsWithAutoSave.DetailedDiagnosticsBox.IsChecked == false
+                && Descendants<System.Windows.Controls.TextBlock>(settingsWithAutoSave.PrivacyPanel).Any(x => x.Text.Contains("外部へ送信されることはありません", StringComparison.Ordinal))
+                && Descendants<System.Windows.Controls.Button>(settingsWithAutoSave.PrivacyPanel).Any(x => x.Content?.ToString() == "診断ログを削除"),
+                "privacy settings keep detailed diagnostics opt-in and disclose local-only bounded log storage with deletion control");
             settingsWithAutoSave.SelectCategory("Support");
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.SupportPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.SupportPanel.Parent).ActualHeight + .5, "support settings fit without scrolling or clipping");

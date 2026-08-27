@@ -9,7 +9,7 @@ public static class SelfTest
     {
         var report = new VerificationReport(output);
         Action<bool, string> Check = report.Check;
-        Check(new AppConfig() is { AutoSave: true, UiAnimationsEnabled: true }, "new installations default auto-save and RELYR animations to on");
+        Check(new AppConfig() is { AutoSave: true, UiAnimationsEnabled: true, DetailedDiagnosticsEnabled: false }, "new installations default auto-save and RELYR animations to on while detailed diagnostics stay opt-in");
         string dir = VerificationPaths.CreateRunDirectory("self-test");
         try
         {
@@ -30,6 +30,28 @@ public static class SelfTest
             catch { }
             ipcClient.DisposeAsync().GetAwaiter().GetResult();
             ipcServer.DisposeAsync().GetAwaiter().GetResult();
+            string safeDiagnosticPath = Path.Combine(dir, "safe-diagnostics.log");
+            string expiredDiagnosticPath = Path.Combine(dir, "expired-diagnostics.log");
+            DiagnosticLogStorage.Configure(false);
+            DiagnosticLogStorage.WriteStatus(safeDiagnosticPath, "ipc", "connection-ready");
+            string safeDiagnosticText = File.ReadAllText(safeDiagnosticPath);
+            DiagnosticLogStorage.WriteDetailed("privacy-test", "mapped-action", @"Value=private text; ForegroundWindowPath=C:\Users\Person\private.exe");
+            bool detailedSuppressedByDefault = !File.Exists(DiagnosticLogStorage.DetailedLogPath);
+            File.WriteAllText(expiredDiagnosticPath, "legacy private content");
+            File.SetLastWriteTimeUtc(expiredDiagnosticPath, DateTime.UtcNow.Subtract(DiagnosticLogStorage.MaximumLogAge).AddMinutes(-1));
+            DiagnosticLogStorage.AppendBounded(expiredDiagnosticPath, "fresh status only");
+            bool expiredContentRemoved = File.ReadAllText(expiredDiagnosticPath).Trim() == "fresh status only";
+            DiagnosticLogStorage.Configure(true);
+            DiagnosticLogStorage.WriteDetailed("privacy-test", "mapped-action", "explicit-consent-detail");
+            bool detailedWrittenAfterConsent = File.ReadAllText(DiagnosticLogStorage.DetailedLogPath).Contains("explicit-consent-detail", StringComparison.Ordinal);
+            DiagnosticLogStorage.Configure(false);
+            Check(safeDiagnosticText.Contains("event=connection-ready", StringComparison.Ordinal)
+                && !safeDiagnosticText.Contains("detail=", StringComparison.Ordinal)
+                && detailedSuppressedByDefault
+                && expiredContentRemoved
+                && detailedWrittenAfterConsent
+                && !File.Exists(DiagnosticLogStorage.DetailedLogPath),
+                "production-style status logs exclude details, detailed diagnostics require explicit consent, and old or disabled details are deleted");
             var service = new ConfigService(dir);
             var config = service.Load();
             var inputPanelPositions = new AppConfig { NumpadPanelLeft = 123.5, NumpadPanelTop = 234.5, ExtendedKeypadPanelLeft = 345.5, ExtendedKeypadPanelTop = 456.5 };
@@ -238,6 +260,7 @@ public static class SelfTest
             config.WindowActionTarget = WindowActionTarget.WindowUnderCursor;
             config.ThemeMode = AppThemeMode.Light;
             config.UiAnimationsEnabled = false;
+            config.DetailedDiagnosticsEnabled = true;
             config.LastUpdateCheckUtcTicks = DateTimeOffset.UtcNow.UtcTicks;
             config.RecordKeyboardInputInMacros = false;
             config.RecordMappedActionsInMacros = true;
@@ -292,6 +315,7 @@ public static class SelfTest
             Check(loaded.WindowActionTarget == WindowActionTarget.WindowUnderCursor, "window action target setting roundtrip");
             Check(loaded.ThemeMode == AppThemeMode.Light && loaded.LastUpdateCheckUtcTicks == config.LastUpdateCheckUtcTicks, "theme mode and last update check roundtrip");
             Check(!loaded.UiAnimationsEnabled, "explicitly disabled RELYR animations remain disabled after roundtrip");
+            Check(loaded.DetailedDiagnosticsEnabled, "the explicit detailed-diagnostics consent setting roundtrips without being enabled by default");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
             Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 2) is { DeckMonitor: "battery" }, "Deck monitor identity roundtrip");
             Check(DeckMonitorCatalog.Items.Count >= 20 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop") && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor) && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle, "Deck monitor catalog includes status, desktop, direct-control, and auto-extraction toggle tiles");

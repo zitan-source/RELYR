@@ -6,7 +6,7 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 32;
+    internal const int CurrentVersion = 33;
     const int MappingApplicationLossVersion = 29;
 
     const string SettingsFileName = "settings.json";
@@ -27,6 +27,7 @@ public sealed class ConfigService
     }
     public string FilePath => Path.Combine(DirectoryPath, SettingsFileName);
     internal static string DefaultDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RELYR");
+    internal static string LocalDataDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RELYR");
     internal static string LegacyDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "InputCustomizer");
     public ConfigService(string? directoryPath = null)
     {
@@ -74,7 +75,7 @@ public sealed class ConfigService
         }
     }
 
-    internal static bool DeleteAllUserData() => DeleteUserDataDirectories(DefaultDirectoryPath, LegacyDirectoryPath);
+    internal static bool DeleteAllUserData() => DeleteUserDataDirectories(DefaultDirectoryPath, LegacyDirectoryPath, LocalDataDirectoryPath);
     internal static bool DeleteUserDataDirectories(params string[] directories)
     {
         bool deleted = true;

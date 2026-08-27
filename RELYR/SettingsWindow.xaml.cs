@@ -49,6 +49,7 @@ public partial class SettingsWindow : Window
     public WindowActionTarget SelectedWindowActionTarget => CursorWindowTargetBox.IsChecked == true ? WindowActionTarget.WindowUnderCursor : WindowActionTarget.ActiveWindow;
     public AppThemeMode SelectedThemeMode => LightThemeBox.IsChecked == true ? AppThemeMode.Light : DarkThemeBox.IsChecked == true ? AppThemeMode.Dark : AppThemeMode.System;
     public bool UiAnimationsEnabled => UiAnimationsBox.IsChecked == true;
+    public bool DetailedDiagnosticsEnabled => DetailedDiagnosticsBox.IsChecked == true;
     public bool AutoSave => AutoSaveBox.IsChecked == true;
     public bool SpaceHoldRepeat => SpaceRepeatBox.IsChecked == true;
     public IReadOnlyList<string> InputDisabledApplications => inputDisabledApplications;
@@ -108,6 +109,7 @@ public partial class SettingsWindow : Window
         LightThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Light;
         DarkThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Dark;
         UiAnimationsBox.IsChecked = config.UiAnimationsEnabled;
+        DetailedDiagnosticsBox.IsChecked = config.DetailedDiagnosticsEnabled;
         themeSelectionLoading = false;
         AutoSaveBox.IsChecked = config.AutoSave;
         SpaceRepeatBox.IsChecked = config.SpaceHoldRepeatEnabled;
@@ -226,6 +228,7 @@ public partial class SettingsWindow : Window
         OverlayPanel.Visibility = selected == "Overlay" ? Visibility.Visible : Visibility.Collapsed;
         ArchivePanel.Visibility = selected == "Archive" ? Visibility.Visible : Visibility.Collapsed;
         DataPanel.Visibility = selected == "Data" ? Visibility.Visible : Visibility.Collapsed;
+        PrivacyPanel.Visibility = selected == "Privacy" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     internal void SelectCategory(string category)
@@ -430,6 +433,16 @@ public partial class SettingsWindow : Window
         Close();
     }
     void ShowTutorial_Click(object sender, RoutedEventArgs e) => new SetupWindow(true) { Owner = this }.ShowDialog();
+    void DeleteDiagnosticLogs_Click(object sender, RoutedEventArgs e)
+    {
+        bool deleted = DiagnosticLogStorage.DeleteAllLogs();
+        AppDialog.Show(
+            this,
+            deleted ? "このPCに保存されていたRELYRの診断ログを削除しました。" : "使用中の診断ログがあり、一部を削除できませんでした。RELYRを再起動してからもう一度お試しください。",
+            "診断ログ",
+            MessageBoxButton.OK,
+            deleted ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
     void OpenSupportPage_Click(object sender, RoutedEventArgs e)
     {
         try

@@ -10,18 +10,6 @@ internal static class DeckIpcDiagnostics
 {
     [ThreadStatic] static HelperInputScope? activeHelperInput;
 
-    static bool Enabled
-    {
-        get
-        {
-#if !PRODUCTION_PUBLISH
-            return true;
-#else
-            return string.Equals(Environment.GetEnvironmentVariable("RELYR_DECK_IPC_DIAGNOSTICS"),"1",StringComparison.Ordinal);
-#endif
-        }
-    }
-
     internal static void LogUiShortcutDispatch(string source, string shortcut, WindowActionTarget intendedTarget, bool sent)
     {
         var helper = IpcRuntime.HelperIdentity;
@@ -39,18 +27,14 @@ internal static class DeckIpcDiagnostics
     // Keep one record for each mapped high-integrity input so its owner and
     // foreground target can be distinguished from an IPC failure.
     internal static void LogElevatedHookAction(string input, Mapping mapping)
-        => LogIpcStartup("Elevated helper input", $"Input={input}; MappingInput={mapping.Input}; Kind={mapping.Kind}; Value={mapping.Value}; Layer={mapping.Layer}; {DescribeForegroundWindow()}");
+        => Write($"Elevated helper input; Input={input}; MappingInput={mapping.Input}; Kind={mapping.Kind}; Value={mapping.Value}; Layer={mapping.Layer}; {DescribeForegroundWindow()}");
 
-    // Startup logging contains no mapped keys or user content. Keep it always
-    // available so a failed elevated-helper handshake can be diagnosed without
-    // asking for another input reproduction.
+    // The always-on status log records only a fixed event name. Any detail is
+    // written exclusively to the explicit opt-in detailed diagnostics log.
     internal static void LogIpcStartup(string stage, string detail)
     {
-        try
-        {
-            File.AppendAllText(StartupLogPath(), $"{DateTimeOffset.Now:O} {stage}; Pid={Environment.ProcessId}; Integrity={IpcProcessIdentity.CurrentIntegrityLevel()}; {detail}{Environment.NewLine}");
-        }
-        catch { }
+        DiagnosticLogStorage.WriteStatus(DiagnosticLogStorage.IpcStatusLogPath, "ipc", stage);
+        DiagnosticLogStorage.WriteDetailed("ipc", stage, $"Integrity={IpcProcessIdentity.CurrentIntegrityLevel()}; {detail}");
     }
 
     internal static void LogHelperReceivedShortcut(string shortcut, WindowActionTarget target)
@@ -88,35 +72,7 @@ internal static class DeckIpcDiagnostics
 
     static void Write(string message)
     {
-        if (!Enabled)
-            return;
-        try
-        {
-            File.AppendAllText(LogPath(), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
-        }
-        catch { }
-    }
-
-    static string LogPath()
-    {
-#if !PRODUCTION_PUBLISH
-        return VerificationPaths.GetFile("deck-ipc-diagnostics.log");
-#else
-        string directory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RELYR");
-        Directory.CreateDirectory(directory);
-        return Path.Combine(directory,"deck-ipc-diagnostics.log");
-#endif
-    }
-
-    static string StartupLogPath()
-    {
-#if !PRODUCTION_PUBLISH
-        return VerificationPaths.GetFile("elevated-ipc-startup.log");
-#else
-        string directory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RELYR");
-        Directory.CreateDirectory(directory);
-        return Path.Combine(directory,"elevated-ipc-startup.log");
-#endif
+        DiagnosticLogStorage.WriteDetailed("ipc", "mapped-action", message);
     }
 
     internal sealed class HelperInputScope(string shortcut, WindowActionTarget target) : IDisposable
@@ -147,7 +103,7 @@ internal static class DeckIpcDiagnostics
             string result = error == null
                 ? $"Completed={completed}; SendInputSuccess={(calls == 0 ? "not-used" : failures == 0)}; SendInputCalls={calls}; Win32Error={lastError}"
                 : $"Completed=false; SendInputSuccess=false; SendInputCalls={calls}; Win32Error={lastError}; Exception={error.GetType().Name}: {error.Message}";
-            LogIpcStartup("Helper input result", $"Value={shortcut}; WindowActionTarget={target}; {result}");
+            Write($"Helper input result; Value={shortcut}; WindowActionTarget={target}; {result}");
         }
     }
 

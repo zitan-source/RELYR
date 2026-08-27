@@ -180,6 +180,7 @@ public partial class MainWindow : Window
         VersionText.Text = "v" + DisplayVersion;
         Title = "RELYR v" + DisplayVersion;
         config = startupConfig ?? store.Load();
+        DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         ArchiveAutomationState.Set(config.AutoExtractDesktopArchives);
         ThemeService.Apply(config.ThemeMode);
         UiMotionService.Apply(config.UiAnimationsEnabled);
@@ -382,6 +383,7 @@ public partial class MainWindow : Window
         var latest = store.Load();
         config = latest;
         appliedConfig = store.Clone(latest);
+        DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         engine.UseUsLayout = config.KeyboardLayout == "US";
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
