@@ -1853,7 +1853,9 @@ public partial class MainWindow
         if (updatingDeckEditor || selectedDeckLayout == null)
             return;
         selectedDeckLayout.HoverAnimationEnabled = DeckHoverAnimationBox.IsChecked == true;
-        MarkDirty();
+        MarkDirty(refreshDeckPanel: false);
+        OverlayService.RefreshDeckPanelLayoutPreview();
+        deckOverlayVisualSynchronized = true;
     }
     void DeckCustomizationReset_Click(object sender, RoutedEventArgs e)
     {
@@ -2168,6 +2170,8 @@ public partial class MainWindow
             return;
         }
         bool longPress = ReferenceEquals(sender, LongKindBox);
+        if (longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
+            return;
         TextBox target = longPress ? LongValueBox : ValueBox;
         var kindBox = longPress ? LongKindBox : KindBox;
         var picker = new MacroInputPickerWindow(config.KeyboardLayout) { Owner = this };

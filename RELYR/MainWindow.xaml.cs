@@ -916,6 +916,12 @@ public partial class MainWindow : Window
     }
     void SelectVisualInput(string key)
     {
+        string input = InputForCurrentLayer(key);
+        if (InputAssignmentPolicy.UnavailableInputReason(input) is { } unavailableReason)
+        {
+            ShowInlineNotice(unavailableReason);
+            return;
+        }
         if (IsProtectedNormalLeftClick(key))
         {
             ShowInlineError("通常レイヤーの左クリックは変更すると危険なため設定できません");
@@ -942,7 +948,7 @@ public partial class MainWindow : Window
         ClearExecutionFocus();
         if (actionPaletteOpen)
             CloseActionPalette(animated: false);
-        SelectInput(currentLayer == "通常" ? key : currentLayer + "+" + key, false);
+        SelectInput(input, false);
         AnimateAssignmentEditorReveal();
     }
 
@@ -991,6 +997,11 @@ public partial class MainWindow : Window
     {
         if (MultiSelectToggle.IsChecked == true)
             return;
+        if (InputAssignmentPolicy.UnavailableInputReason(InputForCurrentLayer(key)) is { } unavailableReason)
+        {
+            ShowInlineNotice(unavailableReason);
+            return;
+        }
         if (IsProtectedNormalLeftClick(key))
             return;
         if (key == "Space" && currentLayer is "通常" or "Space")
@@ -1072,6 +1083,11 @@ public partial class MainWindow : Window
         if (sender is not System.Windows.Controls.Button { Tag: string key })
             return;
         e.Handled = true;
+        if (InputAssignmentPolicy.UnavailableInputReason(InputForCurrentLayer(key)) is { } unavailableReason)
+        {
+            ShowInlineNotice(unavailableReason);
+            return;
+        }
         if (IsProtectedNormalLeftClick(key))
         {
             ShowInlineError("通常レイヤーの左クリックは変更すると危険なため設定できません");
@@ -1096,6 +1112,11 @@ public partial class MainWindow : Window
             ShowInlineNotice("Spaceキーはレイヤー専用のため変更できません");
             return;
         }
+        if (key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null)
+        {
+            ShowInlineNotice("CapsLockは割り当て元にはできません");
+            return;
+        }
         var button = (System.Windows.Controls.Button)sender;
         var menu = CreateInputContextMenu(key, KeyboardPanel.Children.Contains(button) || InputButtons(MousePanel).Contains(button));
         menu.PlacementTarget = (System.Windows.Controls.Button)sender;
@@ -1104,26 +1125,37 @@ public partial class MainWindow : Window
     internal ContextMenu CreateInputContextMenu(string key, bool includeAllLayers = true)
     {
         string input = currentLayer == "通常" ? key : currentLayer + "+" + key;
+        string? unavailableReason = InputAssignmentPolicy.UnavailableInputReason(input);
+        unavailableReason ??= IsProtectedNormalLeftClick(key) ? "通常レイヤーでは変更できません" : null;
+        unavailableReason ??= key == "Space" && currentLayer is "通常" or "Space" ? "Spaceキーはレイヤー専用です" : null;
+        unavailableReason ??= key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null ? "CapsLockは割り当て元にはできません" : null;
         var existing = CurrentProfile.Mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = "この割り当てをコピー", IsEnabled = existing != null };
         copy.Click += (_, _) => { copiedMapping = existing == null ? null : CloneMapping(existing); ShowInlineNotice(input + " の割り当てをコピーしました"); };
-        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMapping != null };
+        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMapping != null && unavailableReason == null, ToolTip = unavailableReason };
         paste.Click += (_, _) =>
         {
-            if (copiedMapping == null) return;
+            if (copiedMapping == null || unavailableReason != null) return;
             var map = CloneMapping(copiedMapping);
             map.Input = input;
             map.Layer = currentLayer;
+            ClearUnsupportedLongPress(map, CurrentProfile.Mappings);
+            if (map.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(input))
+            {
+                ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
+                return;
+            }
             if (map.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(input)) return;
             CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
             CurrentProfile.Mappings.Add(map);
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
             UpdateLayerButtons();
             MarkDirty();
             ClearSelectedInput();
             ShowInlineNotice(DisplayInputName(input) + " の割り当てを貼り付けました");
         };
-        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = existing != null };
+        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = existing != null && unavailableReason == null, ToolTip = unavailableReason };
         assignAllLayers.Click += (_, _) =>
         {
             if (existing == null)
@@ -1152,7 +1184,8 @@ public partial class MainWindow : Window
     }
     internal static int AssignMappingToAllLayers(List<Mapping> mappings, string key, Mapping source)
     {
-        if (string.IsNullOrWhiteSpace(key) || DeckPanelLayout.IsInputName(key))
+        if (string.IsNullOrWhiteSpace(key) || DeckPanelLayout.IsInputName(key)
+            || key.Equals("MouseX", StringComparison.OrdinalIgnoreCase))
             return 0;
         var template = CloneMapping(source);
         int applied = 0;
@@ -1162,13 +1195,17 @@ public partial class MainWindow : Window
             if (layer.Equals(key, StringComparison.OrdinalIgnoreCase))
                 continue;
             string targetInput = layer + "+" + key;
+            if (InputAssignmentPolicy.IsUnreachableInput(targetInput))
+                continue;
             mappings.RemoveAll(mapping => mapping.Input.Equals(targetInput, StringComparison.OrdinalIgnoreCase));
             var copy = CloneMapping(template);
             copy.Input = targetInput;
             copy.Layer = layer;
+            ClearUnsupportedLongPress(copy);
             mappings.Add(copy);
             applied++;
         }
+        InputAssignmentPolicy.SanitizeMappings(mappings);
         return applied;
     }
     internal ContextMenu CreateMultiSelectionContextMenu()
@@ -1215,12 +1252,20 @@ public partial class MainWindow : Window
             return;
         var selectedKeys = multiSelectedInputs.OrderBy(MultiSelectionOrder).ThenBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray();
         var sources = copiedMultiMappings.OrderBy(pair => MultiSelectionOrder(pair.Key)).ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).Select(pair => pair.Value).ToArray();
-        var targets = selectedKeys.Select((key, index) => (Input: MultiSelectionInput(key), Source: sources.Length == 1 ? sources[0] : index < sources.Length ? sources[index] : null)).ToList();
+        var targets = selectedKeys.Select((key, index) => (Input: MultiSelectionInput(key), Source: sources.Length == 1 ? sources[0] : index < sources.Length ? sources[index] : null))
+            .Where(target => !InputAssignmentPolicy.IsUnreachableInput(target.Input))
+            .ToList();
         if (targets.Count == 0)
             return;
         foreach (var (Input, Source) in targets)
             if (Source?.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(Input))
                 return;
+        foreach (var (Input, Source) in targets)
+            if (Source?.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(Input))
+            {
+                ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
+                return;
+            }
         foreach (var (Input, Source) in targets)
         {
             var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
@@ -1230,8 +1275,11 @@ public partial class MainWindow : Window
             var mapping = CloneMapping(Source);
             mapping.Input = Input;
             mapping.Layer = deckManagementMode ? DeckPanelLayout.Layer : currentLayer;
+            ClearUnsupportedLongPress(mapping, mappings);
             mappings.Add(mapping);
         }
+        if (!deckManagementMode)
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
         MarkDirty();
         UpdateLayerButtons();
         ColorButtons();
@@ -1307,7 +1355,7 @@ public partial class MainWindow : Window
     }
     void LongPressOnly_Click(object sender, RoutedEventArgs e)
     {
-        if (!IsLongPressSupportedFor(selected))
+        if (!IsLongPressSupportedFor(selected, CurrentProfile.Mappings))
             return;
         ValueBox.Clear();
         selected?.Kind = ActionKind.None;
@@ -1487,6 +1535,17 @@ public partial class MainWindow : Window
         if (sender is not ListBox list || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item || item.DataContext is not ActionOption option || !option.IsEnabled)
             return;
         bool longPress = ReferenceEquals(list, LongKindBox);
+        if (longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (!longPress && option.Kind == ActionKind.Gesture && selected != null && !InputAssignmentPolicy.SupportsGesture(selected.Input))
+        {
+            e.Handled = true;
+            ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
+            return;
+        }
         if (option.IsKeypad)
         {
             e.Handled = true;
@@ -1567,6 +1626,8 @@ public partial class MainWindow : Window
     }
     void OpenActionPicker(bool longPress, string? initialMajorCategory = null)
     {
+        if (longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
+            return;
 #if !PRODUCTION_PUBLISH
         if (ActionPickerRequestedForTest != null)
         {
@@ -1668,15 +1729,25 @@ public partial class MainWindow : Window
     }
     void ApplyCatalogAction(CatalogAction action, bool longPress)
     {
-        if (!longPress && selected != null && DeckPanelLayout.IsInputName(selected.Input))
-            selected.DeckMonitor = string.Empty;
-        if (!longPress && selected != null
-            && DeckPanelLayout.IsInputName(selected.Input)
-            && string.IsNullOrWhiteSpace(selected.DeckIconPath)
-            && (string.IsNullOrWhiteSpace(selected.DeckIcon) || selected.DeckIconAutoAssigned))
+        var target = selected;
+        if (target == null)
+            return;
+        if (!longPress && action.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(target.Input))
         {
-            selected.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
-            selected.DeckIconAutoAssigned = true;
+            ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
+            return;
+        }
+        if (longPress && !IsLongPressSupportedFor(target, MappingCollectionForInput(target.Input)))
+            return;
+        if (!longPress && DeckPanelLayout.IsInputName(target.Input))
+            target.DeckMonitor = string.Empty;
+        if (!longPress
+            && DeckPanelLayout.IsInputName(target.Input)
+            && string.IsNullOrWhiteSpace(target.DeckIconPath)
+            && (string.IsNullOrWhiteSpace(target.DeckIcon) || target.DeckIconAutoAssigned))
+        {
+            target.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
+            target.DeckIconAutoAssigned = true;
         }
         if (action.Kind == ActionKind.Profile)
         {
@@ -1688,37 +1759,36 @@ public partial class MainWindow : Window
             ApplyDisabledAction(longPress);
             return;
         }
-        if (selected == null || action.Kind == ActionKind.Gesture && longPress)
+        if (action.Kind == ActionKind.Gesture && longPress)
             return;
-        if (action.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(selected.Input))
+        if (action.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(target.Input))
             return;
         loading = true;
         if (longPress)
         {
-            selected.LongPressKind = action.Kind;
-            selected.LongPressValue = action.Value;
+            target.LongPressKind = action.Kind;
+            target.LongPressValue = action.Value;
             SelectActionOptionForMapping(LongKindBox, action.Kind, action.Value);
             LongValueBox.Text = DisplayConfiguredActionValue(action.Kind, action.Value);
         }
         else
         {
-            selected.Kind = action.Kind;
-            selected.Value = action.Value;
+            target.Kind = action.Kind;
+            target.Value = action.Value;
             SelectActionOptionForMapping(KindBox, action.Kind, action.Value);
             ValueBox.Text = DisplayConfiguredActionValue(action.Kind, action.Value);
-            if (action.Kind == ActionKind.Gesture)
+            if (!InputAssignmentPolicy.CanExecuteLongPress(target, MappingCollectionForInput(target.Input)))
             {
-                selected.LongPressKind = ActionKind.None;
-                selected.LongPressValue = "";
-                LongKindBox.SelectedIndex = -1;
-                LongValueBox.Clear();
-                LongPressExpander.IsExpanded = false;
+                ClearUnsupportedLongPress(target, MappingCollectionForInput(target.Input));
+                ClearLongPressEditor();
             }
         }
         loading = false;
-        var mappings = MappingCollectionForInput(selected.Input);
-        if (MappingHasConfiguredAction(selected) && !mappings.Contains(selected))
-            mappings.Add(selected);
+        var mappings = MappingCollectionForInput(target.Input);
+        if (MappingHasConfiguredAction(target) && !mappings.Contains(target))
+            mappings.Add(target);
+        if (!DeckPanelLayout.IsInputName(target.Input))
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
         UpdateBrowseButtons();
         UpdateLayerButtons();
         MarkDirty();
@@ -1762,7 +1832,7 @@ public partial class MainWindow : Window
     }
     void ApplyDisabledAction(bool longPress)
     {
-        if (selected == null)
+        if (selected == null || longPress && !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input)))
             return;
         loading = true;
         try
@@ -1787,6 +1857,8 @@ public partial class MainWindow : Window
         var mappings = MappingCollectionForInput(selected.Input);
         if (!mappings.Contains(selected))
             mappings.Add(selected);
+        if (!DeckPanelLayout.IsInputName(selected.Input))
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
         MarkDirty();
         ColorButtons();
         CompleteDestinationInput();
@@ -1831,7 +1903,7 @@ public partial class MainWindow : Window
     }
     void ApplyProfileAction(string profileName, bool longPress)
     {
-        if (selected == null || !config.Profiles.Any(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase)))
+        if (selected == null || longPress && !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input)) || !config.Profiles.Any(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase)))
             return;
         loading = true;
         try
@@ -1863,6 +1935,8 @@ public partial class MainWindow : Window
     }
     void ShowMacroWindow(bool assign, bool longPress)
     {
+        if (assign && longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
+            return;
         string target = assign ? $"{InputName.Text}（{(longPress ? "長押し" : "短押し")}）" : "";
         var window = new MacroWindow(config, SetMacroRecording, assign, target) { Owner = this };
         window.Saved += () => SaveAndApply("マクロを保存して反映しました");
@@ -1921,6 +1995,8 @@ public partial class MainWindow : Window
     }
     void ApplyApplicationSelection(bool longPress, string path)
     {
+        if (longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
+            return;
         if (longPress)
         {
             LongKindBox.SelectedValue = ActionKind.Launch;
@@ -1970,6 +2046,11 @@ public partial class MainWindow : Window
         selected = SelectEditorMapping(mappings, visibleAssignment, input);
         currentLayer = layer;
         loading = true;
+        if (!DeckPanelLayout.IsInputName(input))
+        {
+            KindBox.ItemsSource = ActionOptions(allowGesture: InputAssignmentPolicy.SupportsGesture(input));
+            KindBox.SelectedValuePath = nameof(ActionOption.SelectionKind);
+        }
         InputName.Text = selected.Input;
         InputDisplayText.Text = DisplayInputName(selected.Input);
         SelectActionOptionForMapping(KindBox, selected.Kind, selected.Value);
@@ -2059,13 +2140,19 @@ public partial class MainWindow : Window
         var longAction = NormalizeEditorAction(longEditorKind, LongValueBox.Text, selected.LongPressKind, selected.LongPressValue);
         selected.Kind = Kind;
         selected.Value = Value;
+        var selectedMappings = MappingCollectionForInput(selected.Input);
+        if (selected.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(selected.Input))
+        {
+            selected.Kind = ActionKind.None;
+            selected.Value = "";
+        }
         if (DeckPanelLayout.IsInputName(selected.Input)
             && (Kind != ActionKind.None || longAction.Kind != ActionKind.None || !string.IsNullOrWhiteSpace(Value) || !string.IsNullOrWhiteSpace(longAction.Value)))
             selected.DeckMonitor = string.Empty;
-        if (Kind == ActionKind.Gesture)
+        if (!InputAssignmentPolicy.CanExecuteLongPress(selected, selectedMappings))
         {
-            selected.LongPressKind = ActionKind.None;
-            selected.LongPressValue = "";
+            ClearUnsupportedLongPress(selected, selectedMappings);
+            ClearLongPressEditor();
         }
         else
         {
@@ -2077,9 +2164,8 @@ public partial class MainWindow : Window
             selected.LongPressMs = ms;
         if (MappingHasConfiguredAction(selected))
         {
-            var mappings = MappingCollectionForInput(selected.Input);
-            if (!mappings.Contains(selected))
-                mappings.Add(selected);
+            if (!selectedMappings.Contains(selected))
+                selectedMappings.Add(selected);
         }
         else if (deckManagementMode && HasDeckButtonContent(selected))
         {
@@ -2088,7 +2174,9 @@ public partial class MainWindow : Window
                 mappings.Add(selected);
         }
         else
-            MappingCollectionForInput(selected.Input).Remove(selected);
+            selectedMappings.Remove(selected);
+        if (!DeckPanelLayout.IsInputName(selected.Input))
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
         bool continuousTextEdit = ReferenceEquals(sender, ValueBox)
             || ReferenceEquals(sender, LongValueBox)
             || ReferenceEquals(sender, LongPressBox);
@@ -2158,11 +2246,13 @@ public partial class MainWindow : Window
     }
     void UpdateBrowseButtons()
     {
-        // A short-press gesture owns the complete press/move/release lifecycle, so it
-        // cannot safely coexist with an independent long-press action.
         bool shortGestureSelected = selected?.Kind == ActionKind.Gesture;
+        bool shortModifierClickSelected = ShortActionPreventsLongPress(selected);
         bool legacyLongGestureSelected = selected?.LongPressKind == ActionKind.Gesture;
-        bool longPressSupported = IsLongPressSupportedFor(selected);
+        IReadOnlyList<Mapping>? mappings = selected == null ? null : MappingCollectionForInput(selected.Input);
+        bool impulseInput = InputAssignmentPolicy.IsImpulseInput(selected?.Input);
+        bool layerSourceInUse = selected != null && InputAssignmentPolicy.HasConfiguredLayerMappings(mappings, selected.Input);
+        bool longPressSupported = IsLongPressSupportedFor(selected, mappings);
         ValueBox.IsReadOnly = shortGestureSelected;
         ValueBox.IsTabStop = !shortGestureSelected;
         ValueBox.Opacity = shortGestureSelected ? .72 : 1;
@@ -2177,19 +2267,43 @@ public partial class MainWindow : Window
         LongPressExpander.Opacity = longPressSupported ? 1 : .58;
         LongPressExpander.Header = shortGestureSelected
             ? "＋ 長押し（ジェスチャーでは設定できません）"
-            : IsNormalLayerAlphabetKey(selected)
+            : shortModifierClickSelected
+                ? "＋ 長押し（短押しの修飾クリックとは併用できません）"
+                : impulseInput
+                    ? "＋ 長押し（ホイール／チルトでは設定できません）"
+                    : layerSourceInUse
+                        ? "＋ 長押し（レイヤー使用中は設定できません）"
+                : IsNormalLayerAlphabetKey(selected)
                 ? "＋ 長押し（通常レイヤーの英字では設定できません）"
                 : "＋ 長押しを追加（任意）";
         if (!longPressSupported)
             LongPressExpander.IsExpanded = false;
     }
 
-    internal static bool IsLongPressSupportedFor(Mapping? mapping)
-        => mapping?.Kind != ActionKind.Gesture && !IsNormalLayerAlphabetKey(mapping);
+    internal static bool IsLongPressSupportedFor(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
+        => InputAssignmentPolicy.CanExecuteLongPress(mapping, mappings);
+
+    internal static bool ShortActionBlocksLongPress(Mapping? mapping)
+        => mapping?.Kind == ActionKind.Gesture || ShortActionPreventsLongPress(mapping);
+
+    internal static bool ShortActionPreventsLongPress(Mapping? mapping)
+        => mapping is { Kind: ActionKind.Mouse } && MappingExecutor.IsModifierDrag(mapping.Value);
+
+    internal static bool ClearUnsupportedLongPress(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
+        => InputAssignmentPolicy.ClearImpossibleLongPress(mapping, mappings);
+
+    void ClearLongPressEditor()
+    {
+        bool wasLoading = loading;
+        loading = true;
+        LongKindBox.SelectedIndex = -1;
+        LongValueBox.Clear();
+        LongPressExpander.IsExpanded = false;
+        loading = wasLoading;
+    }
 
     static bool IsNormalLayerAlphabetKey(Mapping? mapping)
-        => mapping is { Layer: "通常", Input.Length: 1 }
-           && mapping.Input[0] is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
+        => mapping?.Layer == "通常" && InputAssignmentPolicy.IsNormalAlphabetInput(mapping.Input);
     bool HandleInput(string input)
     {
         const string gestureMarker = ":Gesture:";
@@ -2366,7 +2480,7 @@ public partial class MainWindow : Window
         // The physical taskbar click has already been suppressed by the hook.
         // Replay Down+Up as one SendInput batch so another producer cannot
         // interleave between them and a partial Down cannot strand Explorer.
-        ProcessTaskbarClickReplays(taskbarClickReplayQueue.GetConsumingEnumerable(), InputEngine.SendMouseClickAtomic, InputEngine.ReleaseAllDefensively, FailOpenAfterTaskbarClickReplayFailure);
+        ProcessTaskbarClickReplays(taskbarClickReplayQueue.GetConsumingEnumerable(), InputEngine.SendMouseClickAtomic, InputEngine.ReleaseForProcessLifecycle, FailOpenAfterTaskbarClickReplayFailure);
     }
     internal static void ProcessTaskbarClickReplays(IEnumerable<string> clicks, Func<string, bool> sendClick, Action releaseInputs, Action replayFailed)
     {
@@ -2600,10 +2714,13 @@ public partial class MainWindow : Window
     }
     void UpdateInputButtonVisual(System.Windows.Controls.Button b, bool keyboardButton)
     {
-        bool protectedLeftClick = IsProtectedNormalLeftClick((string)b.Tag);
-        bool reserved = protectedLeftClick || ((string)b.Tag == "Space" && currentLayer is "通常" or "Space") ||
-                      ((string)b.Tag == "CapsLock" && !editingSelectedInput && destinationInputTarget == null);
-        string input = currentLayer == "通常" ? (string)b.Tag : currentLayer + "+" + (string)b.Tag;
+        string key = (string)b.Tag;
+        string input = InputForCurrentLayer(key);
+        bool protectedLeftClick = IsProtectedNormalLeftClick(key);
+        string? unavailableReason = InputAssignmentPolicy.UnavailableInputReason(input);
+        bool unavailable = unavailableReason != null;
+        bool reserved = protectedLeftClick || unavailable || (key == "Space" && currentLayer is "通常" or "Space") ||
+                      (key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null);
         var assigned = protectedLeftClick ? null : FindProfileMapping(config.Profiles, CurrentProfile.Name, input, MappingInterceptsInput);
         bool currentSelected = selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true;
         bool multiSelectActive = MultiSelectToggle.IsChecked == true;
@@ -2618,7 +2735,7 @@ public partial class MainWindow : Window
         b.BorderThickness = new Thickness(selectionOutlined ? 2 : 1);
         b.Foreground = assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
         b.Opacity = selectionActive && !highlighted ? SelectionDimOpacity : reserved ? 0.48 : 1;
-        b.IsEnabled = !protectedLeftClick;
+        b.IsEnabled = !protectedLeftClick && !unavailable;
         bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
         bool pulseStateChanged = GetIsSelectionPulseActive(b) != pulsing;
         bool multiSelectionChanged = GetIsMultiSelected(b) != multiSelected;
@@ -2630,7 +2747,11 @@ public partial class MainWindow : Window
         SetSelectionPulseBrush(b, pulseBrush);
         if (pulseStateChanged)
             SetSelectionPulseVisual(b, pulsing, pulseBrush);
-        b.ToolTip = protectedLeftClick ? "通常レイヤーでは変更できません" : assigned != null ? CreateAssignmentToolTip(assigned) : keyboardButton ? null : DefaultMouseToolTip((string)b.Tag);
+        b.ToolTip = protectedLeftClick ? "通常レイヤーでは変更できません"
+            : unavailableReason != null ? unavailableReason
+            : assigned != null ? CreateAssignmentToolTip(assigned)
+            : keyboardButton ? null
+            : DefaultMouseToolTip(key);
         ToolTipService.SetShowOnDisabled(b, true);
         ToolTipService.SetInitialShowDelay(b, 250);
         ToolTipService.SetBetweenShowDelay(b, 80);

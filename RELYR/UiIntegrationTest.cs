@@ -49,7 +49,9 @@ internal static class UiIntegrationTest
             var x1 = mouseButtons.First(x => Equals(x.Tag, "MouseX"));
             static Rect Bounds(System.Windows.Controls.Button button) => new(Canvas.GetLeft(button), Canvas.GetTop(button), button.Width, button.Height);
 
-            Check(mouseButtons.Count == 10, "mouse diagram exposes exactly the ten existing mouse actions");
+            Check(mouseButtons.Count == 10 && !x1.IsEnabled && x1.Opacity < .6
+                && x1.ToolTip?.ToString() == "追加ボタンは入力として使用できません",
+                "mouse diagram keeps the X1 position visibly unavailable with a concise reason");
             Check(ordinary.All(x => Math.Abs(x.Width - aKey.Width) < .1 && Math.Abs(x.Height - aKey.Height) < .1), "every ordinary mouse control exactly matches the active-layout A-key size");
             double renderedAHeight = aKey.TransformToAncestor(window).TransformBounds(new Rect(0, 0, aKey.ActualWidth, aKey.ActualHeight)).Height;
             double renderedMouseKeyHeight = ordinary[0].TransformToAncestor(window).TransformBounds(new Rect(0, 0, ordinary[0].ActualWidth, ordinary[0].ActualHeight)).Height;
@@ -86,10 +88,13 @@ internal static class UiIntegrationTest
             picker.Show();
             picker.UpdateLayout();
             var pickerA = picker.InputButtonsForTest.First(x => Equals(x.Tag, "A"));
-            var pickerMouseButtons = picker.InputButtonsForTest.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight" or "MouseMiddle" or "MouseBack" or "MouseForward" or "MouseX" or "WheelUp" or "WheelDown" or "TiltLeft" or "TiltRight").ToList();
+            var pickerMouseButtons = picker.InputButtonsForTest.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight" or "MouseMiddle" or "MouseBack" or "MouseForward" or "WheelUp" or "WheelDown" or "TiltLeft" or "TiltRight").ToList();
             var pickerOrdinary = pickerMouseButtons.Where(x => x.Tag?.ToString() is not "MouseLeft" and not "MouseRight").ToList();
             var pickerClicks = pickerMouseButtons.Where(x => x.Tag?.ToString() is "MouseLeft" or "MouseRight").ToList();
-            Check(pickerMouseButtons.Count == 10 && pickerOrdinary.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - pickerA.Height) < .1) && pickerClicks.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - (pickerA.Height * 3 + 8)) < .1), "keypad-input mouse mirrors the same A-key and wheel-aligned click dimensions");
+            Check(pickerMouseButtons.Count == 9 && !picker.InputButtonsForTest.Any(x => Equals(x.Tag, "MouseX"))
+                && pickerOrdinary.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - pickerA.Height) < .1)
+                && pickerClicks.All(x => Math.Abs(x.Width - pickerA.Width) < .1 && Math.Abs(x.Height - (pickerA.Height * 3 + 8)) < .1),
+                "keypad-input mouse exposes only the nine mouse inputs it can actually record");
             CaptureForReview(picker, "mouse-layout-keypad-dark.png");
             ThemeService.Apply(AppThemeMode.Light);
             picker.UpdateLayout();
@@ -776,8 +781,9 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteUndoBar.Visibility == Visibility.Visible
                 && window.ActionPaletteUndoDurationForTest == TimeSpan.FromSeconds(5)
                 && paletteDropMotionStarted
-                && paletteDropWaveCentered,
-                "a palette drop replaces the target, expands a clipped theme-accent wave from its exact center, and offers undo for five seconds");
+                && paletteDropWaveCentered
+                && MainWindow.ActionDropWaveDurationMs == 500,
+                "a palette drop replaces the target, expands a clearly readable half-second clipped accent wave from its exact center, and offers undo for five seconds");
             window.ApplyUiAnimationsForTest(false);
             Check(window.InputTransformStableForTest(f24Button)
                 && window.PaletteDropWaveSettledForTest(f24Button),
@@ -1101,16 +1107,16 @@ internal static class UiIntegrationTest
                 "a main-key drag target keeps its original face while restoring a clear center marker and high-contrast outline");
             CaptureForReview(window, "main-drag-target.png");
             window.SetAssignmentDropTargetForTest(assignmentDragTargetButton, false);
-            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "H" or "J");
-            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "H", Layer = "通常", Kind = ActionKind.Text, Value = "drag-source", Application = "editor.exe" });
-            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "H", Layer = "通常", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+H", Application = "browser.exe" });
-            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "J", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+J" });
-            Check(window.TransferCurrentLayerAssignmentsForTest("H", "J") == AssignmentTransferResult.Swapped
-                && window.CurrentProfileForTest.Mappings.Count(mapping => mapping.Input == "J") == 2
-                && window.CurrentProfileForTest.Mappings.Count(mapping => mapping.Input == "H") == 1
-                && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "H").Value == "Ctrl+J",
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "F10" or "F11");
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "F10", Layer = "通常", Kind = ActionKind.Text, Value = "drag-source", Application = "editor.exe" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "F10", Layer = "通常", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+H", Application = "browser.exe" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "F11", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+J" });
+            Check(window.TransferCurrentLayerAssignmentsForTest("F10", "F11") == AssignmentTransferResult.Swapped
+                && window.CurrentProfileForTest.Mappings.Count(mapping => mapping.Input == "F11") == 2
+                && window.CurrentProfileForTest.Mappings.Count(mapping => mapping.Input == "F10") == 1
+                && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "F10").Value == "Ctrl+J",
                 "the production main-layer drag transfer swaps occupied keys and retains all application-specific source actions");
-            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "H" or "J");
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "F10" or "F11");
             window.ColorButtonsForTest();
             var compactDragPreview = new DeckDragPreviewWindow(new Border(), compact: true);
             Check(Math.Abs(compactDragPreview.PreviewWidthForTest - 20) < .1 && Math.Abs(compactDragPreview.PreviewHeightForTest - 20) < .1,
@@ -1260,8 +1266,9 @@ internal static class UiIntegrationTest
             Check(deckPaletteApplied
                 && deckInputsForPalette.All(input => standardDeck.Mappings.LastOrDefault(mapping => mapping.Input == input) is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", DeckIcon: "copy", DeckIconAutoAssigned: true })
                 && window.IsActionPaletteOpenForTest
-                && deckPaletteWaveCentered,
-                "dropping one concrete action on selected Deck targets applies it and its icon, then expands the same clipped accent wave from every slot center");
+                && deckPaletteWaveCentered
+                && MainWindow.ActionDropWaveDurationMs == 500,
+                "dropping one concrete action on selected Deck targets applies it and its icon, then expands the same readable half-second clipped accent wave from every slot center");
             window.UndoPaletteActionForTest();
             Pump(window);
             Check(deckInputsForPalette.All(input =>
@@ -1452,6 +1459,17 @@ internal static class UiIntegrationTest
                 && window.DeckHoverPreviewBox.Content?.ToString() == "ファイルをホバー再生"
                 && System.Windows.Automation.AutomationProperties.GetName(window.DeckOverlayToggleButton) == "Deckを表示",
                 "Deck display settings name the trigger and result, distinguish collapse from hide, and reserve preview wording for the actual Deck");
+            OverlayService.ResetDeckRefreshRequestCountForTest();
+            bool initialDeckHoverAnimation = standardDeck.HoverAnimationEnabled;
+            window.DeckHoverAnimationBox.IsChecked = !initialDeckHoverAnimation;
+            Pump(window);
+            bool deckHoverSettingChanged = standardDeck.HoverAnimationEnabled == !initialDeckHoverAnimation
+                && OverlayService.DeckLayoutPreviewRequestCountForTest >= 1
+                && OverlayService.DeckRefreshRequestCountForTest == 0;
+            window.DeckHoverAnimationBox.IsChecked = initialDeckHoverAnimation;
+            Pump(window);
+            Check(deckHoverSettingChanged && standardDeck.HoverAnimationEnabled == initialDeckHoverAnimation,
+                "Deck hover animation updates the live layout through the lightweight appearance path instead of being a save-only setting");
             OverlayService.ResetDeckRefreshRequestCountForTest();
             window.DeckAfterActionBehaviorBox.SelectedItem = window.DeckAfterActionBehaviorBox.Items.Cast<ComboBoxItem>().Single(item => Equals(item.Tag, "Hide"));
             window.DeckPointerLeaveBehaviorBox.SelectedItem = window.DeckPointerLeaveBehaviorBox.Items.Cast<ComboBoxItem>().Single(item => Equals(item.Tag, "StayVisible"));
@@ -1768,6 +1786,31 @@ internal static class UiIntegrationTest
                 && overlayHoverButton.Template.FindName("GlassHighlight", overlayHoverButton) == null
                 && overlayHoverButton.Template.FindName("HoverUnderline", overlayHoverButton) == null,
                 "rapid pointer travel across the Deck overlay uses stable color feedback without scaling or moving its hit surface");
+            PumpFor(TimeSpan.FromMilliseconds(120));
+            bool hoverFadeBaseline = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
+            bool hoverFadeStarted = overlayHoverButton.HasAnimatedProperties;
+            PumpFor(TimeSpan.FromMilliseconds(45));
+            bool hoverFadeRuns = hoverFadeBaseline && hoverFadeStarted && overlayHoverButton.Opacity < 1
+                && Math.Abs(overlayHoverButton.ActualWidth - overlayHoverWidth) < .001
+                && Math.Abs(overlayHoverButton.ActualHeight - overlayHoverHeight) < .001;
+            overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
+            bool hoverFadeOutStarted = overlayHoverButton.HasAnimatedProperties;
+            PumpFor(TimeSpan.FromMilliseconds(180));
+            bool hoverFadeSettled = hoverFadeOutStarted && !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            overlayLayout.HoverAnimationEnabled = false;
+            deckOverlay.RefreshLayoutPreview(67, true);
+            overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
+            bool layoutHoverOffIsImmediate = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            overlayLayout.HoverAnimationEnabled = true;
+            UiMotionService.Apply(false);
+            deckOverlay.RefreshLayoutPreview(67, true);
+            overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
+            bool globalHoverOffIsImmediate = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            UiMotionService.Apply(true);
+            deckOverlay.RefreshLayoutPreview(67, true);
+            Check(hoverFadeRuns && hoverFadeSettled && layoutHoverOffIsImmediate && globalHoverOffIsImmediate,
+                "Deck hover animation visibly runs only when both the Deck setting and RELYR animation setting are enabled, without resizing its hit surface");
             var overlayDropTarget = deckOverlay.DeckButtons[1];
             var overlayTargetBackground = overlayDropTarget.Background;
             var overlayTargetBorder = overlayDropTarget.BorderBrush;
@@ -2968,7 +3011,7 @@ internal static class UiIntegrationTest
                 && multiTint.Opacity == 0 && multiBadge.Opacity == 0 && multiA.Opacity == 1 && multiB.Opacity == 1
                 && Math.Abs(previousSingleSelection.Opacity - MainWindow.SelectionDimOpacity) < .01
                 && MainWindow.GetIsMultiSelected(multiA) && MainWindow.GetIsSelectionPulseActive(multiA) && !MainWindow.HasSelectionPulseAnimationForTest(multiA)
-                && mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft")).All(x => MainWindow.GetIsMultiSelected(x) && x.Opacity == 1 && MainWindow.GetIsSelectionPulseActive(x) && !MainWindow.HasSelectionPulseAnimationForTest(x))
+                && mouseButtons.Where(x => x.IsEnabled && !Equals(x.Tag, "MouseLeft")).All(x => MainWindow.GetIsMultiSelected(x) && x.Opacity == 1 && MainWindow.GetIsSelectionPulseActive(x) && !MainWindow.HasSelectionPulseAnimationForTest(x))
                 && !MainWindow.GetIsMultiSelected(leftClick),
                 "multi-select keeps every explicitly selected main key bright with the shared selection outline while unselected keys stay dim, with no badges");
             CaptureForReview(window, "main-multi-selection.png");
@@ -2995,12 +3038,15 @@ internal static class UiIntegrationTest
             ((MenuItem)window.CreateInputContextMenu("B").Items[1]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" } && window.InputName.Text.Length == 0 && !window.AssignmentEditor.IsEnabled && window.ProfileBox.IsEnabled, "single-key paste immediately completes editing and leaves profile switching available");
-            var allLayerSource = window.CurrentProfileForTest.Mappings.Last(x => x.Input == "B");
-            allLayerSource.LongPressKind = ActionKind.Shortcut;
-            allLayerSource.LongPressValue = "Ctrl+Shift+B";
-            allLayerSource.LongPressMs = 640;
-            allLayerSource.Application = "notepad.exe";
-            var mainKeyboardMenu = window.CreateInputContextMenu("B");
+            var capsPaste = (MenuItem)window.CreateInputContextMenu("CapsLock").Items[1];
+            var x1Paste = (MenuItem)window.CreateInputContextMenu("MouseX").Items[1];
+            Check(!capsPaste.IsEnabled && capsPaste.ToolTip?.ToString() == "CapsLockは割り当て元にはできません"
+                && !x1Paste.IsEnabled && x1Paste.ToolTip?.ToString() == "追加ボタンは入力として使用できません",
+                "right-click paste is disabled for CapsLock and X1 with concise reasons");
+            var allLayerSource = new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Text, Value = "multi-A", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+B", LongPressMs = 640, Application = "notepad.exe" };
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "F7");
+            window.CurrentProfileForTest.Mappings.Add(allLayerSource);
+            var mainKeyboardMenu = window.CreateInputContextMenu("F7");
             var assignAllLayers = mainKeyboardMenu.Items.OfType<MenuItem>().SingleOrDefault(item => item.Header?.ToString() == "全レイヤーに割り当てる");
             mainKeyboardMenu.ApplyTemplate();
             assignAllLayers?.ApplyTemplate();
@@ -3023,8 +3069,8 @@ internal static class UiIntegrationTest
                 "the WPF menu separator resource key and all right-click menus share the same compact theme-aware surface, row treatment, and quiet separators");
             assignAllLayers?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
-            var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+B", StringComparison.OrdinalIgnoreCase))).ToArray();
-            Check(assignAllLayers?.IsEnabled == true && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" }) && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames) && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "B") == allLayerSource && !window.CreateInputContextMenu("Insert", false).Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる"), "main keyboard context menu copies the complete assignment through every non-default layer without changing the default or exposing the command on lower keys");
+            var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+F7", StringComparison.OrdinalIgnoreCase))).ToArray();
+            Check(assignAllLayers?.IsEnabled == true && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" }) && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames) && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "F7") == allLayerSource && !window.CreateInputContextMenu("Insert", false).Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる"), "main keyboard context menu copies the complete assignment through every non-default layer without changing the default or exposing the command on lower keys");
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.MultiDeleteButton.IsEnabled
@@ -3139,21 +3185,22 @@ internal static class UiIntegrationTest
             if (!window.ProfilesForTest.Any(x => x.Name == "プロファイル4"))
                 window.ProfilesForTest.Add(new Profile { Name = "プロファイル4" });
             window.SaveAndApplyForTest();
-            var oKey = keys.First(x => Equals(x.Tag, "O"));
-            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("O", StringComparison.OrdinalIgnoreCase));
-            oKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            const string profileInput = "F6";
+            var profileKey = keys.First(x => Equals(x.Tag, profileInput));
+            window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals(profileInput, StringComparison.OrdinalIgnoreCase));
+            profileKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             window.LongPressExpander.IsExpanded = true;
             window.ApplyProfileActionForTest("プロファイル4", true);
             Check(Equals(window.LongKindBox.SelectedValue, ActionKind.Profile) && window.LongValueBox.Text == "プロファイル：プロファイル4", "profile assignment selects the profile action button and shows a readable profile name");
             window.LongPressBox.Text = "650";
             Pump(window);
-            var editingProfileSwitch = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "O");
+            var editingProfileSwitch = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == profileInput);
             window.CompleteDestinationInputForTest();
             Pump(window);
-            var appliedProfileSwitch = window.AppliedMappingForTest("O");
+            var appliedProfileSwitch = window.AppliedMappingForTest(profileInput);
             Check(editingProfileSwitch is { LongPressKind: ActionKind.Profile, LongPressValue: "プロファイル4", LongPressMs: 650 } && appliedProfileSwitch is { Kind: ActionKind.None, LongPressKind: ActionKind.Profile, LongPressValue: "プロファイル4", LongPressMs: 650 }, "a long-press profile action remains assigned when its timing is edited and after input completion");
-            Check(appliedProfileSwitch != null && window.ExecuteMappingForTest(appliedProfileSwitch, "O:Long"), "the saved long-press profile action is accepted by the runtime executor");
+            Check(appliedProfileSwitch != null && window.ExecuteMappingForTest(appliedProfileSwitch, profileInput + ":Long"), "the saved long-press profile action is accepted by the runtime executor");
             Pump(window);
             Check(window.AppliedProfileNameForTest == "プロファイル4" && window.IsProfileOverlayVisibleForTest
                 && window.CurrentProfileForTest.Name == "プロファイル4" && Equals(window.ProfileBox.SelectedItem, "プロファイル4"),
@@ -3497,13 +3544,22 @@ internal static class UiIntegrationTest
             Pump(window);
             var spaceMouseLeft = window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "MouseLeft"));
             window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Space+MouseLeft", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Space+MouseLeft", Layer = "Space", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" });
             spaceMouseLeft.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             var shiftClickAction = ActionCatalog.Items.Single(x => x.Name == "Shift+左クリック");
             window.ApplyCatalogActionForTest(shiftClickAction);
             Pump(window);
             var editingShiftClick = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "Space+MouseLeft");
-            Check((ActionKind?)window.KindBox.SelectedValue == ActionKind.Shortcut && editingShiftClick is { Kind: ActionKind.Mouse, Value: "ShiftDrag" }, "choosing Shift+left click visibly selects Shortcut while preserving its drag-capable mouse action");
+            Check((ActionKind?)window.KindBox.SelectedValue == ActionKind.Shortcut
+                && editingShiftClick is { Kind: ActionKind.Mouse, Value: "ShiftDrag", LongPressKind: ActionKind.None, LongPressValue: "" }
+                && window.LongPressExpander is { IsEnabled: false, IsExpanded: false }
+                && !window.LongPressOnlyButton.IsEnabled
+                && window.LongPressExpander.Header?.ToString() == "＋ 長押し（短押しの修飾クリックとは併用できません）",
+                "choosing Shift+left click clears an unreachable long action and disables its editor with a concise reason");
+            window.ApplyCatalogActionForTest(new CatalogAction("編集", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), true);
+            Pump(window);
+            Check(editingShiftClick is { LongPressKind: ActionKind.None, LongPressValue: "" }, "a disabled modifier-click long editor cannot add an action through the assignment path");
             window.CompleteDestinationInputForTest();
             Pump(window);
             var appliedShiftClick = window.AppliedMappingForTest("Space+MouseLeft");
@@ -3560,6 +3616,52 @@ internal static class UiIntegrationTest
             var manualShiftClick = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "Space+MouseLeft");
             Check(manualShiftClick is { Kind: ActionKind.Mouse, Value: "ShiftDrag" }, "manually entered Shift+MouseLeft is normalized to the same reliable mouse action");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var wheelUpInput = window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "WheelUp"));
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input.Equals("WheelUp", StringComparison.OrdinalIgnoreCase));
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "WheelUp", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" });
+            wheelUpInput.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var wheelMapping = window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "WheelUp");
+            window.ApplyCatalogActionForTest(new CatalogAction("その他", "テスト", "", ActionKind.Gesture, "Gesture"));
+            window.ApplyCatalogActionForTest(new CatalogAction("編集", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), longPress: true);
+            Pump(window);
+            Check(!window.ShortGestureOptionEnabledForTest
+                && window.LongPressExpander is { IsEnabled: false, IsExpanded: false }
+                && window.LongPressExpander.Header?.ToString() == "＋ 長押し（ホイール／チルトでは設定できません）"
+                && wheelMapping is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.None, LongPressValue: "" },
+                "wheel input visibly disables gesture and long press, and hidden assignment paths cannot add either action");
+
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input.Equals("MouseRight", StringComparison.OrdinalIgnoreCase)
+                || mapping.Input.StartsWith("MouseRight+", StringComparison.OrdinalIgnoreCase));
+            var directRight = new Mapping
+            {
+                Input = "MouseRight",
+                Layer = "通常",
+                Kind = ActionKind.Mouse,
+                Value = "MouseRight",
+                LongPressKind = ActionKind.Shortcut,
+                LongPressValue = "Ctrl+K"
+            };
+            window.CurrentProfileForTest.Mappings.Add(directRight);
+            window.RightMouseLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var rightLayerSource = window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "MouseRight"));
+            var x1LayerSource = window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "MouseX"));
+            Check(!rightLayerSource.IsEnabled && rightLayerSource.ToolTip?.ToString() == "レイヤーと同じボタンには設定できません"
+                && !x1LayerSource.IsEnabled && x1LayerSource.ToolTip?.ToString() == "追加ボタンは入力として使用できません",
+                "a mouse layer disables its own source button and X1 with concise reasons");
+            Check(window.ApplyPaletteActionForTest(new CatalogAction("編集", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), "MouseRight+K", "K")
+                && directRight is { LongPressKind: ActionKind.None, LongPressValue: "" },
+                "adding a right-click-layer action automatically removes the now-unreachable default right-click long action");
+            window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            window.VisualInputButtonsForTest.First(x => Equals(x.Tag, "MouseRight")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(window.LongPressExpander is { IsEnabled: false, IsExpanded: false }
+                && window.LongPressExpander.Header?.ToString() == "＋ 長押し（レイヤー使用中は設定できません）",
+                "default right-click shows that long press is unavailable while its layer is in use");
+            window.CompleteDestinationInputForTest();
             Pump(window);
             var sampleApps = new[] { new InstalledApplicationInfo("RELYR テスト", "C:\\Apps\\RELYR.exe", "インストール済みアプリ"), new InstalledApplicationInfo("メモ帳", "C:\\Windows\\notepad.exe", "スタート メニュー") };
             var applicationPicker = new ApplicationPickerWindow(sampleApps) { Owner = window, ShowInTaskbar = false };
@@ -3700,15 +3802,23 @@ internal static class UiIntegrationTest
             {
                 foreach (string visualKey in visualKeys)
                 {
-                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer == "通常"))
-                        continue;
                     string input = layer == "通常" ? visualKey : layer + "+" + visualKey;
+                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer == "通常")
+                        || InputAssignmentPolicy.IsUnreachableInput(input))
+                        continue;
                     window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
                     window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = input, Layer = layer, Kind = ActionKind.Key, Value = "A" });
                 }
                 layerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 Pump(window);
-                var missed = visualInputs.Where(x => (string)x.Tag != "CapsLock" && !((string)x.Tag == "Space" && layer is "通常" or "Space") && !((string)x.Tag == "MouseLeft" && layer == "通常") && !HasBackgroundColor(x, replacementColor)).Select(x => (string)x.Tag).Distinct().ToArray();
+                var missed = visualInputs.Where(x =>
+                {
+                    string key = (string)x.Tag;
+                    string input = layer == "通常" ? key : layer + "+" + key;
+                    return key != "CapsLock" && !(key == "Space" && layer is "通常" or "Space")
+                        && !(key == "MouseLeft" && layer == "通常") && !InputAssignmentPolicy.IsUnreachableInput(input)
+                        && !HasBackgroundColor(x, replacementColor);
+                }).Select(x => (string)x.Tag).Distinct().ToArray();
                 Check(visualInputs.Count > 100 && missed.Length == 0, $"every assignable visual key is orange on the {layer} layer" + (missed.Length == 0 ? "" : " (missing: " + string.Join(",", missed) + ")"));
             }
             window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("F1", StringComparison.OrdinalIgnoreCase));
@@ -3862,10 +3972,11 @@ internal static class UiIntegrationTest
             inputPicker.UpdateLayout();
             Pump(window);
             var pickerInputs = inputPicker.InputButtonsForTest.Select(x => x.Tag?.ToString()).Where(x => x != null).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var requiredPickerInputs = new[] { "A", "Enter", "F13", "F24", "NumPadEnter", "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward", "MouseX", "WheelUp", "WheelDown", "TiltLeft", "TiltRight" };
+            var requiredPickerInputs = new[] { "A", "Enter", "F13", "F24", "NumPadEnter", "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward", "WheelUp", "WheelDown", "TiltLeft", "TiltRight" };
             var missingPickerInputs = requiredPickerInputs.Where(x => !pickerInputs.Contains(x)).ToArray();
             var invalidPickerInputs = pickerInputs.Where(input => !InputEngine.IsValidRecordedEvent(input + " Down") || !InputEngine.IsValidRecordedEvent(input + " Up")).ToArray();
-            bool pickerComplete = inputPicker.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && pickerInputs.Count > 100 && missingPickerInputs.Length == 0 && invalidPickerInputs.Length == 0;
+            bool pickerComplete = inputPicker.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode() && pickerInputs.Count > 100
+                && missingPickerInputs.Length == 0 && invalidPickerInputs.Length == 0 && !pickerInputs.Contains("MouseX");
             Check(pickerComplete, "macro keypad follows the Windows theme and exposes the full keyboard and every supported mouse input" + (pickerComplete ? "" : $" (count={pickerInputs.Count}, missing={string.Join(",", missingPickerInputs)}, invalid={string.Join(",", invalidPickerInputs)}, titleDark={inputPicker.TitleBarUsesDarkMode}, windowsDark={MainWindow.IsWindowsAppDarkMode()})"));
             var pickerA = inputPicker.InputButtonsForTest.First(x => x.Tag?.ToString() == "A");
             var pickerEnter = inputPicker.InputButtonsForTest.First(x => x.Tag?.ToString() == "Enter");

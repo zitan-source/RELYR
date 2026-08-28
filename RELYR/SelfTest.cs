@@ -75,16 +75,16 @@ public static class SelfTest
             Check(config.Profiles.Count == 1 && config.Profiles[0].Name == "標準" && config.Profiles[0].Mappings.Count == 0, "only standard profile exists by default");
             var dragAssignments = new List<Mapping>
             {
-                new() { Input = "A", Layer = "通常", Kind = ActionKind.Text, Value = "source-default", Application = "editor.exe" },
-                new() { Input = "A", Layer = "通常", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+A", Application = "browser.exe" },
-                new() { Input = "B", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+B", Description = "target-default" }
+                new() { Input = "F8", Layer = "通常", Kind = ActionKind.Text, Value = "source-default", Application = "editor.exe" },
+                new() { Input = "F8", Layer = "通常", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+A", Application = "browser.exe" },
+                new() { Input = "F9", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+B", Description = "target-default" }
             };
-            var swapResult = MainWindow.TransferAssignments(dragAssignments, "A", "B");
+            var swapResult = MainWindow.TransferAssignments(dragAssignments, "F8", "F9");
             bool profileDragSwapPreservedEveryVariant = swapResult == AssignmentTransferResult.Swapped
-                && dragAssignments.Count(mapping => mapping.Input == "B") == 2
-                && dragAssignments.Count(mapping => mapping.Input == "A") == 1
-                && dragAssignments.Where(mapping => mapping.Input == "B").Select(mapping => mapping.Application).Order().SequenceEqual(new[] { "browser.exe", "editor.exe" })
-                && dragAssignments.Single(mapping => mapping.Input == "A").Description == "target-default";
+                && dragAssignments.Count(mapping => mapping.Input == "F9") == 2
+                && dragAssignments.Count(mapping => mapping.Input == "F8") == 1
+                && dragAssignments.Where(mapping => mapping.Input == "F9").Select(mapping => mapping.Application).Order().SequenceEqual(new[] { "browser.exe", "editor.exe" })
+                && dragAssignments.Single(mapping => mapping.Input == "F8").Description == "target-default";
             string[] draggableLayers = ["Space", "CapsLock", "MouseRight", "MouseBack", "MouseForward", "Taskbar"];
             bool everyLayerMovesWithoutLoss = true;
             foreach (string layer in draggableLayers)
@@ -98,6 +98,15 @@ public static class SelfTest
             }
             Check(profileDragSwapPreservedEveryVariant && everyLayerMovesWithoutLoss,
                 "dragging assignments moves empty targets, swaps occupied targets, and preserves every app variant and action field across all editable layers");
+            var invalidDragAssignments = new List<Mapping>
+            {
+                new() { Input = "F8", Layer = "通常", Kind = ActionKind.Gesture, Value = "Gesture" },
+                new() { Input = "F9", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" }
+            };
+            Check(MainWindow.TransferAssignments(invalidDragAssignments, "F8", "WheelUp") == AssignmentTransferResult.None
+                && MainWindow.TransferAssignments(invalidDragAssignments, "F9", "O") == AssignmentTransferResult.None
+                && invalidDragAssignments[0].Input == "F8" && invalidDragAssignments[1].Input == "F9",
+                "dragging cannot move a gesture onto an impulse input or a long action onto a normal alphabet key");
             byte[] legacyMap = [0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0x64, 0, 0x3A, 0, 0x0C, 0, 0x79, 0, 0, 0, 0, 0];
             Check(LegacyKeyRemapService.ContainsCapsLockToF13(legacyMap), "legacy CapsLock-to-F13 registry mapping detection");
             var remapRemoved = LegacyKeyRemapService.UpdateCapsLockToF13(legacyMap, false);
@@ -245,8 +254,31 @@ public static class SelfTest
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
                 "taskbar short and long actions keep their dedicated execution context");
-            var mouseDisplayCases = new Dictionary<string, string> { { "MouseLeft", "マウス：左クリック" }, { "MouseRight", "マウス：右クリック" }, { "MouseMiddle", "マウス：ホイールクリック" }, { "MouseBack", "マウス：戻る" }, { "MouseForward", "マウス：進む" }, { "MouseX", "マウス：追加ボタン" }, { "WheelUp", "マウス：ホイール上" }, { "WheelDown", "マウス：ホイール下" }, { "TiltLeft", "マウス：チルト左" }, { "TiltRight", "マウス：チルト右" }, { "ShiftDrag", "マウス：Shift + 左クリック" }, { "CtrlDrag", "マウス：Ctrl + 左クリック" }, { "AltDrag", "マウス：Alt + 左クリック" } };
-            Check(mouseDisplayCases.All(x => MainWindow.DisplayActionValue(ActionKind.Mouse, x.Key) == x.Value && MainWindow.NormalizeEditorAction(ActionKind.Shortcut, x.Value, ActionKind.Mouse, x.Key) == (ActionKind.Mouse, x.Key)), "every mouse execution value is readable in the editor and safely converts back to its compatible internal name");
+            var mouseDisplayCases = new Dictionary<string, string> { { "MouseLeft", "マウス：左クリック" }, { "MouseRight", "マウス：右クリック" }, { "MouseMiddle", "マウス：ホイールクリック" }, { "MouseBack", "マウス：戻る" }, { "MouseForward", "マウス：進む" }, { "WheelUp", "マウス：ホイール上" }, { "WheelDown", "マウス：ホイール下" }, { "TiltLeft", "マウス：チルト左" }, { "TiltRight", "マウス：チルト右" }, { "ShiftDrag", "マウス：Shift + 左クリック" }, { "CtrlDrag", "マウス：Ctrl + 左クリック" }, { "AltDrag", "マウス：Alt + 左クリック" } };
+            Check(mouseDisplayCases.All(x => MainWindow.DisplayActionValue(ActionKind.Mouse, x.Key) == x.Value && MainWindow.NormalizeEditorAction(ActionKind.Shortcut, x.Value, ActionKind.Mouse, x.Key) == (ActionKind.Mouse, x.Key))
+                && ActionCatalog.TryNormalizeMouseAction("MouseX", out string legacyMouseX) && legacyMouseX == "MouseForward",
+                "every supported mouse execution value round-trips and legacy MouseX output safely becomes MouseForward");
+            var unsupportedModifierLong = new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "CtrlDrag", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" };
+            bool clearedUnsupportedModifierLong = MainWindow.ClearUnsupportedLongPress(unsupportedModifierLong);
+            var normalAlphabetLong = new Mapping { Input = "O", Layer = "通常", LongPressKind = ActionKind.Profile, LongPressValue = "標準" };
+            bool clearedNormalAlphabetLong = MainWindow.ClearUnsupportedLongPress(normalAlphabetLong);
+            Check(new[] { "ShiftDrag", "CtrlDrag", "AltDrag" }.All(value => !MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = value }))
+                && clearedUnsupportedModifierLong && unsupportedModifierLong is { LongPressKind: ActionKind.None, LongPressValue: "" }
+                && clearedNormalAlphabetLong && normalAlphabetLong is { LongPressKind: ActionKind.None, LongPressValue: "" }
+                && MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "MouseRight" })
+                && MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.None, LongPressKind = ActionKind.Mouse, LongPressValue = "CtrlDrag" }),
+                "modifier clicks and normal alphabet keys reject unreachable long actions while ordinary short actions and long-side modifier clicks remain supported");
+            var rightLayerConflict = new List<Mapping>
+            {
+                new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+                new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }
+            };
+            Check(InputAssignmentPolicy.IsImpulseInput("Space+WheelUp")
+                && !InputAssignmentPolicy.SupportsGesture("CapsLock+TiltRight")
+                && new[] { "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && InputAssignmentPolicy.SanitizeMappings(rightLayerConflict)
+                && rightLayerConflict[0] is { LongPressKind: ActionKind.None, LongPressValue: "" },
+                "the shared assignment policy rejects impulse gestures, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
             config.Profiles.Add(new Profile { Name = "アプリ用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] });
             config.ActiveProfile = "アプリ用";
             config.AutoSwitchProfilesByCursor = false;
@@ -623,6 +655,9 @@ public static class SelfTest
             try
             {
                 InputEngine.MouseFlagOutputForTest = (flag, data) => defensiveMouseReleases.Add((flag, data));
+                InputEngine.ReleaseForProcessLifecycle();
+                Check(!InputEngine.SystemHooksStartedInProcessForTest && defensiveMouseReleases.Count == 0,
+                    "no-hook validation lifecycle never emits real mouse-button releases");
                 InputEngine.ReleaseAllDefensively();
             }
             finally { InputEngine.MouseFlagOutputForTest = null; }

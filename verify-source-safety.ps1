@@ -22,6 +22,8 @@ function Assert-Safety([bool]$condition, [string]$message) {
 }
 
 $mainWindow = Read-AppSourceSet "MainWindow*.cs"
+$mainWindowLifecycle = Read-Source "RELYR\MainWindow.Lifecycle.cs"
+$app = Read-Source "RELYR\App.xaml.cs"
 $inputEngine = Read-Source "RELYR\InputEngine.cs"
 $inputOutput = Read-Source "RELYR\InputEngine.Output.cs"
 $conditionMatcher = Read-Source "RELYR\ConditionMatcher.cs"
@@ -65,6 +67,9 @@ Assert-Safety ($inputEngine -match 'volatile\s+bool\s+enabled') "fail-open engin
 Assert-Safety ($inputEngine -match 'ObservePhysicalMouseTransition\s*\(msg,\s*d\.mouseData\)') "Back and Forward buttons must preserve their XBUTTON identity"
 Assert-Safety ($inputEngine -match 'nativeRightDragOutputQueue' -and $inputEngine -match 'ProcessNativeRightDragOutput') "native right drag output must remain on its serial worker"
 Assert-Safety ($conditionMatcher -notmatch '\bEnumWindows\s*\(') "taskbar detection must not enumerate every window"
+Assert-Safety ($inputOutput -match 'ReleaseForProcessLifecycle[\s\S]*?systemHooksStartedInProcess[\s\S]*?ReleaseAllDefensively\(\)[\s\S]*?ReleaseAll\(\)') "no-hook lifecycle must release only tracked generated input"
+Assert-Safety ($app -notmatch 'InputEngine\.ReleaseAllDefensively\s*\(') "automatic application lifecycle must not emit unconditional mouse-button releases in no-hook tests"
+Assert-Safety ($mainWindowLifecycle -notmatch 'InputEngine\.ReleaseAllDefensively\s*\(') "automatic window lifecycle must not emit unconditional mouse-button releases in no-hook tests"
 
 Assert-Safety ($startupService -notmatch '\.MainModule') "process recovery must use limited-information path lookup"
 Assert-Safety ($startupService -match 'IpcProcessIdentity\.TryGetProcessImagePath') "stale RELYR identity verification is missing"

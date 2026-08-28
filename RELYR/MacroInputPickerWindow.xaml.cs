@@ -181,7 +181,6 @@ public partial class MacroInputPickerWindow : Window
         AddButton("TiltRight", "▶", tiltLeft + unit + gap, bodyY + 200, unit, keyHeight);
         AddButton("MouseForward", "進む", bodyX + padding, bodyY + 270, unit, keyHeight);
         AddButton("MouseBack", "戻る", bodyX + padding, bodyY + 326, unit, keyHeight);
-        AddButton("MouseX", "X1", rightX, bodyY + 326, unit, keyHeight);
     }
 
 

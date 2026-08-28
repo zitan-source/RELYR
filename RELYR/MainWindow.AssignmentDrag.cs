@@ -30,7 +30,8 @@ public partial class MainWindow
     internal static AssignmentTransferResult TransferAssignments(List<Mapping> mappings, string sourceInput, string targetInput)
     {
         if (string.IsNullOrWhiteSpace(sourceInput) || string.IsNullOrWhiteSpace(targetInput)
-            || sourceInput.Equals(targetInput, StringComparison.OrdinalIgnoreCase))
+            || sourceInput.Equals(targetInput, StringComparison.OrdinalIgnoreCase)
+            || !CanTransferAssignments(mappings, sourceInput, targetInput))
             return AssignmentTransferResult.None;
 
         var sourceMappings = mappings.Where(mapping => mapping.Input.Equals(sourceInput, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -51,6 +52,33 @@ public partial class MainWindow
             mapping.Layer = sourceLayer;
         }
         return targetMappings.Length == 0 ? AssignmentTransferResult.Moved : AssignmentTransferResult.Swapped;
+    }
+
+    internal static bool CanTransferAssignments(IReadOnlyList<Mapping> mappings, string sourceInput, string targetInput)
+    {
+        if (string.IsNullOrWhiteSpace(sourceInput) || string.IsNullOrWhiteSpace(targetInput)
+            || sourceInput.Equals(targetInput, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var projected = mappings.Select(mapping => mapping.Copy()).ToList();
+        var sourceMappings = projected.Where(mapping => mapping.Input.Equals(sourceInput, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (sourceMappings.Length == 0)
+            return false;
+        var targetMappings = projected.Where(mapping => mapping.Input.Equals(targetInput, StringComparison.OrdinalIgnoreCase)).ToArray();
+        foreach (var mapping in sourceMappings)
+        {
+            mapping.Input = targetInput;
+            mapping.Layer = AssignmentLayerName(targetInput);
+        }
+        foreach (var mapping in targetMappings)
+        {
+            mapping.Input = sourceInput;
+            mapping.Layer = AssignmentLayerName(sourceInput);
+        }
+        return sourceMappings.Concat(targetMappings).All(mapping =>
+            !InputAssignmentPolicy.IsUnreachableInput(mapping.Input)
+            && (mapping.Kind != ActionKind.Gesture || InputAssignmentPolicy.SupportsGesture(mapping.Input))
+            && (!InputAssignmentPolicy.HasConfiguredLongPress(mapping)
+                || InputAssignmentPolicy.CanExecuteLongPress(mapping, projected)));
     }
 
     static string AssignmentLayerName(string input)
@@ -118,7 +146,8 @@ public partial class MainWindow
             return;
         string targetInput = InputForCurrentLayer(targetKey);
         bool valid = !sourceInput.Equals(targetInput, StringComparison.OrdinalIgnoreCase)
-            && CanUseAssignmentDragKey(targetKey, source: false);
+            && CanUseAssignmentDragKey(targetKey, source: false)
+            && CanTransferAssignments(CurrentProfile.Mappings, sourceInput, targetInput);
         SetAssignmentDropTarget(valid ? target : null);
         e.Effects = valid ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
@@ -172,13 +201,14 @@ public partial class MainWindow
 
     bool CanUseAssignmentDragKey(string key, bool source)
     {
-        if (IsProtectedNormalLeftClick(key)
+        string input = InputForCurrentLayer(key);
+        if (InputAssignmentPolicy.IsUnreachableInput(input)
+            || IsProtectedNormalLeftClick(key)
             || key.Equals("CapsLock", StringComparison.OrdinalIgnoreCase)
             || key.Equals("Space", StringComparison.OrdinalIgnoreCase) && currentLayer is "通常" or "Space")
             return false;
         if (!source)
             return true;
-        string input = InputForCurrentLayer(key);
         return CurrentProfile.Mappings.Any(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase) && MappingInterceptsInput(mapping));
     }
 

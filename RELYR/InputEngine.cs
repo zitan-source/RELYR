@@ -22,6 +22,7 @@ public sealed partial class InputEngine : IDisposable
     static readonly HashSet<int> InjectedMouseButtonsDown = [];
     static readonly Dictionary<ushort, long> InjectedKeyDownAt = [];
     static readonly Dictionary<int, long> InjectedMouseDownAt = [];
+    static int systemHooksStartedInProcess;
     static readonly System.Threading.Timer InjectedInputSafetyTimer = new(_ => ReleaseStaleInjectedInputs(), null, 250, 250);
     static bool restoreMinimizedWindowsNext;
     static ushort modifierDragKey;
@@ -233,6 +234,7 @@ public sealed partial class InputEngine : IDisposable
             throw new TimeoutException("入力フックの開始が5秒以内に完了しませんでした。");
         if (hookStartException != null)
             throw new InvalidOperationException("入力フックを開始できませんでした。", hookStartException);
+        Volatile.Write(ref systemHooksStartedInProcess, 1);
     }
 
     void HookLoop()

@@ -53,7 +53,7 @@ public partial class App : System.Windows.Application
             }
             LifecycleDiagnostics.Write("dispatcher-unhandled-exception", e.Exception.ToString());
             MarkShutdownInProgress("dispatcher-unhandled-exception");
-            InputEngine.ReleaseAllDefensively();
+            InputEngine.ReleaseForProcessLifecycle();
             e.Handled = true;
             ShutdownWithExitCode(1);
         };
@@ -61,10 +61,10 @@ public partial class App : System.Windows.Application
         {
             LifecycleDiagnostics.Write("appdomain-unhandled-exception", e.ExceptionObject?.ToString());
             MarkShutdownInProgress("appdomain-unhandled-exception");
-            InputEngine.ReleaseAllDefensively();
+            InputEngine.ReleaseForProcessLifecycle();
         };
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => InputEngine.ReleaseAllDefensively();
-        TaskScheduler.UnobservedTaskException += (_, e) => { InputEngine.ReleaseAllDefensively(); e.SetObserved(); };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => InputEngine.ReleaseForProcessLifecycle();
+        TaskScheduler.UnobservedTaskException += (_, e) => { InputEngine.ReleaseForProcessLifecycle(); e.SetObserved(); };
         SystemEvents.PowerModeChanged += SystemPowerModeChanged;
         SystemEvents.SessionSwitch += SystemSessionSwitch;
     }
@@ -808,7 +808,7 @@ public partial class App : System.Windows.Application
         catch { }
         try
         {
-            InputEngine.ReleaseAllDefensively();
+            InputEngine.ReleaseForProcessLifecycle();
         }
         catch { }
         Environment.ExitCode = exitCode;
@@ -1019,7 +1019,7 @@ public partial class App : System.Windows.Application
         if (MainWindow is RELYR.MainWindow window)
             window.ResetInputStateForSessionTransition();
         else
-            InputEngine.ReleaseAllDefensively();
+            InputEngine.ReleaseForProcessLifecycle();
     }
     protected override void OnExit(ExitEventArgs e)
     {
@@ -1033,7 +1033,7 @@ public partial class App : System.Windows.Application
         catch { }
         SystemEvents.PowerModeChanged -= SystemPowerModeChanged;
         SystemEvents.SessionSwitch -= SystemSessionSwitch;
-        InputEngine.ReleaseAllDefensively();
+        InputEngine.ReleaseForProcessLifecycle();
         signalStop.Cancel();
         showSignal?.Set();
         shutdownSignal?.Set();

@@ -383,11 +383,14 @@ public sealed class ConfigService
             {
                 step.Event ??= "";
                 step.RecordedActionValue ??= "";
+                if (step.Event.StartsWith("MouseX ", StringComparison.OrdinalIgnoreCase))
+                    step.Event = "MouseForward" + step.Event["MouseX".Length..];
                 if (step.RecordedActionKind is { } kind)
                 {
                     var repaired = RepairLegacyActionKind(kind, step.RecordedActionValue, originalVersion);
-                    step.RecordedActionKind = repaired.Kind;
-                    step.RecordedActionValue = repaired.Value;
+                    var normalized = NormalizeMouseAction(repaired.Kind, repaired.Value);
+                    step.RecordedActionKind = normalized.Kind;
+                    step.RecordedActionValue = normalized.Value;
                 }
             }
 
@@ -416,6 +419,11 @@ public sealed class ConfigService
             (gesture.LeftKind, gesture.LeftValue) = RepairLegacyActionKind(gesture.LeftKind, gesture.LeftValue, originalVersion);
             (gesture.RightKind, gesture.RightValue) = RepairLegacyActionKind(gesture.RightKind, gesture.RightValue, originalVersion);
             (gesture.CenterKind, gesture.CenterValue) = RepairLegacyActionKind(gesture.CenterKind, gesture.CenterValue, originalVersion);
+            (gesture.UpKind, gesture.UpValue) = NormalizeMouseAction(gesture.UpKind, gesture.UpValue);
+            (gesture.DownKind, gesture.DownValue) = NormalizeMouseAction(gesture.DownKind, gesture.DownValue);
+            (gesture.LeftKind, gesture.LeftValue) = NormalizeMouseAction(gesture.LeftKind, gesture.LeftValue);
+            (gesture.RightKind, gesture.RightValue) = NormalizeMouseAction(gesture.RightKind, gesture.RightValue);
+            (gesture.CenterKind, gesture.CenterValue) = NormalizeMouseAction(gesture.CenterKind, gesture.CenterValue);
         }
     }
 
@@ -667,7 +675,14 @@ public sealed class ConfigService
         // settings must not bypass the UI guard and swallow every physical click.
         mappings.RemoveAll(map => map.Input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
             || map.Input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase));
+        InputAssignmentPolicy.SanitizeMappings(mappings);
     }
+
+    static (ActionKind Kind, string Value) NormalizeMouseAction(ActionKind kind, string value)
+        => kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse
+           && ActionCatalog.TryNormalizeMouseAction(value, out string normalized)
+            ? (ActionKind.Mouse, normalized)
+            : (kind, value);
 
     static (ActionKind Kind, string Value) RepairLegacyActionKind(ActionKind kind, string value, int originalVersion)
     {

@@ -85,6 +85,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     const byte MinimumBackdropTintAlpha = 20;
     const byte MaximumBackdropTintAlpha = 150;
     static readonly TimeSpan HoverAudioDelay = TimeSpan.FromMilliseconds(220);
+    static readonly TimeSpan ButtonHoverFadeInDuration = TimeSpan.FromMilliseconds(105);
+    static readonly TimeSpan ButtonHoverFadeOutDuration = TimeSpan.FromMilliseconds(145);
     static readonly TimeSpan PointerLeaveAutoHideDelay = TimeSpan.FromMilliseconds(500);
     static readonly TimeSpan ActionAutoHideDelay = TimeSpan.FromMilliseconds(140);
     static readonly TimeSpan PresentationFadeDuration = TimeSpan.FromMilliseconds(155);
@@ -967,6 +969,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         button.PreviewDragOver += DeckButtonDragOver;
         button.PreviewDrop += DeckButtonDropped;
         button.Resources["DeckFileAvailable"] = DeckPanelLayout.IsAvailableFile(mapping);
+        button.MouseEnter += DeckButtonHoverEntered;
+        button.MouseLeave += DeckButtonHoverLeft;
         button.MouseEnter += DeckButtonFileAvailability_MouseEnter;
         if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredFilePreview(mapping)))
             ConfigureHoverPreview(button, mapping);
@@ -977,6 +981,36 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         cell.Children.Add(button);
         cell.Children.Add(nameLabel);
         return (button, cell);
+    }
+    void DeckButtonHoverEntered(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is Button button)
+            SetDeckButtonHoverVisual(button, true);
+    }
+    void DeckButtonHoverLeft(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is Button button)
+            SetDeckButtonHoverVisual(button, false);
+    }
+    void SetDeckButtonHoverVisual(Button button, bool hovered)
+    {
+        if (!layout.HoverAnimationEnabled || !UiMotionService.Enabled)
+        {
+            UiMotionService.StopAndSetDouble(button, UIElement.OpacityProperty, 1);
+            return;
+        }
+        UiMotionService.AnimateDouble(
+            hovered ? "deck-button-hover-in" : "deck-button-hover-out",
+            button,
+            UIElement.OpacityProperty,
+            hovered ? .94 : 1,
+            hovered ? ButtonHoverFadeInDuration : ButtonHoverFadeOutDuration,
+            UiMotionService.ResponsiveEaseOut());
+    }
+    void RefreshDeckButtonHoverVisuals()
+    {
+        foreach (var button in deckButtons)
+            SetDeckButtonHoverVisual(button, button.IsMouseOver);
     }
     void DeckButtonFileAvailability_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
@@ -1142,6 +1176,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
                 ResetPresentationVisualsBestEffort();
         }
         hoverPreviewsEnabled = previewsEnabled;
+        RefreshDeckButtonHoverVisuals();
         if (afterAction != null || pointerLeave != null)
             autoHideTimer.Stop();
         if (afterAction is DeckAutoDismissBehavior newAfterAction)

@@ -1,0 +1,116 @@
+namespace RELYR;
+
+internal static class InputAssignmentPolicy
+{
+    static readonly string[] LayerSourceInputs = ["MouseRight", "MouseBack", "MouseForward"];
+
+    internal static string BaseInput(string? input)
+    {
+        string value = (input ?? "").Trim();
+        int separator = value.LastIndexOf('+');
+        return separator >= 0 ? value[(separator + 1)..] : value;
+    }
+
+    internal static string Layer(string? input)
+    {
+        string value = (input ?? "").Trim();
+        int separator = value.IndexOf('+');
+        return separator > 0 ? value[..separator] : "通常";
+    }
+
+    internal static bool IsImpulseInput(string? input)
+    {
+        string value = BaseInput(input);
+        return value.Equals("WheelUp", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("WheelDown", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("TiltLeft", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("TiltRight", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsSelfLayerInput(string? input)
+    {
+        string layer = Layer(input);
+        return LayerSourceInputs.Append("Space").Append("CapsLock").Contains(layer, StringComparer.OrdinalIgnoreCase)
+            && layer.Equals(BaseInput(input), StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsNormalAlphabetInput(string? input)
+    {
+        string value = (input ?? "").Trim();
+        return !value.Contains('+') && value.Length == 1
+            && value[0] is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
+    }
+
+    internal static bool IsUnreachableInput(string? input)
+        => BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase) || IsSelfLayerInput(input);
+
+    internal static string? UnavailableInputReason(string? input)
+    {
+        if (BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase))
+            return "追加ボタンは入力として使用できません";
+        if (IsSelfLayerInput(input))
+            return "レイヤーと同じボタンには設定できません";
+        return null;
+    }
+
+    internal static bool SupportsGesture(string? input)
+        => !IsUnreachableInput(input) && !IsImpulseInput(input);
+
+    internal static bool HasConfiguredLayerMappings(IReadOnlyList<Mapping>? mappings, string? input)
+    {
+        if (mappings == null || input == null || !LayerSourceInputs.Contains(input, StringComparer.OrdinalIgnoreCase))
+            return false;
+        string prefix = input + "+";
+        return mappings.Any(mapping => mapping.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && !IsUnreachableInput(mapping.Input)
+            && HasConfiguredAction(mapping));
+    }
+
+    internal static bool CanExecuteLongPress(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
+        => mapping != null
+           && !IsUnreachableInput(mapping.Input)
+           && !IsImpulseInput(mapping.Input)
+           && !IsNormalAlphabetInput(mapping.Input)
+           && mapping.Kind != ActionKind.Gesture
+           && !(mapping.Kind == ActionKind.Mouse && MappingExecutor.IsModifierDrag(mapping.Value))
+           && !HasConfiguredLayerMappings(mappings, mapping.Input);
+
+    internal static bool ClearImpossibleLongPress(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
+    {
+        if (mapping == null || CanExecuteLongPress(mapping, mappings))
+            return false;
+        bool changed = HasConfiguredLongPress(mapping) || !string.IsNullOrWhiteSpace(mapping.LongPressValue);
+        mapping.LongPressKind = ActionKind.None;
+        mapping.LongPressValue = "";
+        return changed;
+    }
+
+    internal static bool SanitizeMappings(List<Mapping> mappings)
+    {
+        bool changed = mappings.RemoveAll(mapping => IsUnreachableInput(mapping.Input)) > 0;
+        foreach (var mapping in mappings)
+        {
+            if (IsImpulseInput(mapping.Input) && mapping.Kind == ActionKind.Gesture)
+            {
+                mapping.Kind = ActionKind.None;
+                mapping.Value = "";
+                changed = true;
+            }
+            changed |= ClearImpossibleLongPress(mapping);
+        }
+        foreach (var mapping in mappings)
+            changed |= ClearImpossibleLongPress(mapping, mappings);
+        return changed;
+    }
+
+    internal static bool HasConfiguredAction(Mapping? mapping)
+        => HasConfiguredShortAction(mapping) || HasConfiguredLongPress(mapping);
+
+    internal static bool HasConfiguredShortAction(Mapping? mapping)
+        => mapping != null && mapping.Kind != ActionKind.None
+           && (mapping.Kind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(mapping.Value));
+
+    internal static bool HasConfiguredLongPress(Mapping? mapping)
+        => mapping != null && mapping.LongPressKind != ActionKind.None
+           && (mapping.LongPressKind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(mapping.LongPressValue));
+}

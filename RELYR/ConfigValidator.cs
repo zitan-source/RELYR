@@ -105,6 +105,8 @@ public static class ConfigValidator
                 errors.Add($"{scope}: 入力元が空の設定があります。");
             if (map.Input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase) && !map.Input.Contains('+'))
                 errors.Add($"{scope}/{map.Input}: 通常レイヤーの左クリックは割り当てできません。");
+            if (InputAssignmentPolicy.IsUnreachableInput(map.Input))
+                errors.Add($"{scope}/{map.Input}: この入力元には割り当てできません。");
             if (map.LongPressMs < 50 || map.LongPressMs > 10000)
                 errors.Add($"{scope}/{map.Input}: 長押し時間が範囲外です。");
             ValidateExecutableAction($"{scope}/{map.Input}", map.Kind, map.Value, errors);
@@ -119,8 +121,12 @@ public static class ConfigValidator
                 errors.Add($"{scope}/{map.Input}: 長押しプロファイル「{map.LongPressValue}」が見つかりません。");
             if (map.Kind == ActionKind.Gesture && !string.IsNullOrWhiteSpace(map.Value) && !config.Gestures.Any(x => x.Name.Equals(map.Value, StringComparison.OrdinalIgnoreCase)))
                 errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.Value}」が見つかりません。");
+            if (map.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(map.Input))
+                errors.Add($"{scope}/{map.Input}: この入力元にはジェスチャーを設定できません。");
             if (map.Kind == ActionKind.Gesture && map.LongPressKind != ActionKind.None)
                 errors.Add($"{scope}/{map.Input}: ジェスチャーと長押し動作は同時に設定できません。");
+            if (InputAssignmentPolicy.HasConfiguredLongPress(map) && !InputAssignmentPolicy.CanExecuteLongPress(map, mappings))
+                errors.Add($"{scope}/{map.Input}: この入力元には長押しを設定できません。");
             if (map.LongPressKind == ActionKind.Gesture && !string.IsNullOrWhiteSpace(map.LongPressValue) && !config.Gestures.Any(x => x.Name.Equals(map.LongPressValue, StringComparison.OrdinalIgnoreCase)))
                 errors.Add($"{scope}/{map.Input}: ジェスチャー「{map.LongPressValue}」が見つかりません。");
             ValidateDeckAction(config, $"{scope}/{map.Input}", map.Kind, map.Value, errors);

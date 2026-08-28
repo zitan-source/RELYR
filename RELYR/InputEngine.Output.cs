@@ -1057,6 +1057,18 @@ public sealed partial class InputEngine
         }
         finally { Monitor.Exit(OutputLock); }
     }
+    public static void ReleaseForProcessLifecycle()
+    {
+        // Back/Forward Up is not semantically idempotent for every browser.
+        // A no-hook integration-test process must release only input it actually
+        // generated; a process that owned system hooks retains full recovery.
+        if (Volatile.Read(ref systemHooksStartedInProcess) != 0)
+            ReleaseAllDefensively();
+        else
+            ReleaseAll();
+    }
+    internal static bool SystemHooksStartedInProcessForTest
+        => Volatile.Read(ref systemHooksStartedInProcess) != 0;
     static void ForceReleaseWithoutOutputLock()
     {
         foreach (byte key in new byte[] { 0x10, 0x11, 0x12, 0x5B, 0x5C, 0x14, 0x20 })

@@ -49,6 +49,8 @@ public partial class MainWindow
     internal AppConfig DeckOverlayConfigForTest => DeckOverlayConfig();
     internal void ShowProfileOverlayForTest(string name) => ShowProfileOverlay(name);
     internal IReadOnlyList<System.Windows.Controls.Button> VisualInputButtonsForTest => VisualInputButtons().ToList();
+    internal bool ShortGestureOptionEnabledForTest
+        => KindBox.Items.Cast<ActionOption>().Single(option => option.Kind == ActionKind.Gesture).IsEnabled;
     internal bool IsActionPaletteOpenForTest => actionPaletteOpen;
     internal bool CanUndoPaletteActionForTest => actionPaletteUndoState != null;
     internal TimeSpan ActionPaletteUndoDurationForTest => actionPaletteUndoTimer.Interval;

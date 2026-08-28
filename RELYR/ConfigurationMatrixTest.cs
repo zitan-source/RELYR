@@ -17,6 +17,7 @@ internal static class ConfigurationMatrixTest
         try
         {
             TestCatalogAndExecution(report, ref cases);
+            TestInputAssignmentPolicy(report, ref cases);
             TestValidConfigurationCrossProduct(report, ref cases);
             TestNormalizationAndRejection(report, directory, ref cases);
             TestDeckDimensions(report, ref cases);
@@ -136,7 +137,7 @@ internal static class ConfigurationMatrixTest
 
     static void TestValidConfigurationCrossProduct(VerificationReport report, ref int cases)
     {
-        string[] inputs = ["F6", "Space+J", "CapsLock+U", "MouseRight+WheelUp", "MouseBack+J", "MouseForward+MouseLeft", "Taskbar+MouseRight"];
+        string[] inputs = ["F6", "Space+J", "CapsLock+U", "MouseRight+MouseMiddle", "MouseBack+J", "MouseForward+MouseLeft", "Taskbar+MouseRight"];
         string[] applications = ["", "notepad.exe", "NOTEPAD"];
         int[] durations = [50, 500, 10000];
         bool valid = true;
@@ -182,6 +183,37 @@ internal static class ConfigurationMatrixTest
             cases++;
         }
         report.Check(gestureValid, "direct gestures validate independently on every layer and application condition");
+    }
+
+    static void TestInputAssignmentPolicy(VerificationReport report, ref int cases)
+    {
+        bool rejectedIntrinsicConflicts = true;
+        foreach (Mapping invalid in new[]
+        {
+            new Mapping { Input = "WheelUp", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new Mapping { Input = "Space+TiltLeft", Layer = "Space", Kind = ActionKind.Gesture, Value = "Gesture" },
+            new Mapping { Input = "MouseX", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new Mapping { Input = "MouseRight+MouseRight", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new Mapping { Input = "Q", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "CtrlDrag", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" }
+        })
+        {
+            var config = CompleteConfig();
+            config.Profiles[0].Mappings.Add(invalid);
+            rejectedIntrinsicConflicts &= ConfigValidator.Validate(config).Count > 0;
+            cases++;
+        }
+
+        var layerConflict = CompleteConfig();
+        layerConflict.Profiles[0].Mappings =
+        [
+            new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }
+        ];
+        bool rejectedLayerConflict = ConfigValidator.Validate(layerConflict).Any(error => error.Contains("MouseRight", StringComparison.Ordinal));
+        cases++;
+        report.Check(rejectedIntrinsicConflicts && rejectedLayerConflict,
+            "validation rejects every intrinsically unreachable long press, impulse gesture, fake input, self-layer input, and active mouse-layer conflict");
     }
 
     static void TestNormalizationAndRejection(VerificationReport report, string directory, ref int cases)
@@ -269,6 +301,43 @@ internal static class ConfigurationMatrixTest
         cases++;
         report.Check(migratedLegacyKinds, "v27 text and application paths misclassified as keys are repaired before strict validation");
 
+        var impossibleAssignments = CompleteConfig();
+        impossibleAssignments.Profiles[0].Mappings =
+        [
+            new() { Input = "WheelUp", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new() { Input = "Space+TiltRight", Layer = "Space", Kind = ActionKind.Gesture, Value = "Gesture", LongPressKind = ActionKind.Profile, LongPressValue = "Default" },
+            new() { Input = "MouseX", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new() { Input = "Space+Space", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new() { Input = "O", Layer = "通常", Kind = ActionKind.Key, Value = "O", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
+            new() { Input = "F7", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseX" }
+        ];
+        impossibleAssignments.Gestures =
+        [
+            new() { Name = "Legacy X1", UpKind = ActionKind.Mouse, UpValue = "MouseX" }
+        ];
+        impossibleAssignments.Macros =
+        [
+            new() { Id = "legacy-x1", Name = "Legacy X1", Steps = [new() { Event = "MouseX Down" }, new() { RecordedActionKind = ActionKind.Mouse, RecordedActionValue = "MouseX" }] }
+        ];
+        service.Save(impossibleAssignments);
+        var repairedAssignments = service.Load();
+        var repairedMappings = repairedAssignments.Profiles[0].Mappings;
+        bool repairedImpossibleAssignments = !repairedMappings.Any(mapping => InputAssignmentPolicy.IsUnreachableInput(mapping.Input))
+            && repairedMappings.Single(mapping => mapping.Input == "WheelUp") is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.None, LongPressValue: "" }
+            && repairedMappings.Single(mapping => mapping.Input == "Space+TiltRight") is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.None, LongPressValue: "" }
+            && repairedMappings.Single(mapping => mapping.Input == "MouseRight") is { LongPressKind: ActionKind.None, LongPressValue: "" }
+            && repairedMappings.Single(mapping => mapping.Input == "O") is { LongPressKind: ActionKind.None, LongPressValue: "" }
+            && repairedMappings.Single(mapping => mapping.Input == "F7") is { Kind: ActionKind.Mouse, Value: "MouseForward" }
+            && repairedAssignments.Gestures.Single().UpKind == ActionKind.Mouse && repairedAssignments.Gestures.Single().UpValue == "MouseForward"
+            && repairedAssignments.Macros.Single().Steps[0].Event == "MouseForward Down"
+            && repairedAssignments.Macros.Single().Steps[1] is { RecordedActionKind: ActionKind.Mouse, RecordedActionValue: "MouseForward" }
+            && ConfigValidator.Validate(repairedAssignments).Count == 0;
+        cases++;
+        report.Check(repairedImpossibleAssignments,
+            "loading and saving automatically removes unreachable sources and long actions while migrating legacy MouseX output to MouseForward");
+
         bool rejected = true;
         foreach (Mapping invalid in new[]
         {
@@ -277,7 +346,8 @@ internal static class ConfigurationMatrixTest
             new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Mouse, Value = "UnknownMouse" },
             new Mapping { Input = "F8", Layer = "通常", Kind = (ActionKind)99, Value = "bad" },
             new Mapping { Input = "F9", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+MouseGarbage" },
-            new Mapping { Input = "F10", Layer = "通常", Kind = ActionKind.Key, Value = "あ" }
+            new Mapping { Input = "F10", Layer = "通常", Kind = ActionKind.Key, Value = "あ" },
+            new Mapping { Input = "Taskbar+MouseX", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }
         })
         {
             var invalidConfig = CompleteConfig();
@@ -285,7 +355,7 @@ internal static class ConfigurationMatrixTest
             rejected &= ConfigValidator.Validate(invalidConfig).Count > 0;
             cases++;
         }
-        report.Check(rejected, "reserved click, unknown shortcut/mouse action, and unknown action kind are rejected");
+        report.Check(rejected, "reserved or fake input, unknown shortcut/mouse action, and unknown action kind are rejected");
     }
 
     static void TestDeckDimensions(VerificationReport report, ref int cases)

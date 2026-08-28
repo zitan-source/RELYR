@@ -99,6 +99,12 @@ public partial class MainWindow
     {
         detectMode = false;
         pendingDetectedLayer = null;
+        string? unavailableReason = InputAssignmentPolicy.UnavailableInputReason(input);
+        if (unavailableReason != null || input is "Space" or "CapsLock")
+        {
+            ShowInlineNotice(unavailableReason ?? "レイヤーボタン単体には設定できません");
+            return;
+        }
         SelectInput(input, false);
         editingSelectedInput = true;
         ColorButtons();

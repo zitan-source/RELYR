@@ -39,8 +39,7 @@ public static class ActionCatalog
         ["TiltLeft"] = "チルト左",
         ["TiltRight"] = "チルト右",
         ["MouseBack"] = "戻る",
-        ["MouseForward"] = "進む",
-        ["MouseX"] = "追加ボタン"
+        ["MouseForward"] = "進む"
     };
 
     public static string DisplayMouseAction(string? value)
@@ -56,6 +55,12 @@ public static class ActionCatalog
         bool displayedValue = input.StartsWith(displayPrefix, StringComparison.Ordinal);
         if (displayedValue)
             input = input[displayPrefix.Length..].Trim();
+        if (input.Equals("MouseX", StringComparison.OrdinalIgnoreCase)
+            || input.Equals("追加ボタン", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "MouseForward";
+            return true;
+        }
         if (displayedValue)
         {
             var displayed = MouseActionLabels.FirstOrDefault(x => x.Value.Equals(input, StringComparison.OrdinalIgnoreCase));

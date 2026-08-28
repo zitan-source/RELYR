@@ -25,6 +25,7 @@ public partial class MainWindow
     internal const double ActionPaletteDragPreviewMinWidth = 172;
     internal const double ActionPaletteDragPreviewMaxWidth = 220;
     internal const double ActionPaletteDragPreviewHeight = 42;
+    internal const int ActionDropWaveDurationMs = 500;
     const string ActionPaletteRecommendedCategory = "おすすめ";
     const string ActionPaletteAllCategory = "すべて";
     const string ActionPaletteUsedCategory = "使用中";
@@ -949,7 +950,8 @@ public partial class MainWindow
         if (DeckPanelLayout.IsInputName(input))
             return selectedDeckLayout != null && action.Kind != ActionKind.Gesture;
         string key = input[(input.LastIndexOf('+') + 1)..];
-        return CanUseAssignmentDragKey(key, source: false);
+        return CanUseAssignmentDragKey(key, source: false)
+            && (action.Kind != ActionKind.Gesture || InputAssignmentPolicy.SupportsGesture(input));
     }
 
     IReadOnlyList<string> PaletteDropTargets(string targetInput, string targetKey)
@@ -1207,9 +1209,10 @@ public partial class MainWindow
         UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
         UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
         UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 1);
-        var expansion = new DoubleAnimation(1.34, TimeSpan.FromMilliseconds(260))
+        var waveDuration = TimeSpan.FromMilliseconds(ActionDropWaveDurationMs);
+        var expansion = new DoubleAnimation(1.34, waveDuration)
         {
-            EasingFunction = UiMotionService.ResponsiveEaseOut(),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
             FillBehavior = FillBehavior.Stop
         };
         var fade = new DoubleAnimationUsingKeyFrames
@@ -1217,8 +1220,9 @@ public partial class MainWindow
             KeyFrames =
             {
                 new DiscreteDoubleKeyFrame(.96, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(.82, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(105))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
-                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280))) { EasingFunction = UiMotionService.ResponsiveEaseOut() }
+                new EasingDoubleKeyFrame(.92, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(160))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                new EasingDoubleKeyFrame(.60, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(waveDuration)) { EasingFunction = UiMotionService.ResponsiveEaseOut() }
             },
             FillBehavior = FillBehavior.Stop
         };
@@ -1274,17 +1278,15 @@ public partial class MainWindow
         mapping.Kind = action.Kind;
         mapping.Value = action.Value;
         mapping.DeckMonitor = string.Empty;
-        if (action.Kind == ActionKind.Gesture)
-        {
-            mapping.LongPressKind = ActionKind.None;
-            mapping.LongPressValue = string.Empty;
-        }
+        ClearUnsupportedLongPress(mapping, collection);
         if (deckInput)
         {
             mapping.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
             mapping.DeckIconPath = string.Empty;
             mapping.DeckIconAutoAssigned = true;
         }
+        else
+            InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
     }
 
     void CommitPaletteAssignment(string message, IEnumerable<string>? changedInputs = null)

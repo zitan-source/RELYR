@@ -53,7 +53,7 @@ public partial class MainWindow
             Task.WaitAll([actionWorker, dragActionWorker, taskbarClickReplayWorker], 2000);
         }
         catch { }
-        InputEngine.ReleaseAllDefensively();
+        InputEngine.ReleaseForProcessLifecycle();
         engine.Dispose();
         RemoveTrayIconForImmediateExit();
         archiveWatcher.Dispose();
@@ -111,7 +111,7 @@ public partial class MainWindow
         allowClose = true;
         engine.Enabled = false;
         ClearPendingActions();
-        InputEngine.ReleaseAllDefensively();
+        InputEngine.ReleaseForProcessLifecycle();
         engine.Dispose();
         archiveProgressOverlay?.CloseForProcessExit();
         archiveWatcher.Dispose();
@@ -122,7 +122,7 @@ public partial class MainWindow
         activeLayerMappings.Clear();
         ClearPendingActions();
         engine.ResetForSessionTransition();
-        InputEngine.ReleaseAllDefensively();
+        InputEngine.ReleaseForProcessLifecycle();
     }
     public void RequestApplicationExit(string reason = "application-exit")
     {
@@ -135,7 +135,7 @@ public partial class MainWindow
         try
         {
             Close();
-            InputEngine.ReleaseAllDefensively();
+            InputEngine.ReleaseForProcessLifecycle();
             App.ExitImmediately(0);
         }
         catch
