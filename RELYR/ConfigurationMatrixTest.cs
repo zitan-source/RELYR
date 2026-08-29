@@ -232,6 +232,8 @@ internal static class ConfigurationMatrixTest
         config.ThemeMode = (AppThemeMode)99;
         config.ClockBackgroundMode = (ClockBackgroundMode)99;
         config.ClockDisplayMode = (ClockDisplayMode)99;
+        config.ActionPaletteFavorites = ["", " Shortcut:Ctrl+C ", "shortcut:ctrl+c", "Text:こんにちは"];
+        config.ActionPaletteRecentActions = ["", " Shortcut:Ctrl+C ", "shortcut:ctrl+c", .. Enumerable.Range(0, 20).Select(index => $"Key:F{index + 1}")];
         config.Profiles[0].AutoSwitchApplications = ["", " ", " Notepad.exe ", "notepad.exe"];
         config.Profiles[0].Mappings =
         [
@@ -261,6 +263,11 @@ internal static class ConfigurationMatrixTest
             && repaired.ThemeMode == AppThemeMode.System
             && repaired.ClockBackgroundMode == ClockBackgroundMode.FrostedScreen
             && repaired.ClockDisplayMode == ClockDisplayMode.DateAndTime
+            && repaired.ActionPaletteFavorites.SequenceEqual(["Shortcut:Ctrl+C", "Text:こんにちは"])
+            && repaired.ActionPaletteRecentActions.Count == 16
+            && repaired.ActionPaletteRecentActions[0] == "Shortcut:Ctrl+C"
+            && repaired.ActionPaletteRecentActions[1] == "Key:F1"
+            && repaired.ActionPaletteRecentActions[^1] == "Key:F15"
             && repaired.Profiles[0].AutoSwitchApplications.SequenceEqual(["Notepad.exe"])
             && repaired.Profiles[0].Mappings is [{ Input: "Space+J", Layer: "Space", Kind: ActionKind.None, LongPressKind: ActionKind.None }]
             && repaired.DeckLayouts[0].Rows == 18 && repaired.DeckLayouts[0].Columns == 1

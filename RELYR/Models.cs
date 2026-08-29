@@ -170,6 +170,8 @@ public sealed class AppConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
     public bool UiAnimationsEnabled { get; set; } = true;
+    public List<string> ActionPaletteFavorites { get; set; } = [];
+    public List<string> ActionPaletteRecentActions { get; set; } = [];
     public bool DetailedDiagnosticsEnabled { get; set; }
     public long LastUpdateCheckUtcTicks { get; set; }
     public bool RecordKeyboardInputInMacros { get; set; } = true;

@@ -9,6 +9,7 @@ using DragDrop = System.Windows.DragDrop;
 using DragDropEffects = System.Windows.DragDropEffects;
 using DragEventArgs = System.Windows.DragEventArgs;
 using GiveFeedbackEventHandler = System.Windows.GiveFeedbackEventHandler;
+using IDataObject = System.Windows.IDataObject;
 using Point = System.Windows.Point;
 
 namespace RELYR;
@@ -20,12 +21,88 @@ internal enum AssignmentTransferResult
     Swapped
 }
 
+internal enum AssignmentDropSlot
+{
+    ShortPress,
+    LongPress
+}
+
 public partial class MainWindow
 {
     const string AssignmentDragFormat = "RELYR.AssignmentInput.v1";
+    const string AssignmentActionMoveFormat = "RELYR.AssignmentActionMove.v1";
+    internal const double AssignmentDropTargetScale = 1.18;
     Button? assignmentDragSource;
     Button? assignmentDropTarget;
+    CatalogAction? assignmentPaletteDropAction;
+    AssignmentDropSlot assignmentDropSlot;
+    string assignmentDropUnavailableReason = string.Empty;
     Point assignmentDragStart;
+    Border? assignmentActionDragSource;
+    Point assignmentActionDragStart;
+
+    sealed record AssignmentActionMovePayload(string SourceInput, AssignmentDropSlot SourceSlot, CatalogAction Action);
+
+    void AssignmentActionCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (selected == null || DeckPanelLayout.IsInputName(selected.Input) || MultiSelectToggle.IsChecked == true
+            || sender is not Border card || IsAssignmentFavoriteSource(e.OriginalSource as DependencyObject))
+            return;
+        AssignmentDropSlot slot = ReferenceEquals(card, AssignmentHoldCard)
+            ? AssignmentDropSlot.LongPress
+            : AssignmentDropSlot.ShortPress;
+        CatalogAction? action = slot == AssignmentDropSlot.LongPress ? assignmentHoldSummaryAction : assignmentTapSummaryAction;
+        if (action == null || CurrentProfile.Mappings.All(mapping => !ReferenceEquals(mapping, selected)))
+            return;
+        assignmentActionDragSource = card;
+        assignmentActionDragStart = e.GetPosition(card);
+    }
+
+    static bool IsAssignmentFavoriteSource(DependencyObject? source)
+    {
+        for (DependencyObject? current = source; current != null; current = VisualTreeHelper.GetParent(current))
+            if (current is Button button && (button.Name == "AssignmentTapFavoriteButton" || button.Name == "AssignmentHoldFavoriteButton"))
+                return true;
+        return false;
+    }
+
+    void AssignmentActionCard_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (selected == null || sender is not Border card || !ReferenceEquals(card, assignmentActionDragSource)
+            || e.LeftButton != MouseButtonState.Pressed)
+            return;
+        Point current = e.GetPosition(card);
+        if (Math.Abs(current.X - assignmentActionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(current.Y - assignmentActionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+        AssignmentDropSlot slot = ReferenceEquals(card, AssignmentHoldCard)
+            ? AssignmentDropSlot.LongPress
+            : AssignmentDropSlot.ShortPress;
+        CatalogAction? action = slot == AssignmentDropSlot.LongPress ? assignmentHoldSummaryAction : assignmentTapSummaryAction;
+        assignmentActionDragSource = null;
+        if (action == null)
+            return;
+        var data = new DataObject();
+        data.SetData(AssignmentActionMoveFormat, new AssignmentActionMovePayload(selected.Input, slot, action));
+        data.SetData(ActionPaletteDragFormat, action);
+        RunActionPaletteDrag(card, AssignmentPaletteItemFor(action), data, DragDropEffects.Move);
+        e.Handled = true;
+    }
+
+    void AssignmentActionCard_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        => assignmentActionDragSource = null;
+
+    ActionPaletteItem AssignmentPaletteItemFor(CatalogAction action)
+        => actionPaletteItems.FirstOrDefault(item => item.Action.Kind == action.Kind
+            && item.Action.Value.Equals(action.Value, StringComparison.OrdinalIgnoreCase))
+            ?? new ActionPaletteItem(
+                action,
+                action.Name,
+                ActionPaletteGroup(action),
+                ActionPaletteItemDetail(action, ActionPaletteGroup(action)),
+                ActionPaletteGlyph(action),
+                0,
+                config.ActionPaletteFavorites.Contains(ActionPaletteSignature(action.Kind, action.Value), StringComparer.OrdinalIgnoreCase));
 
     internal static AssignmentTransferResult TransferAssignments(List<Mapping> mappings, string sourceInput, string targetInput)
     {
@@ -130,13 +207,44 @@ public partial class MainWindow
 
     void InputAssignmentDragOver(object sender, DragEventArgs e)
     {
+        if (sender is Button { Tag: string moveTargetKey } moveTarget
+            && TryGetAssignmentActionMove(e.Data, out AssignmentActionMovePayload move))
+        {
+            string moveTargetInput = InputForCurrentLayer(moveTargetKey);
+            AssignmentDropSlot slot = DropSlotAt(moveTargetInput, moveTarget, e.GetPosition(moveTarget));
+            bool moveValid = CanMoveAssignmentAction(move, moveTargetInput, moveTargetKey, slot);
+            SetAssignmentDropTarget(moveValid ? moveTarget : null, move.Action, slot);
+            e.Effects = moveValid ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (sender is Button { Tag: string paletteTargetKey } paletteTarget
             && TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
         {
             string paletteTargetInput = InputForCurrentLayer(paletteTargetKey);
-            bool paletteValid = CanAssignPaletteAction(paletteTargetInput, paletteAction);
-            SetAssignmentDropTarget(paletteValid ? paletteTarget : null);
-            e.Effects = paletteValid ? DragDropEffects.Copy : DragDropEffects.None;
+            bool shortValid = CanAssignPaletteAction(paletteTargetInput, paletteAction);
+            if (!shortValid)
+            {
+                SetAssignmentDropTarget(null);
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+            AssignmentDropSlot slot = DropSlotAt(paletteTargetInput, paletteTarget, e.GetPosition(paletteTarget));
+            bool slotValid = CanAssignPaletteDropToSlot(paletteAction, paletteTargetInput, paletteTargetKey, slot);
+            SetAssignmentDropTarget(paletteTarget, paletteAction, slot);
+            if (slot == AssignmentDropSlot.LongPress && !slotValid)
+            {
+                string reason = PaletteLongPressDropUnavailableReason(paletteAction, paletteTargetInput, paletteTargetKey);
+                if (!reason.Equals(assignmentDropUnavailableReason, StringComparison.Ordinal))
+                {
+                    assignmentDropUnavailableReason = reason;
+                    ShowInlineNotice(reason);
+                }
+            }
+            else
+                assignmentDropUnavailableReason = string.Empty;
+            e.Effects = slotValid ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
             return;
         }
@@ -161,13 +269,26 @@ public partial class MainWindow
 
     void InputAssignmentDropped(object sender, DragEventArgs e)
     {
+        if (sender is Button { Tag: string moveTargetKey } moveTarget
+            && TryGetAssignmentActionMove(e.Data, out AssignmentActionMovePayload move))
+        {
+            string moveTargetInput = InputForCurrentLayer(moveTargetKey);
+            AssignmentDropSlot slot = DropSlotAt(moveTargetInput, moveTarget, e.GetPosition(moveTarget));
+            ClearAssignmentDropTarget();
+            bool moved = ApplyAssignmentActionMove(move, moveTargetInput, moveTargetKey, slot);
+            e.Effects = moved ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (sender is Button { Tag: string paletteTargetKey }
             && TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
         {
             string paletteTargetInput = InputForCurrentLayer(paletteTargetKey);
+            AssignmentDropSlot slot = DropSlotAt(paletteTargetInput, (Button)sender, e.GetPosition((Button)sender));
+            bool valid = CanAssignPaletteDropToSlot(paletteAction, paletteTargetInput, paletteTargetKey, slot);
             ClearAssignmentDropTarget();
-            bool applied = CanAssignPaletteAction(paletteTargetInput, paletteAction)
-                && ApplyPaletteActionDrop(paletteAction, paletteTargetInput, paletteTargetKey);
+            bool applied = valid
+                && ApplyPaletteActionDrop(paletteAction, paletteTargetInput, paletteTargetKey, slot);
             e.Effects = applied ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
             return;
@@ -197,6 +318,80 @@ public partial class MainWindow
             : $"{DisplayInputName(sourceInput)} のActionを {DisplayInputName(targetInput)} へ移動しました");
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
+    }
+
+    static bool TryGetAssignmentActionMove(IDataObject data, out AssignmentActionMovePayload payload)
+    {
+        payload = null!;
+        if (!data.GetDataPresent(AssignmentActionMoveFormat)
+            || data.GetData(AssignmentActionMoveFormat) is not AssignmentActionMovePayload value)
+            return false;
+        payload = value;
+        return true;
+    }
+
+    bool CanMoveAssignmentAction(AssignmentActionMovePayload payload, string targetInput, string targetKey, AssignmentDropSlot targetSlot)
+    {
+        if (MultiSelectToggle.IsChecked == true
+            || payload.SourceInput.Equals(targetInput, StringComparison.OrdinalIgnoreCase) && payload.SourceSlot == targetSlot)
+            return false;
+        Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping =>
+            mapping.Input.Equals(payload.SourceInput, StringComparison.OrdinalIgnoreCase));
+        if (source == null)
+            return false;
+        bool sourceStillMatches = payload.SourceSlot == AssignmentDropSlot.LongPress
+            ? HasConfiguredLongPress(source)
+                && source.LongPressKind == payload.Action.Kind
+                && source.LongPressValue.Equals(payload.Action.Value, StringComparison.OrdinalIgnoreCase)
+            : HasConfiguredShortAction(source)
+                && source.Kind == payload.Action.Kind
+                && source.Value.Equals(payload.Action.Value, StringComparison.OrdinalIgnoreCase);
+        return sourceStillMatches
+            && CanAssignPaletteDropToSlot(payload.Action, targetInput, targetKey, targetSlot);
+    }
+
+    bool ApplyAssignmentActionMove(AssignmentActionMovePayload payload, string targetInput, string targetKey, AssignmentDropSlot targetSlot)
+    {
+        if (!CanMoveAssignmentAction(payload, targetInput, targetKey, targetSlot))
+            return false;
+        string[] affectedInputs = [.. new[] { payload.SourceInput, targetInput }.Distinct(StringComparer.OrdinalIgnoreCase)];
+        var snapshots = affectedInputs.Select(CapturePaletteAssignment).ToArray();
+        ApplyPaletteActionToInput(payload.Action, targetInput, targetSlot);
+
+        Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping =>
+            mapping.Input.Equals(payload.SourceInput, StringComparison.OrdinalIgnoreCase));
+        if (source == null)
+            return false;
+        if (payload.SourceSlot == AssignmentDropSlot.LongPress)
+        {
+            source.LongPressKind = ActionKind.None;
+            source.LongPressValue = string.Empty;
+        }
+        else
+        {
+            source.Kind = ActionKind.None;
+            source.Value = string.Empty;
+        }
+        if (!MappingHasConfiguredAction(source))
+            CurrentProfile.Mappings.Remove(source);
+        else
+            NormalizeLongOnlyMapping(source);
+        InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
+        RememberRecentPaletteAction(payload.Action);
+
+        string sourceSlot = payload.SourceSlot == AssignmentDropSlot.LongPress ? "HOLD" : "TAP";
+        string targetSlotLabel = targetSlot == AssignmentDropSlot.LongPress ? "HOLD" : "TAP";
+        string message = $"{DisplayInputName(payload.SourceInput)} の {sourceSlot} を {DisplayInputName(targetInput)} の {targetSlotLabel} へ移動しました";
+        actionPaletteUndoState = new ActionPaletteUndoState(snapshots, message);
+        ShowActionPaletteUndo(message);
+        CommitPaletteAssignment(message, affectedInputs);
+        if (!config.AutoSave)
+            PersistActionPaletteLibraryPreferences();
+        SelectInput(targetInput, false);
+        PlayPaletteDropSuccess([targetInput]);
+        RefreshActionPalette();
+        ColorButtons();
+        return true;
     }
 
     bool CanUseAssignmentDragKey(string key, bool source)
@@ -254,15 +449,37 @@ public partial class MainWindow
         }
     }
 
-    void SetAssignmentDropTarget(Button? target)
+    static AssignmentDropSlot DropSlotAt(string input, Button target, Point position)
+        => !DeckPanelLayout.IsInputName(input) && target.ActualHeight > 0 && position.Y >= target.ActualHeight / 2
+            ? AssignmentDropSlot.LongPress
+            : AssignmentDropSlot.ShortPress;
+
+    void SetAssignmentDropTarget(Button? target, CatalogAction? paletteAction = null, AssignmentDropSlot slot = AssignmentDropSlot.ShortPress)
     {
-        if (ReferenceEquals(target, assignmentDropTarget))
+        bool palette = paletteAction != null
+            && target?.Tag is string targetKey
+            && !DeckPanelLayout.IsInputName(InputForCurrentLayer(targetKey));
+        bool longPressAvailable = target?.Tag is string key && paletteAction != null
+            && CanAssignPaletteDropToSlot(paletteAction, InputForCurrentLayer(key), key, AssignmentDropSlot.LongPress);
+        if (ReferenceEquals(target, assignmentDropTarget)
+            && Equals(paletteAction, assignmentPaletteDropAction)
+            && slot == assignmentDropSlot)
+        {
+            if (target != null)
+            {
+                SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable);
+                RepositionActionPaletteDragPreview();
+            }
             return;
+        }
         ClearAssignmentDropTarget();
         if (target == null)
             return;
         assignmentDropTarget = target;
-        SetAssignmentDropTargetVisual(target, true);
+        assignmentPaletteDropAction = paletteAction;
+        assignmentDropSlot = slot;
+        SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable);
+        RepositionActionPaletteDragPreview();
     }
 
     void ClearAssignmentDropTarget()
@@ -271,25 +488,42 @@ public partial class MainWindow
             return;
         var target = assignmentDropTarget;
         assignmentDropTarget = null;
+        assignmentPaletteDropAction = null;
+        assignmentDropSlot = AssignmentDropSlot.ShortPress;
+        assignmentDropUnavailableReason = string.Empty;
         SetAssignmentDropTargetVisual(target, false);
         UpdateInputButtonVisual(target, IsDescendantOf(target, KeyboardPanel) || IsDescendantOf(target, SecondaryKeyboardPanel));
     }
 
-    internal static void SetAssignmentDropTargetVisual(Button button, bool active)
+    internal static void SetAssignmentDropTargetVisual(
+        Button button,
+        bool active,
+        bool palette = false,
+        AssignmentDropSlot slot = AssignmentDropSlot.ShortPress,
+        bool longPressAvailable = true)
     {
         SetIsAssignmentDropTarget(button, active);
+        bool showSlots = active && palette;
+        SetIsPaletteAssignmentDropTarget(button, showSlots);
+        SetIsLongPressAssignmentDropSlot(button, showSlots && slot == AssignmentDropSlot.LongPress);
+        SetIsLongPressAssignmentDropAvailable(button, longPressAvailable);
         button.ApplyTemplate();
         if (button.Template.FindName("DropTargetTint", button) is UIElement tint)
             tint.Opacity = 0;
         if (button.Template.FindName("DropTargetBadge", button) is UIElement badge)
-            badge.Opacity = active ? 1 : 0;
+            badge.Opacity = active && !palette ? 1 : 0;
+        if (button.Template.FindName("AssignmentSlotOverlay", button) is UIElement slotOverlay)
+            slotOverlay.Opacity = showSlots ? 1 : 0;
+        if (button.Template.FindName("LongPressDropUnavailableMark", button) is UIElement unavailableMark)
+            unavailableMark.Opacity = showSlots && !longPressAvailable ? 1 : 0;
         if (active)
         {
             button.BorderBrush = ThemeService.Brush("AccentBrush");
             button.BorderThickness = new Thickness(3);
+            button.Opacity = 1;
         }
         SetInputVisualZIndex(button, active ? 50 : 0);
-        SetInputScaleImmediately(button, 1);
+        SetInputScaleImmediately(button, showSlots ? AssignmentDropTargetScale : 1);
     }
 
     static void SetInputVisualZIndex(Button button, int value)
@@ -297,6 +531,14 @@ public partial class MainWindow
         System.Windows.Controls.Panel.SetZIndex(button, value);
         if (button.Parent is UIElement parent && parent is not System.Windows.Controls.Canvas)
             System.Windows.Controls.Panel.SetZIndex(parent, value);
+        for (DependencyObject? ancestor = button; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
+        {
+            if (ancestor is Viewbox { Name: "MouseHost" } mouseHost)
+            {
+                System.Windows.Controls.Panel.SetZIndex(mouseHost, value > 0 ? value : 1);
+                break;
+            }
+        }
     }
 
     static ScaleTransform InputScaleTransform(Button button)

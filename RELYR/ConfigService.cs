@@ -306,6 +306,8 @@ public sealed class ConfigService
     {
         value.Profiles ??= [];
         value.InputDisabledApplications ??= [];
+        value.ActionPaletteFavorites ??= [];
+        value.ActionPaletteRecentActions ??= [];
         value.Macros ??= [];
         value.Gestures ??= [];
         value.SharedDeckMappings ??= [];
@@ -320,6 +322,15 @@ public sealed class ConfigService
             .Select(application => Path.GetFileName(application.Trim()))
             .Where(application => !string.IsNullOrWhiteSpace(application))
             .Distinct(StringComparer.OrdinalIgnoreCase)];
+        value.ActionPaletteFavorites = [.. value.ActionPaletteFavorites
+            .Where(signature => !string.IsNullOrWhiteSpace(signature))
+            .Select(signature => signature.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        value.ActionPaletteRecentActions = [.. value.ActionPaletteRecentActions
+            .Where(signature => !string.IsNullOrWhiteSpace(signature))
+            .Select(signature => signature.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(16)];
     }
 
     static void NormalizeScalarSettings(AppConfig value)

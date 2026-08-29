@@ -65,6 +65,7 @@ public partial class MainWindow
         RefreshActionPalette();
     }
     internal void AddActionPaletteShortcutForTest(string shortcut) => AddActionPaletteShortcut(shortcut);
+    internal void ToggleActionPaletteFavoriteForTest(CatalogAction action) => ToggleActionPaletteFavorite(action);
     internal void OpenActionPaletteForTest() => OpenActionPalette_Click(ActionPaletteButton, new RoutedEventArgs());
     internal void CloseActionPaletteForTest() => CloseActionPalette(animated: false);
     internal void CloseActionPaletteAnimatedForTest() => CloseActionPalette(animated: true);
@@ -109,8 +110,27 @@ public partial class MainWindow
         MainWindow_PreviewMouseDown(this, click);
         SelectActionPaletteCategory(category);
     }
-    internal bool ApplyPaletteActionForTest(CatalogAction action, string targetInput, string targetKey)
-        => ApplyPaletteActionDrop(action, targetInput, targetKey);
+    internal bool ApplyPaletteActionForTest(CatalogAction action, string targetInput, string targetKey, bool longPress = false)
+        => ApplyPaletteActionDrop(action, targetInput, targetKey,
+            longPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress);
+    internal bool MoveAssignedActionForTest(string sourceInput, bool sourceLongPress, string targetInput, string targetKey, bool targetLongPress)
+    {
+        Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping => mapping.Input.Equals(sourceInput, StringComparison.OrdinalIgnoreCase));
+        if (source == null)
+            return false;
+        ActionKind kind = sourceLongPress ? source.LongPressKind : source.Kind;
+        string value = sourceLongPress ? source.LongPressValue : source.Value;
+        if (kind == ActionKind.None)
+            return false;
+        return ApplyAssignmentActionMove(
+            new AssignmentActionMovePayload(
+                sourceInput,
+                sourceLongPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress,
+                CatalogActionForAssignment(kind, value)),
+            targetInput,
+            targetKey,
+            targetLongPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress);
+    }
     internal void SetActionPaletteValueResolverForTest(Func<CatalogAction, string?>? resolver)
         => actionPaletteValueResolverForTest = resolver;
     internal void ShowActionPaletteDragPreviewForTest()
@@ -124,6 +144,16 @@ public partial class MainWindow
         actionPaletteDragPreview.Show();
     }
     internal bool IsActionPaletteDragPreviewVisibleForTest => actionPaletteDragPreview?.IsVisible == true;
+    internal bool IsAssignmentActionDragArmedForTest => assignmentActionDragSource != null;
+    internal (System.Windows.Rect Preview, System.Windows.Rect Target) PositionActionPaletteDragPreviewForTest(System.Windows.Controls.Button target)
+    {
+        var targetBounds = PhysicalScreenBounds(target) ?? System.Windows.Rect.Empty;
+        int cursorX = (int)Math.Round(targetBounds.Left + targetBounds.Width / 2);
+        int cursorY = (int)Math.Round(targetBounds.Top + targetBounds.Height / 2);
+        var previewBounds = actionPaletteDragPreview?.MoveToPhysicalAvoiding(cursorX, cursorY, targetBounds) ?? System.Windows.Rect.Empty;
+        return (previewBounds, targetBounds);
+    }
+    internal void DismissActionPaletteDragPreviewForTest() => DismissActionPaletteDragPreview();
     internal bool ApplyPaletteMonitorForTest(string monitorId, string targetInput)
         => DeckMonitorCatalog.TryGet(monitorId, out var monitor) && ApplyPaletteMonitorDrop(monitor, targetInput);
     internal void UndoPaletteActionForTest() => UndoActionPaletteAssignment_Click(ActionPaletteButton, new RoutedEventArgs());
@@ -224,6 +254,10 @@ public partial class MainWindow
         else
             UpdateInputButtonVisual(button, IsDescendantOf(button, KeyboardPanel) || IsDescendantOf(button, SecondaryKeyboardPanel));
     }
+    internal void SetPaletteAssignmentDropTargetForTest(System.Windows.Controls.Button button, CatalogAction action, bool longPress)
+        => SetAssignmentDropTarget(button, action,
+            longPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress);
+    internal void ClearAssignmentDropTargetForTest() => ClearAssignmentDropTarget();
     internal AssignmentTransferResult TransferCurrentLayerAssignmentsForTest(string sourceKey, string targetKey)
     {
         var result = TransferAssignments(CurrentProfile.Mappings, InputForCurrentLayer(sourceKey), InputForCurrentLayer(targetKey));

@@ -903,7 +903,7 @@ public partial class MainWindow
         e.Handled = true;
         SelectInput(input, false);
         CloseDeckEditorMediaPreview();
-        OpenActionPicker(false);
+        OpenActionPalette_Click(SelectedActionPaletteButton, new RoutedEventArgs());
     }
     void PlayDeckEditorAudio(string path)
     {

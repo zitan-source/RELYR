@@ -117,7 +117,10 @@ public partial class MainWindow
     {
         if (sender is not System.Windows.Controls.Button { Tag: string layer } button)
             return;
+        bool leavingDeckWorkspace = deckManagementMode;
         ShowKeyboardWorkspace();
+        if (leavingDeckWorkspace && actionPaletteOpen)
+            CloseActionPalette(animated: false);
         ClearExecutionFocus(button);
         if (IsMouseLayerBlockedByDirectGesture(config.Profiles, CurrentProfile.Name, layer))
         {

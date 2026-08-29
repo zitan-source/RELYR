@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -26,7 +27,8 @@ public partial class MainWindow
     internal const double ActionPaletteDragPreviewMaxWidth = 220;
     internal const double ActionPaletteDragPreviewHeight = 42;
     internal const int ActionDropWaveDurationMs = 500;
-    const string ActionPaletteRecommendedCategory = "おすすめ";
+    const string ActionPaletteFavoritesCategory = "お気に入り";
+    const string ActionPaletteRecentCategory = "最近使ったもの";
     const string ActionPaletteAllCategory = "すべて";
     const string ActionPaletteUsedCategory = "使用中";
     const string ActionPaletteApplicationsCategory = "インストールアプリ";
@@ -37,23 +39,6 @@ public partial class MainWindow
     static readonly IReadOnlyDictionary<string, int> ActionPaletteKeyOrder = ActionPaletteKeySequence
         .Select((key, index) => (key, index))
         .ToDictionary(entry => entry.key, entry => entry.index, StringComparer.OrdinalIgnoreCase);
-    static readonly ActionPaletteRecommendation[] ActionPaletteRecommendations =
-    [
-        new("基本操作", "コピー", "選択内容をコピーします", "Ctrl+C"),
-        new("基本操作", "貼り付け", "コピーした内容を貼り付けます", "Ctrl+V"),
-        new("基本操作", "切り取り", "選択内容を切り取ります", "Ctrl+X"),
-        new("基本操作", "元に戻す", "直前の操作を取り消します", "Ctrl+Z"),
-        new("基本操作", "やり直す", "取り消した操作をやり直します", "Ctrl+Y"),
-        new("基本操作", "保存", "現在のファイルを保存します", "Ctrl+S"),
-        new("選択・検索", "すべて選択", "すべての項目を選択します", "Ctrl+A"),
-        new("選択・検索", "検索", "ページや文書内を検索します", "Ctrl+F"),
-        new("Windows", "範囲をスクリーンショット", "範囲を選んでクリップボードへコピーします", "Win+Shift+S"),
-        new("Windows", "エクスプローラーを開く", "Windows標準のエクスプローラーを開きます", "Win+E")
-    ];
-    static readonly IReadOnlyDictionary<string, int> ActionPaletteRecommendationOrder = ActionPaletteRecommendations
-        .Select((recommendation, index) => (Signature: ActionPaletteSignature(ActionKind.Shortcut, recommendation.Value), index))
-        .ToDictionary(entry => entry.Signature, entry => entry.index, StringComparer.OrdinalIgnoreCase);
-
     bool actionPaletteOpen;
     bool refreshingActionPalette;
     bool actionPaletteUndoTimerInitialized;
@@ -64,18 +49,19 @@ public partial class MainWindow
     DeckDragPreviewWindow? actionPaletteDragPreview;
     ActionPaletteUndoState? actionPaletteUndoState;
     List<ActionPaletteItem> actionPaletteItems = [];
+    List<ActionPaletteCategoryOption> actionPaletteCategoryOptions = [];
     IReadOnlyList<InstalledApplicationInfo> actionPaletteApplications = [];
     readonly List<CatalogAction> actionPaletteCustomShortcuts = [];
     bool actionPaletteApplicationDiscoveryStarted;
     Func<CatalogAction, string?>? actionPaletteValueResolverForTest;
     readonly System.Windows.Threading.DispatcherTimer actionPaletteUndoTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
-    sealed record ActionPaletteRecommendation(string Section, string Name, string Description, string Value);
-
     sealed record ActionPaletteItem(CatalogAction Action, string Name, string Group, string Detail, string Glyph, int UsageCount,
-        string RecommendationSection = "", bool StartsRecommendationSection = false)
+        bool IsFavorite = false)
     {
-        internal string ToolTipText => string.IsNullOrWhiteSpace(Action.Description)
+        public string FavoriteGlyph => IsFavorite ? "★" : "☆";
+        public string FavoriteToolTip => IsFavorite ? "お気に入りから外す" : "お気に入りに追加";
+        public string ToolTipText => string.IsNullOrWhiteSpace(Action.Description)
             ? Name
             : $"{Name}\n{Action.Description}";
     }
@@ -84,6 +70,7 @@ public partial class MainWindow
         string Name,
         string Section,
         string Glyph,
+        string Tone,
         bool StartsSection,
         bool ShowDivider)
     {
@@ -184,7 +171,7 @@ public partial class MainWindow
             // imported/runtime value must not leave the inspector half-switched
             // or escape through WPF's dispatcher exception handler.
             RefreshActionPalette();
-            SelectActionPaletteCategory(ActionPaletteRecommendedCategory);
+            SelectActionPaletteCategory(ActionPaletteFavoritesCategory);
             StartActionPaletteApplicationDiscovery();
             ++actionPaletteMotionGeneration;
             actionPaletteOpen = true;
@@ -279,6 +266,7 @@ public partial class MainWindow
     {
         if (ActionPalettePane == null)
             return;
+        UpdateAssignmentSummary();
         if (actionPaletteOpen)
         {
             ActionPalettePane.Visibility = Visibility.Visible;
@@ -328,12 +316,6 @@ public partial class MainWindow
                 string.Empty,
                 CatalogActionValueRequest.Launch)
         };
-        actions.AddRange(ActionPaletteRecommendations.Select(recommendation => new CatalogAction(
-            ActionPaletteRecommendedCategory,
-            recommendation.Name,
-            recommendation.Description,
-            ActionKind.Shortcut,
-            recommendation.Value)));
         actions.AddRange(ActionPaletteKeyActions());
         actions.AddRange(actionPaletteCustomShortcuts);
         actions.AddRange(ActionCatalog.Items);
@@ -372,6 +354,7 @@ public partial class MainWindow
                 DeckMonitorActionPrefix + monitor.Id)));
         }
 
+        var favoriteSignatures = config.ActionPaletteFavorites.ToHashSet(StringComparer.OrdinalIgnoreCase);
         actionPaletteItems = [.. actions
             .Where(action => action != null && action.Kind != ActionKind.None && !string.IsNullOrWhiteSpace(action.Name))
             .Select(action => new ActionPaletteItem(
@@ -380,13 +363,14 @@ public partial class MainWindow
                 ActionPaletteGroup(action),
                 ActionPaletteItemDetail(action, ActionPaletteGroup(action)),
                 ActionPaletteGlyph(action),
-                usage.GetValueOrDefault(ActionPaletteSignature(action.Kind, action.Value))))
+                usage.GetValueOrDefault(ActionPaletteSignature(action.Kind, action.Value)),
+                favoriteSignatures.Contains(ActionPaletteSignature(action.Kind, action.Value))))
             .GroupBy(item => $"{item.Group}\n{ActionPaletteSignature(item.Action.Kind, item.Action.Value)}", StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())];
 
         string previousCategory = SelectedActionPaletteCategory();
         var groups = actionPaletteItems.Select(item => item.Group).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        groups.RemoveAll(group => string.Equals(group, ActionPaletteRecommendedCategory, StringComparison.OrdinalIgnoreCase)
+        groups.RemoveAll(group => string.Equals(group, ActionPaletteFavoritesCategory, StringComparison.OrdinalIgnoreCase)
             || string.Equals(group, ActionPaletteAllCategory, StringComparison.OrdinalIgnoreCase)
             || string.Equals(group, ActionPaletteUsedCategory, StringComparison.OrdinalIgnoreCase));
         if (!groups.Contains(ActionPaletteShortcutsCategory, StringComparer.OrdinalIgnoreCase))
@@ -404,12 +388,12 @@ public partial class MainWindow
         refreshingActionPalette = true;
         try
         {
-            var categoryOptions = BuildActionPaletteCategoryOptions(
-                new[] { ActionPaletteRecommendedCategory, ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups));
-            ActionPaletteCategoryBox.ItemsSource = categoryOptions;
-            SelectActionPaletteCategory(categoryOptions.Any(option => option.Name.Equals(previousCategory, StringComparison.OrdinalIgnoreCase))
+            actionPaletteCategoryOptions = BuildActionPaletteCategoryOptions(
+                new[] { ActionPaletteFavoritesCategory, ActionPaletteRecentCategory, ActionPaletteAllCategory, ActionPaletteUsedCategory }.Concat(orderedGroups));
+            ActionPaletteCategoryBox.ItemsSource = actionPaletteCategoryOptions;
+            SelectActionPaletteCategory(actionPaletteCategoryOptions.Any(option => option.Name.Equals(previousCategory, StringComparison.OrdinalIgnoreCase))
                 ? previousCategory
-                : ActionPaletteRecommendedCategory);
+                : ActionPaletteFavoritesCategory);
         }
         finally
         {
@@ -430,6 +414,7 @@ public partial class MainWindow
                 category,
                 section,
                 ActionPaletteCategoryGlyph(category),
+                ActionPaletteCategoryTone(category),
                 startsSection,
                 startsSection && options.Count > 0));
             previousSection = section;
@@ -439,7 +424,7 @@ public partial class MainWindow
 
     static string ActionPaletteCategorySection(string category)
     {
-        if (category is ActionPaletteRecommendedCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
+        if (category is ActionPaletteFavoritesCategory or ActionPaletteRecentCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
             return "ステータス";
         if (category is ActionPaletteCreateCategory)
             return "作成";
@@ -454,7 +439,8 @@ public partial class MainWindow
 
     static string ActionPaletteCategoryGlyph(string category) => category switch
     {
-        ActionPaletteRecommendedCategory => "\uE734",
+        ActionPaletteFavoritesCategory => "\uE734",
+        ActionPaletteRecentCategory => "\uE81C",
         ActionPaletteAllCategory => "\uE80A",
         ActionPaletteUsedCategory => "\uE73E",
         ActionPaletteCreateCategory => "\uE710",
@@ -479,6 +465,22 @@ public partial class MainWindow
         _ => "\uE8FD"
     };
 
+    static string ActionPaletteCategoryTone(string category) => category switch
+    {
+        ActionPaletteKeysCategory => "key",
+        "マウス" or ActionPaletteShortcutsCategory => "shortcut",
+        ActionPaletteCreateCategory or "入力・編集" => "text",
+        ActionPaletteApplicationsCategory or "Windowsアプリ" or "インストールアプリ"
+            or "ファイル・文書" or "ブラウザー" or "エクスプローラー" => "launch",
+        "マクロ" or "メディア" => "macro",
+        "Windows" or "プロファイル" or "ウィンドウ・デスクトップ" => "profile",
+        "ジェスチャー" or "Deckパネル" or "オーバーレイ" or "モニター" => "accent",
+        ActionPaletteFavoritesCategory => "favorite",
+        ActionPaletteRecentCategory => "recent",
+        ActionPaletteUsedCategory or "システム操作" => "muted",
+        _ => "accent"
+    };
+
     string SelectedActionPaletteCategory()
         => ActionPaletteCategoryBox?.SelectedItem is ActionPaletteCategoryOption option
             ? option.Name
@@ -488,8 +490,7 @@ public partial class MainWindow
     {
         if (ActionPaletteCategoryBox == null)
             return;
-        var option = ActionPaletteCategoryBox.Items
-            .OfType<ActionPaletteCategoryOption>()
+        var option = actionPaletteCategoryOptions
             .FirstOrDefault(item => item.Name.Equals(category, StringComparison.OrdinalIgnoreCase));
         if (option != null)
             ActionPaletteCategoryBox.SelectedItem = option;
@@ -534,7 +535,7 @@ public partial class MainWindow
 
     static string ActionPaletteGroupCore(CatalogAction action) => (action.Category ?? string.Empty) switch
     {
-        ActionPaletteRecommendedCategory => ActionPaletteRecommendedCategory,
+        ActionPaletteFavoritesCategory => ActionPaletteFavoritesCategory,
         ActionPaletteCreateCategory => ActionPaletteCreateCategory,
         "使用中のAction" => ActionPaletteUsedCategory,
         ActionPaletteApplicationsCategory => ActionPaletteApplicationsCategory,
@@ -663,7 +664,7 @@ public partial class MainWindow
             ActionPaletteSearchHint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         if (ActionPaletteSearchClearButton != null)
             ActionPaletteSearchClearButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        if (!empty && SelectedActionPaletteCategory() == ActionPaletteRecommendedCategory)
+        if (!empty && SelectedActionPaletteCategory() is ActionPaletteFavoritesCategory or ActionPaletteRecentCategory)
         {
             SelectActionPaletteCategory(ActionPaletteAllCategory);
             return;
@@ -701,8 +702,13 @@ public partial class MainWindow
         string query = ActionPaletteSearchBox?.Text.Trim() ?? string.Empty;
         string category = SelectedActionPaletteCategory();
         IEnumerable<ActionPaletteItem> filtered = actionPaletteItems;
-        if (category == ActionPaletteRecommendedCategory)
-            filtered = filtered.Where(item => item.Group == ActionPaletteRecommendedCategory);
+        if (category == ActionPaletteFavoritesCategory)
+            filtered = filtered.Where(item => item.IsFavorite);
+        else if (category == ActionPaletteRecentCategory)
+        {
+            var recentSignatures = config.ActionPaletteRecentActions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            filtered = filtered.Where(item => recentSignatures.Contains(ActionPaletteSignature(item.Action.Kind, item.Action.Value)));
+        }
         else if (category == ActionPaletteUsedCategory)
             filtered = filtered.Where(item => item.UsageCount > 0);
         else if (category != ActionPaletteAllCategory)
@@ -710,27 +716,28 @@ public partial class MainWindow
         if (query.Length > 0)
             filtered = filtered.Where(item => new[] { item.Name, item.Group, item.Action.Category, item.Action.Description, item.Action.Value }
                 .Any(text => text?.Contains(query, StringComparison.OrdinalIgnoreCase) == true));
-        if (category is ActionPaletteAllCategory or ActionPaletteUsedCategory)
+        if (category is ActionPaletteFavoritesCategory or ActionPaletteRecentCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
             filtered = filtered
                 .GroupBy(item => ActionPaletteSignature(item.Action.Kind, item.Action.Value), StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.OrderBy(item => item.Group == ActionPaletteKeysCategory ? 1 : 0).First());
-        var groupOrder = categoryBox.Items.OfType<ActionPaletteCategoryOption>()
+        var groupOrder = actionPaletteCategoryOptions
             .Select((option, index) => (option.Name, index))
             .ToDictionary(entry => entry.Name, entry => entry.index, StringComparer.OrdinalIgnoreCase);
         List<ActionPaletteItem> result;
-        if (category == ActionPaletteRecommendedCategory)
+        if (category == ActionPaletteFavoritesCategory)
         {
-            string previousSection = string.Empty;
             result = filtered
-                .OrderBy(item => ActionPaletteRecommendationOrder.GetValueOrDefault(ActionPaletteSignature(item.Action.Kind, item.Action.Value), int.MaxValue))
-                .Select(item =>
-                {
-                    string section = ActionPaletteRecommendations.FirstOrDefault(recommendation =>
-                        recommendation.Value.Equals(item.Action.Value, StringComparison.OrdinalIgnoreCase))?.Section ?? string.Empty;
-                    bool startsSection = !section.Equals(previousSection, StringComparison.Ordinal);
-                    previousSection = section;
-                    return item with { RecommendationSection = section, StartsRecommendationSection = startsSection };
-                })
+                .OrderBy(item => groupOrder.GetValueOrDefault(item.Group, int.MaxValue))
+                .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+        else if (category == ActionPaletteRecentCategory)
+        {
+            var recentOrder = config.ActionPaletteRecentActions
+                .Select((signature, index) => (signature, index))
+                .ToDictionary(entry => entry.signature, entry => entry.index, StringComparer.OrdinalIgnoreCase);
+            result = filtered
+                .OrderBy(item => recentOrder.GetValueOrDefault(ActionPaletteSignature(item.Action.Kind, item.Action.Value), int.MaxValue))
                 .ToList();
         }
         else if (category == ActionPaletteUsedCategory)
@@ -758,14 +765,64 @@ public partial class MainWindow
         }
         ActionPaletteList.ItemsSource = result;
         ActionPaletteResultCount.Text = $"{result.Count}";
+        ActionPaletteEmptyText.Text = category switch
+        {
+            ActionPaletteFavoritesCategory when result.Count == 0 => "Action右側の☆を押すと、ここに表示されます",
+            ActionPaletteRecentCategory when result.Count == 0 => "Actionを割り当てると、ここに表示されます",
+            _ => "一致するActionはありません"
+        };
         ActionPaletteEmptyText.Visibility = result.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ActionPaletteCustomShortcutButton.Visibility = category == ActionPaletteShortcutsCategory ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void ActionPaletteItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        for (DependencyObject? current = e.OriginalSource as DependencyObject; current != null && !ReferenceEquals(current, ActionPaletteList); current = GetParent(current))
+        {
+            if (current is Button { Name: "ActionFavoriteButton" })
+            {
+                actionPaletteDragItem = null;
+                return;
+            }
+        }
         actionPaletteDragItem = ActionPaletteItemFromSource(e.OriginalSource as DependencyObject);
         actionPaletteDragStart = e.GetPosition(ActionPaletteList);
+    }
+
+    void ActionPaletteFavorite_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ActionPaletteItem item })
+            return;
+        ToggleActionPaletteFavorite(item.Action);
+        e.Handled = true;
+    }
+
+    void ToggleActionPaletteFavorite(CatalogAction action)
+    {
+        string signature = ActionPaletteSignature(action.Kind, action.Value);
+        bool removed = config.ActionPaletteFavorites.RemoveAll(existing => existing.Equals(signature, StringComparison.OrdinalIgnoreCase)) > 0;
+        if (!removed)
+            config.ActionPaletteFavorites.Add(signature);
+        config.ActionPaletteFavorites = [.. config.ActionPaletteFavorites.Distinct(StringComparer.OrdinalIgnoreCase)];
+        PersistActionPaletteLibraryPreferences();
+        RefreshActionPalette();
+    }
+
+    void RememberRecentPaletteAction(CatalogAction action)
+    {
+        string signature = ActionPaletteSignature(action.Kind, action.Value);
+        config.ActionPaletteRecentActions.RemoveAll(existing => existing.Equals(signature, StringComparison.OrdinalIgnoreCase));
+        config.ActionPaletteRecentActions.Insert(0, signature);
+        if (config.ActionPaletteRecentActions.Count > 16)
+            config.ActionPaletteRecentActions.RemoveRange(16, config.ActionPaletteRecentActions.Count - 16);
+    }
+
+    void PersistActionPaletteLibraryPreferences()
+    {
+        AppConfig persisted = store.Load();
+        persisted.ActionPaletteFavorites = [.. config.ActionPaletteFavorites];
+        persisted.ActionPaletteRecentActions = [.. config.ActionPaletteRecentActions];
+        store.Save(persisted);
     }
 
     void ActionPaletteItem_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -804,7 +861,7 @@ public partial class MainWindow
     internal static double ActionPaletteDragPreviewWidth(double sourceWidth)
         => Math.Clamp(sourceWidth * ActionPaletteDragPreviewScale, ActionPaletteDragPreviewMinWidth, ActionPaletteDragPreviewMaxWidth);
 
-    void RunActionPaletteDrag(ListBoxItem container, ActionPaletteItem item, DataObject data)
+    void RunActionPaletteDrag(FrameworkElement container, ActionPaletteItem item, DataObject data, DragDropEffects allowedEffects = DragDropEffects.Copy)
     {
         DeckDragPreviewWindow? preview = null;
         GiveFeedbackEventHandler? feedback = null;
@@ -851,23 +908,12 @@ public partial class MainWindow
             var labels = new StackPanel { Margin = new Thickness(8, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
             labels.Children.Add(name);
             labels.Children.Add(group);
-            var grip = new TextBlock
-            {
-                Text = "⋮⋮",
-                FontSize = 9,
-                Foreground = ThemeService.Brush("MutedText"),
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center
-            };
             var row = new Grid { Margin = new Thickness(7, 0, 7, 0) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
             row.Children.Add(glyphFrame);
             Grid.SetColumn(labels, 1);
             row.Children.Add(labels);
-            Grid.SetColumn(grip, 2);
-            row.Children.Add(grip);
             var face = new Border
             {
                 Width = previewWidth,
@@ -883,15 +929,15 @@ public partial class MainWindow
             feedback = (_, args) =>
             {
                 var cursor = System.Windows.Forms.Cursor.Position;
-                preview.MoveToPhysical(cursor.X, cursor.Y);
+                MoveActionPaletteDragPreview(preview, cursor.X, cursor.Y);
                 args.UseDefaultCursors = false;
                 args.Handled = true;
             };
             container.GiveFeedback += feedback;
             preview.Show();
             var initialCursor = System.Windows.Forms.Cursor.Position;
-            preview.MoveToPhysical(initialCursor.X, initialCursor.Y);
-            DragDrop.DoDragDrop(container, data, DragDropEffects.Copy);
+            MoveActionPaletteDragPreview(preview, initialCursor.X, initialCursor.Y);
+            DragDrop.DoDragDrop(container, data, allowedEffects);
         }
         finally
         {
@@ -904,6 +950,33 @@ public partial class MainWindow
                 try { preview.Hide(); } catch { }
                 try { preview.Close(); } catch { }
             }
+        }
+    }
+
+    void RepositionActionPaletteDragPreview()
+    {
+        if (actionPaletteDragPreview?.IsVisible != true)
+            return;
+        var cursor = System.Windows.Forms.Cursor.Position;
+        MoveActionPaletteDragPreview(actionPaletteDragPreview, cursor.X, cursor.Y);
+    }
+
+    void MoveActionPaletteDragPreview(DeckDragPreviewWindow preview, int cursorX, int cursorY)
+        => preview.MoveToPhysicalAvoiding(cursorX, cursorY, PhysicalScreenBounds(assignmentDropTarget));
+
+    static Rect? PhysicalScreenBounds(FrameworkElement? element)
+    {
+        if (element?.IsVisible != true || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return null;
+        try
+        {
+            Point topLeft = element.PointToScreen(new Point(0, 0));
+            Point bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+            return new Rect(topLeft, bottomRight);
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -945,13 +1018,59 @@ public partial class MainWindow
         return DeckMonitorCatalog.TryGet(id, out monitor);
     }
 
-    bool CanAssignPaletteAction(string input, CatalogAction action)
+    bool CanAssignPaletteAction(string input, CatalogAction action, AssignmentDropSlot slot = AssignmentDropSlot.ShortPress)
     {
+        if (slot == AssignmentDropSlot.LongPress)
+        {
+            if (DeckPanelLayout.IsInputName(input) || action.Kind == ActionKind.Gesture)
+                return false;
+            string longKey = input[(input.LastIndexOf('+') + 1)..];
+            return CanUseAssignmentDragKey(longKey, source: false)
+                && InputAssignmentPolicy.CanExecuteLongPress(PaletteLongPressProbe(input), CurrentProfile.Mappings);
+        }
         if (DeckPanelLayout.IsInputName(input))
             return selectedDeckLayout != null && action.Kind != ActionKind.Gesture;
         string key = input[(input.LastIndexOf('+') + 1)..];
         return CanUseAssignmentDragKey(key, source: false)
             && (action.Kind != ActionKind.Gesture || InputAssignmentPolicy.SupportsGesture(input));
+    }
+
+    Mapping PaletteLongPressProbe(string input)
+    {
+        Mapping? existing = CurrentProfile.Mappings.LastOrDefault(candidate => candidate.Input.Equals(input, StringComparison.OrdinalIgnoreCase))
+            ?? FindProfileMapping(config.Profiles, CurrentProfile.Name, input, MappingInterceptsInput);
+        Mapping probe = existing?.Copy() ?? new Mapping();
+        probe.Input = input;
+        probe.Layer = AssignmentLayerName(input);
+        return probe;
+    }
+
+    string PaletteLongPressUnavailableReason(string input, CatalogAction action)
+    {
+        if (DeckPanelLayout.IsInputName(input))
+            return "Deckでは長押し不可";
+        if (action.Kind == ActionKind.Gesture)
+            return "ジェスチャーは長押し枠へ追加不可";
+        return InputAssignmentPolicy.LongPressUnavailableReason(PaletteLongPressProbe(input), CurrentProfile.Mappings)
+            ?? "このキーでは長押し不可";
+    }
+
+    bool CanAssignPaletteDropToSlot(CatalogAction action, string targetInput, string targetKey, AssignmentDropSlot slot)
+    {
+        if (slot == AssignmentDropSlot.ShortPress)
+            return CanAssignPaletteAction(targetInput, action, slot);
+        return PaletteDropTargets(targetInput, targetKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .All(input => CanAssignPaletteAction(input, action, slot));
+    }
+
+    string PaletteLongPressDropUnavailableReason(CatalogAction action, string targetInput, string targetKey)
+    {
+        string unavailableInput = PaletteDropTargets(targetInput, targetKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(input => !CanAssignPaletteAction(input, action, AssignmentDropSlot.LongPress))
+            ?? targetInput;
+        return PaletteLongPressUnavailableReason(unavailableInput, action);
     }
 
     IReadOnlyList<string> PaletteDropTargets(string targetInput, string targetKey)
@@ -963,37 +1082,49 @@ public partial class MainWindow
         return [.. multiSelectedInputs.Select(MultiSelectionInput).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
-    bool ApplyPaletteActionDrop(CatalogAction action, string targetInput, string targetKey)
+    bool ApplyPaletteActionDrop(CatalogAction action, string targetInput, string targetKey, AssignmentDropSlot slot = AssignmentDropSlot.ShortPress)
     {
         CatalogAction? resolvedAction = ResolvePaletteDropAction(action);
         if (resolvedAction == null)
             return false;
         action = resolvedAction;
 
-        var targets = PaletteDropTargets(targetInput, targetKey)
-            .Where(input => CanAssignPaletteAction(input, action))
+        var requestedTargets = PaletteDropTargets(targetInput, targetKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        if (slot == AssignmentDropSlot.LongPress
+            && requestedTargets.Any(input => !CanAssignPaletteAction(input, action, slot)))
+            return false;
+        var targets = requestedTargets.Where(input => CanAssignPaletteAction(input, action, slot)).ToArray();
         if (targets.Length == 0)
             return false;
-        if (action.Kind == ActionKind.Gesture
+        if (slot == AssignmentDropSlot.ShortPress
+            && action.Kind == ActionKind.Gesture
             && targets.Any(input => input is "MouseRight" or "MouseBack" or "MouseForward")
             && !ConfirmDirectMouseGestureConflict(targets.First(input => input is "MouseRight" or "MouseBack" or "MouseForward")))
             return false;
 
         var snapshots = targets.Select(CapturePaletteAssignment).ToArray();
         foreach (string input in targets)
-            ApplyPaletteActionToInput(action, input);
+            ApplyPaletteActionToInput(action, input, slot);
+        RememberRecentPaletteAction(action);
 
+        string slotLabel = slot == AssignmentDropSlot.LongPress ? "の長押し" : string.Empty;
         actionPaletteUndoState = new ActionPaletteUndoState(snapshots, targets.Length == 1
-            ? $"{DisplayInputName(targets[0])} に割り当てました"
-            : $"{targets.Length}個の入力に割り当てました");
+            ? $"{DisplayInputName(targets[0])}{slotLabel}に割り当てました"
+            : $"{targets.Length}個の入力{slotLabel}に割り当てました");
         ShowActionPaletteUndo(actionPaletteUndoState.Message);
         CommitPaletteAssignment(actionPaletteUndoState.Message, targets);
+        if (!config.AutoSave)
+            PersistActionPaletteLibraryPreferences();
         if (selected != null && targets.Contains(selected.Input, StringComparer.OrdinalIgnoreCase))
             SelectInput(selected.Input, false);
         PlayPaletteDropSuccess(targets);
         RefreshActionPalette();
+        // Parameterized palette rows and the undo bar can complete template
+        // work after the commit. Re-apply the durable key state last so the
+        // long-press band cannot be replaced by a freshly realized template.
+        ColorButtons();
         return true;
     }
 
@@ -1042,9 +1173,17 @@ public partial class MainWindow
             return false;
         var snapshots = new[] { CapturePaletteAssignment(targetInput) };
         ApplyPaletteMonitorToInput(monitor, targetInput);
+        RememberRecentPaletteAction(new CatalogAction(
+            DeckMonitorCatalog.Category,
+            monitor.Name,
+            monitor.Description,
+            ActionKind.Disabled,
+            DeckMonitorActionPrefix + monitor.Id));
         actionPaletteUndoState = new ActionPaletteUndoState(snapshots, $"{DisplayInputName(targetInput)} に{monitor.Name}を配置しました");
         ShowActionPaletteUndo(actionPaletteUndoState.Message);
         CommitPaletteAssignment(actionPaletteUndoState.Message, [targetInput]);
+        if (!config.AutoSave)
+            PersistActionPaletteLibraryPreferences();
         if (selected?.Input.Equals(targetInput, StringComparison.OrdinalIgnoreCase) == true)
             SelectInput(targetInput, false);
         PlayPaletteDropSuccess([targetInput]);
@@ -1262,7 +1401,7 @@ public partial class MainWindow
         return new ActionPaletteMappingSnapshot(collection, input, previous);
     }
 
-    void ApplyPaletteActionToInput(CatalogAction action, string input)
+    void ApplyPaletteActionToInput(CatalogAction action, string input, AssignmentDropSlot slot)
     {
         bool deckInput = DeckPanelLayout.IsInputName(input) && selectedDeckLayout != null;
         List<Mapping> collection = deckInput ? selectedDeckLayout!.Mappings : CurrentProfile.Mappings;
@@ -1275,17 +1414,26 @@ public partial class MainWindow
             mapping.Layer = deckInput ? DeckPanelLayout.Layer : AssignmentLayerName(input);
             collection.Add(mapping);
         }
-        mapping.Kind = action.Kind;
-        mapping.Value = action.Value;
-        mapping.DeckMonitor = string.Empty;
-        ClearUnsupportedLongPress(mapping, collection);
-        if (deckInput)
+        if (slot == AssignmentDropSlot.LongPress)
         {
-            mapping.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
-            mapping.DeckIconPath = string.Empty;
-            mapping.DeckIconAutoAssigned = true;
+            mapping.LongPressKind = action.Kind;
+            mapping.LongPressValue = action.Value;
+            NormalizeLongOnlyMapping(mapping);
         }
         else
+        {
+            mapping.Kind = action.Kind;
+            mapping.Value = action.Value;
+            mapping.DeckMonitor = string.Empty;
+            ClearUnsupportedLongPress(mapping, collection);
+            if (deckInput)
+            {
+                mapping.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
+                mapping.DeckIconPath = string.Empty;
+                mapping.DeckIconAutoAssigned = true;
+            }
+        }
+        if (!deckInput)
             InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
     }
 

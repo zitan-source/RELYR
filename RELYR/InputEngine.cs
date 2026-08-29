@@ -573,6 +573,9 @@ public sealed partial class InputEngine : IDisposable
         return pendingHookReturn.Task;
     }
 
+    internal static Task? CaptureCurrentHookReturnBarrier()
+        => CaptureHookReturnBarrier();
+
     internal static (Task? Barrier, Action Complete) CreateHookReturnBarrierForTest()
     {
         EnterHookCallbackBarrier();

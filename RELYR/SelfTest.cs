@@ -222,7 +222,32 @@ public static class SelfTest
             Check(MainWindow.ShouldFocusExecutionForSelectedInput(null) && !MainWindow.ShouldFocusExecutionForSelectedInput(new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }), "only an unassigned key automatically focuses the execution-value editor");
             var hoverMapping = new Mapping { Input = "Space+K", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Launch, LongPressValue = @"C:\Apps\Sample.exe", LongPressMs = 600 };
             string? hoverText = MainWindow.AssignmentToolTipText(hoverMapping);
-            Check(MainWindow.AssignmentToolTipText(null) == null && hoverText?.Contains("アクション：ショートカット") == true && hoverText.Contains("実行内容：") && hoverText.Contains("長押し（600 ms）") && hoverText.Contains("アクション：アプリ・ファイル・URL") && hoverText.Contains(@"C:\Apps\Sample.exe"), "assigned keyboard hover shows short and long actions while unassigned keys show no popup");
+            var hoverRows = MainWindow.AssignmentToolTipRows(hoverMapping);
+            var supportedHoverRows = new[]
+            {
+                new Mapping { Kind = ActionKind.Disabled },
+                new Mapping { Kind = ActionKind.Key, Value = "Enter" },
+                new Mapping { Kind = ActionKind.Shortcut, Value = "Ctrl+V" },
+                new Mapping { Kind = ActionKind.Text, Value = "サンプル テキスト" },
+                new Mapping { Kind = ActionKind.Launch, Value = @"C:\Apps\Sample.exe" },
+                new Mapping { Kind = ActionKind.Mouse, Value = "MouseRight" },
+                new Mapping { Kind = ActionKind.Macro, Value = "動画編集" },
+                new Mapping { Kind = ActionKind.Profile, Value = "仕事" },
+                new Mapping { Kind = ActionKind.Gesture, Value = "ウィンドウ操作" }
+            }.SelectMany(mapping => MainWindow.AssignmentToolTipRows(mapping)).ToArray();
+            var overlayHoverRow = MainWindow.AssignmentToolTipRows(new Mapping { Kind = ActionKind.Shortcut, Value = OverlayService.ClockAction }).Single();
+            Check(MainWindow.AssignmentToolTipText(null) == null
+                && hoverText?.Contains("TAP  コピー  Ctrl + C") == true
+                && hoverText.Contains("HOLD  Sample")
+                && !hoverText.Contains("ms", StringComparison.OrdinalIgnoreCase)
+                && !hoverText.Contains("アクション：")
+                && !hoverText.Contains("実行内容：")
+                && hoverRows is [{ Slot: "TAP", Name: "コピー" }, { Slot: "HOLD", Name: "Sample" }]
+                && hoverRows[0].Keycaps.SequenceEqual(["Ctrl", "C"])
+                && supportedHoverRows.Length == Enum.GetValues<ActionKind>().Count(kind => kind != ActionKind.None)
+                && supportedHoverRows.All(row => !string.IsNullOrWhiteSpace(row.Slot) && !string.IsNullOrWhiteSpace(row.Name))
+                && overlayHoverRow is { Name: "クロック", Detail: "オーバーレイ", Keycaps.Count: 0 },
+                "assigned-key hover uses concise TAP/HOLD rows and provides a non-empty friendly display for shortcuts, overlays, keys, text, apps, mouse actions, macros, profiles, gestures, and disabled actions");
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
             var taskbarLongOnly = new Mapping { Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
             var taskbarReplayEvents = new List<string>();
@@ -232,12 +257,26 @@ public static class SelfTest
             int defensiveTaskbarReleases = 0;
             MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], click => { failedTaskbarReplayEvents.Add(click); return false; }, () => defensiveTaskbarReleases++, () => taskbarReplayFailures++);
             var taskbarReplayBatches = new List<(uint Flag, uint Data)[]>();
+            var taskbarHookReturn = InputEngine.CreateHookReturnBarrierForTest();
+            int taskbarSendAfterHookReturn = 0;
+            var taskbarBarrierReplay = Task.Run(() => MainWindow.ProcessTaskbarClickReplays(
+                [new MainWindow.TaskbarClickReplayRequest("MouseRight", taskbarHookReturn.Barrier)],
+                _ => { Interlocked.Increment(ref taskbarSendAfterHookReturn); return true; },
+                () => { },
+                () => taskbarReplayFailures++));
+            bool taskbarReplayWaitedForHookReturn = !SpinWait.SpinUntil(() => Volatile.Read(ref taskbarSendAfterHookReturn) != 0, 100);
+            taskbarHookReturn.Complete();
+            bool taskbarReplayCompletedAfterHookReturn = taskbarBarrierReplay.Wait(1000)
+                && Volatile.Read(ref taskbarSendAfterHookReturn) == 1;
             try
             {
                 InputEngine.MouseClickBatchOutputForTest = batch => taskbarReplayBatches.Add(batch);
                 MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], InputEngine.SendMouseClickAtomic, () => defensiveTaskbarReleases++, () => taskbarReplayFailures++);
             }
-            finally { InputEngine.MouseClickBatchOutputForTest = null; }
+            finally
+            {
+                InputEngine.MouseClickBatchOutputForTest = null;
+            }
             Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
@@ -248,8 +287,10 @@ public static class SelfTest
                 && defensiveTaskbarReleases == 2
                 && taskbarReplayBatches.Count == 2
                 && taskbarReplayBatches[0].SequenceEqual([(2u, 0u), (4u, 0u)])
-                && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)]),
-                "taskbar long-press-only short clicks replay in ordered atomic Down/Up batches instead of sending input inside the hook");
+                && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)])
+                && taskbarReplayWaitedForHookReturn
+                && taskbarReplayCompletedAfterHookReturn,
+                "taskbar long-press-only short clicks wait for the physical hook to return, then restore the original left or right button Down/Up as one atomic input batch");
             Check(MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
@@ -265,6 +306,8 @@ public static class SelfTest
             Check(new[] { "ShiftDrag", "CtrlDrag", "AltDrag" }.All(value => !MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = value }))
                 && clearedUnsupportedModifierLong && unsupportedModifierLong is { LongPressKind: ActionKind.None, LongPressValue: "" }
                 && clearedNormalAlphabetLong && normalAlphabetLong is { LongPressKind: ActionKind.None, LongPressValue: "" }
+                && InputAssignmentPolicy.LongPressUnavailableReason(new Mapping { Input = "O", Layer = "通常" }) == "通常の英字では長押し不可"
+                && InputAssignmentPolicy.LongPressUnavailableReason(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "CtrlDrag" }) == "修飾クリックとの併用不可"
                 && MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "MouseRight" })
                 && MainWindow.IsLongPressSupportedFor(new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.None, LongPressKind = ActionKind.Mouse, LongPressValue = "CtrlDrag" }),
                 "modifier clicks and normal alphabet keys reject unreachable long actions while ordinary short actions and long-side modifier clicks remain supported");

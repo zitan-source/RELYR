@@ -44,6 +44,27 @@ public partial class MainWindow : Window
     public static readonly DependencyProperty IsAssignmentDropTargetProperty = DependencyProperty.RegisterAttached("IsAssignmentDropTarget", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public static bool GetIsAssignmentDropTarget(DependencyObject element) => (bool)element.GetValue(IsAssignmentDropTargetProperty);
     public static void SetIsAssignmentDropTarget(DependencyObject element, bool value) => element.SetValue(IsAssignmentDropTargetProperty, value);
+    public static readonly DependencyProperty HasLongPressAssignmentProperty = DependencyProperty.RegisterAttached("HasLongPressAssignment", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static bool GetHasLongPressAssignment(DependencyObject element) => (bool)element.GetValue(HasLongPressAssignmentProperty);
+    public static void SetHasLongPressAssignment(DependencyObject element, bool value) => element.SetValue(HasLongPressAssignmentProperty, value);
+    public static readonly DependencyProperty HasDualPressAssignmentProperty = DependencyProperty.RegisterAttached("HasDualPressAssignment", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static bool GetHasDualPressAssignment(DependencyObject element) => (bool)element.GetValue(HasDualPressAssignmentProperty);
+    public static void SetHasDualPressAssignment(DependencyObject element, bool value) => element.SetValue(HasDualPressAssignmentProperty, value);
+    public static readonly DependencyProperty LongPressAssignmentBrushProperty = DependencyProperty.RegisterAttached("LongPressAssignmentBrush", typeof(System.Windows.Media.Brush), typeof(MainWindow), new PropertyMetadata(null));
+    public static System.Windows.Media.Brush? GetLongPressAssignmentBrush(DependencyObject element) => (System.Windows.Media.Brush?)element.GetValue(LongPressAssignmentBrushProperty);
+    public static void SetLongPressAssignmentBrush(DependencyObject element, System.Windows.Media.Brush value) => element.SetValue(LongPressAssignmentBrushProperty, value);
+    public static readonly DependencyProperty LongPressAssignmentForegroundProperty = DependencyProperty.RegisterAttached("LongPressAssignmentForeground", typeof(System.Windows.Media.Brush), typeof(MainWindow), new PropertyMetadata(null));
+    public static System.Windows.Media.Brush? GetLongPressAssignmentForeground(DependencyObject element) => (System.Windows.Media.Brush?)element.GetValue(LongPressAssignmentForegroundProperty);
+    public static void SetLongPressAssignmentForeground(DependencyObject element, System.Windows.Media.Brush value) => element.SetValue(LongPressAssignmentForegroundProperty, value);
+    public static readonly DependencyProperty IsPaletteAssignmentDropTargetProperty = DependencyProperty.RegisterAttached("IsPaletteAssignmentDropTarget", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static bool GetIsPaletteAssignmentDropTarget(DependencyObject element) => (bool)element.GetValue(IsPaletteAssignmentDropTargetProperty);
+    public static void SetIsPaletteAssignmentDropTarget(DependencyObject element, bool value) => element.SetValue(IsPaletteAssignmentDropTargetProperty, value);
+    public static readonly DependencyProperty IsLongPressAssignmentDropSlotProperty = DependencyProperty.RegisterAttached("IsLongPressAssignmentDropSlot", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static bool GetIsLongPressAssignmentDropSlot(DependencyObject element) => (bool)element.GetValue(IsLongPressAssignmentDropSlotProperty);
+    public static void SetIsLongPressAssignmentDropSlot(DependencyObject element, bool value) => element.SetValue(IsLongPressAssignmentDropSlotProperty, value);
+    public static readonly DependencyProperty IsLongPressAssignmentDropAvailableProperty = DependencyProperty.RegisterAttached("IsLongPressAssignmentDropAvailable", typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
+    public static bool GetIsLongPressAssignmentDropAvailable(DependencyObject element) => (bool)element.GetValue(IsLongPressAssignmentDropAvailableProperty);
+    public static void SetIsLongPressAssignmentDropAvailable(DependencyObject element, bool value) => element.SetValue(IsLongPressAssignmentDropAvailableProperty, value);
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
@@ -54,9 +75,10 @@ public partial class MainWindow : Window
     readonly Task actionWorker;
     readonly BlockingCollection<(Mapping? Map, string Input)> dragActionQueue = [];
     readonly Task dragActionWorker;
-    readonly BlockingCollection<string> taskbarClickReplayQueue = [];
+    readonly BlockingCollection<TaskbarClickReplayRequest> taskbarClickReplayQueue = [];
     readonly Task taskbarClickReplayWorker;
     int taskbarClickReplayFailed;
+    internal readonly record struct TaskbarClickReplayRequest(string Click, Task? HookReturn);
     readonly ConcurrentDictionary<string, InputMappingSnapshot> activeInputMappings = new(StringComparer.OrdinalIgnoreCase);
     readonly ConcurrentDictionary<string, LayerMappingSnapshot> activeLayerMappings = new(StringComparer.OrdinalIgnoreCase);
     readonly System.Windows.Threading.DispatcherTimer trayNumberTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -1009,7 +1031,7 @@ public partial class MainWindow : Window
         if (key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null)
             return;
         SelectInput(InputForCurrentLayer(key), false);
-        OpenActionPicker(false);
+        OpenActionPalette_Click(SelectedActionPaletteButton, new RoutedEventArgs());
     }
     void InputButton_Click(object sender, RoutedEventArgs e)
     {
@@ -2278,6 +2300,7 @@ public partial class MainWindow : Window
                 : "＋ 長押しを追加（任意）";
         if (!longPressSupported)
             LongPressExpander.IsExpanded = false;
+        UpdateAssignmentSummary();
     }
 
     internal static bool IsLongPressSupportedFor(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
@@ -2350,7 +2373,9 @@ public partial class MainWindow : Window
             // Windows silently retire the hook. Preserve order on a dedicated
             // worker and let this physical Up callback return immediately.
             if (!taskbarClickReplayQueue.IsAddingCompleted)
-                taskbarClickReplayQueue.TryAdd(replayClick);
+                taskbarClickReplayQueue.TryAdd(new TaskbarClickReplayRequest(
+                    replayClick,
+                    InputEngine.CaptureCurrentHookReturnBarrier()));
             return true;
         }
         var snapshot = CloneMapping(map);
@@ -2483,12 +2508,23 @@ public partial class MainWindow : Window
         ProcessTaskbarClickReplays(taskbarClickReplayQueue.GetConsumingEnumerable(), InputEngine.SendMouseClickAtomic, InputEngine.ReleaseForProcessLifecycle, FailOpenAfterTaskbarClickReplayFailure);
     }
     internal static void ProcessTaskbarClickReplays(IEnumerable<string> clicks, Func<string, bool> sendClick, Action releaseInputs, Action replayFailed)
+        => ProcessTaskbarClickReplays(clicks.Select(click => new TaskbarClickReplayRequest(click, null)), sendClick, releaseInputs, replayFailed);
+    internal static void ProcessTaskbarClickReplays(IEnumerable<TaskbarClickReplayRequest> requests, Func<string, bool> sendClick, Action releaseInputs, Action replayFailed)
     {
         bool failureReported = false;
-        foreach (string click in clicks)
+        foreach (var request in requests)
         {
             bool sent = false;
-            try { sent = sendClick(click); }
+            try
+            {
+                // The original physical Up is still inside the low-level hook
+                // when HandleInput queues this restoration. Let that callback
+                // return before injecting the replacement Down/Up; otherwise
+                // Explorer can discard the nested click and stop showing app
+                // icon jump lists until its process is restarted.
+                request.HookReturn?.GetAwaiter().GetResult();
+                sent = sendClick(request.Click);
+            }
             catch { }
             if (sent)
                 continue;
@@ -2730,10 +2766,12 @@ public partial class MainWindow : Window
         bool selectionOutlined = currentSelected || multiSelected;
         bool pulsing = multiSelected || (currentSelected && !selectionPulseSuppressed);
         System.Windows.Media.Brush pulseBrush = ThemeService.Brush("AccentBrush");
-        b.Background = reserved && !selectionActive ? ThemeService.Brush("ReservedKeyBackground") : assigned != null ? new SolidColorBrush(AssignmentColorFor(assigned)) : ThemeService.Brush("KeyBackground");
+        bool hasShortAssignment = HasConfiguredShortAction(assigned);
+        b.Background = reserved && !selectionActive ? ThemeService.Brush("ReservedKeyBackground") : hasShortAssignment ? new SolidColorBrush(AssignmentColorFor(assigned!)) : ThemeService.Brush("KeyBackground");
         b.BorderBrush = ThemeService.Brush(selectionOutlined ? "AccentBrush" : "SubtleBorderBrush");
         b.BorderThickness = new Thickness(selectionOutlined ? 2 : 1);
-        b.Foreground = assigned == null ? ThemeService.Brush("PrimaryText") : new SolidColorBrush(AssignmentTextColorFor(assigned));
+        b.Foreground = hasShortAssignment ? new SolidColorBrush(AssignmentTextColorFor(assigned!)) : ThemeService.Brush("PrimaryText");
+        SetLongPressAssignmentVisual(b, assigned);
         b.Opacity = selectionActive && !highlighted ? SelectionDimOpacity : reserved ? 0.48 : 1;
         b.IsEnabled = !protectedLeftClick && !unavailable;
         bool currentSelectionChanged = GetIsCurrentSelected(b) != currentSelected;
@@ -2749,13 +2787,36 @@ public partial class MainWindow : Window
             SetSelectionPulseVisual(b, pulsing, pulseBrush);
         b.ToolTip = protectedLeftClick ? "通常レイヤーでは変更できません"
             : unavailableReason != null ? unavailableReason
-            : assigned != null ? CreateAssignmentToolTip(assigned)
+            : assigned != null ? CreateAssignmentToolTip(assigned, b)
             : keyboardButton ? null
             : DefaultMouseToolTip(key);
         ToolTipService.SetShowOnDisabled(b, true);
         ToolTipService.SetInitialShowDelay(b, 250);
         ToolTipService.SetBetweenShowDelay(b, 80);
         ToolTipService.SetShowDuration(b, 20000);
+    }
+    static void SetLongPressAssignmentVisual(System.Windows.Controls.Button button, Mapping? mapping)
+    {
+        bool hasLongPress = HasConfiguredLongPress(mapping);
+        bool hasShortPress = HasConfiguredShortAction(mapping);
+        bool hasBothPressActions = hasShortPress && hasLongPress;
+        WpfColor longColor = hasLongPress
+            ? AssignmentColorFor(new Mapping { Kind = mapping!.LongPressKind, Value = mapping.LongPressValue })
+            : WpfColors.Transparent;
+        WpfColor badgeTextColor = hasLongPress
+            ? DeckPanelLayout.TextColorFor(longColor)
+            : WpfColors.Transparent;
+        SetHasLongPressAssignment(button, hasLongPress);
+        SetHasDualPressAssignment(button, hasBothPressActions);
+        SetLongPressAssignmentBrush(button, new SolidColorBrush(longColor));
+        SetLongPressAssignmentForeground(button, new SolidColorBrush(badgeTextColor));
+        button.ApplyTemplate();
+        if (button.Template.FindName("LongPressBadge", button) is Border badge)
+        {
+            badge.BeginAnimation(UIElement.OpacityProperty, null);
+            badge.Background = new SolidColorBrush(longColor);
+            badge.Opacity = hasLongPress ? 1 : 0;
+        }
     }
     void AnimateAssignmentCommit(string input)
     {
@@ -2898,7 +2959,7 @@ public partial class MainWindow : Window
         }
         bool missingFile = DeckPanelLayout.HasRegisteredFile(mapping) && !DeckPanelLayout.IsAvailableFile(mapping);
         button.Resources["DeckFileAvailable"] = DeckPanelLayout.IsAvailableFile(mapping);
-        button.ToolTip = missingFile ? DeckPanelLayout.CreateMissingFileToolTip() : assigned != null ? CreateAssignmentToolTip(assigned) : null;
+        button.ToolTip = missingFile ? DeckPanelLayout.CreateMissingFileToolTip() : assigned != null ? CreateAssignmentToolTip(assigned, button) : null;
         ToolTipService.SetInitialShowDelay(button, 250);
         ToolTipService.SetShowDuration(button, 20000);
     }
@@ -2920,26 +2981,115 @@ public partial class MainWindow : Window
     static ActionKind AssignmentDisplayKind(Mapping mapping) => !HasConfiguredShortAction(mapping) && HasConfiguredLongPress(mapping) ? mapping.LongPressKind : mapping.Kind == ActionKind.None ? mapping.LongPressKind : mapping.Kind;
     static WpfColor AssignmentTextColorFor(Mapping mapping) => DeckPanelLayout.TextColorFor(AssignmentColorFor(mapping));
     static string AssignmentTypeLabel(Mapping mapping) => AssignmentDisplayKind(mapping) switch { ActionKind.Key => "別のキー", ActionKind.Disabled => "無効化", ActionKind.Text => "文字列", ActionKind.Macro => "マクロ", ActionKind.Launch => "アプリ・パス", ActionKind.Profile => "プロファイル", ActionKind.Gesture => "ジェスチャー", _ => "ショートカット" };
-    internal static string? AssignmentToolTipText(Mapping? mapping)
+    internal sealed record AssignmentToolTipRow(string Slot, string Name, string Detail, IReadOnlyList<string> Keycaps);
+
+    internal static IReadOnlyList<AssignmentToolTipRow> AssignmentToolTipRows(Mapping? mapping, AppConfig? appConfig = null)
     {
         if (!MappingInterceptsInput(mapping))
-            return null;
-        var lines = new List<string>();
+            return [];
+        var rows = new List<AssignmentToolTipRow>(2);
         if (HasConfiguredShortAction(mapping))
-        {
-            lines.Add("短押し");
-            lines.Add("アクション：" + ActionKindDisplayName(mapping!.Kind));
-            lines.Add("実行内容：" + FriendlyActionValue(mapping.Kind, mapping.Value));
-        }
+            rows.Add(CreateAssignmentToolTipRow("TAP", mapping!.Kind, mapping.Value, appConfig));
         if (HasConfiguredLongPress(mapping))
+            rows.Add(CreateAssignmentToolTipRow("HOLD", mapping!.LongPressKind, mapping.LongPressValue, appConfig));
+        return rows;
+    }
+
+    internal static string? AssignmentToolTipText(Mapping? mapping)
+    {
+        var rows = AssignmentToolTipRows(mapping);
+        if (rows.Count == 0)
+            return null;
+        return string.Join(Environment.NewLine, rows.Select(row =>
         {
-            if (lines.Count > 0)
-                lines.Add("");
-            lines.Add($"長押し（{mapping!.LongPressMs} ms）");
-            lines.Add("アクション：" + ActionKindDisplayName(mapping.LongPressKind));
-            lines.Add("実行内容：" + FriendlyActionValue(mapping.LongPressKind, mapping.LongPressValue));
+            string detail = row.Keycaps.Count > 0 ? string.Join(" + ", row.Keycaps) : row.Detail;
+            return string.IsNullOrWhiteSpace(detail) ? $"{row.Slot}  {row.Name}" : $"{row.Slot}  {row.Name}  {detail}";
+        }));
+    }
+
+    static AssignmentToolTipRow CreateAssignmentToolTipRow(string slot, ActionKind kind, string value, AppConfig? appConfig)
+    {
+        string actionValue = value?.Trim() ?? string.Empty;
+        var catalogAction = ActionCatalog.Items.FirstOrDefault(action => action.Kind == kind
+            && action.Value.Equals(actionValue, StringComparison.OrdinalIgnoreCase));
+        bool overlayAction = kind == ActionKind.Shortcut && OverlayService.IsOverlayAction(actionValue);
+        var keycaps = AssignmentKeycaps(kind, actionValue, overlayAction);
+
+        if (overlayAction)
+        {
+            string overlayName = catalogAction?.Name ?? "Deckパネル";
+            if (DeckPanelLayout.IsDeckAction(actionValue) && appConfig != null)
+            {
+                string layoutId = actionValue.StartsWith(DeckPanelLayout.ActionPrefix, StringComparison.OrdinalIgnoreCase)
+                    ? actionValue[DeckPanelLayout.ActionPrefix.Length..]
+                    : string.Empty;
+                overlayName = appConfig.DeckLayouts.FirstOrDefault(layout => layout.Id.Equals(layoutId, StringComparison.OrdinalIgnoreCase))?.Name
+                    ?? overlayName;
+            }
+            return new(slot, overlayName, DeckPanelLayout.IsDeckAction(actionValue) ? "Deckオーバーレイ" : "オーバーレイ", keycaps);
         }
-        return string.Join(Environment.NewLine, lines);
+
+        return kind switch
+        {
+            ActionKind.Disabled => new(slot, "入力しない", string.Empty, keycaps),
+            ActionKind.Key => new(slot, catalogAction?.Name ?? DisplayInputName(actionValue), string.Empty, keycaps),
+            ActionKind.Shortcut => new(slot, catalogAction?.Name ?? "ショートカット", keycaps.Count == 0 ? FriendlyActionValue(kind, actionValue) : string.Empty, keycaps),
+            ActionKind.Text => new(slot, "テキスト入力", CompactAssignmentValue(actionValue, quote: true), keycaps),
+            ActionKind.Launch => LaunchToolTipRow(slot, actionValue, catalogAction, keycaps),
+            ActionKind.Mouse => new(slot, FriendlyActionValue(kind, actionValue).Replace("マウス：", string.Empty, StringComparison.Ordinal), "マウス操作", keycaps),
+            ActionKind.Macro => new(slot, CompactAssignmentValue(actionValue), "マクロ", keycaps),
+            ActionKind.Profile => new(slot, ProfileDisplayValue(actionValue), "プロファイル", keycaps),
+            ActionKind.Gesture => new(slot, GestureDisplayValue(actionValue), "ジェスチャー", keycaps),
+            _ => new(slot, ActionKindDisplayName(kind), CompactAssignmentValue(actionValue), keycaps)
+        };
+    }
+
+    static AssignmentToolTipRow LaunchToolTipRow(string slot, string value, CatalogAction? catalogAction, IReadOnlyList<string> keycaps)
+    {
+        if (catalogAction != null)
+            return new(slot, catalogAction.Name, "アプリ・ファイル・URL", keycaps);
+
+        string name = value;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+            name = uri.Host;
+        else
+        {
+            try
+            {
+                string fileName = Path.GetFileNameWithoutExtension(value);
+                if (!string.IsNullOrWhiteSpace(fileName))
+                    name = fileName;
+            }
+            catch (ArgumentException)
+            {
+            }
+        }
+        name = CompactAssignmentValue(name);
+        string detail = string.Equals(name, value, StringComparison.OrdinalIgnoreCase) ? "アプリ・ファイル・URL" : CompactAssignmentValue(value);
+        return new(slot, name, detail, keycaps);
+    }
+
+    static IReadOnlyList<string> AssignmentKeycaps(ActionKind kind, string value, bool overlayAction)
+    {
+        if (overlayAction || kind is not (ActionKind.Key or ActionKind.Shortcut))
+            return [];
+        if (kind == ActionKind.Shortcut && !value.Contains('+'))
+            return [];
+        return value.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(ActionPickerWindow.NormalizeShortcutToken)
+            .Select(DisplayInputPart)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    static string CompactAssignmentValue(string? value, bool quote = false)
+    {
+        string compact = string.Join(" ", (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(compact))
+            compact = "未設定";
+        if (compact.Length > 72)
+            compact = compact[..72] + "…";
+        return quote ? $"「{compact}」" : compact;
     }
     internal static string ActionKindDisplayName(ActionKind kind) => kind switch
     {
@@ -2974,15 +3124,94 @@ public partial class MainWindow : Window
             display = "未設定";
         return display.Length <= 180 ? display : display[..180] + "…";
     }
-    static System.Windows.Controls.ToolTip CreateAssignmentToolTip(Mapping mapping) => new()
+    System.Windows.Controls.ToolTip CreateAssignmentToolTip(Mapping mapping, UIElement placementTarget)
     {
-        Content = new TextBlock { Text = AssignmentToolTipText(mapping), Foreground = ThemeService.Brush("PrimaryText"), TextWrapping = TextWrapping.Wrap, LineHeight = 20, MaxWidth = 340 },
-        Background = ThemeService.Brush("CardBackground"),
-        BorderBrush = ThemeService.Brush("AccentBrush"),
-        BorderThickness = new Thickness(1),
-        Padding = new Thickness(12, 9, 12, 9),
-        Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse
-    };
+        var toolTip = new System.Windows.Controls.ToolTip
+        {
+            Content = CreateAssignmentToolTipContent(AssignmentToolTipRows(mapping, config)),
+            PlacementTarget = placementTarget,
+            Style = (Style)FindResource("AssignmentHoverToolTipStyle")
+        };
+        return toolTip;
+    }
+
+    static FrameworkElement CreateAssignmentToolTipContent(IReadOnlyList<AssignmentToolTipRow> rows)
+    {
+        var content = new StackPanel { MaxWidth = 360 };
+        for (int index = 0; index < rows.Count; index++)
+        {
+            if (index > 0)
+            {
+                var divider = new Border { Height = 1, Margin = new Thickness(0, 9, 0, 9) };
+                divider.SetResourceReference(Border.BackgroundProperty, "SubtleBorderBrush");
+                content.Children.Add(divider);
+            }
+            content.Children.Add(CreateAssignmentToolTipRowVisual(rows[index]));
+        }
+        return content;
+    }
+
+    static FrameworkElement CreateAssignmentToolTipRowVisual(AssignmentToolTipRow row)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var slot = new TextBlock
+        {
+            Text = row.Slot,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI Variable Text"),
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 10, 0)
+        };
+        slot.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextBrush");
+        grid.Children.Add(slot);
+
+        var action = new StackPanel { MaxWidth = 286 };
+        Grid.SetColumn(action, 1);
+        var name = new TextBlock
+        {
+            Text = row.Name,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
+        action.Children.Add(name);
+
+        if (row.Keycaps.Count > 0)
+        {
+            var keycaps = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
+            foreach (string keycap in row.Keycaps)
+            {
+                var keycapText = new TextBlock { Text = keycap, FontSize = 10.5, FontWeight = FontWeights.SemiBold };
+                keycapText.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
+                var keycapBorder = new Border
+                {
+                    Child = keycapText,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(0, 0, 5, 0)
+                };
+                keycapBorder.SetResourceReference(Border.BackgroundProperty, "ControlBackground");
+                keycapBorder.SetResourceReference(Border.BorderBrushProperty, "SubtleBorderBrush");
+                keycaps.Children.Add(keycapBorder);
+            }
+            action.Children.Add(keycaps);
+        }
+        else if (!string.IsNullOrWhiteSpace(row.Detail))
+        {
+            var detail = new TextBlock { Text = row.Detail, FontSize = 10.5, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
+            detail.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
+            action.Children.Add(detail);
+        }
+
+        grid.Children.Add(action);
+        return grid;
+    }
     static string? DefaultMouseToolTip(string key) => key switch
     {
         "MouseLeft" => "左クリック",

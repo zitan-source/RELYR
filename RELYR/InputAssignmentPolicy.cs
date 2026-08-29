@@ -75,6 +75,25 @@ internal static class InputAssignmentPolicy
            && !(mapping.Kind == ActionKind.Mouse && MappingExecutor.IsModifierDrag(mapping.Value))
            && !HasConfiguredLayerMappings(mappings, mapping.Input);
 
+    internal static string? LongPressUnavailableReason(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
+    {
+        if (mapping == null)
+            return "このキーでは長押しを使えません";
+        if (UnavailableInputReason(mapping.Input) is { } unavailable)
+            return unavailable;
+        if (IsImpulseInput(mapping.Input))
+            return "ホイール／チルトでは長押し不可";
+        if (IsNormalAlphabetInput(mapping.Input))
+            return "通常の英字では長押し不可";
+        if (mapping.Kind == ActionKind.Gesture)
+            return "ジェスチャーとの併用不可";
+        if (mapping.Kind == ActionKind.Mouse && MappingExecutor.IsModifierDrag(mapping.Value))
+            return "修飾クリックとの併用不可";
+        if (HasConfiguredLayerMappings(mappings, mapping.Input))
+            return "レイヤー使用中は長押し不可";
+        return null;
+    }
+
     internal static bool ClearImpossibleLongPress(Mapping? mapping, IReadOnlyList<Mapping>? mappings = null)
     {
         if (mapping == null || CanExecuteLongPress(mapping, mappings))

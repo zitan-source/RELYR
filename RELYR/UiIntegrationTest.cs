@@ -543,6 +543,10 @@ internal static class UiIntegrationTest
                 && hintRowLefts.Max() - hintRowLefts.Min() <= 1.1
                 && new[] { window.InspectorHintOneRow, window.InspectorHintTwoRow, window.InspectorHintThreeRow }.All(row => Math.Abs(row.ActualWidth - window.InspectorHintsPanel.ActualWidth) <= 1.1),
                 "each hint row shares one centered horizontal layout while its icon and text remain consistently left aligned");
+            if (!window.ConfigForTest.Macros.Any(macro => macro.Name == "お気に入りテスト"))
+                window.ConfigForTest.Macros.Add(new MacroDefinition { Name = "お気に入りテスト", Steps = [new MacroStep { Event = "A Down" }, new MacroStep { Event = "A Up" }] });
+            window.ConfigForTest.ActionPaletteFavorites.Clear();
+            window.ConfigForTest.ActionPaletteRecentActions.Clear();
             window.SetActionPaletteApplicationsForTest(new InstalledApplicationInfo("Sample App", Environment.ProcessPath ?? "RELYR.exe", "テスト"));
             window.OpenActionPaletteForTest();
             Pump(window);
@@ -553,8 +557,8 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteActionsForTest.Count > 100
                 && window.ActionPaletteActionsForTest.Any(action => action.Name == "コピー" && action.Value == "Ctrl+C")
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "Deckパネル")
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(3).SequenceEqual(new[] { "おすすめ", "すべて", "使用中" })
-                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "おすすめ"
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(4).SequenceEqual(new[] { "お気に入り", "最近使ったもの", "すべて", "使用中" })
+                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "お気に入り"
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Count(item => item.ToString() == "使用中") == 1
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "インストールアプリ")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "パス・文字列")
@@ -564,7 +568,10 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteActionsForTest.Any(action => action is { Category: "パス・文字列", Kind: ActionKind.Launch, ValueRequest: CatalogActionValueRequest.Launch })
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "インストールアプリ" && action.Kind == ActionKind.Launch)
                 && window.ActionPaletteActionsForTest.Count(action => action.Category == "キー" && action.Kind == ActionKind.Key) >= 90
-                && window.ActionPaletteList.ActualWidth <= window.ActionPalettePane.ActualWidth + .1,
+                && window.ActionPaletteList.ActualWidth <= window.ActionPalettePane.ActualWidth + .1
+                && window.ActionPaletteList.Items.Count == 0
+                && window.ActionPaletteEmptyText.Visibility == Visibility.Visible
+                && window.ActionPaletteEmptyText.Text.Contains("☆", StringComparison.Ordinal),
                 "the fixed right pane opens a searchable concrete-action library without adding width or a second column");
             window.ActionPaletteCloseButton.ApplyTemplate();
             Check(window.ActionPaletteCloseButton.BorderThickness == new Thickness(0)
@@ -574,12 +581,12 @@ internal static class UiIntegrationTest
                 "the Action header close control is a flat glyph with no enclosing border or filled button surface");
             Check(window.ActionPaletteSearchBox.ActualHeight >= window.ActionPaletteSearchBox.MinHeight
                 && Math.Abs(window.ActionPaletteSearchBox.ActualHeight - 40) <= .1
-                && Math.Abs(window.ActionPaletteCategoryBox.ActualWidth - window.ActionPaletteSearchBox.ActualWidth) <= 1.1
+                && Math.Abs(window.ActionPaletteSearchBox.ActualWidth - window.ActionPaletteCategoryBox.ActualWidth) <= 1.1
                 && window.ActionPaletteResultCount.Visibility == Visibility.Collapsed
                 && window.ActionPaletteCategoryBox.MaxDropDownHeight >= 500,
-                "the Action search border is not clipped and its full-width category menu uses a tall minimal-scroll popup without a redundant count");
+                "the Action search and compact category dropdown share one full-width edge");
             var categoryOptions = window.ActionPaletteCategoryBox.Items.Cast<MainWindow.ActionPaletteCategoryOption>().ToArray();
-            Check(categoryOptions[0] is { Name: "おすすめ", Section: "ステータス", StartsSection: true, ShowDivider: false }
+            Check(categoryOptions[0] is { Name: "お気に入り", Section: "ステータス", Tone: "favorite", StartsSection: true, ShowDivider: false }
                 && categoryOptions.First(option => option.Name == "パス・文字列") is { Section: "作成", StartsSection: true, ShowDivider: true }
                 && categoryOptions.First(option => option.Name == "キー") is { Section: "キー入力", StartsSection: true, ShowDivider: true }
                 && categoryOptions.First(option => option.Name == "Windows") is { Section: "機能", StartsSection: true, ShowDivider: true }
@@ -587,21 +594,91 @@ internal static class UiIntegrationTest
                 && categoryOptions.Where(option => option.Name is "キー" or "マウス" or "ショートカット").All(option => option.Section == "キー入力")
                 && categoryOptions.Where(option => option.Name is "Windows" or "Windowsアプリ" or "インストールアプリ" or "プロファイル" or "マクロ" or "ジェスチャー" or "Deckパネル" or "オーバーレイ" or "モニター").All(option => option.Section == "機能")
                 && categoryOptions.Count(option => option.StartsSection) == 5
-                && categoryOptions.All(option => !string.IsNullOrWhiteSpace(option.Glyph)),
-                $"the shared Action popup uses the ordered status, input, feature, and shortcut sections in both main and Deck editors ({string.Join(", ", categoryOptions.Select(option => $"{option.Section}:{option.Name}"))})");
-            string[] recommendedNames = window.VisibleActionPaletteActionsForTest.Select(action => action.Name).ToArray();
-            string[] recommendedValues = window.VisibleActionPaletteActionsForTest.Select(action => action.Value).ToArray();
-            Check(recommendedNames.SequenceEqual(["コピー", "貼り付け", "切り取り", "元に戻す", "やり直す", "保存", "すべて選択", "検索", "範囲をスクリーンショット", "エクスプローラーを開く"])
-                && recommendedValues.SequenceEqual(["Ctrl+C", "Ctrl+V", "Ctrl+X", "Ctrl+Z", "Ctrl+Y", "Ctrl+S", "Ctrl+A", "Ctrl+F", "Win+Shift+S", "Win+E"]),
-                "the Action library opens on a concise recommended set with familiar names and exact shortcut values");
-            CaptureForReview(window, "action-palette-recommended.png");
+                && categoryOptions.All(option => !string.IsNullOrWhiteSpace(option.Glyph) && !string.IsNullOrWhiteSpace(option.Tone))
+                && categoryOptions.First(option => option.Name == "キー").Tone == "key"
+                && categoryOptions.First(option => option.Name == "プロファイル").Tone == "profile"
+                && categoryOptions.First(option => option.Name == "マクロ").Tone == "macro"
+                && categoryOptions.First(option => option.Name == "インストールアプリ").Tone == "launch",
+                $"the shared Action category list uses the ordered status, input, feature, and shortcut sections in both main and Deck editors ({string.Join(", ", categoryOptions.Select(option => $"{option.Section}:{option.Name}"))})");
+            window.ActionPaletteCategoryBox.ApplyTemplate();
+            AppThemeMode categoryCaptureTheme = ThemeService.CurrentMode;
+            ThemeService.Apply(AppThemeMode.Dark);
+            Pump(window);
+            window.ActionPaletteCategoryBox.IsDropDownOpen = true;
+            window.UpdateLayout();
+            var favoriteCategoryContainer = (ComboBoxItem)window.ActionPaletteCategoryBox.ItemContainerGenerator.ContainerFromItem(categoryOptions[0])!;
+            favoriteCategoryContainer.ApplyTemplate();
+            var selectedCategoryCheck = (TextBlock)favoriteCategoryContainer.Template.FindName("CategorySelectedCheck", favoriteCategoryContainer);
+            Check(window.ActionPaletteCategoryBox is System.Windows.Controls.ComboBox
+                && Descendants<System.Windows.Controls.Primitives.Popup>(window.ActionPaletteCategoryBox).Any()
+                && selectedCategoryCheck.Opacity == 1,
+                "the Action categories use the compact grouped dropdown with a clear selected check mark");
+            Check(CaptureElementForReview(window.ActionPaletteCategoryBox, "action-category-dropdown.png"), "the Action category dropdown screenshot is saved");
+            window.ActionPaletteCategoryBox.IsDropDownOpen = false;
+            ThemeService.Apply(categoryCaptureTheme);
+            Pump(window);
+            window.SelectActionPalettePopupItemForTest("すべて");
+            Pump(window);
+            var favoriteCopyAction = window.ActionPaletteActionsForTest.First(action => action.Name == "コピー" && action.Value == "Ctrl+C");
+            object favoriteCopyItem = window.ActionPaletteList.Items.Cast<object>().First(item =>
+                item.GetType().GetProperty("Action")?.GetValue(item) is CatalogAction action
+                && action.Kind == favoriteCopyAction.Kind
+                && action.Value == favoriteCopyAction.Value);
+            window.ActionPaletteList.ScrollIntoView(favoriteCopyItem);
+            window.UpdateLayout();
+            Pump(window);
+            var favoriteCopyContainer = (ListBoxItem)window.ActionPaletteList.ItemContainerGenerator.ContainerFromItem(favoriteCopyItem)!;
+            var favoriteCopyStar = Descendants<System.Windows.Controls.Button>(favoriteCopyContainer).Single(button => button.Name == "ActionFavoriteButton");
+            window.ActionPaletteList.ApplyTemplate();
+            var actionPaletteScrollViewer = (ScrollViewer)window.ActionPaletteList.Template.FindName("PART_ScrollViewer", window.ActionPaletteList);
+            actionPaletteScrollViewer.ApplyTemplate();
+            var actionPaletteScrollBar = (System.Windows.Controls.Primitives.ScrollBar)actionPaletteScrollViewer.Template.FindName("PART_VerticalScrollBar", actionPaletteScrollViewer);
+            double favoriteStarRight = favoriteCopyStar.TranslatePoint(new System.Windows.Point(favoriteCopyStar.ActualWidth, 0), favoriteCopyContainer).X;
+            double actionCardLeft = favoriteCopyContainer.TranslatePoint(new System.Windows.Point(), window.ActionPalettePane).X;
+            double actionCardRight = favoriteCopyContainer.TranslatePoint(new System.Windows.Point(favoriteCopyContainer.ActualWidth, 0), window.ActionPalettePane).X;
+            double actionScrollBarLeft = actionPaletteScrollBar.TranslatePoint(new System.Windows.Point(), window.ActionPalettePane).X;
+            double actionScrollBarRight = actionPaletteScrollBar.TranslatePoint(new System.Windows.Point(actionPaletteScrollBar.ActualWidth, 0), window.ActionPalettePane).X;
+            Check(favoriteCopyStar.Content?.ToString() == "☆"
+                && favoriteCopyContainer.ActualWidth - favoriteStarRight is >= 9 and <= 14
+                && actionScrollBarLeft >= actionCardRight - .1
+                && !Descendants<TextBlock>(favoriteCopyContainer).Any(text => text.Text == "⋮⋮"),
+                $"every Action row ends with its favorite star and no obsolete drag dots (row={favoriteCopyContainer.ActualWidth:F1}, categories={window.ActionPaletteCategoryBox.ActualWidth:F1}, list={window.ActionPaletteList.ActualWidth:F1}, viewer={actionPaletteScrollViewer.ActualWidth:F1}, card={actionCardLeft:F1}..{actionCardRight:F1}, scroll={actionScrollBarLeft:F1}..{actionScrollBarRight:F1}, star gap={favoriteCopyContainer.ActualWidth - favoriteStarRight:F1})");
+            favoriteCopyStar.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var favoriteCandidates = new[]
+            {
+                window.ActionPaletteActionsForTest.Single(action => action.ValueRequest == CatalogActionValueRequest.Text),
+                window.ActionPaletteActionsForTest.Single(action => action.ValueRequest == CatalogActionValueRequest.Launch),
+                window.ActionPaletteActionsForTest.First(action => action is { Name: "Sample App", Kind: ActionKind.Launch }),
+                window.ActionPaletteActionsForTest.First(action => action is { Kind: ActionKind.Macro, Value: "お気に入りテスト" }),
+                window.ActionPaletteActionsForTest.First(action => action.Kind == ActionKind.Gesture),
+                window.ActionPaletteActionsForTest.First(action => action.Kind == ActionKind.Shortcut && OverlayService.IsOverlayAction(action.Value))
+            };
+            foreach (var candidate in favoriteCandidates)
+                window.ToggleActionPaletteFavoriteForTest(candidate);
+            window.SelectActionPalettePopupItemForTest("お気に入り");
+            Pump(window);
+            var favoriteActions = window.VisibleActionPaletteActionsForTest.ToArray();
+            Check(favoriteActions.Any(action => action.Value == "Ctrl+C")
+                && favoriteActions.Any(action => action is { Kind: ActionKind.Text, ValueRequest: CatalogActionValueRequest.Text })
+                && favoriteActions.Any(action => action is { Kind: ActionKind.Launch, ValueRequest: CatalogActionValueRequest.Launch })
+                && favoriteActions.Any(action => action is { Name: "Sample App", Kind: ActionKind.Launch })
+                && favoriteActions.Any(action => action.Kind == ActionKind.Macro)
+                && favoriteActions.Any(action => action.Kind == ActionKind.Gesture)
+                && favoriteActions.Any(action => action.Kind == ActionKind.Shortcut && OverlayService.IsOverlayAction(action.Value))
+                && window.ConfigForTest.ActionPaletteFavorites.Count >= 7,
+                "favorites contain only user-starred shortcuts, text, paths, installed apps, macros, gestures, and overlays, all as the original draggable Actions");
+            CaptureForReview(window, "action-palette-favorites.png");
             var actionPaletteTemplate = (DataTemplate)window.Resources["ActionPaletteItemTemplate"];
             var actionPaletteTemplateRoot = (FrameworkElement)actionPaletteTemplate.LoadContent();
             var actionPaletteGlyph = (TextBlock)actionPaletteTemplateRoot.FindName("ActionPaletteItemGlyph");
+            var actionPaletteTemplateGrid = (Grid)((Grid)actionPaletteTemplateRoot).Children[0];
             Check(actionPaletteGlyph.FontFamily.Source.StartsWith("Segoe UI Variable", StringComparison.Ordinal)
                 && window.ActionPaletteSearchBox.TextAlignment == TextAlignment.Left
-                && window.ActionPaletteSearchBox.FlowDirection == System.Windows.FlowDirection.LeftToRight,
-                "Action rows render both literal letters and icon-font glyphs without tofu while search input always begins at the left edge");
+                && window.ActionPaletteSearchBox.FlowDirection == System.Windows.FlowDirection.LeftToRight
+                && actionPaletteTemplateGrid.ColumnDefinitions.Count == 3
+                && !Descendants<TextBlock>(actionPaletteTemplateRoot).Any(text => text.Text is "選択・検索" or "⋮⋮"),
+                "Action rows render both literal letters and icon-font glyphs without tofu, omit the obsolete six-dot handle, and keep search input at the left edge");
             Check(MainWindow.ActionPaletteItemDetail(new CatalogAction("編集・クリップボード", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), "入力・編集") == "Ctrl + C"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("画面キャプチャ", "画面全体をスクリーンショット", "", ActionKind.Key, "PrintScreen"), "Windows") == "PrintScreen"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("アプリ", "Sample App", "", ActionKind.Launch, "sample.exe"), "アプリ") == "アプリ"
@@ -663,6 +740,9 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.ActionPaletteCustomShortcutButton.Visibility == Visibility.Visible,
                 "the Shortcut category and its first-shortcut creation entry remain reachable before any custom shortcut exists");
+            Check(Math.Abs(window.ActionPaletteCustomShortcutButton.ActualHeight - 36) < .1
+                && Math.Abs(window.ActionPaletteCustomShortcutButton.ActualWidth - window.ActionPaletteList.ActualWidth) <= 1.1,
+                "the custom shortcut creator keeps the compact pre-0.1.367 row size");
             window.AddActionPaletteShortcutForTest("Ctrl+Alt+K");
             Pump(window);
             Check(window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "ショートカット"
@@ -677,11 +757,36 @@ internal static class UiIntegrationTest
             }
             Check(window.IsActionPaletteOpenForTest
                 && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == mainActionCategories[^1],
-                "choosing every Action category from the detached ComboBox popup keeps the shared Action library open");
+                "choosing every category from the permanent category list keeps the shared Action library open");
             window.SelectActionPalettePopupItemForTest(mainActionCategories[0]);
             Check(Math.Abs(MainWindow.ActionPaletteDragPreviewWidth(240) - 196.8) < .1
                 && Math.Abs(MainWindow.ActionPaletteDragPreviewHeight - 42) < .1,
                 "action drags use a compact whole-row preview instead of an ambiguous icon-only ghost");
+            var previewWorkArea = new Rect(0, 0, 960, 540);
+            var previewTarget = new Rect(390, 210, 96, 92);
+            var previewCursor = new System.Windows.Point(438, 279);
+            var previewPlacement = DeckDragPreviewWindow.CalculateAvoidingPlacement(
+                previewCursor, new System.Windows.Size(220, 42), previewWorkArea, previewTarget);
+            Rect[] edgeTargets =
+            [
+                new(0, 210, 96, 92),
+                new(864, 210, 96, 92),
+                new(390, 0, 96, 92),
+                new(390, 448, 96, 92),
+                new(0, 0, 96, 92),
+                new(864, 448, 96, 92)
+            ];
+            bool everyEdgeAvoidsTarget = edgeTargets.All(target =>
+            {
+                var cursor = new System.Windows.Point(target.Left + target.Width / 2, target.Top + target.Height / 2);
+                var placement = DeckDragPreviewWindow.CalculateAvoidingPlacement(
+                    cursor, new System.Windows.Size(220, 42), previewWorkArea, target);
+                return !placement.IntersectsWith(target) && previewWorkArea.Contains(placement);
+            });
+            Check(!previewPlacement.IntersectsWith(previewTarget)
+                && previewWorkArea.Contains(previewPlacement)
+                && everyEdgeAvoidsTarget,
+                "the Action drag card stays inside the monitor and moves to another side instead of covering its drop key at the center, every edge, or a corner");
             Check(DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.Volume)
                 && DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.Brightness)
                 && !DeckPanelOverlayWindow.SupportsMonitorWheelAdjustment(DeckMonitorInteraction.TaskManager)
@@ -770,7 +875,7 @@ internal static class UiIntegrationTest
             var previousF24 = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F24").Select(mapping => mapping.Copy()).ToArray();
             var copyAction = window.ActionPaletteActionsForTest.First(action => action.Name == "コピー" && action.Value == "Ctrl+C");
             bool paletteApplied = window.ApplyPaletteActionForTest(copyAction, "F24", "F24");
-            var f24Button = window.VisualInputButtonsForTest.First(button => string.Equals(button.Tag?.ToString(), "F24", StringComparison.OrdinalIgnoreCase));
+            var f24Button = window.VisualInputButtonsForTest.First(button => button.IsVisible && string.Equals(button.Tag?.ToString(), "F24", StringComparison.OrdinalIgnoreCase));
             bool paletteDropMotionStarted = window.HasPaletteDropMotionForTest(f24Button);
             bool paletteDropWaveCentered = window.HasCenteredPaletteDropWaveForTest(f24Button);
             PumpFor(TimeSpan.FromMilliseconds(35));
@@ -784,6 +889,11 @@ internal static class UiIntegrationTest
                 && paletteDropWaveCentered
                 && MainWindow.ActionDropWaveDurationMs == 500,
                 "a palette drop replaces the target, expands a clearly readable half-second clipped accent wave from its exact center, and offers undo for five seconds");
+            window.SelectActionPalettePopupItemForTest("最近使ったもの");
+            Pump(window);
+            Check(window.VisibleActionPaletteActionsForTest.FirstOrDefault() is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" }
+                && window.ConfigForTest.ActionPaletteRecentActions.FirstOrDefault() == "Shortcut:Ctrl+C",
+                "a successful drag assignment places that concrete Action first in the shared recent list without changing its drag behavior");
             window.ApplyUiAnimationsForTest(false);
             Check(window.InputTransformStableForTest(f24Button)
                 && window.PaletteDropWaveSettledForTest(f24Button),
@@ -814,6 +924,157 @@ internal static class UiIntegrationTest
                 && restoredF24.Zip(previousF24).All(pair => pair.First.Kind == pair.Second.Kind && pair.First.Value == pair.Second.Value && pair.First.LongPressKind == pair.Second.LongPressKind && pair.First.LongPressValue == pair.Second.LongPressValue)
                 && window.ActionPaletteUndoBar.Visibility == Visibility.Collapsed,
                 "palette undo restores the complete previous action instead of merely clearing the replacement");
+            var dualAssignmentPreviousF24 = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F24").Select(mapping => mapping.Copy()).ToArray();
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "F24");
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "F24", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" });
+            window.ColorButtonsForTest();
+            Pump(window);
+            f24Button = window.VisualInputButtonsForTest.First(button => button.IsVisible
+                && PresentationSource.FromVisual(button) != null
+                && string.Equals(button.Tag?.ToString(), "F24", StringComparison.OrdinalIgnoreCase));
+            var enterAction = window.ActionPaletteActionsForTest.First(action => action.Kind == ActionKind.Key && action.Value == "Enter");
+            double dualKeyWidth = f24Button.ActualWidth;
+            double dualKeyHeight = f24Button.ActualHeight;
+            window.ShowActionPaletteDragPreviewForTest();
+            window.SetPaletteAssignmentDropTargetForTest(f24Button, enterAction, longPress: false);
+            f24Button.ApplyTemplate();
+            var slotOverlay = (UIElement)f24Button.Template.FindName("AssignmentSlotOverlay", f24Button)!;
+            var shortDropZone = (Border)f24Button.Template.FindName("ShortPressDropZone", f24Button)!;
+            var longDropZone = (Border)f24Button.Template.FindName("LongPressDropZone", f24Button)!;
+            var shortDropGlow = (Border)f24Button.Template.FindName("ShortPressDropGlow", f24Button)!;
+            var longDropGlow = (Border)f24Button.Template.FindName("LongPressDropGlow", f24Button)!;
+            var shortDropLabel = (TextBlock)f24Button.Template.FindName("ShortPressDropLabel", f24Button)!;
+            var longDropLabel = (TextBlock)f24Button.Template.FindName("LongPressDropLabel", f24Button)!;
+            var activeDropScale = UiMotionService.MutableScale(f24Button);
+            Check(slotOverlay.Opacity == 1
+                && shortDropZone.Background is SolidColorBrush { Color.A: 0 }
+                && longDropZone.Background is SolidColorBrush { Color.A: 0 }
+                && slotOverlay.ClipToBounds && shortDropZone.ClipToBounds && longDropZone.ClipToBounds
+                && shortDropLabel.Text == "TAP" && longDropLabel.Text == "HOLD"
+                && shortDropGlow.Opacity > .7 && longDropGlow.Opacity == 0
+                && Math.Abs(activeDropScale.ScaleX - MainWindow.AssignmentDropTargetScale) < .001
+                && Math.Abs(activeDropScale.ScaleY - MainWindow.AssignmentDropTargetScale) < .001
+                && (activeDropScale.ScaleX - 1) * dualKeyWidth / 2 < dualKeyWidth * .1,
+                "an Action hovering even a compact key reveals label-only TAP/HOLD halves with a soft selected glow and enlarges the hit target without hiding a neighboring key");
+            window.SetPaletteAssignmentDropTargetForTest(f24Button, enterAction, longPress: true);
+            var (splitPreviewBounds, splitTargetBounds) = window.PositionActionPaletteDragPreviewForTest(f24Button);
+            CaptureForReview(window, "action-drop-split-long.png");
+            f24Button.ApplyTemplate();
+            slotOverlay = (UIElement)f24Button.Template.FindName("AssignmentSlotOverlay", f24Button)!;
+            longDropZone = (Border)f24Button.Template.FindName("LongPressDropZone", f24Button)!;
+            shortDropGlow = (Border)f24Button.Template.FindName("ShortPressDropGlow", f24Button)!;
+            longDropGlow = (Border)f24Button.Template.FindName("LongPressDropGlow", f24Button)!;
+            Check(shortDropGlow.Opacity == 0 && longDropGlow.Opacity > .7
+                && slotOverlay.Visibility == Visibility.Visible
+                && Math.Abs(f24Button.ActualWidth - dualKeyWidth) < .001
+                && Math.Abs(f24Button.ActualHeight - dualKeyHeight) < .001
+                && !splitPreviewBounds.IsEmpty && !splitTargetBounds.IsEmpty
+                && !splitPreviewBounds.IntersectsWith(splitTargetBounds),
+                $"moving through the same key highlights its lower long-press half without changing hit-test geometry, while the Action card stays completely outside the key (preview={splitPreviewBounds}, target={splitTargetBounds}, overlay={slotOverlay.Visibility}, size={f24Button.ActualWidth:F1}x{f24Button.ActualHeight:F1})");
+            window.DismissActionPaletteDragPreviewForTest();
+            window.ClearAssignmentDropTargetForTest();
+            var jisEnterDropTarget = window.VisualInputButtonsForTest.First(button => button.IsVisible
+                && Equals(button.Tag, "Enter")
+                && Equals(button.Style, window.FindResource("JisEnterButton")));
+            window.SetPaletteAssignmentDropTargetForTest(jisEnterDropTarget, enterAction, longPress: true);
+            jisEnterDropTarget.ApplyTemplate();
+            var enterDropOutline = (System.Windows.Shapes.Path)jisEnterDropTarget.Template.FindName("AssignmentSlotOutline", jisEnterDropTarget)!;
+            var enterTapLabel = (TextBlock)jisEnterDropTarget.Template.FindName("ShortPressDropLabel", jisEnterDropTarget)!;
+            var enterHoldLabel = (TextBlock)jisEnterDropTarget.Template.FindName("LongPressDropLabel", jisEnterDropTarget)!;
+            CaptureForReview(window, "action-drop-jis-enter.png");
+            Check(enterDropOutline.Stroke is SolidColorBrush enterOutlineBrush && enterOutlineBrush.Color == ThemeService.Color("AccentBrush")
+                && Math.Abs(enterDropOutline.StrokeThickness - 3) < .001
+                && enterDropOutline.StrokeLineJoin == PenLineJoin.Round
+                && Math.Abs(enterDropOutline.Data.Bounds.Width - 160) < .1
+                && Math.Abs(enterDropOutline.Data.Bounds.Height - 106.86) < .01
+                && Math.Abs(enterTapLabel.FontSize - shortDropLabel.FontSize) < .001
+                && Math.Abs(enterHoldLabel.FontSize - longDropLabel.FontSize) < .001,
+                "the JIS Enter preview redraws its complete rounded outline while TAP and HOLD retain the same fixed type size as every key");
+            window.ClearAssignmentDropTargetForTest();
+            window.SetPaletteAssignmentDropTargetForTest(window.MouseLeftVisual, enterAction, longPress: false);
+            Check(System.Windows.Controls.Panel.GetZIndex(window.MouseHost) == 50 && window.MouseLeftVisual.Opacity == 1,
+                "an enlarged mouse drop target raises its complete opaque host above the mouse section title");
+            CaptureForReview(window, "action-drop-mouse-zorder.png");
+            window.ClearAssignmentDropTargetForTest();
+            Check(System.Windows.Controls.Panel.GetZIndex(window.MouseHost) == 1,
+                "clearing a mouse drop target restores the mouse host's normal stacking order");
+            bool longPaletteApplied = window.ApplyPaletteActionForTest(enterAction, "F24", "F24", longPress: true);
+            Pump(window);
+            var dualF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            f24Button = window.VisualInputButtonsForTest.First(button => button.IsVisible && string.Equals(button.Tag?.ToString(), "F24", StringComparison.OrdinalIgnoreCase));
+            f24Button.ApplyTemplate();
+            var longBadge = (Border)f24Button.Template.FindName("LongPressBadge", f24Button)!;
+            var longBadgeText = (TextBlock)f24Button.Template.FindName("LongPressBadgeText", f24Button)!;
+            CaptureForReview(window, "dual-assignment-key.png");
+            f24Button.ApplyTemplate();
+            longBadge = (Border)f24Button.Template.FindName("LongPressBadge", f24Button)!;
+            longBadgeText = (TextBlock)f24Button.Template.FindName("LongPressBadgeText", f24Button)!;
+            var assignmentToolTip = (System.Windows.Controls.ToolTip)f24Button.ToolTip!;
+            var assignmentToolTipText = Descendants<TextBlock>((DependencyObject)assignmentToolTip.Content).Select(text => text.Text).ToArray();
+            assignmentToolTip.IsOpen = true;
+            Pump(window);
+            CaptureForReview(window, "assignment-hover-card.png");
+            assignmentToolTip.IsOpen = false;
+            Check(longPaletteApplied
+                && dualF24 is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && f24Button.Background is SolidColorBrush dualShortBrush && dualShortBrush.Color == MainWindow.AssignmentColorFor(new Mapping { Kind = ActionKind.Shortcut, Value = "Ctrl+C" })
+                && MainWindow.GetHasDualPressAssignment(f24Button)
+                && longBadge.Visibility == Visibility.Visible && longBadge.Background is SolidColorBrush dualLongBrush && dualLongBrush.Color == MainWindow.AssignmentColorFor(new Mapping { Kind = ActionKind.Key, Value = "Enter" })
+                && longBadgeText.Text == "HOLD"
+                && f24Button.Template.FindName("LongPressBand", f24Button) == null
+                && f24Button.Template.FindName("LongPressStateIcon", f24Button) == null
+                && assignmentToolTip.Style == window.FindResource("AssignmentHoverToolTipStyle")
+                && assignmentToolTip.PlacementTarget == f24Button
+                && assignmentToolTipText.Contains("TAP") && assignmentToolTipText.Contains("HOLD") && assignmentToolTipText.Contains("コピー") && assignmentToolTipText.Contains("Enter")
+                && !assignmentToolTipText.Any(text => text.Contains("アクション：", StringComparison.Ordinal) || text.Contains("実行内容：", StringComparison.Ordinal)),
+                $"dropping on the lower half preserves the short action and shows only a colored HOLD badge plus a rounded two-row Action card (applied={longPaletteApplied}, dual={MainWindow.GetHasDualPressAssignment(f24Button)}, long={MainWindow.GetHasLongPressAssignment(f24Button)}, badge={longBadge.Visibility}/{longBadge.Background}, face={f24Button.Background})");
+            window.ClickVisualInputForTest("F24");
+            Pump(window);
+            Check(window.AssignmentTapFavoriteButton.Visibility == Visibility.Visible
+                && window.AssignmentHoldFavoriteButton.Visibility == Visibility.Visible
+                && window.AssignmentTapCard.Cursor == System.Windows.Input.Cursors.Hand
+                && window.AssignmentHoldCard.Cursor == System.Windows.Input.Cursors.Hand,
+                "configured TAP and HOLD summaries expose independent draggable cards and favorite stars");
+            var starPress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = window.AssignmentTapFavoriteButton
+            };
+            window.AssignmentTapFavoriteButton.RaiseEvent(starPress);
+            Check(!window.IsAssignmentActionDragArmedForTest,
+                "pressing a summary favorite star never arms the Action drag gesture");
+            var previousF23BeforeMove = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F23").Select(mapping => mapping.Copy()).ToArray();
+            bool summaryActionMoved = window.MoveAssignedActionForTest("F24", sourceLongPress: false, targetInput: "F23", targetKey: "F23", targetLongPress: true);
+            var movedSourceF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            var movedTargetF23 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F23");
+            Check(summaryActionMoved
+                && !MainWindow.HasConfiguredShortAction(movedSourceF24)
+                && movedSourceF24 is { LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && movedTargetF23 is { LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+C" },
+                "dragging a summary TAP Action to another key's HOLD moves only that slot after the valid drop succeeds");
+            window.UndoPaletteActionForTest();
+            var restoredMoveF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            var restoredMoveF23 = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F23").ToArray();
+            Check(restoredMoveF24 is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && restoredMoveF23.Length == previousF23BeforeMove.Length
+                && restoredMoveF23.Zip(previousF23BeforeMove).All(pair => pair.First.Kind == pair.Second.Kind && pair.First.Value == pair.Second.Value && pair.First.LongPressKind == pair.Second.LongPressKind && pair.First.LongPressValue == pair.Second.LongPressValue),
+                "undo restores both the source and overwritten destination after moving a summary Action");
+            var normalAlphabetButton = window.VisualInputButtonsForTest.First(button => Equals(button.Tag, "A"));
+            window.SetPaletteAssignmentDropTargetForTest(normalAlphabetButton, enterAction, longPress: true);
+            normalAlphabetButton.ApplyTemplate();
+            var unavailableLongMark = (UIElement)normalAlphabetButton.Template.FindName("LongPressDropUnavailableMark", normalAlphabetButton)!;
+            var unavailableLongZone = (Border)normalAlphabetButton.Template.FindName("LongPressDropZone", normalAlphabetButton)!;
+            var unavailableLongLabel = (TextBlock)normalAlphabetButton.Template.FindName("LongPressDropLabel", normalAlphabetButton)!;
+            Check(unavailableLongMark.Opacity == 1
+                && unavailableLongZone.Background is SolidColorBrush { Color.A: 0 }
+                && unavailableLongLabel.Opacity < .3,
+                "a key that cannot execute long press keeps its lower half disabled instead of accepting a fake assignment");
+            window.ClearAssignmentDropTargetForTest();
+            window.UndoPaletteActionForTest();
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "F24");
+            window.CurrentProfileForTest.Mappings.AddRange(dualAssignmentPreviousF24.Select(mapping => mapping.Copy()));
+            window.ColorButtonsForTest();
+            Pump(window);
             var textTemplateAction = window.ActionPaletteActionsForTest.Single(action => action.ValueRequest == CatalogActionValueRequest.Text);
             var launchTemplateAction = window.ActionPaletteActionsForTest.Single(action => action.ValueRequest == CatalogActionValueRequest.Launch);
             var previousF23 = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F23").Select(mapping => mapping.Copy()).ToArray();
@@ -1307,35 +1568,27 @@ internal static class UiIntegrationTest
             window.MultiSelectToggle.IsChecked = false;
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            var deckActionLabels = window.KindBox.Items.Cast<object>().Select(x => x.GetType().GetProperty("Label")?.GetValue(x)?.ToString()).ToArray();
-            var deckMonitorMenu = window.CreateDeckMonitorPickerMenu(window.KindBox);
-            Check(window.DeckKeypadInputButton.Visibility == Visibility.Visible && window.ActionPaletteButton.Visibility == Visibility.Visible && window.LongPressExpander.Visibility == Visibility.Collapsed && window.KindBox.Items.Cast<object>().All(x => !x.ToString()!.Contains("Gesture", StringComparison.Ordinal)) && deckActionLabels.Contains("Deckパネル") && deckActionLabels.Contains("モニター") && deckActionLabels.Contains("キーパッドから入力") && !deckActionLabels.Contains("無効化")
-                && deckMonitorMenu.Items.Count == DeckMonitorCatalog.Items.Count,
-                "Deck editing exposes the same complete monitor category in the direct action menu while keeping it out of long press");
-            var directMonitorItem = (MenuItem)deckMonitorMenu.Items[0];
-            directMonitorItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Visible
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
+                "Deck selection retains the complete pre-0.1.367 assignment editor");
+            window.OpenActionPaletteForTest();
             Pump(window);
-            Check(standardDeck.Mappings.LastOrDefault(mapping => mapping.Input == "Deck+01")?.DeckMonitor == DeckMonitorCatalog.Items[0].Id,
-                "choosing a monitor from the direct Deck-only category assigns the same live monitor as a palette drop");
-            window.UndoPaletteActionForTest();
+            Check(window.ActionPaletteContextText.Text.Contains("Deck + 01", StringComparison.Ordinal)
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == DeckMonitorCatalog.Category),
+                "Deck opens the same Action library with its selected button as the drag destination and retains Deck-only monitors");
+            window.CloseActionPaletteForTest();
             Pump(window);
-            CaptureForReview(window, "deck-monitor-direct-category.png");
-            bool deckDoubleClickOpenedActionPicker = false;
-            window.ActionPickerRequestedForTest = (longPress, category) =>
-            {
-                deckDoubleClickOpenedActionPicker = !longPress;
-                return null;
-            };
             deckButtons[0].RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left) { RoutedEvent = System.Windows.Controls.Control.MouseDoubleClickEvent });
             Pump(window);
-            window.ActionPickerRequestedForTest = null;
             deckButtons[0].ApplyTemplate();
             var deckSingleBadge = (UIElement)deckButtons[0].Template.FindName("MultiSelectBadge", deckButtons[0])!;
-            Check(deckDoubleClickOpenedActionPicker && window.InputName.Text == "Deck+01" && !window.ValueBox.IsKeyboardFocusWithin
+            Check(window.IsActionPaletteOpenForTest && window.InputName.Text == "Deck+01" && !window.ValueBox.IsKeyboardFocusWithin
+                && window.ActionPaletteContextText.Text.Contains("Deck + 01", StringComparison.Ordinal)
                 && deckSingleBadge.Opacity == 0 && deckButtons[0].Opacity == 1 && Math.Abs(deckButtons[1].Opacity - MainWindow.SelectionDimOpacity) < .01
                 && deckButtons[0].BorderBrush is SolidColorBrush deckSingleBorder && deckSingleBorder.Color == ThemeService.Color("AccentBrush")
                 && deckButtons[0].BorderThickness == new Thickness(2),
-                "double-clicking a Deck slot keeps only that slot bright with the shared selection outline, dims its peers without badges, and opens the same action picker as Shortcut");
+                "double-clicking a Deck slot keeps only that slot bright and opens the same draggable Action library used by the keyboard");
+            window.CloseActionPaletteForTest();
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             var deckSwatches = window.DeckColorSwatches.Children.OfType<System.Windows.Controls.Button>().ToArray();
             var deckSwatchRows = deckSwatches.Select(swatch => Math.Round(swatch.TranslatePoint(new System.Windows.Point(), window.DeckColorSwatches).Y)).Distinct().Count();
@@ -1675,7 +1928,7 @@ internal static class UiIntegrationTest
             Check(videoPreviewsBeforeHide == 1 && videoPreviewsAfterHide == 0 && deckOverlay.VideoPreviewCountForTest == 1, "hiding the cached Deck releases its video player and the preview remains wired after reopening");
             deckOverlay.CapturePanelMouseForTest();
             deckOverlay.RequestHideForReuse();
-            PumpFor(TimeSpan.FromMilliseconds(55));
+            PumpFor(TimeSpan.FromMilliseconds(35));
             Check(deckOverlay.IsVisible
                 && deckOverlay.IsPresentationHiding
                 && !deckOverlay.OwnsMouseCaptureForTest
@@ -1684,7 +1937,7 @@ internal static class UiIntegrationTest
                 && deckOverlay.DepartureUsesScaleFadeOnlyForTest
                 && deckOverlay.PresentationScaleForTest is < 1 and > .96
                 && Math.Abs(deckOverlay.PresentationOffsetForTest) < .001,
-                "Deck departure is a short centered scale-and-fade that releases capture and disables interaction without positional movement");
+                $"Deck departure is a short centered scale-and-fade that releases capture and disables interaction without positional movement (visible={deckOverlay.IsVisible}, hiding={deckOverlay.IsPresentationHiding}, capture={deckOverlay.OwnsMouseCaptureForTest}, hit={deckOverlay.PresentationContentHitTestVisibleForTest}, motion={deckOverlay.PresentationMotionActiveForTest}, scaleOnly={deckOverlay.DepartureUsesScaleFadeOnlyForTest}, scale={deckOverlay.PresentationScaleForTest:F3}, offset={deckOverlay.PresentationOffsetForTest:F3})");
             deckOverlay.PrepareForShow();
             PumpFor(TimeSpan.FromMilliseconds(260));
             Check(deckOverlay.IsVisible
@@ -1702,7 +1955,7 @@ internal static class UiIntegrationTest
                 "Deck fade completes within its watchdog and leaves no cached visible, captured, or transparent hit surface");
             deckOverlay.PrepareForShow();
             deckOverlay.Show();
-            PumpFor(TimeSpan.FromMilliseconds(260));
+            PumpFor(TimeSpan.FromMilliseconds(320));
             Check(deckOverlay.IsVisible
                 && !deckOverlay.PresentationMotionActiveForTest
                 && Math.Abs(deckOverlay.PresentationOffsetForTest) < .001,
@@ -1767,10 +2020,11 @@ internal static class UiIntegrationTest
                 "Deck overlay monitor sliders and thumbs keep mouse capture instead of starting a panel drag");
             var cornerHits = new[] { new System.Windows.Point(1, 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, 1), new System.Windows.Point(1, deckOverlay.ActualHeight - 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, deckOverlay.ActualHeight - 1) }.Select(deckOverlay.ResizeHitTestForTest).ToArray();
             Check(deckOverlay.ResizeMode == ResizeMode.CanResize && cornerHits.All(hit => hit != 0) && cornerHits.Distinct().Count() == 4 && deckOverlay.ResizeHitTestForTest(new System.Windows.Point(deckOverlay.ActualWidth / 2, deckOverlay.ActualHeight / 2)) == 0, "all four Deck overlay corners expose distinct resize hit zones without consuming the center");
-            Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled && x.Background is SolidColorBrush && !Descendants<Border>(x).Any(border => border.Background is LinearGradientBrush)) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.AllowsTransparency && deckOverlay.Background is SolidColorBrush { Color.A: 255 } && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck overlay uses an opaque rounded native window, never an invisible transparent hit surface, while retaining flat button faces and no-activate behavior");
+            Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled && Math.Abs(x.Opacity - 1) < .001 && x.Background is SolidColorBrush && !Descendants<Border>(x).Any(border => border.Background is LinearGradientBrush)) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.AllowsTransparency && deckOverlay.Background is SolidColorBrush { Color.A: > 0 } && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck retains the shared pre-0.1.367 panel opacity inside a non-layered no-activate native window");
             var overlayHoverButton = deckOverlay.DeckButtons[0];
             overlayHoverButton.ApplyTemplate();
             var overlayHoverRoot = (FrameworkElement)overlayHoverButton.Template.FindName("HoverRoot", overlayHoverButton)!;
+            var overlayHoverScale = UiMotionService.MutableScale(overlayHoverRoot);
             double overlayHoverWidth = overlayHoverButton.ActualWidth;
             double overlayHoverHeight = overlayHoverButton.ActualHeight;
             for (int cycle = 0; cycle < 100; cycle++)
@@ -1778,39 +2032,55 @@ internal static class UiIntegrationTest
                 overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
                 overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
             }
-            PumpFor(TimeSpan.FromMilliseconds(60));
+            PumpFor(TimeSpan.FromMilliseconds(260));
             Check(!overlayHoverRoot.HasAnimatedProperties
-                && !overlayHoverRoot.RenderTransform.HasAnimatedProperties
+                && !overlayHoverScale.HasAnimatedProperties
+                && Math.Abs(overlayHoverScale.ScaleX - 1) < .001
+                && Math.Abs(overlayHoverScale.ScaleY - 1) < .001
                 && Math.Abs(overlayHoverButton.ActualWidth - overlayHoverWidth) < .001
                 && Math.Abs(overlayHoverButton.ActualHeight - overlayHoverHeight) < .001
                 && overlayHoverButton.Template.FindName("GlassHighlight", overlayHoverButton) == null
                 && overlayHoverButton.Template.FindName("HoverUnderline", overlayHoverButton) == null,
-                "rapid pointer travel across the Deck overlay uses stable color feedback without scaling or moving its hit surface");
-            PumpFor(TimeSpan.FromMilliseconds(120));
-            bool hoverFadeBaseline = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+                "rapid pointer travel across the Deck overlay leaves the interruptible scale settled without resizing or moving its hit surface");
+            PumpFor(TimeSpan.FromMilliseconds(260));
+            bool hoverScaleBaselineAnimated = overlayHoverScale.HasAnimatedProperties;
+            double hoverScaleBaselineValue = overlayHoverScale.ScaleX;
+            bool hoverScaleBaseline = !hoverScaleBaselineAnimated && Math.Abs(hoverScaleBaselineValue - 1) < .001;
             overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            bool hoverFadeStarted = overlayHoverButton.HasAnimatedProperties;
-            PumpFor(TimeSpan.FromMilliseconds(45));
-            bool hoverFadeRuns = hoverFadeBaseline && hoverFadeStarted && overlayHoverButton.Opacity < 1
+            bool hoverScaleDeferred = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
+            PumpFor(TimeSpan.FromMilliseconds(120));
+            bool hoverScaleStillWaiting = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
+            PumpFor(TimeSpan.FromMilliseconds(320));
+            bool hoverScaleStarted = overlayHoverScale.HasAnimatedProperties || overlayHoverScale.ScaleX > 1.0001;
+            double hoverScaleLiveValue = overlayHoverScale.ScaleX;
+            bool hoverScaleIsDeliberate = hoverScaleLiveValue > 1.0001 && hoverScaleLiveValue <= 1.0701;
+            PumpFor(TimeSpan.FromMilliseconds(520));
+            double hoverScaleSettledInValue = overlayHoverScale.ScaleX;
+            CaptureForReview(deckOverlay, "deck-hover-scale.png");
+            bool hoverScaleRuns = hoverScaleBaseline && hoverScaleDeferred && hoverScaleStarted && hoverScaleIsDeliberate
+                && !overlayHoverScale.HasAnimatedProperties
+                && Math.Abs(hoverScaleSettledInValue - 1.07) < .001
+                && Math.Abs(overlayHoverScale.ScaleY - hoverScaleSettledInValue) < .001
+                && Math.Abs(overlayHoverButton.Opacity - 1) < .001
                 && Math.Abs(overlayHoverButton.ActualWidth - overlayHoverWidth) < .001
                 && Math.Abs(overlayHoverButton.ActualHeight - overlayHoverHeight) < .001;
             overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
-            bool hoverFadeOutStarted = overlayHoverButton.HasAnimatedProperties;
-            PumpFor(TimeSpan.FromMilliseconds(180));
-            bool hoverFadeSettled = hoverFadeOutStarted && !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            bool hoverScaleOutStarted = overlayHoverScale.HasAnimatedProperties;
+            PumpFor(TimeSpan.FromMilliseconds(190));
+            bool hoverScaleSettled = hoverScaleOutStarted && !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001 && Math.Abs(overlayHoverScale.ScaleY - 1) < .001;
             overlayLayout.HoverAnimationEnabled = false;
             deckOverlay.RefreshLayoutPreview(67, true);
             overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            bool layoutHoverOffIsImmediate = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            bool layoutHoverOffIsImmediate = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
             overlayLayout.HoverAnimationEnabled = true;
             UiMotionService.Apply(false);
             deckOverlay.RefreshLayoutPreview(67, true);
             overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            bool globalHoverOffIsImmediate = !overlayHoverButton.HasAnimatedProperties && Math.Abs(overlayHoverButton.Opacity - 1) < .001;
+            bool globalHoverOffIsImmediate = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
             UiMotionService.Apply(true);
             deckOverlay.RefreshLayoutPreview(67, true);
-            Check(hoverFadeRuns && hoverFadeSettled && layoutHoverOffIsImmediate && globalHoverOffIsImmediate,
-                "Deck hover animation visibly runs only when both the Deck setting and RELYR animation setting are enabled, without resizing its hit surface");
+            Check(hoverScaleRuns && hoverScaleSettled && layoutHoverOffIsImmediate && globalHoverOffIsImmediate,
+                $"Deck hover ignores brief pointer crossings, eases in slowly without overshoot, returns promptly, and enlarges only when both animation settings are enabled without resizing its hit surface (baseline={hoverScaleBaseline}/{hoverScaleBaselineAnimated}/{hoverScaleBaselineValue:F3}, deferred={hoverScaleDeferred}/{hoverScaleStillWaiting}, started={hoverScaleStarted}/{hoverScaleLiveValue:F3}, deliberate={hoverScaleIsDeliberate}, target={hoverScaleSettledInValue:F3}, running={hoverScaleRuns}, out={hoverScaleOutStarted}, settled={hoverScaleSettled}, layoutOff={layoutHoverOffIsImmediate}, globalOff={globalHoverOffIsImmediate})");
             var overlayDropTarget = deckOverlay.DeckButtons[1];
             var overlayTargetBackground = overlayDropTarget.Background;
             var overlayTargetBorder = overlayDropTarget.BorderBrush;
@@ -2903,34 +3173,24 @@ internal static class UiIntegrationTest
                 && qForCaps.BorderBrush is SolidColorBrush qSelectionBorder && qSelectionBorder.Color == ThemeService.Color("AccentBrush") && qForCaps.BorderThickness == new Thickness(2),
                 "a single selection uses the shared outline while reserved CapsLock, Space, and normal-layer left click match every other dimmed key face");
             CaptureForReview(window, "main-reserved-selection-dim.png");
-            window.KindBox.SelectedValue = ActionKind.Key;
+            var leftKeyAction = new CatalogAction("キー", "Left", "左矢印キーを送信します", ActionKind.Key, "Left");
+            bool leftKeyApplied = window.ApplyPaletteActionForTest(leftKeyAction, "Q", "Q");
             Pump(window);
-            window.ValueBox.Text = "Left";
-            window.ValueBox.Focus();
-            System.Windows.Input.Keyboard.Focus(window.ValueBox);
-            Check(window.DestinationClearButton.Visibility == Visibility.Visible && window.DestinationClearButton.Content?.ToString() == "削除" && window.DestinationConfirmButton.Visibility == Visibility.Visible && window.DestinationConfirmButton.Content?.ToString() == "確定" && window.DestinationClearButton.TranslatePoint(new System.Windows.Point(), window).X < window.DestinationConfirmButton.TranslatePoint(new System.Windows.Point(), window).X, "direct execution editing shows delete immediately to the left of confirmation");
-            window.ValueBox.CaretIndex = 2;
-            string executionTextBeforePreview = window.ValueBox.Text;
-            int executionCaretBeforePreview = window.ValueBox.CaretIndex;
-            var previewSource = PresentationSource.FromVisual(window) ?? throw new InvalidOperationException("main-window presentation source is unavailable");
-            var previewLeft = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, previewSource, Environment.TickCount, System.Windows.Input.Key.Left)
-            {
-                RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent
-            };
-            window.ValueBox.RaiseEvent(previewLeft);
-            Check(!previewLeft.Handled && window.ValueBox.Text == executionTextBeforePreview && window.ValueBox.CaretIndex == executionCaretBeforePreview, "the Action content field is a normal TextBox and does not intercept PreviewKeyDown navigation before runtime mappings can reach it");
-            window.DestinationClearButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            qForCaps.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.ValueBox.Text == "" && window.ValueBox.IsKeyboardFocusWithin && window.DestinationClearButton.Visibility == Visibility.Visible && window.DestinationConfirmButton.Visibility == Visibility.Visible, "delete clears only the current execution content and keeps it ready for re-entry");
-            window.KindBox.SelectedIndex = -1;
-            window.ValueBox.Text = "Enter";
-            window.ValueBox.Focus();
-            System.Windows.Input.Keyboard.Focus(window.ValueBox);
+            Check(leftKeyApplied
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed
+                && window.KindBox.SelectedValue is ActionKind.Key
+                && window.ValueBox.Text == "Left",
+                "a selected key uses the complete pre-0.1.367 assignment editor");
+            window.OpenActionPaletteForTest();
             Pump(window);
-            Check(window.ValueBox.Text == "Enter" && Equals(window.KindBox.SelectedValue, ActionKind.Key), "directly entered key names remain available without a physical-key PreviewKeyDown capture mode");
-            window.WorkspaceGrid.RaiseEvent(BlankClick());
+            Check(window.ActionPaletteContextText.Text.Contains("Q", StringComparison.Ordinal)
+                && window.ActionPaletteContextText.Text.Contains("TAP / HOLD", StringComparison.Ordinal),
+                "the same right pane opens the Action library with the selected key as its drag destination");
+            window.CloseActionPaletteForTest();
             Pump(window);
-            Check(window.DestinationConfirmButton.Visibility == Visibility.Collapsed, "clicking outside commits direct input and hides confirmation");
             rightClick.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(!window.ValueBox.IsKeyboardFocusWithin && MainWindow.GetIsSelectionPulseActive(rightClick) && !MainWindow.HasSelectionPulseAnimationForTest(rightClick)
@@ -3088,12 +3348,19 @@ internal static class UiIntegrationTest
             window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Q", StringComparison.OrdinalIgnoreCase));
             directKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.KindBox.SelectedIndex < 0 && window.LongKindBox.SelectedIndex < 0 && !window.LongPressExpander.IsEnabled && !window.LongPressOnlyButton.IsEnabled, "an unassigned normal-layer alphabet key starts with inactive choices and protects text input by disabling long press");
+            Check(window.AssignmentTapNameText.Text == "元の入力"
+                && window.AssignmentHoldNameText.Text == "設定不可"
+                && window.AssignmentHoldDetailText.Text == "通常の英字では長押し不可"
+                && window.AssignmentHoldCard.Opacity < 1,
+                "an unassigned normal-layer alphabet key explains in the unified summary why HOLD cannot be assigned");
             window.SpaceLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             directKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.LongPressExpander.IsEnabled && window.LongPressOnlyButton.IsEnabled, "the same alphabet key keeps long press available in the Space layer");
+            Check(window.AssignmentHoldNameText.Text == "未設定"
+                && window.AssignmentHoldDetailText.Text.Contains("HOLD", StringComparison.Ordinal)
+                && Math.Abs(window.AssignmentHoldCard.Opacity - 1) < .01,
+                "the same alphabet key exposes a valid HOLD destination in the Space layer");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             directKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -3127,20 +3394,33 @@ internal static class UiIntegrationTest
             window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("Esc", StringComparison.OrdinalIgnoreCase));
             escapeKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            window.LongPressExpander.IsExpanded = true;
-            window.LongKindBox.SelectedValue = ActionKind.Shortcut;
-            window.LongValueBox.Text = "LWin+L";
+            bool holdDropApplied = window.ApplyPaletteActionForTest(
+                new CatalogAction("ショートカット", "ロック", "", ActionKind.Shortcut, "LWin+L"),
+                "Esc",
+                "Esc",
+                longPress: true);
             Pump(window);
-            var shortChoiceHeights = window.KindBox.Items.Cast<object>().Select(x => (window.KindBox.ItemContainerGenerator.ContainerFromItem(x) as ListBoxItem)?.ActualHeight ?? 0).ToArray();
-            var longChoiceHeights = window.LongKindBox.Items.Cast<object>().Select(x => (window.LongKindBox.ItemContainerGenerator.ContainerFromItem(x) as ListBoxItem)?.ActualHeight ?? 0).ToArray();
-            Check(shortChoiceHeights.All(x => Math.Abs(x - 44) < .5) && longChoiceHeights.All(x => Math.Abs(x - 44) < .5), "short-press and long-press choices use the same readable height without clipping wrapped labels");
-            window.CompleteDestinationInputForTest();
-            Pump(window);
+            Check(holdDropApplied
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed
+                && window.LongKindBox.SelectedValue is ActionKind.Shortcut
+                && window.LongValueBox.Text == "LWin+L",
+                $"a HOLD assignment remains editable in the complete pre-0.1.367 editor (applied={holdDropApplied}, legacy={window.LegacyAssignmentEditor.Visibility})");
             var configuredEscape = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "Esc");
             var appliedEscape = window.AppliedMappingForTest("Esc");
-            Check(configuredEscape is { Kind: ActionKind.None, LongPressKind: ActionKind.Shortcut, LongPressValue: "LWin+L" } && appliedEscape is { Kind: ActionKind.None, LongPressKind: ActionKind.Shortcut, LongPressValue: "LWin+L" } && escapeKey.Background is SolidColorBrush escapeBrush && escapeBrush.Color.G > escapeBrush.Color.R * 2, "an Esc long-only shortcut is normalized, applied immediately, and shown in shortcut green");
+            escapeKey.ApplyTemplate();
+            var escapeHoldBadge = (Border)escapeKey.Template.FindName("LongPressBadge", escapeKey)!;
+            Check(configuredEscape is { Kind: ActionKind.None, LongPressKind: ActionKind.Shortcut, LongPressValue: "LWin+L" }
+                && appliedEscape is { Kind: ActionKind.None, LongPressKind: ActionKind.Shortcut, LongPressValue: "LWin+L" }
+                && ReferenceEquals(escapeKey.Background, ThemeService.Brush("KeyBackground"))
+                && MainWindow.GetHasLongPressAssignment(escapeKey) && !MainWindow.GetHasDualPressAssignment(escapeKey)
+                && escapeHoldBadge.Visibility == Visibility.Visible
+                && escapeHoldBadge.Background is SolidColorBrush escapeHoldBrush
+                && escapeHoldBrush.Color == MainWindow.AssignmentColorFor(new Mapping { Kind = ActionKind.Shortcut, Value = "LWin+L" }),
+                "an Esc long-only shortcut is normalized and applied immediately while only its HOLD pill receives the shortcut color");
             window.WorkspaceGrid.RaiseEvent(BlankClick());
             Pump(window);
+            Check(CaptureElementForReview(escapeKey, "long-only-hold-key.png"), "the long-only key screenshot is saved");
             var gestureKey = keys.First(x => Equals(x.Tag, "F5"));
             window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals("F5", StringComparison.OrdinalIgnoreCase));
             gestureKey.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -3148,7 +3428,11 @@ internal static class UiIntegrationTest
             window.ApplyCatalogActionForTest(new CatalogAction("ジェスチャー", "ウィンドウ操作", "", ActionKind.Gesture, "ウィンドウ操作"), false);
             Pump(window);
             var editingGesture = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "F5");
-            Check(editingGesture is { Kind: ActionKind.Gesture, Value: "ウィンドウ操作", LongPressKind: ActionKind.None, LongPressValue: "" } && Equals(window.KindBox.SelectedValue, ActionKind.Gesture) && window.ValueBox.Text == "ジェスチャー：ウィンドウ操作" && window.ValueBox.IsReadOnly && window.LongPressExpander is { IsEnabled: false, IsExpanded: false } && window.LongPressExpander.Opacity < 1, "a gesture is assigned from its dedicated short-press choice, keeps its generated name read-only, and disables the incompatible long-press editor");
+            Check(editingGesture is { Kind: ActionKind.Gesture, Value: "ウィンドウ操作", LongPressKind: ActionKind.None, LongPressValue: "" }
+                && window.AssignmentTapNameText.Text == "ジェスチャー：ウィンドウ操作"
+                && window.AssignmentHoldNameText.Text == "設定不可"
+                && window.AssignmentHoldDetailText.Text == "ジェスチャーとの併用不可",
+                "a gesture appears in the unified TAP summary and explains why HOLD is unavailable");
             CaptureForReview(window, "gesture-short-main.png");
             window.CompleteDestinationInputForTest();
             Pump(window);
@@ -3157,7 +3441,11 @@ internal static class UiIntegrationTest
             Pump(window);
             window.ApplyCatalogActionForTest(new CatalogAction("編集", "コピー", "", ActionKind.Shortcut, "Ctrl+C"), false);
             Pump(window);
-            Check(window.CurrentProfileForTest.Mappings.Last(x => x.Input == "F5") is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" } && !window.ValueBox.IsReadOnly && !window.ValueBox.IsKeyboardFocusWithin && !window.IsEditingSelectedInputForTest && window.DestinationConfirmButton.Visibility == Visibility.Collapsed && window.LongPressExpander.IsEnabled && window.LongPressExpander.Opacity == 1, "choosing a normal short-press action replaces the gesture, completes editing, hides confirmation, and restores the long-press editor");
+            Check(window.CurrentProfileForTest.Mappings.Last(x => x.Input == "F5") is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" }
+                && window.AssignmentTapNameText.Text == "コピー"
+                && window.AssignmentHoldNameText.Text == "未設定"
+                && !window.IsEditingSelectedInputForTest,
+                "drag-overwriting a gesture with a normal TAP Action refreshes the summary and restores the HOLD destination");
             window.KeypadInputRequestedForTest = picker => picker.SetShortcutValue("Ctrl+K", true);
             window.OpenKeypadInputForTest();
             window.KeypadInputRequestedForTest = null;
@@ -3242,17 +3530,24 @@ internal static class UiIntegrationTest
             Check(!window.ValueBox.IsKeyboardFocusWithin && !window.IsEditingSelectedInputForTest && window.InputName.Text == "" && window.AssignmentDeleteButton.Foreground is SolidColorBrush deleteText && deleteText.Color == ThemeService.Color("DangerBrush") && key.Background is SolidColorBrush deletedKeyBrush && deletedKeyBrush.Color == ThemeService.Color("KeyBackground") && !MainWindow.GetIsSelectionPulseActive(key) && !MainWindow.HasSelectionPulseAnimationForTest(key), "deleting an assignment clears its color and selection pulse");
             key.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            window.LongPressExpander.IsExpanded = false;
-            window.LongPressExpander.IsExpanded = true;
-            window.UpdateLayout();
+            string selectedInputForHold = window.InputName.Text;
+            string selectedKeyForHold = key.Tag!.ToString()!;
+            bool summaryHoldApplied = window.ApplyPaletteActionForTest(
+                new CatalogAction("キー", "Enter", "Enterキーを送信します", ActionKind.Key, "Enter"),
+                selectedInputForHold,
+                selectedKeyForHold,
+                longPress: true);
             Pump(window);
-            Check(window.LongValueBox.IsKeyboardFocusWithin && window.LongValueBox.CaretIndex == window.LongValueBox.Text.Length && window.LongDestinationClearButton.Visibility == Visibility.Visible && window.LongDestinationConfirmButton.Visibility == Visibility.Visible, "expanding long-press actions puts the caret in content and shows matching delete and confirm actions");
-            window.AssignmentScrollViewer.ScrollToTop();
-            window.UpdateLayout();
-            var assignmentWheel = new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, -120) { RoutedEvent = System.Windows.UIElement.PreviewMouseWheelEvent };
-            window.AssignmentScrollViewer.RaiseEvent(assignmentWheel);
-            window.UpdateLayout();
-            Check(window.AssignmentScrollViewer.ScrollableHeight > 0 && window.AssignmentScrollViewer.VerticalOffset > 0 && assignmentWheel.Handled, $"assignment pane handles the wheel directly even above nested action controls ({window.AssignmentScrollViewer.ScrollableHeight:F0}, {window.AssignmentScrollViewer.VerticalOffset:F0}, {assignmentWheel.Handled})");
+            window.LongPressBox.Text = "650";
+            Pump(window);
+            Check(summaryHoldApplied
+                && window.LongKindBox.SelectedValue is ActionKind.Key
+                && window.LongValueBox.Text == "Enter"
+                && window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == selectedInputForHold).LongPressMs == 650,
+                "the pre-0.1.367 HOLD editor persists its millisecond timing");
+            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Visible
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
+                "the fixed inspector keeps the complete pre-0.1.367 assignment form");
             var workspaceRight = window.WorkspaceGrid.TranslatePoint(new System.Windows.Point(window.WorkspaceGrid.ActualWidth, 0), window.MainContentGrid).X;
             var assignmentLeft = window.AssignmentPane.TranslatePoint(new System.Windows.Point(), window.MainContentGrid).X;
             Check(window.AssignmentPane.Visibility == Visibility.Visible && assignmentLeft >= workspaceRight - 1, "assignment pane never overlays the keyboard workspace");
@@ -3272,7 +3567,10 @@ internal static class UiIntegrationTest
             Check(window.InputName.Text == beforeDetection && window.LastInput.Text.Contains("押したまま"), "input detection waits after a layer button is pressed");
             window.FeedDetectedInputForTest("S Down");
             Pump(window);
-            Check(window.InputName.Text == "MouseRight+S" && window.InputDisplayText.Text == "右クリック + S" && window.ValueBox.IsKeyboardFocusWithin, "input detection recognizes a held layer plus the next key and focuses its empty action");
+            Check(window.InputName.Text == "MouseRight+S"
+                && window.InputDisplayText.Text == "右クリック + S"
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible,
+                "input detection recognizes a held layer plus the next key and opens its complete assignment editor");
             window.KindBox.SelectedValue = ActionKind.Shortcut;
             window.ValueBox.Text = "Ctrl+C";
             window.CompleteDestinationInputForTest();
@@ -3281,35 +3579,13 @@ internal static class UiIntegrationTest
             window.FeedDetectedInputForTest("S Down");
             Pump(window);
             Check(!window.ValueBox.IsKeyboardFocusWithin, "input detection leaves the caret out when the detected action already has execution content");
-            Check(Descendants<System.Windows.Controls.Button>(window.AssignmentPane).Contains(window.ActionPaletteButton) && !Descendants<TextBlock>(window.AssignmentPane).Any(x => x.Text is "割り当て" or "現在のレイヤー"), "the action library preserves input detection without restoring redundant inspector headings");
-            static string ItemLabel(object item) => (string?)item.GetType().GetProperty("Label")?.GetValue(item) ?? "";
-            var shortActionLabels = window.KindBox.Items.Cast<object>().Select(ItemLabel).ToArray();
-            var longActionLabels = window.LongKindBox.Items.Cast<object>().Select(ItemLabel).ToArray();
-            var balancedActionLabels = new[] { "別のキー", "プロファイル", "ショートカット", "文字列", "アプリ・パス", "マクロ", "ジェスチャー", "Deckパネル", "キーパッドから入力" };
-            var shortActionItems = Enumerable.Range(0, window.KindBox.Items.Count).Select(i => (ListBoxItem)window.KindBox.ItemContainerGenerator.ContainerFromIndex(i)!).ToArray();
-            var longActionItems = Enumerable.Range(0, window.LongKindBox.Items.Count).Select(i => (ListBoxItem)window.LongKindBox.ItemContainerGenerator.ContainerFromIndex(i)!).ToArray();
-            bool actionChoicesUseOneColumn = shortActionItems.Select(item => Math.Round(item.TranslatePoint(new System.Windows.Point(), window.KindBox).X)).Distinct().Count() == 1
-                && longActionItems.Select(item => Math.Round(item.TranslatePoint(new System.Windows.Point(), window.LongKindBox).X)).Distinct().Count() == 1;
-            Check(window.KindBox.Visibility == Visibility.Visible && shortActionLabels.SequenceEqual(balancedActionLabels) && longActionLabels.SequenceEqual(balancedActionLabels) && actionChoicesUseOneColumn, "short and long editors reflow into one complete no-wrap column with keypad input replacing disable");
-            var allActionChoiceItems = shortActionItems.Concat(longActionItems).ToArray();
-            var actionChoiceArrows = allActionChoiceItems.Select(item => Descendants<TextBlock>(item).Single(text => text.Text == "›")).ToArray();
-            var actionChoiceLabels = allActionChoiceItems.Select(item => Descendants<TextBlock>(item).Single(text => balancedActionLabels.Contains(text.Text))).ToArray();
-            Check(actionChoiceArrows.All(arrow => ReferenceEquals(arrow.Foreground, ThemeService.Brush("AccentTextBrush")) && arrow.HorizontalAlignment == System.Windows.HorizontalAlignment.Right)
-                && actionChoiceLabels.All(label => label.HorizontalAlignment == System.Windows.HorizontalAlignment.Stretch && label.TextAlignment == TextAlignment.Left),
-                "every action choice keeps its label left-aligned and uses one right-edge accent chevron");
-            var keypadChoiceLabels = new[] { window.KindBox, window.LongKindBox }.Select(list => list.Items.Cast<object>().Single(x => x.GetType().GetProperty("IsKeypad")?.GetValue(x) is true)).Select((choice, index) => (ListBoxItem)new[] { window.KindBox, window.LongKindBox }[index].ItemContainerGenerator.ContainerFromItem(choice)!).Select(container => Descendants<TextBlock>(container).First(x => x.Text.Contains("キーパッドから", StringComparison.Ordinal))).ToArray();
-            Check(keypadChoiceLabels.All(label => label.Text == "キーパッドから入力" && label.TextWrapping == TextWrapping.NoWrap && label.TextTrimming == TextTrimming.None && label.ActualWidth >= label.DesiredSize.Width - .1), "keypad input stays on one fully visible line in both action editors");
-            var obsoleteHelperLabels = new[] { "アクション", "プロファイル", "マクロ", "アプリ" };
-            Check(!Descendants<System.Windows.Controls.Button>(window.AssignmentPane).Any(x => obsoleteHelperLabels.Contains(x.Content?.ToString())), "redundant helper action rows are removed from both editors");
-            var iconResourceKeys = new[] { "ActionKeyIconBrush", "ActionProfileIconBrush", "ActionShortcutIconBrush", "ActionTextIconBrush", "ActionLaunchIconBrush", "ActionMacroIconBrush" };
-            var shortChoiceItems = Enumerable.Range(0, 6).Select(i => (ListBoxItem)window.KindBox.ItemContainerGenerator.ContainerFromIndex(i)!).ToArray();
-            var longChoiceItems = Enumerable.Range(0, 6).Select(i => (ListBoxItem)window.LongKindBox.ItemContainerGenerator.ContainerFromIndex(i)!).ToArray();
-            static TextBlock ChoiceIcon(ListBoxItem item) => Descendants<TextBlock>(item).First(x => x.Style == item.FindResource("ActionChoiceIcon"));
-            static TextBlock ChoiceLabel(ListBoxItem item) => Descendants<TextBlock>(item).First(x => x.Style != item.FindResource("ActionChoiceIcon"));
-            Check(shortChoiceItems.Concat(longChoiceItems).All(x => x.Background is SolidColorBrush background && background.Color == ThemeService.Color("KeyBackground") && ChoiceLabel(x).Foreground is SolidColorBrush label && label.Color == ThemeService.Color("PrimaryText")) && shortChoiceItems.Select(ChoiceIcon).Select(x => ((SolidColorBrush)x.Foreground).Color).SequenceEqual(iconResourceKeys.Select(ThemeService.Color)) && longChoiceItems.Select(ChoiceIcon).Select(x => ((SolidColorBrush)x.Foreground).Color).SequenceEqual(iconResourceKeys.Select(ThemeService.Color)), "short and long action buttons keep the standard button surface and identify actions only by aligned icon color");
-            Check(window.KindBox.Background == System.Windows.Media.Brushes.Transparent && window.LongKindBox.Background == System.Windows.Media.Brushes.Transparent && Enumerable.Range(0, window.KindBox.Items.Count).Select(i => (ListBoxItem)window.KindBox.ItemContainerGenerator.ContainerFromIndex(i)!).All(x => Math.Abs(x.Opacity - 1) < .01), "disabled action choices avoid the extra gray list background and double opacity");
-            var assignmentTexts = Descendants<TextBlock>(window.AssignmentPane).Select(x => x.Text).ToArray();
-            Check(assignmentTexts.Contains("実行する操作") && assignmentTexts.Contains("長押しの操作") && !assignmentTexts.Any(x => x.Contains("最初に中央の") || x is "短押しの動作" or "長押しの動作" || x.StartsWith("空欄の場合") || x.StartsWith("短押しとは別")), "inspector uses concise action headings without redundant guidance");
+            Check(Descendants<System.Windows.Controls.Button>(window.AssignmentPane).Contains(window.ActionPaletteButton)
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
+                "input detection keeps the shared Action launcher and restores the complete pre-0.1.367 form");
+            var assignmentTexts = Descendants<TextBlock>(window.LegacyAssignmentEditor).Select(x => x.Text).ToArray();
+            Check(assignmentTexts.Any(text => text is "実行する操作" or "長押しの操作"),
+                "the inspector retains the complete short-press and long-press editors");
             Check(ScrollViewer.GetVerticalScrollBarVisibility(window.LayerNavigationScrollViewer) == ScrollBarVisibility.Hidden && ScrollViewer.GetVerticalScrollBarVisibility(window.AssignmentScrollViewer) == ScrollBarVisibility.Hidden, "small-window side panes stay wheel-scrollable without visible vertical sliders");
             Check(!Descendants<System.Windows.Controls.Expander>(window.AssignmentPane).Any(x => x.Header?.ToString() is "マウスドラッグの詳細" or "条件・詳細設定"), "obsolete drag-detail and condition-detail sections are removed from the assignment pane");
             Check(!Descendants<System.Windows.Controls.CheckBox>(window.AssignmentPane).Any(x => x.Content?.ToString() == "この割り当てを有効にする") && ReferenceEquals(window.InputDisplayText.Foreground, ThemeService.Brush("PrimaryText")), "the redundant per-assignment enable switch is absent and right-pane text uses the primary theme color");
@@ -3436,11 +3712,30 @@ internal static class UiIntegrationTest
             themeSettings.LightThemeBox!.IsChecked = true;
             window.UpdateLayout();
             Check(!ThemeService.UsesDark && ThemeService.Color("AppBackground").R > 200 && ThemeService.Color("PrimaryText").R < 80, "light mode uses a genuinely light background with dark readable text");
-            Check(shortChoiceItems.All(x => x.Background is SolidColorBrush background && background.Color == ThemeService.Color("KeyBackground") && ChoiceLabel(x).Foreground is SolidColorBrush label && label.Color == ThemeService.Color("PrimaryText")) && shortChoiceItems.Select(ChoiceIcon).Select(x => ((SolidColorBrush)x.Foreground).Color).SequenceEqual(iconResourceKeys.Select(ThemeService.Color)), "action buttons keep standard light-theme surfaces with darker readable category icons");
+            System.Windows.Media.Color CategoryGlyphColor(string category)
+            {
+                window.SelectActionPalettePopupItemForTest(category);
+                var option = categoryOptions.First(candidate => candidate.Name == category);
+                window.ActionPaletteCategoryBox.IsDropDownOpen = true;
+                window.UpdateLayout();
+                Pump(window);
+                var container = (ComboBoxItem)window.ActionPaletteCategoryBox.ItemContainerGenerator.ContainerFromItem(option)!;
+                var glyph = Descendants<TextBlock>(container).First(text => text.Text == option.Glyph);
+                var color = ((SolidColorBrush)glyph.Foreground).Color;
+                window.ActionPaletteCategoryBox.IsDropDownOpen = false;
+                return color;
+            }
+            bool lightKeyCategoryColor = CategoryGlyphColor("キー") == ThemeService.Color("ActionKeyIconBrush");
+            bool lightMacroCategoryColor = CategoryGlyphColor("マクロ") == ThemeService.Color("ActionMacroIconBrush");
+            bool lightLaunchCategoryColor = CategoryGlyphColor("インストールアプリ") == ThemeService.Color("ActionLaunchIconBrush");
+            Check(lightKeyCategoryColor && lightMacroCategoryColor && lightLaunchCategoryColor, "the unified Action categories use their distinct readable key, macro, and app colors in the light theme");
             themeSettings.DarkThemeBox!.IsChecked = true;
             window.UpdateLayout();
             Check(ThemeService.UsesDark && ThemeService.Color("AppBackground").R < 40 && ThemeService.Color("PrimaryText").R > 180, "dark mode retains the established dark palette");
-            Check(shortChoiceItems.All(x => x.Background is SolidColorBrush background && background.Color == ThemeService.Color("KeyBackground") && ChoiceLabel(x).Foreground is SolidColorBrush label && label.Color == ThemeService.Color("PrimaryText")) && shortChoiceItems.Select(ChoiceIcon).Select(x => ((SolidColorBrush)x.Foreground).Color).SequenceEqual(iconResourceKeys.Select(ThemeService.Color)), "action buttons keep standard dark-theme surfaces with brighter category icons");
+            bool darkKeyCategoryColor = CategoryGlyphColor("キー") == ThemeService.Color("ActionKeyIconBrush");
+            bool darkMacroCategoryColor = CategoryGlyphColor("マクロ") == ThemeService.Color("ActionMacroIconBrush");
+            bool darkLaunchCategoryColor = CategoryGlyphColor("インストールアプリ") == ThemeService.Color("ActionLaunchIconBrush");
+            Check(darkKeyCategoryColor && darkMacroCategoryColor && darkLaunchCategoryColor, "the unified Action categories keep their distinct readable key, macro, and app colors in the dark theme");
             themeSettings.Close();
             var checkedAt = new DateTimeOffset(2026, 7, 18, 12, 34, 0, TimeSpan.FromHours(9));
             var currentResult = new UpdateCheckResult(MainWindow.RunningVersion, MainWindow.DisplayVersion, null, checkedAt);
@@ -3869,13 +4164,16 @@ internal static class UiIntegrationTest
             var editorLayerButtons = new[] { window.NormalLayerButton, window.SpaceLayerButton, window.CapsLockLayerButton, window.RightMouseLayerButton, window.BackMouseLayerButton, window.ForwardMouseLayerButton };
             foreach (var layerButton in editorLayerButtons)
             {
+                window.CloseActionPaletteForTest();
                 layerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 Pump(window);
                 var layerF2 = visualInputs.First(button => Equals(button.Tag, "F2"));
                 layerF2.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 Pump(window);
-                window.ValueBox.Focus();
-                System.Windows.Input.Keyboard.Focus(window.ValueBox);
+                window.OpenActionPaletteForTest();
+                Pump(window);
+                window.ActionPaletteSearchBox.Focus();
+                System.Windows.Input.Keyboard.Focus(window.ActionPaletteSearchBox);
                 Pump(window);
                 int before = requestedDeckActions.Count;
                 var f1Down = window.DirectPhysicalKeyForTest(0x70, false);
@@ -3941,7 +4239,7 @@ internal static class UiIntegrationTest
                     && plainClickBatches[0].SequenceEqual([(8u, 0u), (16u, 0u)])
                     && plainClickBatches[1].SequenceEqual([(0x80u, 1u), (0x100u, 1u)])
                     && plainClickBatches[2].SequenceEqual([(0x80u, 2u), (0x100u, 2u)]);
-                everyRuntimeActionWorkedOnEveryLayerEditor &= window.ValueBox.IsKeyboardFocusWithin
+                everyRuntimeActionWorkedOnEveryLayerEditor &= window.ActionPaletteSearchBox.IsKeyboardFocusWithin
                     && window.AppliedProfileNameForTest == runtimeProfileBeforeLayerSelection
                     && staleMouseLeftLayerMappingIgnored
                     && f1Down == (IntPtr)1 && f1Up == (IntPtr)1 && requested
@@ -3951,6 +4249,7 @@ internal static class UiIntegrationTest
                     && spaceStateClean && capsStateClean && rightStateClean && backStateClean && forwardStateClean
                     && unassignedLeftStateClean && plainRightStateClean && plainBackStateClean && plainForwardStateClean;
             }
+            window.CloseActionPaletteForTest();
             OverlayService.ActionRequestedForTest = null;
             InputEngine.KeyOutputForTest = null;
             InputEngine.MouseFlagOutputForTest = null;
@@ -4222,7 +4521,22 @@ internal static class UiIntegrationTest
             window.DeckPanelManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             CaptureForReview(window, "redesign-dark-deck.png");
+            window.EditDeckLayoutForTest(standardDeck);
+            window.OpenActionPaletteForTest();
+            Pump(window);
+            bool deckPaletteIncludedMonitors = window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == DeckMonitorCatalog.Category);
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(deckPaletteIncludedMonitors
+                && !window.IsActionPaletteOpenForTest
+                && window.ActionPalettePane.Visibility == Visibility.Collapsed
+                && window.KeyboardWorkspace.Visibility == Visibility.Visible,
+                "switching from Deck editing to a keyboard layer closes the Action pane so Deck-only monitor choices cannot remain visible");
+            window.OpenActionPaletteForTest();
+            Pump(window);
+            Check(!window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == DeckMonitorCatalog.Category),
+                "reopening the Action pane on a keyboard layer rebuilds its categories without the Deck-only monitor library");
+            window.CloseActionPaletteForTest();
             bool newDeckDialogInspected = false;
             window.NewDeckDialogLoadedForTest = dialog => { dialog.UpdateLayout(); var sizeBox = Descendants<System.Windows.Controls.ComboBox>(dialog).First(x => x.Name == "NewDeckSizeBox"); sizeBox.SelectedIndex = 3; dialog.UpdateLayout(); var customRow = Descendants<Grid>(dialog).First(x => x.Name == "NewDeckCustomSizeRow"); Check(Math.Abs(sizeBox.ActualHeight - 40) < .1 && sizeBox.ActualWidth <= 220.1 && sizeBox.Items.Count == 4 && customRow.Visibility == Visibility.Visible && dialog.Background == ThemeService.Brush("SurfaceBackground"), "new Deck dialog stays compact and themed while exposing custom columns and rows"); CaptureForReview(dialog, "new-deck-dialog-dark.png"); newDeckDialogInspected = true; dialog.DialogResult = false; };
             window.ShowNewDeckDialogForTest();
@@ -4273,6 +4587,25 @@ internal static class UiIntegrationTest
         Directory.CreateDirectory(directory);
         using var stream = File.Create(Path.Combine(directory, fileName));
         encoder.Save(stream);
+    }
+    static bool CaptureElementForReview(FrameworkElement element, string fileName)
+    {
+        string? directory = Environment.GetEnvironmentVariable("RELYR_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+        element.UpdateLayout();
+        int width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
+        int height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
+        if (width <= 1 || height <= 1)
+            return false;
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(element);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        Directory.CreateDirectory(directory);
+        using var stream = File.Create(Path.Combine(directory, fileName));
+        encoder.Save(stream);
+        return true;
     }
     static Window CreateBackdropProbeWindow()
     {
