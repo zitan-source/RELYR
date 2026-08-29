@@ -1246,7 +1246,7 @@
             </Grid>
             <TextBox x:Name="InputName" IsReadOnly="True" Visibility="Collapsed"/>
             <StackPanel x:Name="AssignmentEditor" Visibility="Collapsed">
-            <StackPanel x:Name="AssignmentSummaryPanel" Margin="0,0,0,4" Visibility="Collapsed">
+            <StackPanel x:Name="AssignmentSummaryPanel" Margin="0,0,0,4">
               <TextBlock x:Name="AssignmentActionSectionLabel" Text="現在のAction" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
               <Border x:Name="AssignmentTapCard" Style="{StaticResource AssignmentSummaryCardStyle}" PreviewMouseLeftButtonDown="AssignmentActionCard_PreviewMouseLeftButtonDown" PreviewMouseMove="AssignmentActionCard_PreviewMouseMove" PreviewMouseLeftButtonUp="AssignmentActionCard_PreviewMouseLeftButtonUp">
                 <Grid>
@@ -1300,7 +1300,7 @@
               </StackPanel>
               <TextBlock x:Name="DeckColorStatus" FontSize="11" Foreground="{DynamicResource MutedText}" Margin="0,7,0,0"/>
             </StackPanel>
-            <StackPanel x:Name="LegacyAssignmentEditor" Visibility="Visible">
+            <StackPanel x:Name="LegacyAssignmentEditor" Visibility="Collapsed">
             <StackPanel Margin="0,0,0,12">
               <StackPanel>
                 <TextBlock Text="実行する操作" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
@@ -1390,7 +1390,7 @@
             </Grid>
           </Button>
           <Grid Grid.Row="4" MinHeight="0">
-            <ListBox x:Name="ActionPaletteList" Background="Transparent" BorderThickness="0" Padding="0" ItemContainerStyle="{StaticResource ActionPaletteItemStyle}" ItemTemplate="{StaticResource ActionPaletteItemTemplate}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" PreviewMouseLeftButtonDown="ActionPaletteItem_PreviewMouseLeftButtonDown" PreviewMouseMove="ActionPaletteItem_PreviewMouseMove" PreviewMouseLeftButtonUp="ActionPaletteItem_PreviewMouseLeftButtonUp"/>
+            <ListBox x:Name="ActionPaletteList" Style="{StaticResource ActionPaletteListStyle}" ItemContainerStyle="{StaticResource ActionPaletteItemStyle}" ItemTemplate="{StaticResource ActionPaletteItemTemplate}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" PreviewMouseLeftButtonDown="ActionPaletteItem_PreviewMouseLeftButtonDown" PreviewMouseMove="ActionPaletteItem_PreviewMouseMove" PreviewMouseLeftButtonUp="ActionPaletteItem_PreviewMouseLeftButtonUp"/>
             <TextBlock x:Name="ActionPaletteEmptyText" Text="一致するActionはありません" MaxWidth="210" FontSize="11" Foreground="{DynamicResource MutedText}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
           </Grid>
           <Border x:Name="ActionPaletteUndoBar" Grid.Row="5" Visibility="Collapsed" Background="{DynamicResource AccentSoftBrush}" CornerRadius="7" Padding="9,7" Margin="0,8,0,0">

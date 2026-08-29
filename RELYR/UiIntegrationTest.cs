@@ -638,11 +638,13 @@ internal static class UiIntegrationTest
             double actionCardRight = favoriteCopyContainer.TranslatePoint(new System.Windows.Point(favoriteCopyContainer.ActualWidth, 0), window.ActionPalettePane).X;
             double actionScrollBarLeft = actionPaletteScrollBar.TranslatePoint(new System.Windows.Point(), window.ActionPalettePane).X;
             double actionScrollBarRight = actionPaletteScrollBar.TranslatePoint(new System.Windows.Point(actionPaletteScrollBar.ActualWidth, 0), window.ActionPalettePane).X;
-            Check(favoriteCopyStar.Content?.ToString() == "☆"
+            Check(ReferenceEquals(window.ActionPaletteList.Style, window.FindResource("ActionPaletteListStyle"))
+                && actionPaletteScrollBar.ActualWidth <= 3.1
+                && favoriteCopyStar.Content?.ToString() == "☆"
                 && favoriteCopyContainer.ActualWidth - favoriteStarRight is >= 9 and <= 14
-                && actionScrollBarLeft >= actionCardRight - .1
+                && actionScrollBarLeft > actionCardRight
                 && !Descendants<TextBlock>(favoriteCopyContainer).Any(text => text.Text == "⋮⋮"),
-                $"every Action row ends with its favorite star and no obsolete drag dots (row={favoriteCopyContainer.ActualWidth:F1}, categories={window.ActionPaletteCategoryBox.ActualWidth:F1}, list={window.ActionPaletteList.ActualWidth:F1}, viewer={actionPaletteScrollViewer.ActualWidth:F1}, card={actionCardLeft:F1}..{actionCardRight:F1}, scroll={actionScrollBarLeft:F1}..{actionScrollBarRight:F1}, star gap={favoriteCopyContainer.ActualWidth - favoriteStarRight:F1})");
+                $"every Action row ends with its favorite star while the dedicated thin scrollbar stays in a separate gutter (row={favoriteCopyContainer.ActualWidth:F1}, categories={window.ActionPaletteCategoryBox.ActualWidth:F1}, list={window.ActionPaletteList.ActualWidth:F1}, viewer={actionPaletteScrollViewer.ActualWidth:F1}, card={actionCardLeft:F1}..{actionCardRight:F1}, scroll={actionScrollBarLeft:F1}..{actionScrollBarRight:F1}, star gap={favoriteCopyContainer.ActualWidth - favoriteStarRight:F1})");
             favoriteCopyStar.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             var favoriteCandidates = new[]
@@ -951,6 +953,8 @@ internal static class UiIntegrationTest
                 && longDropZone.Background is SolidColorBrush { Color.A: 0 }
                 && slotOverlay.ClipToBounds && shortDropZone.ClipToBounds && longDropZone.ClipToBounds
                 && shortDropLabel.Text == "TAP" && longDropLabel.Text == "HOLD"
+                && Math.Abs(shortDropLabel.FontSize - 9) < .001
+                && Math.Abs(longDropLabel.FontSize - shortDropLabel.FontSize) < .001
                 && shortDropGlow.Opacity > .7 && longDropGlow.Opacity == 0
                 && Math.Abs(activeDropScale.ScaleX - MainWindow.AssignmentDropTargetScale) < .001
                 && Math.Abs(activeDropScale.ScaleY - MainWindow.AssignmentDropTargetScale) < .001
@@ -1568,9 +1572,12 @@ internal static class UiIntegrationTest
             window.MultiSelectToggle.IsChecked = false;
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Visible
-                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
-                "Deck selection retains the complete pre-0.1.367 assignment editor");
+            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Collapsed
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Visible
+                && window.AssignmentTapSlotText.Text == "ACTION"
+                && window.AssignmentHoldCard.Visibility == Visibility.Collapsed
+                && window.AssignmentReplaceHintText.Text.Contains("Deckボタンへドラッグ", StringComparison.Ordinal),
+                "Deck selection uses the same unified assignment summary with one ACTION destination and no retired direct editor");
             window.OpenActionPaletteForTest();
             Pump(window);
             Check(window.ActionPaletteContextText.Text.Contains("Deck + 01", StringComparison.Ordinal)
@@ -3179,11 +3186,12 @@ internal static class UiIntegrationTest
             qForCaps.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(leftKeyApplied
-                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
-                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed
-                && window.KindBox.SelectedValue is ActionKind.Key
-                && window.ValueBox.Text == "Left",
-                "a selected key uses the complete pre-0.1.367 assignment editor");
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Collapsed
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Visible
+                && window.AssignmentTapSlotText.Text == "TAP"
+                && window.AssignmentTapNameText.Text == "Left"
+                && window.AssignmentReplaceHintText.Text.Contains("TAP / HOLD", StringComparison.Ordinal),
+                "a selected key uses the unified read-only TAP/HOLD summary while changes remain drag assignments");
             window.OpenActionPaletteForTest();
             Pump(window);
             Check(window.ActionPaletteContextText.Text.Contains("Q", StringComparison.Ordinal)
@@ -3401,11 +3409,11 @@ internal static class UiIntegrationTest
                 longPress: true);
             Pump(window);
             Check(holdDropApplied
-                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
-                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed
-                && window.LongKindBox.SelectedValue is ActionKind.Shortcut
-                && window.LongValueBox.Text == "LWin+L",
-                $"a HOLD assignment remains editable in the complete pre-0.1.367 editor (applied={holdDropApplied}, legacy={window.LegacyAssignmentEditor.Visibility})");
+                && window.AssignmentHoldNameText.Text == "ショートカット"
+                && window.AssignmentHoldDetailText.Text == "Win + L"
+                && window.AssignmentHoldTimingPanel.Visibility == Visibility.Visible
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Collapsed,
+                $"a HOLD assignment appears in the compact summary with its timing control and no retired direct editor (applied={holdDropApplied}, name={window.AssignmentHoldNameText.Text}, detail={window.AssignmentHoldDetailText.Text}, timing={window.AssignmentHoldTimingPanel.Visibility}, legacy={window.LegacyAssignmentEditor.Visibility})");
             var configuredEscape = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "Esc");
             var appliedEscape = window.AppliedMappingForTest("Esc");
             escapeKey.ApplyTemplate();
@@ -3538,16 +3546,17 @@ internal static class UiIntegrationTest
                 selectedKeyForHold,
                 longPress: true);
             Pump(window);
-            window.LongPressBox.Text = "650";
+            window.LongPressDurationSlider.Value = 650;
             Pump(window);
             Check(summaryHoldApplied
-                && window.LongKindBox.SelectedValue is ActionKind.Key
-                && window.LongValueBox.Text == "Enter"
+                && window.AssignmentHoldNameText.Text == "Enter"
+                && window.AssignmentHoldTimingPanel.Visibility == Visibility.Visible
+                && window.AssignmentHoldDurationText.Text == "0.65秒"
                 && window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == selectedInputForHold).LongPressMs == 650,
-                "the pre-0.1.367 HOLD editor persists its millisecond timing");
-            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Visible
-                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
-                "the fixed inspector keeps the complete pre-0.1.367 assignment form");
+                "the unified HOLD summary exposes readable seconds and persists its selected timing");
+            Check(window.LegacyAssignmentEditor.Visibility == Visibility.Collapsed
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Visible,
+                "the fixed inspector keeps the unified summary and never restores the retired direct form");
             var workspaceRight = window.WorkspaceGrid.TranslatePoint(new System.Windows.Point(window.WorkspaceGrid.ActualWidth, 0), window.MainContentGrid).X;
             var assignmentLeft = window.AssignmentPane.TranslatePoint(new System.Windows.Point(), window.MainContentGrid).X;
             Check(window.AssignmentPane.Visibility == Visibility.Visible && assignmentLeft >= workspaceRight - 1, "assignment pane never overlays the keyboard workspace");
@@ -3569,8 +3578,9 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.InputName.Text == "MouseRight+S"
                 && window.InputDisplayText.Text == "右クリック + S"
-                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible,
-                "input detection recognizes a held layer plus the next key and opens its complete assignment editor");
+                && !window.ValueBox.IsKeyboardFocusWithin
+                && window.AssignmentTapNameText.Text == "元の入力",
+                "input detection recognizes a held layer plus the next key and opens its unified assignment summary");
             window.KindBox.SelectedValue = ActionKind.Shortcut;
             window.ValueBox.Text = "Ctrl+C";
             window.CompleteDestinationInputForTest();
@@ -3580,12 +3590,14 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(!window.ValueBox.IsKeyboardFocusWithin, "input detection leaves the caret out when the detected action already has execution content");
             Check(Descendants<System.Windows.Controls.Button>(window.AssignmentPane).Contains(window.ActionPaletteButton)
-                && window.LegacyAssignmentEditor.Visibility == Visibility.Visible
-                && window.AssignmentSummaryPanel.Visibility == Visibility.Collapsed,
-                "input detection keeps the shared Action launcher and restores the complete pre-0.1.367 form");
-            var assignmentTexts = Descendants<TextBlock>(window.LegacyAssignmentEditor).Select(x => x.Text).ToArray();
-            Check(assignmentTexts.Any(text => text is "実行する操作" or "長押しの操作"),
-                "the inspector retains the complete short-press and long-press editors");
+                && window.LegacyAssignmentEditor.Visibility == Visibility.Collapsed
+                && window.AssignmentSummaryPanel.Visibility == Visibility.Visible,
+                "input detection keeps the shared Action launcher and never restores the retired direct form");
+            var assignmentTexts = Descendants<TextBlock>(window.AssignmentSummaryPanel).Select(x => x.Text).ToArray();
+            Check(assignmentTexts.Contains("TAP") && assignmentTexts.Contains("HOLD")
+                && assignmentTexts.Any(text => text.Contains("ドラッグ", StringComparison.Ordinal))
+                && !assignmentTexts.Any(text => text is "実行する操作" or "長押しの操作"),
+                "the inspector uses concise TAP/HOLD summaries and one drag-overwrite instruction");
             Check(ScrollViewer.GetVerticalScrollBarVisibility(window.LayerNavigationScrollViewer) == ScrollBarVisibility.Hidden && ScrollViewer.GetVerticalScrollBarVisibility(window.AssignmentScrollViewer) == ScrollBarVisibility.Hidden, "small-window side panes stay wheel-scrollable without visible vertical sliders");
             Check(!Descendants<System.Windows.Controls.Expander>(window.AssignmentPane).Any(x => x.Header?.ToString() is "マウスドラッグの詳細" or "条件・詳細設定"), "obsolete drag-detail and condition-detail sections are removed from the assignment pane");
             Check(!Descendants<System.Windows.Controls.CheckBox>(window.AssignmentPane).Any(x => x.Content?.ToString() == "この割り当てを有効にする") && ReferenceEquals(window.InputDisplayText.Foreground, ThemeService.Brush("PrimaryText")), "the redundant per-assignment enable switch is absent and right-pane text uses the primary theme color");
