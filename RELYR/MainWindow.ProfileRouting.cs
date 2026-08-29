@@ -36,6 +36,7 @@ public partial class MainWindow
         automaticProfileReturnName = "";
         string? selectedDeckGroup = deckManagementMode && selectedDeckLayout?.ProfileSwitchEnabled == true ? selectedDeckLayout.ProfileGroupId : null;
         config.ActiveProfile = name;
+        SynchronizeEditorHistoryCheckpoint();
         if (appliedConfig.Profiles.Any(x => x.Name == name))
         {
             appliedConfig.ActiveProfile = name;

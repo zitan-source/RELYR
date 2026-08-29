@@ -179,6 +179,7 @@ public partial class MainWindow
     {
         ClearPendingActions();
         config = value;
+        ResetEditorHistory();
         DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         if (!config.UiAnimationsEnabled && editorUiInitialized)

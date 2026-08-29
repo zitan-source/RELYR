@@ -1829,6 +1829,7 @@ public partial class MainWindow
 
     void DeckCustomizationSliderPressed(object sender, MouseButtonEventArgs e)
     {
+        BeginEditorHistoryTransaction();
         deckCustomizationSliderDragging = true;
         autoSaveTimer.Stop();
     }
@@ -1841,6 +1842,7 @@ public partial class MainWindow
         if (!deckCustomizationSliderDragging)
             return;
         deckCustomizationSliderDragging = false;
+        CompleteEditorHistoryTransaction();
         FlushDeckCustomizationRefresh();
         if (config.AutoSave)
         {

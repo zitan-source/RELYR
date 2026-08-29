@@ -42,12 +42,19 @@ internal static class InputAssignmentPolicy
     }
 
     internal static bool IsUnreachableInput(string? input)
-        => BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase) || IsSelfLayerInput(input);
+    {
+        string value = (input ?? "").Trim();
+        return BaseInput(value).Equals("MouseX", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("Space", StringComparison.OrdinalIgnoreCase)
+            || IsSelfLayerInput(value);
+    }
 
     internal static string? UnavailableInputReason(string? input)
     {
         if (BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase))
             return "追加ボタンは入力として使用できません";
+        if ((input ?? "").Trim().Equals("Space", StringComparison.OrdinalIgnoreCase))
+            return "Spaceキーはレイヤー専用のため変更できません";
         if (IsSelfLayerInput(input))
             return "レイヤーと同じボタンには設定できません";
         return null;

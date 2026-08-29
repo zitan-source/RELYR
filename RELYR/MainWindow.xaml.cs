@@ -223,6 +223,7 @@ public partial class MainWindow : Window
         capsLockRemapped = capsRestartPending ? config.CapsLockRemapEffectiveBeforeRestart : configuredCapsLockRemap;
         engine.TreatF13AsCapsLock = capsLockRemapped;
         appliedConfig = store.Clone(config);
+        InitializeEditorHistory();
         UpdateThemeToolbarControls();
         OverlayService.Configure(
             DeckOverlayConfig,
@@ -405,6 +406,7 @@ public partial class MainWindow : Window
         var latest = store.Load();
         config = latest;
         appliedConfig = store.Clone(latest);
+        ResetEditorHistory();
         DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         engine.UseUsLayout = config.KeyboardLayout == "US";
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
@@ -1191,16 +1193,30 @@ public partial class MainWindow : Window
             ColorButtons();
             ShowInlineNotice($"{DisplayInputName(input)} の割り当てをデフォルト以外の{applied}レイヤーへ適用しました");
         };
+        string? allProfilesReason = unavailableReason ?? (config.Profiles.Count <= 1 ? "他のプロファイルがありません" : null);
+        var assignAllProfiles = new MenuItem { Header = "全プロファイルに割り当て", IsEnabled = existing != null && allProfilesReason == null, ToolTip = allProfilesReason };
+        assignAllProfiles.Click += (_, _) =>
+        {
+            if (existing == null)
+                return;
+            int applied = AssignMappingToAllProfiles(config.Profiles, CurrentProfile, input, existing);
+            if (applied == 0)
+                return;
+            ClearSelectedInput();
+            MarkDirty();
+            UpdateLayerButtons();
+            ColorButtons();
+            ShowInlineNotice($"{DisplayInputName(input)} の割り当てを他の{applied}プロファイルへ適用しました");
+        };
         var delete = new MenuItem { Header = "この割り当てを削除", IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => { if (existing == null) return; CurrentProfile.Mappings.Remove(existing); MarkDirty(); UpdateLayerButtons(); ClearSelectedInput(); ShowInlineNotice(DisplayInputName(input) + " の割り当てを削除しました"); };
         menu.Items.Add(copy);
         menu.Items.Add(paste);
+        menu.Items.Add(new Separator());
         if (includeAllLayers)
-        {
-            menu.Items.Add(new Separator());
             menu.Items.Add(assignAllLayers);
-            menu.Items.Add(new Separator());
-        }
+        menu.Items.Add(assignAllProfiles);
+        menu.Items.Add(new Separator());
         menu.Items.Add(delete);
         return menu;
     }
@@ -1228,6 +1244,27 @@ public partial class MainWindow : Window
             applied++;
         }
         InputAssignmentPolicy.SanitizeMappings(mappings);
+        return applied;
+    }
+    internal static int AssignMappingToAllProfiles(IReadOnlyList<Profile> profiles, Profile sourceProfile, string input, Mapping source)
+    {
+        if (profiles == null || sourceProfile == null || string.IsNullOrWhiteSpace(input)
+            || DeckPanelLayout.IsInputName(input) || InputAssignmentPolicy.IsUnreachableInput(input))
+            return 0;
+        int applied = 0;
+        foreach (var profile in profiles)
+        {
+            if (ReferenceEquals(profile, sourceProfile)
+                || profile.Id.Equals(sourceProfile.Id, StringComparison.OrdinalIgnoreCase))
+                continue;
+            profile.Mappings.RemoveAll(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+            var copy = CloneMapping(source);
+            copy.Input = input;
+            ClearUnsupportedLongPress(copy, profile.Mappings);
+            profile.Mappings.Add(copy);
+            InputAssignmentPolicy.SanitizeMappings(profile.Mappings);
+            applied++;
+        }
         return applied;
     }
     internal ContextMenu CreateMultiSelectionContextMenu()
@@ -2613,6 +2650,8 @@ public partial class MainWindow : Window
         => activeInputMappings.TryGetValue(input, out var captured) ? captured.Mapping : FindMapping(input);
     bool HasMapping(string input)
     {
+        if (InputAssignmentPolicy.IsUnreachableInput(input))
+            return false;
         // A profile created by an older build may still contain this mapping.
         // Never intercept the system's primary click outside explicit layers
         // such as Space+MouseLeft or Taskbar+MouseLeft.
@@ -2631,6 +2670,8 @@ public partial class MainWindow : Window
     bool HasElevatedForegroundMapping(string input)
     {
         if (!WindowMonitorService.IsForegroundWindowElevated())
+            return false;
+        if (InputAssignmentPolicy.IsUnreachableInput(input))
             return false;
         if (input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
             || input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase))
@@ -3245,6 +3286,7 @@ public partial class MainWindow : Window
     {
         if (config == null)
             return;
+        RecordEditorHistoryChange();
         hasUnsavedChanges = true;
         UpdateUnsavedChangesIndicator();
         deckOverlayVisualSynchronized = false;

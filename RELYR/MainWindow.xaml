@@ -909,6 +909,8 @@
             </TextBlock>
             <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
             <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+              <Button x:Name="EditorUndoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorUndo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ戻る" AutomationProperties.Name="1つ戻る"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE7A7;"/></Button>
+              <Button x:Name="EditorRedoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorRedo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ進む" AutomationProperties.Name="1つ進む"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE7A6;"/></Button>
               <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>
               <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てをコピー" AutomationProperties.Name="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8C8;"/></Button>
               <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てを貼り付け" AutomationProperties.Name="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE77F;"/></Button>
@@ -1177,7 +1179,7 @@
                           </StackPanel>
                           <TextBlock Grid.Row="2" Text="透明度" Style="{StaticResource DeckEditorFieldLabel}" Margin="0,16,0,6"/>
                           <TextBlock x:Name="DeckOpacityValueText" Grid.Row="2" Grid.Column="1" Width="42" Text="96%" TextAlignment="Right" VerticalAlignment="Bottom" Margin="0,16,0,6"/>
-                          <Slider x:Name="DeckOpacitySlider" Grid.Row="3" Grid.ColumnSpan="2" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" ToolTip="Deckの透明度"/>
+                          <Slider x:Name="DeckOpacitySlider" Grid.Row="3" Grid.ColumnSpan="2" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" PreviewMouseLeftButtonDown="DeckCustomizationSliderPressed" PreviewMouseLeftButtonUp="DeckCustomizationSliderReleased" LostMouseCapture="DeckCustomizationSliderLostMouseCapture" ToolTip="Deckの透明度"/>
                         </Grid>
                         <CheckBox x:Name="DeckHoverAnimationBox" Content="ホバー時アニメーション" Margin="0,18,0,0" Checked="DeckHoverAnimationChanged" Unchecked="DeckHoverAnimationChanged" ToolTip="ポインターを重ねたときの変化をなめらかにします"/>
                         <CheckBox x:Name="DeckHoverPreviewBox" Content="ファイルをホバー再生" Margin="0,12,0,0" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="OFFでもクリックすると音声・動画をプレビューできます"/>
@@ -1276,7 +1278,7 @@
                   <TextBlock Text="HOLDの判定" FontSize="10.5" Foreground="{DynamicResource SecondaryText}"/>
                   <TextBlock x:Name="AssignmentHoldDurationText" Grid.Column="1" Text="0.5秒" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}"/>
                 </Grid>
-                <Slider x:Name="LongPressDurationSlider" Minimum="250" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="LongPressDurationSlider_ValueChanged" ToolTip="HOLDと判定するまでの長さ"/>
+                <Slider x:Name="LongPressDurationSlider" Minimum="250" Maximum="1000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="LongPressDurationSlider_ValueChanged" PreviewMouseLeftButtonDown="DeckCustomizationSliderPressed" PreviewMouseLeftButtonUp="DeckCustomizationSliderReleased" LostMouseCapture="DeckCustomizationSliderLostMouseCapture" ToolTip="HOLDと判定するまでの長さ"/>
               </StackPanel>
               <TextBlock x:Name="AssignmentReplaceHintText" Text="変更はActionをキーのTAP / HOLDへドラッグ" FontSize="10.5" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="2,12,2,2"/>
             </StackPanel>

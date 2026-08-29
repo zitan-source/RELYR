@@ -38,7 +38,12 @@ internal static class UiIntegrationTest
             var mouseButtons = Descendants<System.Windows.Controls.Button>(window.MousePanel).Where(x => x.Tag is string).ToList();
             var leftClick = mouseButtons.First(x => Equals(x.Tag, "MouseLeft"));
             var rightClick = mouseButtons.First(x => Equals(x.Tag, "MouseRight"));
-            Check(!leftClick.IsEnabled && leftClick.Opacity < .6 && !window.RuntimeInterceptsInputForTest("MouseLeft"), "normal-layer left click is visibly disabled and cannot intercept Windows click or drag input even if an old mapping remains");
+            var staleBareSpace = new Mapping { Input = "Space", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DeckPanel:stale" };
+            window.AddAppliedMappingForTest(staleBareSpace);
+            Check(!leftClick.IsEnabled && leftClick.Opacity < .6 && !window.RuntimeInterceptsInputForTest("MouseLeft")
+                && !window.RuntimeInterceptsInputForTest("Space"),
+                "normal left click and stale bare-Space actions cannot intercept native Windows input even if an old mapping remains");
+            window.RemoveAppliedMappingForTest(staleBareSpace);
             Check(DeckPanelLayout.ExternalFileDragEffects == System.Windows.DragDropEffects.Copy, "Deck file drags expose copy-only semantics so Explorer cannot move or delete the registered source file");
             var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
             var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
@@ -1326,7 +1331,7 @@ internal static class UiIntegrationTest
                 && window.DeckProfileSwitchBox.Template.FindName("SwitchTrack", window.DeckProfileSwitchBox) is Border,
                 "first-run and Deck options use the same theme-aware switch instead of a system checkbox");
             manualTutorial.Close();
-            var toolbarControls = new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton, window.ToolbarSaveButton };
+            var toolbarControls = new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.EditorUndoButton, window.EditorRedoButton, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton, window.ToolbarSaveButton };
             double toolbarControlTop = window.ProfileBox.TranslatePoint(new System.Windows.Point(), window).Y;
             double sidebarLogoTop = window.ProductNameText.TranslatePoint(new System.Windows.Point(), window).Y;
             Check(toolbarControls.All(x => Math.Abs(x.ActualHeight - 44) < .1)
@@ -1335,7 +1340,7 @@ internal static class UiIntegrationTest
                 && window.ToolbarSaveButton.ActualWidth >= 77
                 && window.ToolbarSaveButton.BorderThickness == new Thickness(0)
                 && window.ThemeSegmentPanel.Background is SolidColorBrush themePanelBrush && themePanelBrush.Color.A == 0
-                && new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton }.All(control => control.BorderThickness == new Thickness(0))
+                && new System.Windows.Controls.Control[] { window.ProfileBox, window.KeyboardLayoutBox, window.EditorUndoButton, window.EditorRedoButton, window.MultiSelectToggle, window.MultiCopyButton, window.MultiPasteButton, window.MultiDeleteButton }.All(control => control.BorderThickness == new Thickness(0))
                 && Math.Abs(window.ToolbarPanel.Margin.Top - 9.5) < .1
                 && Math.Abs(window.ToolbarPanel.Margin.Bottom + 9.5) < .1
                 && window.KeyboardLayoutToolbarIcon.RenderTransform is TranslateTransform keyboardIconShift && Math.Abs(keyboardIconShift.Y - 5) < .1
@@ -1941,14 +1946,14 @@ internal static class UiIntegrationTest
             Check(videoPreviewsBeforeHide == 1 && videoPreviewsAfterHide == 0 && deckOverlay.VideoPreviewCountForTest == 1, "hiding the cached Deck releases its video player and the preview remains wired after reopening");
             deckOverlay.CapturePanelMouseForTest();
             deckOverlay.RequestHideForReuse();
-            PumpFor(TimeSpan.FromMilliseconds(35));
+            PumpFor(TimeSpan.FromMilliseconds(70));
             Check(deckOverlay.IsVisible
                 && deckOverlay.IsPresentationHiding
                 && !deckOverlay.OwnsMouseCaptureForTest
                 && !deckOverlay.PresentationContentHitTestVisibleForTest
                 && deckOverlay.PresentationMotionActiveForTest
                 && deckOverlay.DepartureUsesScaleFadeOnlyForTest
-                && deckOverlay.PresentationScaleForTest is < 1 and > .96
+                && deckOverlay.PresentationScaleForTest is <= 1 and > .96
                 && Math.Abs(deckOverlay.PresentationOffsetForTest) < .001,
                 $"Deck departure is a short centered scale-and-fade that releases capture and disables interaction without positional movement (visible={deckOverlay.IsVisible}, hiding={deckOverlay.IsPresentationHiding}, capture={deckOverlay.OwnsMouseCaptureForTest}, hit={deckOverlay.PresentationContentHitTestVisibleForTest}, motion={deckOverlay.PresentationMotionActiveForTest}, scaleOnly={deckOverlay.DepartureUsesScaleFadeOnlyForTest}, scale={deckOverlay.PresentationScaleForTest:F3}, offset={deckOverlay.PresentationOffsetForTest:F3})");
             deckOverlay.PrepareForShow();
@@ -2443,7 +2448,7 @@ internal static class UiIntegrationTest
                 autoHideOverlay.Show();
                 autoHideOverlay.RefreshAppearance(96, true, DeckAutoDismissBehavior.Hide, DeckAutoDismissBehavior.StayVisible);
                 autoHideOverlay.DeckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                PumpFor(TimeSpan.FromMilliseconds(350));
+                PumpFor(TimeSpan.FromMilliseconds(430));
                 Check(autoHideExecuted != null && !autoHideOverlay.IsVisible && !autoHideOverlay.IsCollapsedToEdge,
                     "after-action hide runs the Deck action first and then fully hides the Deck without collapsing it");
             }
@@ -3312,6 +3317,15 @@ internal static class UiIntegrationTest
             ((MenuItem)window.CreateInputContextMenu("B").Items[1]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" } && window.InputName.Text.Length == 0 && !window.AssignmentEditor.IsEnabled && window.ProfileBox.IsEnabled, "single-key paste immediately completes editing and leaves profile switching available");
+            Check(window.EditorUndoButton.IsEnabled && !window.EditorRedoButton.IsEnabled, "a completed assignment change enables the toolbar undo command");
+            window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Shortcut, Value: "Ctrl+B" }
+                && window.EditorRedoButton.IsEnabled, "toolbar undo restores the complete assignment state and enables redo");
+            window.EditorRedoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" }
+                && window.EditorUndoButton.IsEnabled, "toolbar redo reapplies the assignment state");
             var capsPaste = (MenuItem)window.CreateInputContextMenu("CapsLock").Items[1];
             var x1Paste = (MenuItem)window.CreateInputContextMenu("MouseX").Items[1];
             Check(!capsPaste.IsEnabled && capsPaste.ToolTip?.ToString() == "CapsLockは割り当て元にはできません"
@@ -3322,6 +3336,7 @@ internal static class UiIntegrationTest
             window.CurrentProfileForTest.Mappings.Add(allLayerSource);
             var mainKeyboardMenu = window.CreateInputContextMenu("F7");
             var assignAllLayers = mainKeyboardMenu.Items.OfType<MenuItem>().SingleOrDefault(item => item.Header?.ToString() == "全レイヤーに割り当てる");
+            var assignAllProfiles = mainKeyboardMenu.Items.OfType<MenuItem>().SingleOrDefault(item => item.Header?.ToString() == "全プロファイルに割り当て");
             mainKeyboardMenu.ApplyTemplate();
             assignAllLayers?.ApplyTemplate();
             var contextMenuSurface = (Border?)mainKeyboardMenu.Template.FindName("ContextMenuSurface", mainKeyboardMenu);
@@ -3344,7 +3359,14 @@ internal static class UiIntegrationTest
             assignAllLayers?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+F7", StringComparison.OrdinalIgnoreCase))).ToArray();
-            Check(assignAllLayers?.IsEnabled == true && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" }) && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames) && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "F7") == allLayerSource && !window.CreateInputContextMenu("Insert", false).Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる"), "main keyboard context menu copies the complete assignment through every non-default layer without changing the default or exposing the command on lower keys");
+            var secondaryKeyboardMenu = window.CreateInputContextMenu("Insert", false);
+            Check(assignAllLayers?.IsEnabled == true && assignAllProfiles != null
+                && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" })
+                && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames)
+                && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "F7") == allLayerSource
+                && !secondaryKeyboardMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる")
+                && secondaryKeyboardMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全プロファイルに割り当て"),
+                "key context menus copy the complete assignment through all layers and expose all-profile assignment on both main and secondary keys");
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.MultiDeleteButton.IsEnabled

@@ -59,6 +59,7 @@ public partial class MainWindow
         var persisted = store.Load();
         persisted.KeyboardLayout = config.KeyboardLayout;
         store.Save(persisted);
+        SynchronizeEditorHistoryCheckpoint();
         ShowInlineNotice(config.KeyboardLayout + "配列へ切り替えました");
     }
 
@@ -75,6 +76,7 @@ public partial class MainWindow
         var persisted = store.Load();
         persisted.ThemeMode = mode;
         store.Save(persisted);
+        SynchronizeEditorHistoryCheckpoint();
         ThemeService.Apply(mode);
         UpdateThemeToolbarControls();
     }
@@ -146,7 +148,7 @@ public partial class MainWindow
         KeyboardLayoutBox.Width = narrow ? 70 : 84;
         ToolbarPanel.Margin = new Thickness(compact ? 6 : 14, 9.5, 0, -9.5);
         double compactCommandWidth = compact ? 34 : 44;
-        foreach (var control in new System.Windows.Controls.Control[] { MultiSelectToggle, MultiCopyButton, MultiPasteButton, MultiDeleteButton })
+        foreach (var control in new System.Windows.Controls.Control[] { EditorUndoButton, EditorRedoButton, MultiSelectToggle, MultiCopyButton, MultiPasteButton, MultiDeleteButton })
         {
             control.Width = compactCommandWidth;
             control.MinWidth = compactCommandWidth;

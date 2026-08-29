@@ -197,6 +197,7 @@ public partial class MainWindow
         var persisted = store.Load();
         persisted.EngineEnabled = engine.Enabled;
         store.Save(persisted);
+        SynchronizeEditorHistoryCheckpoint();
         UpdateStatus();
     }
     void AutoSaveChanged(object s, RoutedEventArgs e)
@@ -213,6 +214,7 @@ public partial class MainWindow
             var persisted = store.Load();
             persisted.AutoSave = false;
             store.Save(persisted);
+            SynchronizeEditorHistoryCheckpoint();
             LastInput.Text = "自動保存をオフにしました";
             LastInput.Foreground = ThemeService.Brush("AccentTextBrush");
             UpdateUnsavedChangesIndicator();

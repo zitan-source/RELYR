@@ -159,6 +159,7 @@ public partial class MainWindow
         }
         store.Save(config);
         appliedConfig = store.Clone(config);
+        SynchronizeEditorHistoryCheckpoint();
         hasUnsavedChanges = false;
         UpdateUnsavedChangesIndicator();
         if (deckManagementMode && appliedConfig.Profiles.Any(profile => profile.Name.Equals(runtimeProfileBeforeSave, StringComparison.OrdinalIgnoreCase)))

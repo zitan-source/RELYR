@@ -508,7 +508,10 @@ public sealed partial class InputEngine : IDisposable
         CancelLayerSafety();
         if (!layerUsed && !repeated && SuppressLayerTap?.Invoke(releasedLayer) != true)
         {
-            if (HasMapping?.Invoke(releasedLayer) == true)
+            // Space is a layer source and never a direct assignment source. An
+            // old/stale bare-Space mapping must not turn a normal tap into an
+            // Action (especially a Deck overlay); always replay native Space.
+            if (!MustReplayNativeLayerTap(releasedLayer) && HasMapping?.Invoke(releasedLayer) == true)
                 InputReceived?.Invoke(releasedLayer);
             else
                 _ = Task.Run(() => SendShortcut(releasedLayer));
@@ -519,6 +522,9 @@ public sealed partial class InputEngine : IDisposable
         layerUsed = false;
         LayerEnded?.Invoke(releasedLayer);
     }
+
+    internal static bool MustReplayNativeLayerTap(string layer)
+        => layer.Equals("Space", StringComparison.OrdinalIgnoreCase);
 
     IntPtr MouseCallback(int n, IntPtr w, IntPtr l)
     {

@@ -316,12 +316,29 @@ public static class SelfTest
                 new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
                 new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" }
             };
+            var staleSpaceMappings = new List<Mapping>
+            {
+                new() { Input = "Space", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DeckPanel:stale" },
+                new() { Input = "Space+K", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+K" }
+            };
             Check(InputAssignmentPolicy.IsImpulseInput("Space+WheelUp")
                 && !InputAssignmentPolicy.SupportsGesture("CapsLock+TiltRight")
-                && new[] { "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && new[] { "Space", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && InputEngine.MustReplayNativeLayerTap("Space") && !InputEngine.MustReplayNativeLayerTap("CapsLock")
+                && InputAssignmentPolicy.SanitizeMappings(staleSpaceMappings)
+                && staleSpaceMappings.Count == 1 && staleSpaceMappings[0].Input == "Space+K"
                 && InputAssignmentPolicy.SanitizeMappings(rightLayerConflict)
                 && rightLayerConflict[0] is { LongPressKind: ActionKind.None, LongPressValue: "" },
-                "the shared assignment policy rejects impulse gestures, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
+                "the shared assignment policy rejects impulse gestures, stale bare-Space Deck actions, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
+            var allProfileSource = new Profile { Name = "元", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Text, Value = "source" }] };
+            var allProfileFirstTarget = new Profile { Name = "先1", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Shortcut, Value = "Ctrl+8" }] };
+            var allProfileSecondTarget = new Profile { Name = "先2", Mappings = [new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }] };
+            var allProfileTemplate = new Mapping { Input = "F8", Layer = "通常", Kind = ActionKind.Text, Value = "全体", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+8", LongPressMs = 720, Application = "notepad.exe" };
+            int allProfileApplied = MainWindow.AssignMappingToAllProfiles([allProfileSource, allProfileFirstTarget, allProfileSecondTarget], allProfileSource, "F8", allProfileTemplate);
+            Check(allProfileApplied == 2
+                && allProfileSource.Mappings.Single(mapping => mapping.Input == "F8").Value == "source"
+                && new[] { allProfileFirstTarget, allProfileSecondTarget }.All(profile => profile.Mappings.Single(mapping => mapping.Input == "F8") is { Kind: ActionKind.Text, Value: "全体", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+8", LongPressMs: 720, Application: "notepad.exe" }),
+                "all-profile assignment replaces the same input in every other profile with the complete source assignment without changing the current profile");
             config.Profiles.Add(new Profile { Name = "アプリ用", AutoSwitchEnabled = true, AutoSwitchApplications = ["notepad.exe"] });
             config.ActiveProfile = "アプリ用";
             config.AutoSwitchProfilesByCursor = false;
