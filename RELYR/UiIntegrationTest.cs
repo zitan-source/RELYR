@@ -985,6 +985,8 @@ internal static class UiIntegrationTest
             var enterDropOutline = (System.Windows.Shapes.Path)jisEnterDropTarget.Template.FindName("AssignmentSlotOutline", jisEnterDropTarget)!;
             var enterTapLabel = (TextBlock)jisEnterDropTarget.Template.FindName("ShortPressDropLabel", jisEnterDropTarget)!;
             var enterHoldLabel = (TextBlock)jisEnterDropTarget.Template.FindName("LongPressDropLabel", jisEnterDropTarget)!;
+            var enterTapGlow = (Border)jisEnterDropTarget.Template.FindName("ShortPressDropGlow", jisEnterDropTarget)!;
+            var enterHoldGlow = (Border)jisEnterDropTarget.Template.FindName("LongPressDropGlow", jisEnterDropTarget)!;
             CaptureForReview(window, "action-drop-jis-enter.png");
             Check(enterDropOutline.Stroke is SolidColorBrush enterOutlineBrush && enterOutlineBrush.Color == ThemeService.Color("AccentBrush")
                 && Math.Abs(enterDropOutline.StrokeThickness - 3) < .001
@@ -992,8 +994,12 @@ internal static class UiIntegrationTest
                 && Math.Abs(enterDropOutline.Data.Bounds.Width - 160) < .1
                 && Math.Abs(enterDropOutline.Data.Bounds.Height - 106.86) < .01
                 && Math.Abs(enterTapLabel.FontSize - shortDropLabel.FontSize) < .001
-                && Math.Abs(enterHoldLabel.FontSize - longDropLabel.FontSize) < .001,
-                "the JIS Enter preview redraws its complete rounded outline while TAP and HOLD retain the same fixed type size as every key");
+                && Math.Abs(enterHoldLabel.FontSize - longDropLabel.FontSize) < .001
+                && Math.Abs(enterTapGlow.Width - shortDropGlow.Width) < .001
+                && Math.Abs(enterTapGlow.Height - shortDropGlow.Height) < .001
+                && Math.Abs(enterHoldGlow.Width - longDropGlow.Width) < .001
+                && Math.Abs(enterHoldGlow.Height - longDropGlow.Height) < .001,
+                "the JIS Enter preview redraws its complete rounded outline while TAP/HOLD type and glow sizes remain identical to every key");
             window.ClearAssignmentDropTargetForTest();
             window.SetPaletteAssignmentDropTargetForTest(window.MouseLeftVisual, enterAction, longPress: false);
             Check(System.Windows.Controls.Panel.GetZIndex(window.MouseHost) == 50 && window.MouseLeftVisual.Opacity == 1,
