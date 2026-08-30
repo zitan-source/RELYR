@@ -15,6 +15,7 @@ Read this before changing input, Deck layout, startup, shutdown, or installer co
 - Normal-layer MouseLeft remains protected. `Taskbar+MouseLeft` and `Taskbar+MouseRight` TAP are permanently reserved for Windows; only HOLD may be assigned, and each native short click is restored atomically. Taskbar long-press mapping takes priority over a normal mouse layer.
 - Every assignment mutation route (direct edit, Action drop, single/multi paste, move, all-layer, all-profile, import, and migration) applies the same input policy before replacing an existing mapping. Rejecting a reserved TAP must never erase an existing HOLD or report a successful assignment.
 - Space, CapsLock, mouse layers, Deck close, single-instance ownership, and graceful installer shutdown are regression-protected.
+- Cursor locking is stored on each gesture definition. The selected gesture exposes that switch in its editor header; the general settings screen exposes only gesture sensitivity. A gesture snapshots its cursor behavior when it starts so switching or editing definitions cannot change an active gesture midway.
 - Deck buttons remain 54x52. The visible horizontal button gap equals the vertical button-to-button distance, including the name-label area. Names must remain visible.
 
 ## Regression prevention contract
@@ -89,7 +90,7 @@ Before reporting completion, explicitly review this permanent regression set:
 4. Profile auto-switching follows the foreground application only, remains stable, and does not change the editor dropdown unless the user selects it. Opening an owned RELYR management dialog must not preserve an unrelated application's runtime profile, and the dialog's title-bar close command remains usable.
 5. Deck editor and live overlay synchronize in both directions without restart, including profile-linked layouts with different dimensions.
 6. Tray restart preserves input ownership, profile state, mappings, and Deck synchronization.
-7. Repeated actions and virtual-desktop changes do not leave captured keys/buttons, double-execute actions, or stop the hooks.
+7. Repeated actions and virtual-desktop changes do not leave captured keys/buttons, double-execute actions, or stop the hooks. Two gesture definitions may independently keep the cursor fixed or allow it to move, and an active gesture retains the value captured on its initial press.
 8. Settings, mapping `Application` conditions, profiles, and Deck layouts are not erased, globally broadened, or silently migrated.
 
 If a required item cannot be exercised safely in the current session, say so. Do not substitute an unrelated mocked test or claim that the item was verified.

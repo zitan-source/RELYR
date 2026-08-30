@@ -433,9 +433,6 @@
                   <TextBox x:Name="GestureThresholdBox" Width="72" FontSize="15"/>
                   <TextBlock Text="px（3～100）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
                 </StackPanel>
-                <CheckBox x:Name="LockGestureCursorBox" Margin="0,5,0,0" ToolTip="オフにすると、カーソルを動かしながらジェスチャーできます">
-                  <TextBlock Text="ジェスチャー中にカーソルを固定する" TextWrapping="Wrap"/>
-                </CheckBox>
               </StackPanel>
             </StackPanel>
           </Border>

@@ -25,6 +25,7 @@ public sealed partial class InputEngine
         public bool GestureExpired;
         public bool GestureMoved;
         public bool GestureActionCommitted;
+        public bool GestureLocksCursor = true;
         public int X;
         public int Y;
         public int Ended;

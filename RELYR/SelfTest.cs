@@ -199,7 +199,7 @@ public static class SelfTest
             Check(!App.UninstallRestartNeeded(new AppConfig(), false, false) && App.UninstallRestartNeeded(new AppConfig(), true, false) && !App.UninstallRestartNeeded(new AppConfig { CapsLockLayerEnabled = true }, false, false) && App.UninstallRestartNeeded(new AppConfig(), false, true), "normal updates and a saved CapsLock preference do not request a restart; only an active or pending system remap does");
             Check(config.Profiles.SelectMany(p => p.Mappings).All(m => !m.Input.StartsWith("F13", StringComparison.OrdinalIgnoreCase) && !m.Layer.Equals("F13", StringComparison.OrdinalIgnoreCase)), "F13 layer settings migrate to CapsLock");
             config.Macros.Add(new MacroDefinition { Name = "テストマクロ", Steps = [new() { Event = "A Down", DelayMs = 100 }, new() { Event = "A Up", DelayMs = 25 }, new() { Event = "Wait", DelayMs = 500 }, new() { Event = "割り当て: Win+Left", RecordedActionKind = ActionKind.Shortcut, RecordedActionValue = "Win+Left" }] });
-            config.Gestures.Add(new GestureDefinition { Name = "ウィンドウ操作", UpKind = ActionKind.Shortcut, UpValue = "Win+Up", DownKind = ActionKind.Shortcut, DownValue = "Win+Down", CenterKind = ActionKind.Key, CenterValue = "Enter" });
+            config.Gestures.Add(new GestureDefinition { Name = "ウィンドウ操作", LockCursorDuringGesture = false, UpKind = ActionKind.Shortcut, UpValue = "Win+Up", DownKind = ActionKind.Shortcut, DownValue = "Win+Down", CenterKind = ActionKind.Key, CenterValue = "Enter" });
             config.Profiles[0].Mappings.Add(new Mapping { Input = "G", Kind = ActionKind.Gesture, Value = "ウィンドウ操作" });
             Check(ConfigValidator.Validate(config).Count == 0, "default config validation");
             Check(MainWindow.GestureAction(config.Gestures[0], "Up") == (ActionKind.Shortcut, "Win+Up") && MainWindow.GestureAction(config.Gestures[0], "Center") == (ActionKind.Key, "Enter"), "gesture directions and center resolve to their configured actions");
@@ -415,7 +415,6 @@ public static class SelfTest
             config.SpaceHoldRepeatDelayMs = 450;
             config.InputDisabledApplications = ["RobloxPlayerBeta.exe", "game.exe"];
             config.GestureThresholdPixels = 12;
-            config.LockCursorDuringGesture = false;
             config.ClockBackgroundMode = ClockBackgroundMode.Image;
             config.ClockDisplayMode = ClockDisplayMode.FullDateAndTime;
             config.ClockBackgroundImage = @"C:\Wallpapers\clock.jpg";
@@ -548,7 +547,7 @@ public static class SelfTest
                 && MainWindow.IsInputProcessingDisabledForApplication(loaded.InputDisabledApplications, @"C:\Games\GAME.EXE")
                 && !MainWindow.IsInputProcessingDisabledForApplication(loaded.InputDisabledApplications, "notepad"),
                 "foreground application input-disable list roundtrip and exact process matching");
-            Check(loaded.GestureThresholdPixels == 12 && !loaded.LockCursorDuringGesture && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and cursor-lock option roundtrip");
+            Check(loaded.GestureThresholdPixels == 12 && loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && !x.LockCursorDuringGesture && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and per-gesture cursor behavior roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
             Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
             Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && loaded.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && loaded.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.StayVisible && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5, PanelPadding: 18, PanelCornerRadius: 9, HoverAnimationEnabled: false }, "global fallback and per-Deck expanded/collapsed positions, size, pin, appearance, display behavior, and keypad positions roundtrip independently");
@@ -557,6 +556,11 @@ public static class SelfTest
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });
             var migratedGestureConfig = gestureMigrationService.Load();
             Check(migratedGestureConfig.Version == ConfigService.CurrentVersion && migratedGestureConfig.GestureThresholdPixels == 12, "the former 24-pixel gesture default migrates to a more forgiving 12-pixel movement threshold");
+            var cursorBehaviorMigrationService = new ConfigService(Path.Combine(dir, "gesture-cursor-migration"));
+            Directory.CreateDirectory(cursorBehaviorMigrationService.DirectoryPath);
+            File.WriteAllText(cursorBehaviorMigrationService.FilePath, """{"Version":35,"LockCursorDuringGesture":false,"Gestures":[{"Name":"移行ジェスチャー"}],"Profiles":[{"Name":"標準","Mappings":[]}]}""");
+            var migratedCursorBehavior = cursorBehaviorMigrationService.Load();
+            Check(migratedCursorBehavior.Version == ConfigService.CurrentVersion && migratedCursorBehavior.Gestures is [{ LockCursorDuringGesture: false }], "the former global cursor-lock option migrates to every existing gesture without changing behavior");
             var deckBehaviorMigrationService = new ConfigService(Path.Combine(dir, "deck-behavior-migration"));
             Directory.CreateDirectory(deckBehaviorMigrationService.DirectoryPath);
             File.WriteAllText(deckBehaviorMigrationService.FilePath, """{"Version":31,"DeckAutoHideAfterAction":false,"DeckAutoHideOnPointerLeave":true,"Profiles":[{"Name":"標準","Mappings":[]}]}""");

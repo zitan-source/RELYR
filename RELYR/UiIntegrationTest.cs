@@ -490,7 +490,7 @@ internal static class UiIntegrationTest
             Check(gesturePickerMenu.Items.OfType<MenuItem>().Select(x => x.Header?.ToString()).SequenceEqual(["ウィンドウ操作"]), "gesture button opens a dedicated list containing only registered gestures");
             shortPicker.Close();
             longPicker.Close();
-            var gestureManager = new GestureManagerWindow([new GestureDefinition { Name = "ウィンドウ操作", UpKind = ActionKind.Shortcut, UpValue = "Win+Up" }], [new Profile { Name = "標準", Mappings = [new Mapping { Input = "G", Kind = ActionKind.Gesture, Value = "ウィンドウ操作" }] }], [new MacroDefinition { Name = "マクロ1" }], "JIS") { Owner = window, ShowInTaskbar = false };
+            var gestureManager = new GestureManagerWindow([new GestureDefinition { Name = "ウィンドウ操作", LockCursorDuringGesture = false, UpKind = ActionKind.Shortcut, UpValue = "Win+Up" }], [new Profile { Name = "標準", Mappings = [new Mapping { Input = "G", Kind = ActionKind.Gesture, Value = "ウィンドウ操作" }] }], [new MacroDefinition { Name = "マクロ1" }], "JIS") { Owner = window, ShowInTaskbar = false };
             gestureManager.Show();
             gestureManager.UpdateLayout();
             var gestureSlots = Descendants<System.Windows.Controls.Button>(gestureManager).Where(x => x.Tag is "Up" or "Down" or "Left" or "Right" or "Center").ToArray();
@@ -505,6 +505,15 @@ internal static class UiIntegrationTest
                 "gesture row action columns reserve the complete icon-button width so the right edge is never clipped");
             gestureManager.GestureTitle.ApplyTemplate();
             var gestureTitleEditButton = (System.Windows.Controls.Button?)gestureManager.GestureTitle.Template.FindName("GestureTitleEditButton", gestureManager.GestureTitle);
+            var gestureTitleDisplayText = (TextBlock?)gestureManager.GestureTitle.Template.FindName("GestureTitleDisplayText", gestureManager.GestureTitle);
+            double titleTextRight = gestureTitleDisplayText?.TranslatePoint(new System.Windows.Point(gestureTitleDisplayText.ActualWidth, 0), gestureManager).X ?? double.NaN;
+            double titlePencilLeft = gestureTitleEditButton?.TranslatePoint(new System.Windows.Point(), gestureManager).X ?? double.NaN;
+            Check(gestureTitleDisplayText != null && gestureTitleEditButton != null && titlePencilLeft - titleTextRight is >= 6 and <= 12,
+                $"gesture title pencil stays immediately beside the title instead of drifting to the pane edge (gap={titlePencilLeft - titleTextRight:F1})");
+            Check(gestureManager.LockGestureCursorBox.Content?.ToString() == "カーソルを固定" && gestureManager.LockGestureCursorBox.IsChecked == false && !gestureManager.ResultGestures[0].LockCursorDuringGesture,
+                "gesture editor shows the selected gesture's cursor behavior in the upper-right switch");
+            gestureManager.LockGestureCursorBox.IsChecked = true;
+            Check(gestureManager.ResultGestures[0].LockCursorDuringGesture, "cursor locking can be changed independently for the selected gesture");
             gestureTitleEditButton?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(gestureTitleEditButton != null && !gestureManager.GestureTitle.IsReadOnly && gestureManager.GestureTitle.IsKeyboardFocusWithin
@@ -1211,15 +1220,13 @@ internal static class UiIntegrationTest
             window.ShowUpdateAvailableForTest(newerUpdate);
             Check(window.UpdateBanner.Visibility == Visibility.Visible && window.UpdateBannerText.Text.Contains("v9.9.10"), "a newer version is shown after an older notification was dismissed");
             window.UpdateBanner.Visibility = Visibility.Collapsed;
-            var closeSettings = new SettingsWindow(new AppConfig { GestureThresholdPixels = 14, LockCursorDuringGesture = false, ClockBackgroundMode = ClockBackgroundMode.Solid, ClockDisplayMode = ClockDisplayMode.FullDateAndTime, ClockBackgroundImage = @"C:\Images\clock.png", ClockSolidColor = "#123456", ClockShowOnAllMonitors = false, InputPanelOpacityPercent = 67, DeckAfterActionBehavior = DeckAutoDismissBehavior.Hide, DeckPointerLeaveBehavior = DeckAutoDismissBehavior.CollapseToEdge });
+            var closeSettings = new SettingsWindow(new AppConfig { GestureThresholdPixels = 14, ClockBackgroundMode = ClockBackgroundMode.Solid, ClockDisplayMode = ClockDisplayMode.FullDateAndTime, ClockBackgroundImage = @"C:\Images\clock.png", ClockSolidColor = "#123456", ClockShowOnAllMonitors = false, InputPanelOpacityPercent = 67, DeckAfterActionBehavior = DeckAutoDismissBehavior.Hide, DeckPointerLeaveBehavior = DeckAutoDismissBehavior.CollapseToEdge });
             closeSettings.Show();
             closeSettings.UpdateLayout();
             Check(closeSettings.ActiveWindowTargetBox.Content?.ToString() == "アクティブなウィンドウ" && closeSettings.CursorWindowTargetBox.Content?.ToString() == "マウスカーソル下のウィンドウ" && closeSettings.ActiveWindowTargetBox.IsChecked == true && closeSettings.CursorWindowTargetBox.IsChecked == false, "settings provides one clear target choice for close, maximize, snap, and other window actions");
             closeSettings.CursorWindowTargetBox.IsChecked = true;
             Check(closeSettings.SelectedWindowActionTarget == WindowActionTarget.WindowUnderCursor, "window-under-cursor target can be selected without changing the action itself");
-            Check(closeSettings.GestureThreshold == 14 && closeSettings.GestureThresholdBox.Text == "14" && closeSettings.LockGestureCursorBox.IsChecked == false && !closeSettings.LockCursorDuringGesture, "gesture sensitivity and cursor-lock behavior are both visible and editable in the layer settings");
-            closeSettings.LockGestureCursorBox.IsChecked = true;
-            Check(closeSettings.LockCursorDuringGesture, "gesture cursor locking can be enabled without changing the sensitivity");
+            Check(closeSettings.GestureThreshold == 14 && closeSettings.GestureThresholdBox.Text == "14" && closeSettings.FindName("LockGestureCursorBox") == null && !Descendants<TextBlock>(closeSettings).Any(text => text.Text == "ジェスチャー中にカーソルを固定する"), "layer settings retain gesture sensitivity but no longer expose the cursor behavior moved to each gesture");
             var settingsCategories = closeSettings.CategoryList.Items.Cast<ListBoxItem>().ToArray();
             int updateCategoryIndex = Array.FindIndex(settingsCategories, item => item.Tag?.ToString() == "Update");
             Check(updateCategoryIndex >= 0 && settingsCategories[updateCategoryIndex + 1].Tag?.ToString() == "Disabled" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay, disabled-app, and support options discoverable");
@@ -3716,8 +3723,8 @@ internal static class UiIntegrationTest
             var settingsSwitches = Descendants<System.Windows.Controls.CheckBox>(settings).ToArray();
             foreach (var appSwitch in settingsSwitches)
                 appSwitch.ApplyTemplate();
-            Check(settingsSwitches.Length == 13 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
-                "all thirteen settings checkboxes render through the shared RELYR switch template");
+            Check(settingsSwitches.Length == 12 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
+                "all twelve remaining settings checkboxes render through the shared RELYR switch template");
             Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll => ReferenceEquals(scroll, settings.LayersScrollPanel)), "only the longer layer category uses a bounded scroll surface");
             settings.CategoryList.SelectedIndex = 6;
             settings.UpdateLayout();

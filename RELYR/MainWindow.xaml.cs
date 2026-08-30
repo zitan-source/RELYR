@@ -264,7 +264,6 @@ public partial class MainWindow : Window
         engine.UseUsLayout = config.KeyboardLayout == "US";
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
-        engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
         engine.InputReceived = HandleInput;
         engine.InputStarted = CaptureInputMapping;
         engine.InputEnded = ReleaseInputMapping;
@@ -289,6 +288,9 @@ public partial class MainWindow : Window
         engine.HasLongPress = input => HasConfiguredLongPress(FindCapturedInputMapping(input));
         engine.IsGesturePress = input => FindCapturedInputMapping(input)?.Kind == ActionKind.Gesture;
         engine.IsGestureLongPress = input => FindCapturedInputMapping(input)?.LongPressKind == ActionKind.Gesture;
+        engine.GestureLocksCursor = input => activeInputMappings.TryGetValue(input, out var captured)
+            ? captured.Gesture?.LockCursorDuringGesture ?? true
+            : true;
         engine.LongPressDuration = input => FindCapturedInputMapping(input)?.LongPressMs ?? 500;
         engine.DragPixels = config.MouseDragPixels;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
@@ -415,7 +417,6 @@ public partial class MainWindow : Window
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
-        engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
         engine.DragPixels = config.MouseDragPixels;
         if (engineStarted)
             engine.Enabled = config.EngineEnabled;

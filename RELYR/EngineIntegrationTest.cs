@@ -357,14 +357,14 @@ public static class EngineIntegrationTest
             Check(events.SequenceEqual(["MouseRight:Gesture:Center"]) && !engine.HasCapturedStateForTest(), "holding a normal-layer right-click gesture with small physical-mouse jitter still produces one normal short press");
             events.Clear();
             engine.ResetStateForTest();
-            engine.LockCursorDuringGesture = false;
+            engine.GestureLocksCursor = _ => false;
             engine.NextHookForTest = (_, _, _) => (IntPtr)0x7788;
             engine.DirectMouseForTest(0x204, 0, 100, 100);
             var unlockedMove1 = engine.DirectMouseForTest(0x200, 0, 106, 100);
             var unlockedMove2 = engine.DirectMouseForTest(0x200, 0, 112, 100);
             engine.DirectMouseForTest(0x205, 0, 112, 100);
             Check(unlockedMove1 == (IntPtr)0x7788 && unlockedMove2 == (IntPtr)0x7788 && events.SequenceEqual(["MouseRight:Gesture:Right"]) && !engine.HasCapturedStateForTest(), "cursor-unlocked gestures forward pointer movement while accumulating relative movement into one direction action");
-            engine.LockCursorDuringGesture = true;
+            engine.GestureLocksCursor = null;
             engine.NextHookForTest = null;
             normalRightGestureMode = false;
             engine.GestureCursorForTest = null;

@@ -62,15 +62,27 @@ public partial class GestureManagerWindow : Window
     void RefreshEditor()
     {
         var gesture = SelectedGesture;
+        bool wasLoading = loading;
+        loading = true;
         GestureEditor.IsEnabled = gesture != null;
         RenameGestureButton.IsEnabled = gesture != null;
         DeleteGestureButton.IsEnabled = gesture != null;
         GestureTitle.Text = gesture?.Name ?? "ジェスチャーを追加してください";
+        LockGestureCursorBox.IsChecked = gesture?.LockCursorDuringGesture ?? true;
         UpActionText.Text = Display(gesture?.UpKind ?? ActionKind.None, gesture?.UpValue ?? "");
         DownActionText.Text = Display(gesture?.DownKind ?? ActionKind.None, gesture?.DownValue ?? "");
         LeftActionText.Text = Display(gesture?.LeftKind ?? ActionKind.None, gesture?.LeftValue ?? "");
         RightActionText.Text = Display(gesture?.RightKind ?? ActionKind.None, gesture?.RightValue ?? "");
         CenterActionText.Text = Display(gesture?.CenterKind ?? ActionKind.None, gesture?.CenterValue ?? "");
+        loading = wasLoading;
+    }
+
+    void LockGestureCursorChanged(object sender, RoutedEventArgs e)
+    {
+        if (loading || SelectedGesture is not { } gesture)
+            return;
+        gesture.LockCursorDuringGesture = LockGestureCursorBox.IsChecked == true;
+        ShowStatus(gesture.LockCursorDuringGesture ? "カーソルを固定します。" : "カーソルを動かします。");
     }
 
     void AddGesture_Click(object sender, RoutedEventArgs e)
@@ -416,7 +428,7 @@ public partial class GestureManagerWindow : Window
         return dialog.ShowDialog() == true ? (trim ? box.Text.Trim() : box.Text) : null;
     }
 
-    static GestureDefinition CloneGesture(GestureDefinition x) => new() { Name = x.Name, UpKind = x.UpKind, UpValue = x.UpValue, DownKind = x.DownKind, DownValue = x.DownValue, LeftKind = x.LeftKind, LeftValue = x.LeftValue, RightKind = x.RightKind, RightValue = x.RightValue, CenterKind = x.CenterKind, CenterValue = x.CenterValue };
+    static GestureDefinition CloneGesture(GestureDefinition x) => new() { Name = x.Name, LockCursorDuringGesture = x.LockCursorDuringGesture, UpKind = x.UpKind, UpValue = x.UpValue, DownKind = x.DownKind, DownValue = x.DownValue, LeftKind = x.LeftKind, LeftValue = x.LeftValue, RightKind = x.RightKind, RightValue = x.RightValue, CenterKind = x.CenterKind, CenterValue = x.CenterValue };
     static MacroDefinition CloneMacro(MacroDefinition x) => new() { Id = x.Id, Name = x.Name, Steps = [.. x.Steps.Select(step => new MacroStep { Event = step.Event, DelayMs = step.DelayMs, RecordedActionKind = step.RecordedActionKind, RecordedActionValue = step.RecordedActionValue })] };
     static Profile CloneProfile(Profile profile) => new() { Name = profile.Name, DefaultDeckLayoutId = profile.DefaultDeckLayoutId, AutoSwitchEnabled = profile.AutoSwitchEnabled, AutoSwitchApplications = [.. profile.AutoSwitchApplications], Mappings = [.. profile.Mappings.Select(CloneMapping)] };
     static Mapping CloneMapping(Mapping x) => new() { Input = x.Input, Kind = x.Kind, Value = x.Value, LongPressKind = x.LongPressKind, LongPressValue = x.LongPressValue, DragValue = x.DragValue, DragEndValue = x.DragEndValue, LongPressMs = x.LongPressMs, Application = x.Application, Layer = x.Layer, Description = x.Description, DeckColor = x.DeckColor, DeckFilePath = x.DeckFilePath, DeckIcon = x.DeckIcon, DeckIconPath = x.DeckIconPath, DeckIconAutoAssigned = x.DeckIconAutoAssigned, DeckMonitor = x.DeckMonitor };

@@ -127,7 +127,10 @@ public sealed partial class InputEngine : IDisposable
     }
     public int DragPixels { get; set; } = 6;
     public int GestureThresholdPixels { get; set; } = 12;
+    // Fallback for isolated engine consumers. The application supplies a
+    // per-input resolver and snapshots its result when the gesture starts.
     public bool LockCursorDuringGesture { get; set; } = true;
+    public Func<string, bool>? GestureLocksCursor { get; set; }
     internal (int X, int Y)? GestureCursorForTest
     {
         get; set;
@@ -661,7 +664,7 @@ public sealed partial class InputEngine : IDisposable
                 var state = gesture.Value;
                 RefreshGestureSafety(state);
                 int eventDx, eventDy;
-                if (LockCursorDuringGesture)
+                if (state.GestureLocksCursor)
                 {
                     eventDx = d.pt.x - state.GestureCursorX;
                     eventDy = d.pt.y - state.GestureCursorY;
@@ -683,7 +686,7 @@ public sealed partial class InputEngine : IDisposable
                 });
                 // マウスが止まるまで確定を延ばし、1回の連続移動を1ジェスチャーとして扱う。
                 state.GestureMotionTimer.Change(GestureStopDelayMs, System.Threading.Timeout.Infinite);
-                return LockCursorDuringGesture ? (IntPtr)1 : Next(n, w, l);
+                return state.GestureLocksCursor ? (IntPtr)1 : Next(n, w, l);
             }
             if (Enabled && deferredLayer == "MouseRight" && !layerUsed && !nativeRightLayerDrag && !nativeRightLayerDragStarting
                 && Distance(mouseLayerStartX, mouseLayerStartY, d.pt.x, d.pt.y) >= DragPixels)
@@ -1185,6 +1188,7 @@ public sealed partial class InputEngine : IDisposable
         state.GestureCursorY = cursorY;
         state.GestureLastX = cursorX;
         state.GestureLastY = cursorY;
+        state.GestureLocksCursor = GestureLocksCursor?.Invoke(input) ?? LockCursorDuringGesture;
         state.GestureActive = true;
         state.GestureSafetyTimer = new System.Threading.Timer(_ =>
         {

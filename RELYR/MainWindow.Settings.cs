@@ -125,7 +125,6 @@ public partial class MainWindow
         config.InputDisabledApplications = [.. window.InputDisabledApplications];
         config.SpaceHoldRepeatDelayMs = window.SpaceHoldRepeatDelay;
         config.GestureThresholdPixels = window.GestureThreshold;
-        config.LockCursorDuringGesture = window.LockCursorDuringGesture;
         config.ClockBackgroundMode = window.SelectedClockBackgroundMode;
         config.ClockDisplayMode = window.SelectedClockDisplayMode;
         config.ClockBackgroundImage = window.ClockBackgroundImage;
@@ -137,7 +136,6 @@ public partial class MainWindow
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
-        engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
         RefreshInputProcessingSuppression();
         OverlayService.RefreshDeckPanel();
     }
@@ -165,7 +163,6 @@ public partial class MainWindow
         destination.InputDisabledApplications = [.. source.InputDisabledApplications];
         destination.SpaceHoldRepeatDelayMs = source.SpaceHoldRepeatDelayMs;
         destination.GestureThresholdPixels = source.GestureThresholdPixels;
-        destination.LockCursorDuringGesture = source.LockCursorDuringGesture;
         destination.ClockBackgroundMode = source.ClockBackgroundMode;
         destination.ClockDisplayMode = source.ClockDisplayMode;
         destination.ClockBackgroundImage = source.ClockBackgroundImage;
@@ -193,7 +190,6 @@ public partial class MainWindow
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
         engine.GestureThresholdPixels = config.GestureThresholdPixels;
-        engine.LockCursorDuringGesture = config.LockCursorDuringGesture;
         RefreshInputProcessingSuppression();
         engine.Enabled = engineStarted && config.EngineEnabled;
         loading = true;
