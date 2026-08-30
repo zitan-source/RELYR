@@ -6,7 +6,7 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 34;
+    internal const int CurrentVersion = 35;
     const int MappingApplicationLossVersion = 29;
 
     const string SettingsFileName = "settings.json";

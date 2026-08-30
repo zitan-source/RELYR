@@ -1157,22 +1157,25 @@ public partial class MainWindow : Window
         unavailableReason ??= key == "Space" && currentLayer is "通常" or "Space" ? "Spaceキーはレイヤー専用です" : null;
         unavailableReason ??= key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null ? "CapsLockは割り当て元にはできません" : null;
         var existing = CurrentProfile.Mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        bool canPaste = copiedMapping != null
+            && unavailableReason == null
+            && TryPrepareTransferredMapping(copiedMapping, input, currentLayer, CurrentProfile.Mappings, out _);
+        string? pasteUnavailableReason = unavailableReason;
+        if (copiedMapping != null && pasteUnavailableReason == null && !canPaste)
+        {
+            pasteUnavailableReason = InputAssignmentPolicy.ShortPressUnavailableReason(input)
+                ?? InputAssignmentPolicy.LongPressUnavailableReason(copiedMapping, CurrentProfile.Mappings)
+                ?? "この入力には貼り付けできません";
+        }
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = "この割り当てをコピー", IsEnabled = existing != null };
         copy.Click += (_, _) => { copiedMapping = existing == null ? null : CloneMapping(existing); ShowInlineNotice(input + " の割り当てをコピーしました"); };
-        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMapping != null && unavailableReason == null, ToolTip = unavailableReason };
+        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = canPaste, ToolTip = pasteUnavailableReason };
         paste.Click += (_, _) =>
         {
-            if (copiedMapping == null || unavailableReason != null) return;
-            var map = CloneMapping(copiedMapping);
-            map.Input = input;
-            map.Layer = currentLayer;
-            ClearUnsupportedLongPress(map, CurrentProfile.Mappings);
-            if (map.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(input))
-            {
-                ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
+            if (copiedMapping == null || unavailableReason != null
+                || !TryPrepareTransferredMapping(copiedMapping, input, currentLayer, CurrentProfile.Mappings, out var map))
                 return;
-            }
             if (map.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(input)) return;
             CurrentProfile.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
             CurrentProfile.Mappings.Add(map);
@@ -1228,7 +1231,6 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(key) || DeckPanelLayout.IsInputName(key)
             || key.Equals("MouseX", StringComparison.OrdinalIgnoreCase))
             return 0;
-        var template = CloneMapping(source);
         int applied = 0;
         foreach (string layer in AllAssignmentLayerNames)
         {
@@ -1238,11 +1240,9 @@ public partial class MainWindow : Window
             string targetInput = layer + "+" + key;
             if (InputAssignmentPolicy.IsUnreachableInput(targetInput))
                 continue;
+            if (!TryPrepareTransferredMapping(source, targetInput, layer, mappings, out var copy))
+                continue;
             mappings.RemoveAll(mapping => mapping.Input.Equals(targetInput, StringComparison.OrdinalIgnoreCase));
-            var copy = CloneMapping(template);
-            copy.Input = targetInput;
-            copy.Layer = layer;
-            ClearUnsupportedLongPress(copy);
             mappings.Add(copy);
             applied++;
         }
@@ -1260,15 +1260,29 @@ public partial class MainWindow : Window
             if (ReferenceEquals(profile, sourceProfile)
                 || profile.Id.Equals(sourceProfile.Id, StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (!TryPrepareTransferredMapping(source, input, AssignmentLayerName(input), profile.Mappings, out var copy))
+                continue;
             profile.Mappings.RemoveAll(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
-            var copy = CloneMapping(source);
-            copy.Input = input;
-            ClearUnsupportedLongPress(copy, profile.Mappings);
             profile.Mappings.Add(copy);
             InputAssignmentPolicy.SanitizeMappings(profile.Mappings);
             applied++;
         }
         return applied;
+    }
+
+    internal static bool TryPrepareTransferredMapping(Mapping source, string input, string layer, IReadOnlyList<Mapping>? mappings, out Mapping prepared)
+    {
+        prepared = CloneMapping(source);
+        prepared.Input = input;
+        prepared.Layer = layer;
+        if (InputAssignmentPolicy.IsUnreachableInput(input))
+            return false;
+        InputAssignmentPolicy.ClearReservedShortPress(prepared);
+        if (prepared.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(input))
+            return false;
+        ClearUnsupportedLongPress(prepared, mappings);
+        NormalizeLongOnlyMapping(prepared);
+        return MappingHasConfiguredAction(prepared);
     }
     internal ContextMenu CreateMultiSelectionContextMenu()
     {
@@ -1319,26 +1333,39 @@ public partial class MainWindow : Window
             .ToList();
         if (targets.Count == 0)
             return;
-        foreach (var (Input, Source) in targets)
-            if (Source?.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(Input))
-                return;
-        foreach (var (Input, Source) in targets)
-            if (Source?.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(Input))
-            {
-                ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
-                return;
-            }
-        foreach (var (Input, Source) in targets)
+        var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
+        var preparedTargets = targets.Select(target =>
         {
-            var mappings = deckManagementMode && selectedDeckLayout != null ? selectedDeckLayout.Mappings : CurrentProfile.Mappings;
-            mappings.RemoveAll(x => x.Input.Equals(Input, StringComparison.OrdinalIgnoreCase));
-            if (Source == null)
+            if (target.Source == null || deckManagementMode)
+                return (target.Input, Source: target.Source == null ? null : CloneMapping(target.Source), Valid: true);
+            bool valid = TryPrepareTransferredMapping(target.Source, target.Input, currentLayer, mappings, out var prepared);
+            return (target.Input, Source: valid ? prepared : null, Valid: valid);
+        }).ToArray();
+        foreach (var target in preparedTargets)
+            if (target.Valid && target.Source?.Kind == ActionKind.Gesture && !ConfirmDirectMouseGestureConflict(target.Input))
+                return;
+        int applied = 0;
+        foreach (var target in preparedTargets)
+        {
+            if (!target.Valid)
                 continue;
-            var mapping = CloneMapping(Source);
-            mapping.Input = Input;
+            int removed = mappings.RemoveAll(x => x.Input.Equals(target.Input, StringComparison.OrdinalIgnoreCase));
+            if (target.Source == null)
+            {
+                if (removed > 0)
+                    applied++;
+                continue;
+            }
+            var mapping = target.Source;
+            mapping.Input = target.Input;
             mapping.Layer = deckManagementMode ? DeckPanelLayout.Layer : currentLayer;
-            ClearUnsupportedLongPress(mapping, mappings);
             mappings.Add(mapping);
+            applied++;
+        }
+        if (applied == 0)
+        {
+            ShowInlineNotice("貼り付けできる割り当てはありません");
+            return;
         }
         if (!deckManagementMode)
             InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
@@ -1347,7 +1374,7 @@ public partial class MainWindow : Window
         ColorButtons();
         MultiSelectToggle.IsChecked = false;
         ClearSelectedInput();
-        ShowInlineNotice($"{targets.Count}入力へ割り当てを貼り付けました");
+        ShowInlineNotice($"{applied}入力へ割り当てを貼り付けました");
     }
     void DeleteMultiSelection()
     {
@@ -2438,10 +2465,10 @@ public partial class MainWindow : Window
             // engine state lock. SendInput here can stall Explorer and make
             // Windows silently retire the hook. Preserve order on a dedicated
             // worker and let this physical Up callback return immediately.
-            if (!taskbarClickReplayQueue.IsAddingCompleted)
-                taskbarClickReplayQueue.TryAdd(new TaskbarClickReplayRequest(
-                    replayClick,
-                    InputEngine.CaptureCurrentHookReturnBarrier()));
+            var request = new TaskbarClickReplayRequest(
+                replayClick,
+                InputEngine.CaptureCurrentHookReturnBarrier());
+            TryQueueTaskbarClickReplay(taskbarClickReplayQueue, request, ReplayTaskbarClickOutsideQueue);
             return true;
         }
         var snapshot = CloneMapping(map);
@@ -2573,6 +2600,33 @@ public partial class MainWindow : Window
         // interleave between them and a partial Down cannot strand Explorer.
         ProcessTaskbarClickReplays(taskbarClickReplayQueue.GetConsumingEnumerable(), InputEngine.SendMouseClickAtomic, InputEngine.ReleaseForProcessLifecycle, FailOpenAfterTaskbarClickReplayFailure);
     }
+    void ReplayTaskbarClickOutsideQueue(TaskbarClickReplayRequest request)
+    {
+        // Queue completion is a lifecycle race, not permission to discard a
+        // Windows click that the hook has already suppressed. Keep the fallback
+        // asynchronous so SendInput still happens only after the hook returns.
+        _ = Task.Run(() => ProcessTaskbarClickReplays(
+            [request],
+            InputEngine.SendMouseClickAtomic,
+            InputEngine.ReleaseForProcessLifecycle,
+            FailOpenAfterTaskbarClickReplayFailure));
+    }
+    internal static bool TryQueueTaskbarClickReplay(
+        BlockingCollection<TaskbarClickReplayRequest> queue,
+        TaskbarClickReplayRequest request,
+        Action<TaskbarClickReplayRequest> queueUnavailable)
+    {
+        ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(queueUnavailable);
+        try
+        {
+            if (!queue.IsAddingCompleted && queue.TryAdd(request))
+                return true;
+        }
+        catch (InvalidOperationException) { }
+        queueUnavailable(request);
+        return false;
+    }
     internal static void ProcessTaskbarClickReplays(IEnumerable<string> clicks, Func<string, bool> sendClick, Action releaseInputs, Action replayFailed)
         => ProcessTaskbarClickReplays(clicks.Select(click => new TaskbarClickReplayRequest(click, null)), sendClick, releaseInputs, replayFailed);
     internal static void ProcessTaskbarClickReplays(IEnumerable<TaskbarClickReplayRequest> requests, Func<string, bool> sendClick, Action releaseInputs, Action replayFailed)
@@ -2624,14 +2678,12 @@ public partial class MainWindow : Window
         if (longPress || dragStart || dragEnd || pressStart || pressEnd
             || !baseInput.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
             return null;
-        // The taskbar's primary click always belongs to Windows. Even if an old,
+        // The taskbar's primary and context clicks always belong to Windows. Even if an old,
         // hand-edited, or not-yet-saved profile still contains a TAP action,
         // restore the physical click instead of executing that action.
-        if (baseInput.EndsWith("MouseLeft", StringComparison.OrdinalIgnoreCase))
-            return "MouseLeft";
-        if (map is not { Kind: ActionKind.None } || map.LongPressKind == ActionKind.None)
-            return null;
-        return baseInput.EndsWith("MouseRight", StringComparison.OrdinalIgnoreCase) ? "MouseRight" : null;
+        if (InputAssignmentPolicy.PreservesNativeShortPress(baseInput))
+            return InputAssignmentPolicy.BaseInput(baseInput);
+        return null;
     }
     bool QueueDragAction(Mapping? map, string input)
     {

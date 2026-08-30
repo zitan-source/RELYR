@@ -1029,6 +1029,20 @@ internal static class UiIntegrationTest
                 "Taskbar+MouseLeft keeps TAP visibly reserved for Windows while the same split target still accepts a HOLD Action");
             window.ClearAssignmentDropTargetForTest();
             window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "Taskbar+MouseLeft");
+            window.SetPaletteAssignmentDropTargetForTest(window.MouseRightVisual, enterAction, longPress: false);
+            window.MouseRightVisual.ApplyTemplate();
+            var reservedTaskbarRightTapMark = (UIElement)window.MouseRightVisual.Template.FindName("ShortPressDropUnavailableMark", window.MouseRightVisual)!;
+            bool taskbarRightTapApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseRight", "MouseRight", longPress: false);
+            bool taskbarRightHoldApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseRight", "MouseRight", longPress: true);
+            var taskbarRightMapping = window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "Taskbar+MouseRight");
+            Check(!MainWindow.GetIsShortPressAssignmentDropAvailable(window.MouseRightVisual)
+                && MainWindow.GetIsLongPressAssignmentDropAvailable(window.MouseRightVisual)
+                && reservedTaskbarRightTapMark.Opacity == 1
+                && !taskbarRightTapApplied && taskbarRightHoldApplied
+                && taskbarRightMapping is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "Enter" },
+                "Taskbar+MouseRight keeps the Windows app-icon menu TAP visibly reserved while the same split target still accepts a HOLD Action");
+            window.ClearAssignmentDropTargetForTest();
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "Taskbar+MouseRight");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             bool longPaletteApplied = window.ApplyPaletteActionForTest(enterAction, "F24", "F24", longPress: true);
@@ -3349,6 +3363,28 @@ internal static class UiIntegrationTest
             Check(!capsPaste.IsEnabled && capsPaste.ToolTip?.ToString() == "CapsLockは割り当て元にはできません"
                 && !x1Paste.IsEnabled && x1Paste.ToolTip?.ToString() == "追加ボタンは入力として使用できません",
                 "right-click paste is disabled for CapsLock and X1 with concise reasons");
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "Taskbar+MouseLeft" or "Taskbar+MouseRight");
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F9" });
+            window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F10" });
+            window.TaskbarLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var taskbarLeftPaste = (MenuItem)window.CreateInputContextMenu("MouseLeft").Items[1];
+            var taskbarRightPaste = (MenuItem)window.CreateInputContextMenu("MouseRight").Items[1];
+            taskbarLeftPaste.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            taskbarRightPaste.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            window.MouseRightVisual.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(!taskbarLeftPaste.IsEnabled
+                && taskbarLeftPaste.ToolTip?.ToString() == "タスクバーの左クリックはWindows操作専用です"
+                && !taskbarRightPaste.IsEnabled
+                && taskbarRightPaste.ToolTip?.ToString() == "タスクバーの右クリックはWindows操作専用です"
+                && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "Taskbar+MouseLeft") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F9" }
+                && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "Taskbar+MouseRight") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F10" }
+                && window.AssignmentTapNameText.Text == "Windowsの右クリック"
+                && window.AssignmentTapDetailText.Text == "TAPは変更できません",
+                "paste and the unified inspector reserve both taskbar TAP clicks for Windows without erasing an existing HOLD");
+            window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
             var allLayerSource = new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Text, Value = "multi-A", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+B", LongPressMs = 640, Application = "notepad.exe" };
             window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "F7");
             window.CurrentProfileForTest.Mappings.Add(allLayerSource);
@@ -4157,6 +4193,7 @@ internal static class UiIntegrationTest
                 {
                     string input = layer == "通常" ? visualKey : layer + "+" + visualKey;
                     if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer is "通常" or "Taskbar")
+                        || (visualKey == "MouseRight" && layer == "Taskbar")
                         || InputAssignmentPolicy.IsUnreachableInput(input))
                         continue;
                     window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
@@ -4169,7 +4206,8 @@ internal static class UiIntegrationTest
                     string key = (string)x.Tag;
                     string input = layer == "通常" ? key : layer + "+" + key;
                     return key != "CapsLock" && !(key == "Space" && layer is "通常" or "Space")
-                        && !(key == "MouseLeft" && layer is "通常" or "Taskbar") && !InputAssignmentPolicy.IsUnreachableInput(input)
+                        && !(key == "MouseLeft" && layer is "通常" or "Taskbar")
+                        && !(key == "MouseRight" && layer == "Taskbar") && !InputAssignmentPolicy.IsUnreachableInput(input)
                         && !HasBackgroundColor(x, replacementColor);
                 }).Select(x => (string)x.Tag).Distinct().ToArray();
                 Check(visualInputs.Count > 100 && missed.Length == 0, $"every assignable visual key is orange on the {layer} layer" + (missed.Length == 0 ? "" : " (missing: " + string.Join(",", missed) + ")"));

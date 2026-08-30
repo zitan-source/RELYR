@@ -23,6 +23,7 @@ public partial class MainWindow
 
         bool deckInput = DeckPanelLayout.IsInputName(selected.Input);
         bool nativeShortPress = InputAssignmentPolicy.PreservesNativeShortPress(selected.Input);
+        string nativeShortPressName = InputAssignmentPolicy.NativeShortPressDisplayName(selected.Input) ?? "元の入力";
         AssignmentActionSectionLabel.Text = deckInput ? "Action" : "割り当て";
         AssignmentTapSlotText.Text = deckInput ? "ACTION" : "TAP";
         AssignmentHoldCard.Visibility = deckInput ? Visibility.Collapsed : Visibility.Visible;
@@ -48,7 +49,7 @@ public partial class MainWindow
             !nativeShortPress && HasConfiguredShortAction(selected)
                 ? CreateAssignmentToolTipRow("TAP", selected.Kind, selected.Value, config)
                 : null,
-            emptyName: nativeShortPress ? "Windowsの左クリック" : "元の入力",
+            emptyName: nativeShortPress ? nativeShortPressName : "元の入力",
             emptyDetail: nativeShortPress ? "TAPは変更できません" : "TAPは未設定");
         assignmentTapSummaryAction = !nativeShortPress && HasConfiguredShortAction(selected)
             ? CatalogActionForAssignment(selected.Kind, selected.Value)

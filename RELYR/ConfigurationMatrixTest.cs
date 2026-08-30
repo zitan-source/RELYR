@@ -137,7 +137,7 @@ internal static class ConfigurationMatrixTest
 
     static void TestValidConfigurationCrossProduct(VerificationReport report, ref int cases)
     {
-        string[] inputs = ["F6", "Space+J", "CapsLock+U", "MouseRight+MouseMiddle", "MouseBack+J", "MouseForward+MouseLeft", "Taskbar+MouseRight"];
+        string[] inputs = ["F6", "Space+J", "CapsLock+U", "MouseRight+MouseMiddle", "MouseBack+J", "MouseForward+MouseLeft", "Taskbar+MouseMiddle"];
         string[] applications = ["", "notepad.exe", "NOTEPAD"];
         int[] durations = [50, 500, 10000];
         bool valid = true;
@@ -193,7 +193,10 @@ internal static class ConfigurationMatrixTest
             new Mapping { Input = "WheelUp", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
             new Mapping { Input = "Space+TiltLeft", Layer = "Space", Kind = ActionKind.Gesture, Value = "Gesture" },
             new Mapping { Input = "MouseX", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new Mapping { Input = "CapsLock", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new Mapping { Input = "MouseRight+MouseRight", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new Mapping { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new Mapping { Input = "Q", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
             new Mapping { Input = "Space+MouseRight", Layer = "Space", Kind = ActionKind.Mouse, Value = "CtrlDrag", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" }
         })
@@ -214,6 +217,24 @@ internal static class ConfigurationMatrixTest
         cases++;
         report.Check(rejectedIntrinsicConflicts && rejectedLayerConflict,
             "validation rejects every intrinsically unreachable long press, impulse gesture, fake input, self-layer input, and active mouse-layer conflict");
+
+        bool protectedTaskbarHoldValid = true;
+        foreach (string input in new[] { "Taskbar+MouseLeft", "Taskbar+MouseRight" })
+        {
+            var config = CompleteConfig();
+            config.Profiles[0].Mappings.Add(new Mapping
+            {
+                Input = input,
+                Layer = "Taskbar",
+                Kind = ActionKind.None,
+                LongPressKind = ActionKind.Shortcut,
+                LongPressValue = "Ctrl+Shift+Escape"
+            });
+            protectedTaskbarHoldValid &= ConfigValidator.Validate(config).Count == 0;
+            cases++;
+        }
+        report.Check(protectedTaskbarHoldValid,
+            "taskbar left and right buttons accept HOLD-only assignments while their Windows TAP remains reserved");
     }
 
     static void TestNormalizationAndRejection(VerificationReport report, string directory, ref int cases)
@@ -314,7 +335,10 @@ internal static class ConfigurationMatrixTest
             new() { Input = "WheelUp", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
             new() { Input = "Space+TiltRight", Layer = "Space", Kind = ActionKind.Gesture, Value = "Gesture", LongPressKind = ActionKind.Profile, LongPressValue = "Default" },
             new() { Input = "MouseX", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new() { Input = "CapsLock", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new() { Input = "Space+Space", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
+            new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+            new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R", LongPressKind = ActionKind.Key, LongPressValue = "F10" },
             new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
             new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new() { Input = "O", Layer = "通常", Kind = ActionKind.Key, Value = "O", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
@@ -337,6 +361,8 @@ internal static class ConfigurationMatrixTest
             && repairedMappings.Single(mapping => mapping.Input == "MouseRight") is { LongPressKind: ActionKind.None, LongPressValue: "" }
             && repairedMappings.Single(mapping => mapping.Input == "O") is { LongPressKind: ActionKind.None, LongPressValue: "" }
             && repairedMappings.Single(mapping => mapping.Input == "F7") is { Kind: ActionKind.Mouse, Value: "MouseForward" }
+            && !repairedMappings.Any(mapping => mapping.Input == "Taskbar+MouseLeft")
+            && repairedMappings.Single(mapping => mapping.Input == "Taskbar+MouseRight") is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "F10" }
             && repairedAssignments.Gestures.Single().UpKind == ActionKind.Mouse && repairedAssignments.Gestures.Single().UpValue == "MouseForward"
             && repairedAssignments.Macros.Single().Steps[0].Event == "MouseForward Down"
             && repairedAssignments.Macros.Single().Steps[1] is { RecordedActionKind: ActionKind.Mouse, RecordedActionValue: "MouseForward" }
@@ -349,6 +375,8 @@ internal static class ConfigurationMatrixTest
         foreach (Mapping invalid in new[]
         {
             new Mapping { Input = "MouseLeft", Layer = "通常", Kind = ActionKind.Disabled },
+            new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+            new Mapping { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R" },
             new Mapping { Input = "F6", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DefinitelyUnknownKey" },
             new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Mouse, Value = "UnknownMouse" },
             new Mapping { Input = "F8", Layer = "通常", Kind = (ActionKind)99, Value = "bad" },

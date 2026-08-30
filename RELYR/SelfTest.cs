@@ -1,5 +1,6 @@
 namespace RELYR;
 
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
 
@@ -253,6 +254,7 @@ public static class SelfTest
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
             var taskbarLongOnly = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
             var staleTaskbarTap = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction };
+            var staleTaskbarRightTap = new Mapping { Input = "Taskbar+MouseRight", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction };
             var taskbarReplayEvents = new List<string>();
             int taskbarReplayFailures = 0;
             MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], click => { taskbarReplayEvents.Add(click); return true; }, () => { }, () => taskbarReplayFailures++);
@@ -271,6 +273,14 @@ public static class SelfTest
             taskbarHookReturn.Complete();
             bool taskbarReplayCompletedAfterHookReturn = taskbarBarrierReplay.Wait(1000)
                 && Volatile.Read(ref taskbarSendAfterHookReturn) == 1;
+            using var completedTaskbarReplayQueue = new BlockingCollection<MainWindow.TaskbarClickReplayRequest>();
+            completedTaskbarReplayQueue.CompleteAdding();
+            MainWindow.TaskbarClickReplayRequest? taskbarReplayFallback = null;
+            var fallbackRequest = new MainWindow.TaskbarClickReplayRequest("MouseRight", Task.CompletedTask);
+            bool taskbarReplayQueuedAfterCompletion = MainWindow.TryQueueTaskbarClickReplay(
+                completedTaskbarReplayQueue,
+                fallbackRequest,
+                request => taskbarReplayFallback = request);
             try
             {
                 InputEngine.MouseClickBatchOutputForTest = batch => taskbarReplayBatches.Add(batch);
@@ -283,10 +293,12 @@ public static class SelfTest
             Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
                 && MainWindow.TaskbarShortClickReplay(staleTaskbarTap, "Taskbar+MouseLeft") == "MouseLeft"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
+                && MainWindow.TaskbarShortClickReplay(staleTaskbarRightTap, "Taskbar+MouseRight") == "MouseRight"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft", longPress: true) == null
                 && MainWindow.MappingInterceptsTaskbarInvocation(taskbarLongOnly)
                 && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarTap)
+                && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarRightTap)
                 && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
                 && failedTaskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
                 && taskbarReplayFailures == 1
@@ -295,8 +307,10 @@ public static class SelfTest
                 && taskbarReplayBatches[0].SequenceEqual([(2u, 0u), (4u, 0u)])
                 && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)])
                 && taskbarReplayWaitedForHookReturn
-                && taskbarReplayCompletedAfterHookReturn,
-                "taskbar left TAP actions never intercept Windows, while taskbar HOLD short-click restoration waits for the physical hook to return and replays one atomic input batch");
+                && taskbarReplayCompletedAfterHookReturn
+                && !taskbarReplayQueuedAfterCompletion
+                && taskbarReplayFallback == fallbackRequest,
+                "taskbar left/right TAP actions never intercept Windows, while taskbar HOLD short-click restoration survives queue completion, waits for the physical hook to return, and replays one atomic input batch");
             Check(MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
@@ -325,20 +339,45 @@ public static class SelfTest
             var staleSpaceMappings = new List<Mapping>
             {
                 new() { Input = "Space", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DeckPanel:stale" },
+                new() { Input = "CapsLock", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DeckPanel:stale-caps" },
                 new() { Input = "Space+K", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+K" }
+            };
+            var staleTaskbarMappings = new List<Mapping>
+            {
+                new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+                new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R", LongPressKind = ActionKind.Key, LongPressValue = "F10" }
             };
             Check(InputAssignmentPolicy.IsImpulseInput("Space+WheelUp")
                 && !InputAssignmentPolicy.SupportsGesture("CapsLock+TiltRight")
-                && new[] { "Space", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && new[] { "Space", "CapsLock", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
                 && InputAssignmentPolicy.PreservesNativeShortPress("Taskbar+MouseLeft")
+                && InputAssignmentPolicy.PreservesNativeShortPress("Taskbar+MouseRight")
                 && !InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseLeft")
-                && InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseRight")
+                && !InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseRight")
+                && InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseMiddle")
                 && InputEngine.MustReplayNativeLayerTap("Space") && !InputEngine.MustReplayNativeLayerTap("CapsLock")
                 && InputAssignmentPolicy.SanitizeMappings(staleSpaceMappings)
                 && staleSpaceMappings.Count == 1 && staleSpaceMappings[0].Input == "Space+K"
+                && InputAssignmentPolicy.SanitizeMappings(staleTaskbarMappings)
+                && staleTaskbarMappings is [{ Input: "Taskbar+MouseRight", Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "F10" }]
                 && InputAssignmentPolicy.SanitizeMappings(rightLayerConflict)
                 && rightLayerConflict[0] is { LongPressKind: ActionKind.None, LongPressValue: "" },
-                "the shared assignment policy rejects impulse gestures, stale bare-Space Deck actions, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
+                "the shared assignment policy rejects impulse gestures, stale bare layer-source actions, taskbar left/right TAP actions, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
+            var protectedTransferMappings = new List<Mapping>
+            {
+                new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F10" }
+            };
+            var shortOnlyTransfer = new Mapping { Input = "F8", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+8" };
+            var dualTransfer = new Mapping { Input = "F9", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+9", LongPressKind = ActionKind.Key, LongPressValue = "F11" };
+            bool shortTransferPrepared = MainWindow.TryPrepareTransferredMapping(shortOnlyTransfer, "Taskbar+MouseRight", "Taskbar", protectedTransferMappings, out _);
+            bool dualTransferPrepared = MainWindow.TryPrepareTransferredMapping(dualTransfer, "Taskbar+MouseRight", "Taskbar", protectedTransferMappings, out var protectedDualTransfer);
+            int protectedAllLayerApplied = MainWindow.AssignMappingToAllLayers(protectedTransferMappings, "MouseRight", shortOnlyTransfer);
+            Check(!shortTransferPrepared
+                && dualTransferPrepared
+                && protectedDualTransfer is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "F11" }
+                && protectedAllLayerApplied == MainWindow.AllAssignmentLayerNames.Count - 2
+                && protectedTransferMappings.Single(mapping => mapping.Input == "Taskbar+MouseRight") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F10" },
+                "copy, multi-copy, and all-layer transfers cannot overwrite a reserved taskbar TAP or erase its existing HOLD while valid layer destinations still receive the Action");
             var allProfileSource = new Profile { Name = "元", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Text, Value = "source" }] };
             var allProfileFirstTarget = new Profile { Name = "先1", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Shortcut, Value = "Ctrl+8" }] };
             var allProfileSecondTarget = new Profile { Name = "先2", Mappings = [new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }] };

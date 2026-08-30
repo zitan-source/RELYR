@@ -46,19 +46,39 @@ internal static class InputAssignmentPolicy
         string value = (input ?? "").Trim();
         return BaseInput(value).Equals("MouseX", StringComparison.OrdinalIgnoreCase)
             || value.Equals("Space", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("CapsLock", StringComparison.OrdinalIgnoreCase)
             || IsSelfLayerInput(value);
     }
 
     internal static bool PreservesNativeShortPress(string? input)
-        => (input ?? "").Trim().Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase);
+    {
+        string value = (input ?? "").Trim();
+        return value.Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("Taskbar+MouseRight", StringComparison.OrdinalIgnoreCase);
+    }
 
     internal static bool CanAssignShortPress(string? input)
         => !IsUnreachableInput(input) && !PreservesNativeShortPress(input);
 
     internal static string? ShortPressUnavailableReason(string? input)
-        => PreservesNativeShortPress(input)
-            ? "タスクバーの左クリックはWindows操作専用です"
-            : UnavailableInputReason(input);
+    {
+        string value = (input ?? "").Trim();
+        if (value.Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase))
+            return "タスクバーの左クリックはWindows操作専用です";
+        if (value.Equals("Taskbar+MouseRight", StringComparison.OrdinalIgnoreCase))
+            return "タスクバーの右クリックはWindows操作専用です";
+        return UnavailableInputReason(input);
+    }
+
+    internal static string? NativeShortPressDisplayName(string? input)
+    {
+        string value = (input ?? "").Trim();
+        if (value.Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase))
+            return "Windowsの左クリック";
+        if (value.Equals("Taskbar+MouseRight", StringComparison.OrdinalIgnoreCase))
+            return "Windowsの右クリック";
+        return null;
+    }
 
     internal static bool ClearReservedShortPress(Mapping? mapping)
     {
@@ -76,6 +96,8 @@ internal static class InputAssignmentPolicy
             return "追加ボタンは入力として使用できません";
         if ((input ?? "").Trim().Equals("Space", StringComparison.OrdinalIgnoreCase))
             return "Spaceキーはレイヤー専用のため変更できません";
+        if ((input ?? "").Trim().Equals("CapsLock", StringComparison.OrdinalIgnoreCase))
+            return "CapsLockは割り当て元にはできません";
         if (IsSelfLayerInput(input))
             return "レイヤーと同じボタンには設定できません";
         return null;

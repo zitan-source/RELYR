@@ -107,6 +107,8 @@ public static class ConfigValidator
                 errors.Add($"{scope}/{map.Input}: 通常レイヤーの左クリックは割り当てできません。");
             if (InputAssignmentPolicy.IsUnreachableInput(map.Input))
                 errors.Add($"{scope}/{map.Input}: この入力元には割り当てできません。");
+            if (InputAssignmentPolicy.PreservesNativeShortPress(map.Input) && InputAssignmentPolicy.HasConfiguredShortAction(map))
+                errors.Add($"{scope}/{map.Input}: {InputAssignmentPolicy.ShortPressUnavailableReason(map.Input)}");
             if (map.LongPressMs < 50 || map.LongPressMs > 10000)
                 errors.Add($"{scope}/{map.Input}: 長押し時間が範囲外です。");
             ValidateExecutableAction($"{scope}/{map.Input}", map.Kind, map.Value, errors);
