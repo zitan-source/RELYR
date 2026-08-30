@@ -490,7 +490,10 @@ internal static class UiIntegrationTest
             Check(gesturePickerMenu.Items.OfType<MenuItem>().Select(x => x.Header?.ToString()).SequenceEqual(["ウィンドウ操作"]), "gesture button opens a dedicated list containing only registered gestures");
             shortPicker.Close();
             longPicker.Close();
-            var gestureManager = new GestureManagerWindow([new GestureDefinition { Name = "ウィンドウ操作", LockCursorDuringGesture = false, UpKind = ActionKind.Shortcut, UpValue = "Win+Up" }], [new Profile { Name = "標準", Mappings = [new Mapping { Input = "G", Kind = ActionKind.Gesture, Value = "ウィンドウ操作" }] }], [new MacroDefinition { Name = "マクロ1" }], "JIS") { Owner = window, ShowInTaskbar = false };
+            var gestureManager = new GestureManagerWindow([
+                new GestureDefinition { Name = "ウィンドウ操作", GestureThresholdPixels = 9, LockCursorDuringGesture = false, UpKind = ActionKind.Shortcut, UpValue = "Win+Up" },
+                new GestureDefinition { Name = "別の操作", GestureThresholdPixels = 31, LockCursorDuringGesture = true }
+            ], [new Profile { Name = "標準", Mappings = [new Mapping { Input = "G", Kind = ActionKind.Gesture, Value = "ウィンドウ操作" }] }], [new MacroDefinition { Name = "マクロ1" }], "JIS") { Owner = window, ShowInTaskbar = false };
             gestureManager.Show();
             gestureManager.UpdateLayout();
             var gestureSlots = Descendants<System.Windows.Controls.Button>(gestureManager).Where(x => x.Tag is "Up" or "Down" or "Left" or "Right" or "Center").ToArray();
@@ -512,8 +515,28 @@ internal static class UiIntegrationTest
                 $"gesture title pencil stays immediately beside the title instead of drifting to the pane edge (gap={titlePencilLeft - titleTextRight:F1})");
             Check(gestureManager.LockGestureCursorBox.Content?.ToString() == "カーソルを固定" && gestureManager.LockGestureCursorBox.IsChecked == false && !gestureManager.ResultGestures[0].LockCursorDuringGesture,
                 "gesture editor shows the selected gesture's cursor behavior in the upper-right switch");
-            gestureManager.LockGestureCursorBox.IsChecked = true;
-            Check(gestureManager.ResultGestures[0].LockCursorDuringGesture, "cursor locking can be changed independently for the selected gesture");
+            gestureManager.LockGestureCursorBox.ApplyTemplate();
+            var cursorLabel = Descendants<ContentPresenter>(gestureManager.LockGestureCursorBox).FirstOrDefault();
+            var cursorTrack = Descendants<Border>(gestureManager.LockGestureCursorBox).FirstOrDefault(border => Math.Abs(border.ActualWidth - 42) < .1 && Math.Abs(border.ActualHeight - 24) < .1);
+            double cursorLabelRight = cursorLabel?.TranslatePoint(new System.Windows.Point(cursorLabel.ActualWidth, 0), gestureManager).X ?? double.NaN;
+            double cursorTrackLeft = cursorTrack?.TranslatePoint(new System.Windows.Point(), gestureManager).X ?? double.NaN;
+            Check(cursorLabel != null && cursorTrack != null && cursorTrackLeft - cursorLabelRight is >= 8 and <= 16 && gestureManager.LockGestureCursorBox.ActualWidth < 170,
+                $"cursor-lock label and switch stay compact instead of stretching across the header (gap={cursorTrackLeft - cursorLabelRight:F1}, width={gestureManager.LockGestureCursorBox.ActualWidth:F1})");
+            Check(gestureManager.GestureThresholdBox.Text == "9", "gesture editor shows the selected gesture's movement threshold in the upper-right controls");
+            gestureManager.GestureThresholdBox.Text = "17";
+            gestureManager.GestureList.SelectedIndex = 1;
+            gestureManager.UpdateLayout();
+            Check(gestureManager.GestureThresholdBox.Text == "31" && gestureManager.LockGestureCursorBox.IsChecked == true
+                && gestureManager.ResultGestures[0] is { GestureThresholdPixels: 17, LockCursorDuringGesture: false }
+                && gestureManager.ResultGestures[1] is { GestureThresholdPixels: 31, LockCursorDuringGesture: true },
+                "movement threshold and cursor behavior remain independent for each selected gesture");
+            gestureManager.GestureThresholdBox.Text = "44";
+            gestureManager.LockGestureCursorBox.IsChecked = false;
+            gestureManager.GestureList.SelectedIndex = 0;
+            gestureManager.UpdateLayout();
+            Check(gestureManager.GestureThresholdBox.Text == "17" && gestureManager.LockGestureCursorBox.IsChecked == false
+                && gestureManager.ResultGestures[1] is { GestureThresholdPixels: 44, LockCursorDuringGesture: false },
+                "editing a second gesture never overwrites the first gesture's sensitivity or cursor choice");
             gestureTitleEditButton?.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(gestureTitleEditButton != null && !gestureManager.GestureTitle.IsReadOnly && gestureManager.GestureTitle.IsKeyboardFocusWithin
@@ -1226,7 +1249,9 @@ internal static class UiIntegrationTest
             Check(closeSettings.ActiveWindowTargetBox.Content?.ToString() == "アクティブなウィンドウ" && closeSettings.CursorWindowTargetBox.Content?.ToString() == "マウスカーソル下のウィンドウ" && closeSettings.ActiveWindowTargetBox.IsChecked == true && closeSettings.CursorWindowTargetBox.IsChecked == false, "settings provides one clear target choice for close, maximize, snap, and other window actions");
             closeSettings.CursorWindowTargetBox.IsChecked = true;
             Check(closeSettings.SelectedWindowActionTarget == WindowActionTarget.WindowUnderCursor, "window-under-cursor target can be selected without changing the action itself");
-            Check(closeSettings.GestureThreshold == 14 && closeSettings.GestureThresholdBox.Text == "14" && closeSettings.FindName("LockGestureCursorBox") == null && !Descendants<TextBlock>(closeSettings).Any(text => text.Text == "ジェスチャー中にカーソルを固定する"), "layer settings retain gesture sensitivity but no longer expose the cursor behavior moved to each gesture");
+            Check(closeSettings.FindName("GestureThresholdBox") == null && closeSettings.FindName("LockGestureCursorBox") == null
+                && !Descendants<TextBlock>(closeSettings).Any(text => text.Text is "ジェスチャー感度" or "方向を確定する移動量" or "ジェスチャー中にカーソルを固定する"),
+                "layer settings no longer duplicate sensitivity or cursor behavior now owned by each gesture");
             var settingsCategories = closeSettings.CategoryList.Items.Cast<ListBoxItem>().ToArray();
             int updateCategoryIndex = Array.FindIndex(settingsCategories, item => item.Tag?.ToString() == "Update");
             Check(updateCategoryIndex >= 0 && settingsCategories[updateCategoryIndex + 1].Tag?.ToString() == "Disabled" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay, disabled-app, and support options discoverable");

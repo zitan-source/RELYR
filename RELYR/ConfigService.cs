@@ -6,9 +6,10 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 36;
+    internal const int CurrentVersion = 37;
     const int MappingApplicationLossVersion = 29;
     const int PerGestureCursorLockMigrationVersion = 36;
+    const int PerGestureThresholdMigrationVersion = 37;
 
     const string SettingsFileName = "settings.json";
     const int RetainedBackupCount = 20;
@@ -270,7 +271,7 @@ public sealed class ConfigService
         NormalizeGestureThreshold(value, originalVersion);
         NormalizeArchiveFolders(value);
         NormalizeMacros(value.Macros, originalVersion);
-        NormalizeGestures(value.Gestures, originalVersion, value.LockCursorDuringGesture);
+        NormalizeGestures(value.Gestures, originalVersion, value.LockCursorDuringGesture, value.GestureThresholdPixels);
         // v7以前ではWindows再起動を異常終了と誤認し、全レイヤー停止が保存されることがあったため一度だけ復旧する。
         if (originalVersion < ForceEngineEnabledMigrationVersion)
             value.EngineEnabled = true;
@@ -411,13 +412,16 @@ public sealed class ConfigService
         }
     }
 
-    static void NormalizeGestures(IEnumerable<GestureDefinition> gestures, int originalVersion, bool legacyLockCursorDuringGesture)
+    static void NormalizeGestures(IEnumerable<GestureDefinition> gestures, int originalVersion, bool legacyLockCursorDuringGesture, int legacyGestureThresholdPixels)
     {
         foreach (var gesture in gestures)
         {
             gesture.Name ??= "";
             if (originalVersion < PerGestureCursorLockMigrationVersion)
                 gesture.LockCursorDuringGesture = legacyLockCursorDuringGesture;
+            if (originalVersion < PerGestureThresholdMigrationVersion)
+                gesture.GestureThresholdPixels = legacyGestureThresholdPixels;
+            gesture.GestureThresholdPixels = Math.Clamp(gesture.GestureThresholdPixels, 3, 100);
             gesture.UpValue ??= "";
             gesture.DownValue ??= "";
             gesture.LeftValue ??= "";

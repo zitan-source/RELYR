@@ -124,7 +124,6 @@ public partial class MainWindow
         config.SpaceHoldRepeatEnabled = window.SpaceHoldRepeat;
         config.InputDisabledApplications = [.. window.InputDisabledApplications];
         config.SpaceHoldRepeatDelayMs = window.SpaceHoldRepeatDelay;
-        config.GestureThresholdPixels = window.GestureThreshold;
         config.ClockBackgroundMode = window.SelectedClockBackgroundMode;
         config.ClockDisplayMode = window.SelectedClockDisplayMode;
         config.ClockBackgroundImage = window.ClockBackgroundImage;
@@ -135,7 +134,6 @@ public partial class MainWindow
         config.DeckPointerLeaveBehavior = window.DeckPointerLeaveBehavior;
         engine.SpaceHoldRepeatEnabled = config.SpaceHoldRepeatEnabled;
         engine.SpaceHoldRepeatDelayMs = config.SpaceHoldRepeatDelayMs;
-        engine.GestureThresholdPixels = config.GestureThresholdPixels;
         RefreshInputProcessingSuppression();
         OverlayService.RefreshDeckPanel();
     }

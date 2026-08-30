@@ -54,7 +54,6 @@ public partial class SettingsWindow : Window
     public bool SpaceHoldRepeat => SpaceRepeatBox.IsChecked == true;
     public IReadOnlyList<string> InputDisabledApplications => inputDisabledApplications;
     public int SpaceHoldRepeatDelay => int.TryParse(SpaceRepeatDelayBox.Text, out var value) ? Math.Clamp(value, 100, 2000) : 400;
-    public int GestureThreshold => int.TryParse(GestureThresholdBox.Text, out var value) ? Math.Clamp(value, 3, 100) : 12;
     public ClockBackgroundMode SelectedClockBackgroundMode => ClockImageBackgroundBox.IsChecked == true ? ClockBackgroundMode.Image : ClockSolidBackgroundBox.IsChecked == true ? ClockBackgroundMode.Solid : ClockBackgroundMode.FrostedScreen;
     public ClockDisplayMode SelectedClockDisplayMode => (ClockDisplayMode)Math.Clamp(ClockDisplayModeBox.SelectedIndex, 0, 3);
     public string ClockBackgroundImage => ClockBackgroundImageBox.Text.Trim();
@@ -113,7 +112,6 @@ public partial class SettingsWindow : Window
         AutoSaveBox.IsChecked = config.AutoSave;
         SpaceRepeatBox.IsChecked = config.SpaceHoldRepeatEnabled;
         SpaceRepeatDelayBox.Text = config.SpaceHoldRepeatDelayMs.ToString();
-        GestureThresholdBox.Text = config.GestureThresholdPixels.ToString();
         ClockFrostedBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.FrostedScreen;
         ClockImageBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.Image;
         ClockSolidBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.Solid;

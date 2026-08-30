@@ -288,6 +288,9 @@ public partial class MainWindow : Window
         engine.HasLongPress = input => HasConfiguredLongPress(FindCapturedInputMapping(input));
         engine.IsGesturePress = input => FindCapturedInputMapping(input)?.Kind == ActionKind.Gesture;
         engine.IsGestureLongPress = input => FindCapturedInputMapping(input)?.LongPressKind == ActionKind.Gesture;
+        engine.GestureThresholdForInput = input => activeInputMappings.TryGetValue(input, out var captured)
+            ? captured.Gesture?.GestureThresholdPixels ?? 12
+            : 12;
         engine.GestureLocksCursor = input => activeInputMappings.TryGetValue(input, out var captured)
             ? captured.Gesture?.LockCursorDuringGesture ?? true
             : true;

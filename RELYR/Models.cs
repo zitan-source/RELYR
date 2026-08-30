@@ -123,6 +123,7 @@ public sealed class DeckLayoutDefinition
 public sealed class GestureDefinition
 {
     public string Name { get; set; } = "";
+    public int GestureThresholdPixels { get; set; } = 12;
     public bool LockCursorDuringGesture { get; set; } = true;
     public ActionKind UpKind { get; set; }
     public string UpValue { get; set; } = "";
@@ -193,9 +194,9 @@ public sealed class AppConfig
     public string EmergencyShortcut { get; set; } = "Ctrl+Alt+Shift+F12";
     public int DoubleClickMs { get; set; } = 350;
     public int MouseDragPixels { get; set; } = 6;
+    // Retained as a migration source for settings created before sensitivity
+    // and cursor behavior became per-gesture options in schemas v37 and v36.
     public int GestureThresholdPixels { get; set; } = 12;
-    // Retained as a migration source for settings created before cursor
-    // behavior became a per-gesture option in schema v36.
     public bool LockCursorDuringGesture { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ClockBackgroundMode ClockBackgroundMode { get; set; } = ClockBackgroundMode.FrostedScreen;

@@ -128,8 +128,9 @@ public sealed partial class InputEngine : IDisposable
     public int DragPixels { get; set; } = 6;
     public int GestureThresholdPixels { get; set; } = 12;
     // Fallback for isolated engine consumers. The application supplies a
-    // per-input resolver and snapshots its result when the gesture starts.
+    // per-input resolver and snapshots both settings when the gesture starts.
     public bool LockCursorDuringGesture { get; set; } = true;
+    public Func<string, int>? GestureThresholdForInput { get; set; }
     public Func<string, bool>? GestureLocksCursor { get; set; }
     internal (int X, int Y)? GestureCursorForTest
     {
@@ -1188,6 +1189,7 @@ public sealed partial class InputEngine : IDisposable
         state.GestureCursorY = cursorY;
         state.GestureLastX = cursorX;
         state.GestureLastY = cursorY;
+        state.GestureThresholdPixels = Math.Clamp(GestureThresholdForInput?.Invoke(input) ?? GestureThresholdPixels, 3, 100);
         state.GestureLocksCursor = GestureLocksCursor?.Invoke(input) ?? LockCursorDuringGesture;
         state.GestureActive = true;
         state.GestureSafetyTimer = new System.Threading.Timer(_ =>
@@ -1220,7 +1222,7 @@ public sealed partial class InputEngine : IDisposable
         int dx = state.GestureDx, dy = state.GestureDy;
         state.GestureDx = 0;
         state.GestureDy = 0;
-        if (!TryGetGestureDirection(dx, dy, GestureThresholdPixels, out string direction))
+        if (!TryGetGestureDirection(dx, dy, state.GestureThresholdPixels, out string direction))
             return false;
         state.GestureMoved = true;
         state.GestureActionCommitted = true;

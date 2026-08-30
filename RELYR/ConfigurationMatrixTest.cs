@@ -248,6 +248,7 @@ internal static class ConfigurationMatrixTest
         config.DoubleClickMs = int.MaxValue;
         config.MouseDragPixels = -1;
         config.GestureThresholdPixels = int.MaxValue;
+        config.Gestures[0].GestureThresholdPixels = int.MaxValue;
         config.InputPanelOpacityPercent = -50;
         config.WindowActionTarget = (WindowActionTarget)99;
         config.ThemeMode = (AppThemeMode)99;
@@ -279,6 +280,7 @@ internal static class ConfigurationMatrixTest
             && repaired.DoubleClickMs == 2000
             && repaired.MouseDragPixels == 1
             && repaired.GestureThresholdPixels == 100
+            && repaired.Gestures[0].GestureThresholdPixels == 100
             && repaired.InputPanelOpacityPercent == 40
             && repaired.WindowActionTarget == WindowActionTarget.ActiveWindow
             && repaired.ThemeMode == AppThemeMode.System

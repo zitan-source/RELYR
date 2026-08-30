@@ -54,6 +54,8 @@ public static class ConfigValidator
         {
             if (string.IsNullOrWhiteSpace(gesture.Name))
                 errors.Add("名前が空のジェスチャーがあります。");
+            if (gesture.GestureThresholdPixels is < 3 or > 100)
+                errors.Add($"{gesture.Name}: 方向を確定する移動量は3～100pxで指定してください。");
             ValidateGestureAction(config, gesture, "上", gesture.UpKind, gesture.UpValue, errors);
             ValidateGestureAction(config, gesture, "下", gesture.DownKind, gesture.DownValue, errors);
             ValidateGestureAction(config, gesture, "左", gesture.LeftKind, gesture.LeftValue, errors);

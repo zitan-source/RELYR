@@ -141,7 +141,7 @@ public partial class MainWindow
         RebuildTrayMenu();
     }
     static Mapping CloneMapping(Mapping mapping) => mapping.Copy();
-    static GestureDefinition CloneGesture(GestureDefinition x) => new() { Name = x.Name, LockCursorDuringGesture = x.LockCursorDuringGesture, UpKind = x.UpKind, UpValue = x.UpValue, DownKind = x.DownKind, DownValue = x.DownValue, LeftKind = x.LeftKind, LeftValue = x.LeftValue, RightKind = x.RightKind, RightValue = x.RightValue, CenterKind = x.CenterKind, CenterValue = x.CenterValue };
+    static GestureDefinition CloneGesture(GestureDefinition x) => new() { Name = x.Name, GestureThresholdPixels = x.GestureThresholdPixels, LockCursorDuringGesture = x.LockCursorDuringGesture, UpKind = x.UpKind, UpValue = x.UpValue, DownKind = x.DownKind, DownValue = x.DownValue, LeftKind = x.LeftKind, LeftValue = x.LeftValue, RightKind = x.RightKind, RightValue = x.RightValue, CenterKind = x.CenterKind, CenterValue = x.CenterValue };
     void Save_Click(object s, RoutedEventArgs e) => SaveAndApply("設定を保存し、エンジンへ反映しました");
     void SaveAndApply(string message)
     {

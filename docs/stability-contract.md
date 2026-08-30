@@ -90,7 +90,7 @@ Before reporting completion, explicitly review this permanent regression set:
 4. Profile auto-switching follows the foreground application only, remains stable, and does not change the editor dropdown unless the user selects it. Opening an owned RELYR management dialog must not preserve an unrelated application's runtime profile, and the dialog's title-bar close command remains usable.
 5. Deck editor and live overlay synchronize in both directions without restart, including profile-linked layouts with different dimensions.
 6. Tray restart preserves input ownership, profile state, mappings, and Deck synchronization.
-7. Repeated actions and virtual-desktop changes do not leave captured keys/buttons, double-execute actions, or stop the hooks. Two gesture definitions may independently keep the cursor fixed or allow it to move, and an active gesture retains the value captured on its initial press.
+7. Repeated actions and virtual-desktop changes do not leave captured keys/buttons, double-execute actions, or stop the hooks. Two gesture definitions may independently use different movement thresholds and keep the cursor fixed or allow it to move; an active gesture retains both values captured on its initial press.
 8. Settings, mapping `Application` conditions, profiles, and Deck layouts are not erased, globally broadened, or silently migrated.
 
 If a required item cannot be exercised safely in the current session, say so. Do not substitute an unrelated mocked test or claim that the item was verified.
