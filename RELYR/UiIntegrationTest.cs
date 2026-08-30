@@ -595,7 +595,7 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteActionsForTest.Any(action => action.Name == "コピー" && action.Value == "Ctrl+C")
                 && window.ActionPaletteActionsForTest.Any(action => action.Category == "Deckパネル")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString()).Take(4).SequenceEqual(new[] { "お気に入り", "最近使ったもの", "すべて", "使用中" })
-                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "お気に入り"
+                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "最近使ったもの"
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Count(item => item.ToString() == "使用中") == 1
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "インストールアプリ")
                 && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == "パス・文字列")
@@ -608,7 +608,9 @@ internal static class UiIntegrationTest
                 && window.ActionPaletteList.ActualWidth <= window.ActionPalettePane.ActualWidth + .1
                 && window.ActionPaletteList.Items.Count == 0
                 && window.ActionPaletteEmptyText.Visibility == Visibility.Visible
-                && window.ActionPaletteEmptyText.Text.Contains("☆", StringComparison.Ordinal),
+                && window.ActionPaletteEmptyText.Text.Contains("割り当てる", StringComparison.Ordinal)
+                && window.ActionPaletteClearRecentButton.Visibility == Visibility.Visible
+                && !window.ActionPaletteClearRecentButton.IsEnabled,
                 "the fixed right pane opens a searchable concrete-action library without adding width or a second column");
             window.ActionPaletteCloseButton.ApplyTemplate();
             Check(window.ActionPaletteCloseButton.BorderThickness == new Thickness(0)
@@ -644,16 +646,30 @@ internal static class UiIntegrationTest
             window.ActionPaletteCategoryBox.IsDropDownOpen = true;
             window.UpdateLayout();
             var favoriteCategoryContainer = (ComboBoxItem)window.ActionPaletteCategoryBox.ItemContainerGenerator.ContainerFromItem(categoryOptions[0])!;
+            var recentCategoryContainer = (ComboBoxItem)window.ActionPaletteCategoryBox.ItemContainerGenerator.ContainerFromItem(categoryOptions[1])!;
             favoriteCategoryContainer.ApplyTemplate();
-            var selectedCategoryCheck = (TextBlock)favoriteCategoryContainer.Template.FindName("CategorySelectedCheck", favoriteCategoryContainer);
+            recentCategoryContainer.ApplyTemplate();
+            var favoriteCategoryCheck = (TextBlock)favoriteCategoryContainer.Template.FindName("CategorySelectedCheck", favoriteCategoryContainer);
+            var selectedCategoryCheck = (TextBlock)recentCategoryContainer.Template.FindName("CategorySelectedCheck", recentCategoryContainer);
+            double categoryBottomInPane = window.ActionPaletteCategoryBox.TranslatePoint(
+                new System.Windows.Point(0, window.ActionPaletteCategoryBox.ActualHeight), window.ActionPalettePane).Y;
+            double expectedCategoryDropHeight = Math.Max(160, window.ActionPalettePane.ActualHeight - categoryBottomInPane - 12);
             Check(window.ActionPaletteCategoryBox is System.Windows.Controls.ComboBox
                 && Descendants<System.Windows.Controls.Primitives.Popup>(window.ActionPaletteCategoryBox).Any()
-                && selectedCategoryCheck.Opacity == 1,
-                "the Action categories use the compact grouped dropdown with a clear selected check mark");
+                && favoriteCategoryCheck.Opacity == 0 && selectedCategoryCheck.Opacity == 1
+                && Math.Abs(window.ActionPaletteCategoryBox.MaxDropDownHeight - expectedCategoryDropHeight) <= 1.1
+                && window.ActionPaletteSelectedCategoryGlyph.Foreground is SolidColorBrush recentCategoryBrush
+                && recentCategoryBrush.Color == ThemeService.Color("ActionProfileIconBrush"),
+                "the Action categories use the full available pane height with a clear selected check mark and low-resolution-safe clamping");
             Check(CaptureElementForReview(window.ActionPaletteCategoryBox, "action-category-dropdown.png"), "the Action category dropdown screenshot is saved");
             window.ActionPaletteCategoryBox.IsDropDownOpen = false;
             ThemeService.Apply(categoryCaptureTheme);
             Pump(window);
+            window.SelectActionPalettePopupItemForTest("お気に入り");
+            Pump(window);
+            Check(window.ActionPaletteSelectedCategoryGlyph.Foreground is SolidColorBrush favoriteCategoryBrush
+                && favoriteCategoryBrush.Color == ThemeService.Color("ActionTextIconBrush"),
+                "the closed Action category selector keeps the selected category's own icon color instead of forcing every status icon to green");
             window.SelectActionPalettePopupItemForTest("すべて");
             Pump(window);
             var favoriteCopyAction = window.ActionPaletteActionsForTest.First(action => action.Name == "コピー" && action.Value == "Ctrl+C");
@@ -931,8 +947,17 @@ internal static class UiIntegrationTest
             window.SelectActionPalettePopupItemForTest("最近使ったもの");
             Pump(window);
             Check(window.VisibleActionPaletteActionsForTest.FirstOrDefault() is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" }
-                && window.ConfigForTest.ActionPaletteRecentActions.FirstOrDefault() == "Shortcut:Ctrl+C",
+                && window.ConfigForTest.ActionPaletteRecentActions.FirstOrDefault() == "Shortcut:Ctrl+C"
+                && window.ActionPaletteClearRecentButton.Visibility == Visibility.Visible
+                && window.ActionPaletteClearRecentButton.IsEnabled,
                 "a successful drag assignment places that concrete Action first in the shared recent list without changing its drag behavior");
+            window.ActionPaletteClearRecentButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(window.ConfigForTest.ActionPaletteRecentActions.Count == 0
+                && window.ActionPaletteList.Items.Count == 0
+                && window.ActionPaletteClearRecentButton.Visibility == Visibility.Visible
+                && !window.ActionPaletteClearRecentButton.IsEnabled,
+                "the quiet recent-list footer clears only the shared recent history and stays available in both keyboard and Deck Action panes");
             window.ApplyUiAnimationsForTest(false);
             Check(window.InputTransformStableForTest(f24Button)
                 && window.PaletteDropWaveSettledForTest(f24Button),
@@ -1050,15 +1075,22 @@ internal static class UiIntegrationTest
             window.SetPaletteAssignmentDropTargetForTest(window.MouseLeftVisual, enterAction, longPress: false);
             window.MouseLeftVisual.ApplyTemplate();
             var reservedTaskbarTapMark = (UIElement)window.MouseLeftVisual.Template.FindName("ShortPressDropUnavailableMark", window.MouseLeftVisual)!;
+            var reservedTaskbarHoldMark = (UIElement)window.MouseLeftVisual.Template.FindName("LongPressDropUnavailableMark", window.MouseLeftVisual)!;
             bool taskbarTapApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseLeft", "MouseLeft", longPress: false);
             bool taskbarHoldApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseLeft", "MouseLeft", longPress: true);
             var taskbarLeftMapping = window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "Taskbar+MouseLeft");
+            var staleAppliedTaskbarLeftHold = new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F9" };
+            window.AddAppliedMappingForTest(staleAppliedTaskbarLeftHold);
+            bool staleTaskbarLeftRuntimeIntercepted = window.RuntimeInterceptsInputForTest("Taskbar+MouseLeft");
+            window.RemoveAppliedMappingForTest(staleAppliedTaskbarLeftHold);
             Check(!MainWindow.GetIsShortPressAssignmentDropAvailable(window.MouseLeftVisual)
-                && MainWindow.GetIsLongPressAssignmentDropAvailable(window.MouseLeftVisual)
-                && reservedTaskbarTapMark.Opacity == 1
-                && !taskbarTapApplied && taskbarHoldApplied
-                && taskbarLeftMapping is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "Enter" },
-                "Taskbar+MouseLeft keeps TAP visibly reserved for Windows while the same split target still accepts a HOLD Action");
+                && !MainWindow.GetIsLongPressAssignmentDropAvailable(window.MouseLeftVisual)
+                && reservedTaskbarTapMark.Opacity == 1 && reservedTaskbarHoldMark.Opacity == 1
+                && !taskbarTapApplied && !taskbarHoldApplied
+                && taskbarLeftMapping == null
+                && !staleTaskbarLeftRuntimeIntercepted
+                && InputAssignmentPolicy.UnavailableInputReason("Taskbar+MouseLeft") == "タスクバーの左クリック／ドラッグはWindows専用です",
+                "Taskbar+MouseLeft blocks both TAP and HOLD so Windows keeps native click and pinned-app drag/reorder behavior");
             window.ClearAssignmentDropTargetForTest();
             window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "Taskbar+MouseLeft");
             window.SetPaletteAssignmentDropTargetForTest(window.MouseRightVisual, enterAction, longPress: false);
@@ -1656,8 +1688,10 @@ internal static class UiIntegrationTest
             window.OpenActionPaletteForTest();
             Pump(window);
             Check(window.ActionPaletteContextText.Text.Contains("Deck + 01", StringComparison.Ordinal)
-                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == DeckMonitorCatalog.Category),
-                "Deck opens the same Action library with its selected button as the drag destination and retains Deck-only monitors");
+                && window.ActionPaletteCategoryBox.Items.Cast<object>().Any(item => item.ToString() == DeckMonitorCatalog.Category)
+                && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == "最近使ったもの"
+                && window.ActionPaletteClearRecentButton.Visibility == Visibility.Visible,
+                "Deck opens the same recent-first Action library with its selected button as the drag destination and retains Deck-only monitors");
             window.CloseActionPaletteForTest();
             Pump(window);
             deckButtons[0].RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left) { RoutedEvent = System.Windows.Controls.Control.MouseDoubleClickEvent });
@@ -1735,7 +1769,7 @@ internal static class UiIntegrationTest
             Check(window.DeckWindowActionTargetForTest == WindowActionTarget.ActiveWindow, "Deck actions always target the previously active window instead of the overlay under the cursor");
             Check(window.TaskbarWindowActionTargetForTest == WindowActionTarget.ActiveWindow
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
-                  && MainWindow.IsTaskbarMappedInput("Taskbar+MouseLeft:Long")
+                  && MainWindow.IsTaskbarMappedInput("Taskbar+MouseRight:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
                 "taskbar mappings use the existing active window instead of resolving the Explorer taskbar as a cursor target");
             var colorPicker = new ThemeColorPickerWindow(System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56)) { Owner = window };
@@ -3382,6 +3416,13 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" } && window.InputName.Text.Length == 0 && !window.AssignmentEditor.IsEnabled && window.ProfileBox.IsEnabled, "single-key paste immediately completes editing and leaves profile switching available");
             Check(window.EditorUndoButton.IsEnabled && !window.EditorRedoButton.IsEnabled, "a completed assignment change enables the toolbar undo command");
+            var editorUndoIcon = Descendants<System.Windows.Shapes.Path>(window.EditorUndoButton).Single();
+            var editorRedoIcon = Descendants<System.Windows.Shapes.Path>(window.EditorRedoButton).Single();
+            Check(window.EditorUndoButton.Content is Viewbox && window.EditorRedoButton.Content is Viewbox
+                && editorUndoIcon.StrokeStartLineCap == PenLineCap.Round && editorUndoIcon.StrokeEndLineCap == PenLineCap.Round
+                && editorRedoIcon.StrokeStartLineCap == PenLineCap.Round && editorRedoIcon.StrokeEndLineCap == PenLineCap.Round
+                && Math.Abs(editorUndoIcon.StrokeThickness - 1.8) < .001 && Math.Abs(editorRedoIcon.StrokeThickness - 1.8) < .001,
+                "toolbar undo and redo use matching simple rounded horizontal-arrow paths instead of the bent font glyphs");
             window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Shortcut, Value: "Ctrl+B" }
@@ -3398,6 +3439,7 @@ internal static class UiIntegrationTest
             window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input is "Taskbar+MouseLeft" or "Taskbar+MouseRight");
             window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F9" });
             window.CurrentProfileForTest.Mappings.Add(new Mapping { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F10" });
+            bool staleTaskbarAssignmentsSanitized = InputAssignmentPolicy.SanitizeMappings(window.CurrentProfileForTest.Mappings);
             window.TaskbarLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             var taskbarLeftPaste = (MenuItem)window.CreateInputContextMenu("MouseLeft").Items[1];
@@ -3406,15 +3448,16 @@ internal static class UiIntegrationTest
             taskbarRightPaste.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             window.MouseRightVisual.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
-            Check(!taskbarLeftPaste.IsEnabled
-                && taskbarLeftPaste.ToolTip?.ToString() == "タスクバーの左クリックはWindows操作専用です"
+            Check(staleTaskbarAssignmentsSanitized
+                && !taskbarLeftPaste.IsEnabled
+                && taskbarLeftPaste.ToolTip?.ToString() == "タスクバーの左クリック／ドラッグはWindows専用です"
                 && !taskbarRightPaste.IsEnabled
                 && taskbarRightPaste.ToolTip?.ToString() == "タスクバーの右クリックはWindows操作専用です"
-                && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "Taskbar+MouseLeft") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F9" }
+                && !window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == "Taskbar+MouseLeft")
                 && window.CurrentProfileForTest.Mappings.Single(mapping => mapping.Input == "Taskbar+MouseRight") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F10" }
                 && window.AssignmentTapNameText.Text == "Windowsの右クリック"
                 && window.AssignmentTapDetailText.Text == "TAPは変更できません",
-                "paste and the unified inspector reserve both taskbar TAP clicks for Windows without erasing an existing HOLD");
+                "normalization and paste fully reserve taskbar left click/drag while taskbar right keeps its native TAP without erasing an existing HOLD");
             window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             var allLayerSource = new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Text, Value = "multi-A", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+B", LongPressMs = 640, Application = "notepad.exe" };
@@ -3445,14 +3488,74 @@ internal static class UiIntegrationTest
             assignAllLayers?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Pump(window);
             var allLayerCopies = MainWindow.AllAssignmentLayerNames.Select(layer => window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input.Equals(layer + "+F7", StringComparison.OrdinalIgnoreCase))).ToArray();
-            var secondaryKeyboardMenu = window.CreateInputContextMenu("Insert", false);
+            var secondaryKeyboardMenu = window.CreateInputContextMenu("Insert");
             Check(assignAllLayers?.IsEnabled == true && assignAllProfiles != null
                 && allLayerCopies.All(mapping => mapping is { Kind: ActionKind.Text, Value: "multi-A", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+B", LongPressMs: 640, Application: "notepad.exe" })
                 && allLayerCopies.Select(mapping => mapping!.Layer).SequenceEqual(MainWindow.AllAssignmentLayerNames)
                 && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "F7") == allLayerSource
-                && !secondaryKeyboardMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる")
+                && secondaryKeyboardMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全レイヤーに割り当てる")
                 && secondaryKeyboardMenu.Items.OfType<MenuItem>().Any(item => item.Header?.ToString() == "全プロファイルに割り当て"),
-                "key context menus copy the complete assignment through all layers and expose all-profile assignment on both main and secondary keys");
+                "key context menus copy the complete assignment through all layers and expose all-layer/all-profile assignment on both main and secondary keys");
+            var singleScopeMenuHeaders = window.CreateInputContextMenu("F7").Items.OfType<MenuItem>().Select(item => item.Header?.ToString()).ToArray();
+            Check(singleScopeMenuHeaders.Contains("全レイヤーから削除") && singleScopeMenuHeaders.Contains("全プロファイルから削除"),
+                "single-key context menus expose removal from every layer and every profile");
+            window.MultiSelectToggle.IsChecked = true;
+            multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            multiB.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var multiScopeMenu = window.CreateMultiSelectionContextMenu();
+            var multiAssignAllLayers = multiScopeMenu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全レイヤーに割り当てる");
+            var multiAssignAllProfiles = multiScopeMenu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全プロファイルに割り当て");
+            var multiDeleteAllLayers = multiScopeMenu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全レイヤーから削除");
+            var multiDeleteAllProfiles = multiScopeMenu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全プロファイルから削除");
+            multiAssignAllLayers.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Pump(window);
+            bool multiLayerAssignmentsApplied = MainWindow.AllAssignmentLayerNames.All(layer =>
+                window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == layer + "+A" && mapping.Kind == ActionKind.Text && mapping.Value == "multi-A")
+                && window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == layer + "+B" && mapping.Kind == ActionKind.Text && mapping.Value == "multi-A"));
+            window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            bool multiLayerAssignmentUndoneOnce = MainWindow.AllAssignmentLayerNames.All(layer =>
+                !window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input is var input && (input == layer + "+A" || input == layer + "+B")))
+                && window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == "A")
+                && window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == "B");
+            Check(multiAssignAllLayers.IsEnabled && multiAssignAllProfiles.IsEnabled
+                && multiDeleteAllLayers.IsEnabled && multiDeleteAllProfiles.IsEnabled
+                && multiLayerAssignmentsApplied && multiLayerAssignmentUndoneOnce,
+                "multi-selection exposes all four scope commands, applies every selected key across layers, and restores the whole batch with one undo");
+            window.EditorRedoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            window.MultiSelectToggle.IsChecked = true;
+            multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            multiB.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            var multiDeleteLayerMenu = window.CreateMultiSelectionContextMenu();
+            multiDeleteLayerMenu.Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全レイヤーから削除").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Pump(window);
+            bool multiLayersDeleted = !window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input is "A" or "B"
+                || MainWindow.AllAssignmentLayerNames.Any(layer => mapping.Input == layer + "+A" || mapping.Input == layer + "+B"));
+            window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(multiLayersDeleted && window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == "A")
+                && window.CurrentProfileForTest.Mappings.Any(mapping => mapping.Input == "B"),
+                "multi-selection removes every selected key from all layers and restores the complete deletion with one undo");
+            window.MultiSelectToggle.IsChecked = true;
+            multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            multiB.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.CreateMultiSelectionContextMenu().Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全プロファイルに割り当て").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Pump(window);
+            bool multiProfilesAssigned = window.ProfilesForTest.Where(profile => !ReferenceEquals(profile, window.CurrentProfileForTest)).All(profile =>
+                profile.Mappings.Any(mapping => mapping.Input == "A") && profile.Mappings.Any(mapping => mapping.Input == "B"));
+            window.MultiSelectToggle.IsChecked = true;
+            multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            multiB.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.CreateMultiSelectionContextMenu().Items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "全プロファイルから削除").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Pump(window);
+            bool multiProfilesDeleted = window.ProfilesForTest.All(profile => !profile.Mappings.Any(mapping => mapping.Input is "A" or "B"));
+            window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            Check(multiProfilesAssigned && multiProfilesDeleted
+                && window.ProfilesForTest.All(profile => profile.Mappings.Any(mapping => mapping.Input == "A") && profile.Mappings.Any(mapping => mapping.Input == "B")),
+                "multi-selection applies and removes every selected input across profiles, with one undo restoring the full cross-profile batch");
             multiA.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Pump(window);
             Check(window.MultiDeleteButton.IsEnabled

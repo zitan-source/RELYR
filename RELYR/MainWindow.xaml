@@ -759,6 +759,20 @@
         <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource ControlHoverBackground}"/></Trigger>
       </Style.Triggers>
     </Style>
+    <Style x:Key="ActionPaletteCategoryGlyphStyle" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Tone}" Value="key"><Setter Property="Foreground" Value="{DynamicResource ActionKeyIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="shortcut"><Setter Property="Foreground" Value="{DynamicResource ActionShortcutIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="text"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="launch"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="macro"><Setter Property="Foreground" Value="{DynamicResource ActionMacroIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="profile"><Setter Property="Foreground" Value="{DynamicResource ActionProfileIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="favorite"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="recent"><Setter Property="Foreground" Value="{DynamicResource ActionProfileIconBrush}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="muted"><Setter Property="Foreground" Value="{DynamicResource ActionDisabledIconBrush}"/></DataTrigger>
+      </Style.Triggers>
+    </Style>
     <Style x:Key="ActionPaletteCategoryItemStyle" TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
       <Setter Property="Background" Value="Transparent"/>
@@ -773,19 +787,7 @@
           <Border x:Name="CategoryItemBorder" Grid.Row="2" MinHeight="36" Padding="9,0,8,0" Background="Transparent" CornerRadius="7" SnapsToDevicePixels="True">
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
-              <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center">
-                <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/><Style.Triggers>
-                  <DataTrigger Binding="{Binding Tone}" Value="key"><Setter Property="Foreground" Value="{DynamicResource ActionKeyIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="shortcut"><Setter Property="Foreground" Value="{DynamicResource ActionShortcutIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="text"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="launch"><Setter Property="Foreground" Value="{DynamicResource ActionLaunchIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="macro"><Setter Property="Foreground" Value="{DynamicResource ActionMacroIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="profile"><Setter Property="Foreground" Value="{DynamicResource ActionProfileIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="favorite"><Setter Property="Foreground" Value="{DynamicResource ActionTextIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="recent"><Setter Property="Foreground" Value="{DynamicResource ActionProfileIconBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Tone}" Value="muted"><Setter Property="Foreground" Value="{DynamicResource ActionDisabledIconBrush}"/></DataTrigger>
-                </Style.Triggers></Style></TextBlock.Style>
-              </TextBlock>
+              <TextBlock Style="{StaticResource ActionPaletteCategoryGlyphStyle}" Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
               <TextBlock x:Name="CategorySelectedCheck" Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0"/>
             </Grid>
@@ -914,8 +916,12 @@
             </TextBlock>
             <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
             <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
-              <Button x:Name="EditorUndoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorUndo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ戻る" AutomationProperties.Name="1つ戻る"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE7A7;"/></Button>
-              <Button x:Name="EditorRedoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorRedo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ進む" AutomationProperties.Name="1つ進む"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE7A6;"/></Button>
+              <Button x:Name="EditorUndoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorUndo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ戻る" AutomationProperties.Name="1つ戻る">
+                <Viewbox Width="22" Height="22"><Canvas Width="24" Height="24"><Path Data="M9,5.5 L4,10 L9,14.5 M4,10 H14 C18,10 20,12.5 20,16 C20,18.4 18.3,20 16,20 H12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/></Canvas></Viewbox>
+              </Button>
+              <Button x:Name="EditorRedoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorRedo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ進む" AutomationProperties.Name="1つ進む">
+                <Viewbox Width="22" Height="22"><Canvas Width="24" Height="24"><Path Data="M15,5.5 L20,10 L15,14.5 M20,10 H10 C6,10 4,12.5 4,16 C4,18.4 5.7,20 8,20 H12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/></Canvas></Viewbox>
+              </Button>
               <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>
               <Button x:Name="MultiCopyButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiCopy_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てをコピー" AutomationProperties.Name="割り当てをコピー"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8C8;"/></Button>
               <Button x:Name="MultiPasteButton" Style="{StaticResource ToolbarButtonStyle}" Click="MultiPaste_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="割り当てを貼り付け" AutomationProperties.Name="割り当てを貼り付け"><TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE77F;"/></Button>
@@ -1385,8 +1391,8 @@
             <Button x:Name="ActionPaletteSearchClearButton" Width="26" Height="26" MinWidth="26" MinHeight="26" Margin="0,0,5,0" Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Visibility="Collapsed" Click="ClearActionPaletteSearch_Click" ToolTip="検索を消去" AutomationProperties.Name="Action検索を消去"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="11"/></Button>
           </Grid>
           <Grid Grid.Row="2" Margin="0,0,0,8">
-            <ComboBox x:Name="ActionPaletteCategoryBox" Style="{StaticResource ActionPaletteCategoryComboBoxStyle}" ItemContainerStyle="{StaticResource ActionPaletteCategoryItemStyle}" Height="36" MaxDropDownHeight="520" Margin="0" SelectionChanged="ActionPaletteCategoryChanged" AutomationProperties.Name="Actionカテゴリ"/>
-            <TextBlock Text="{Binding SelectedItem.Glyph,ElementName=ActionPaletteCategoryBox}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="{DynamicResource AccentTextBrush}" Width="18" Margin="9,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center" IsHitTestVisible="False"/>
+            <ComboBox x:Name="ActionPaletteCategoryBox" Style="{StaticResource ActionPaletteCategoryComboBoxStyle}" ItemContainerStyle="{StaticResource ActionPaletteCategoryItemStyle}" Height="36" MaxDropDownHeight="520" Margin="0" SelectionChanged="ActionPaletteCategoryChanged" DropDownOpened="ActionPaletteCategoryDropDownOpened" AutomationProperties.Name="Actionカテゴリ"/>
+            <TextBlock x:Name="ActionPaletteSelectedCategoryGlyph" Style="{StaticResource ActionPaletteCategoryGlyphStyle}" DataContext="{Binding SelectedItem,ElementName=ActionPaletteCategoryBox}" Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Width="18" Margin="9,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center" IsHitTestVisible="False"/>
             <TextBlock x:Name="ActionPaletteResultCount" Visibility="Collapsed" IsHitTestVisible="False"/>
           </Grid>
           <Button x:Name="ActionPaletteCustomShortcutButton" Grid.Row="3" Height="36" MinHeight="36" Margin="0,0,0,8" Padding="9,0" Visibility="Collapsed" Click="CreateActionPaletteShortcut_Click" AutomationProperties.Name="任意のショートカットを作成">
@@ -1400,10 +1406,13 @@
             <ListBox x:Name="ActionPaletteList" Style="{StaticResource ActionPaletteListStyle}" ItemContainerStyle="{StaticResource ActionPaletteItemStyle}" ItemTemplate="{StaticResource ActionPaletteItemTemplate}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" PreviewMouseLeftButtonDown="ActionPaletteItem_PreviewMouseLeftButtonDown" PreviewMouseMove="ActionPaletteItem_PreviewMouseMove" PreviewMouseLeftButtonUp="ActionPaletteItem_PreviewMouseLeftButtonUp"/>
             <TextBlock x:Name="ActionPaletteEmptyText" Text="一致するActionはありません" MaxWidth="210" FontSize="11" Foreground="{DynamicResource MutedText}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
           </Grid>
-          <Border x:Name="ActionPaletteUndoBar" Grid.Row="5" Visibility="Collapsed" Background="{DynamicResource AccentSoftBrush}" CornerRadius="7" Padding="9,7" Margin="0,8,0,0">
-            <Border.RenderTransform><TranslateTransform Y="0"/></Border.RenderTransform>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="ActionPaletteUndoText" Text="割り当てました" FontSize="10.5" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><Button Grid.Column="1" Content="元に戻す" MinHeight="28" Padding="8,3" Margin="8,0,0,0" Click="UndoActionPaletteAssignment_Click"/></Grid>
-          </Border>
+          <StackPanel Grid.Row="5">
+            <Button x:Name="ActionPaletteClearRecentButton" Content="最近使ったリストをクリア" Height="27" MinHeight="27" Padding="7,2" Margin="0,5,1,0" HorizontalAlignment="Right" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Foreground="{DynamicResource MutedText}" FontSize="9.5" Visibility="Collapsed" Click="ClearRecentPaletteActions_Click" ToolTip="最近使ったActionの履歴だけを消去"/>
+            <Border x:Name="ActionPaletteUndoBar" Visibility="Collapsed" Background="{DynamicResource AccentSoftBrush}" CornerRadius="7" Padding="9,7" Margin="0,8,0,0">
+              <Border.RenderTransform><TranslateTransform Y="0"/></Border.RenderTransform>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="ActionPaletteUndoText" Text="割り当てました" FontSize="10.5" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><Button Grid.Column="1" Content="元に戻す" MinHeight="28" Padding="8,3" Margin="8,0,0,0" Click="UndoActionPaletteAssignment_Click"/></Grid>
+            </Border>
+          </StackPanel>
         </Grid>
         </Grid>
       </Border>

@@ -44,11 +44,18 @@ internal static class InputAssignmentPolicy
     internal static bool IsUnreachableInput(string? input)
     {
         string value = (input ?? "").Trim();
-        return BaseInput(value).Equals("MouseX", StringComparison.OrdinalIgnoreCase)
+        return IsFullyReservedInput(value)
+            || BaseInput(value).Equals("MouseX", StringComparison.OrdinalIgnoreCase)
             || value.Equals("Space", StringComparison.OrdinalIgnoreCase)
             || value.Equals("CapsLock", StringComparison.OrdinalIgnoreCase)
             || IsSelfLayerInput(value);
     }
+
+    // Holding the taskbar's primary button is how Windows starts dragging a
+    // pinned app icon. A long-press detector would capture that Down first, so
+    // this complete input belongs to Windows.
+    internal static bool IsFullyReservedInput(string? input)
+        => (input ?? "").Trim().Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase);
 
     internal static bool PreservesNativeShortPress(string? input)
     {
@@ -64,7 +71,7 @@ internal static class InputAssignmentPolicy
     {
         string value = (input ?? "").Trim();
         if (value.Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase))
-            return "タスクバーの左クリックはWindows操作専用です";
+            return "タスクバーの左クリック／ドラッグはWindows専用です";
         if (value.Equals("Taskbar+MouseRight", StringComparison.OrdinalIgnoreCase))
             return "タスクバーの右クリックはWindows操作専用です";
         return UnavailableInputReason(input);
@@ -92,6 +99,8 @@ internal static class InputAssignmentPolicy
 
     internal static string? UnavailableInputReason(string? input)
     {
+        if (IsFullyReservedInput(input))
+            return "タスクバーの左クリック／ドラッグはWindows専用です";
         if (BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase))
             return "追加ボタンは入力として使用できません";
         if ((input ?? "").Trim().Equals("Space", StringComparison.OrdinalIgnoreCase))

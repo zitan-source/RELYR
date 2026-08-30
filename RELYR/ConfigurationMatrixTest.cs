@@ -218,23 +218,30 @@ internal static class ConfigurationMatrixTest
         report.Check(rejectedIntrinsicConflicts && rejectedLayerConflict,
             "validation rejects every intrinsically unreachable long press, impulse gesture, fake input, self-layer input, and active mouse-layer conflict");
 
-        bool protectedTaskbarHoldValid = true;
-        foreach (string input in new[] { "Taskbar+MouseLeft", "Taskbar+MouseRight" })
+        var protectedTaskbarLeftHold = CompleteConfig();
+        protectedTaskbarLeftHold.Profiles[0].Mappings.Add(new Mapping
         {
-            var config = CompleteConfig();
-            config.Profiles[0].Mappings.Add(new Mapping
-            {
-                Input = input,
-                Layer = "Taskbar",
-                Kind = ActionKind.None,
-                LongPressKind = ActionKind.Shortcut,
-                LongPressValue = "Ctrl+Shift+Escape"
-            });
-            protectedTaskbarHoldValid &= ConfigValidator.Validate(config).Count == 0;
-            cases++;
-        }
-        report.Check(protectedTaskbarHoldValid,
-            "taskbar left and right buttons accept HOLD-only assignments while their Windows TAP remains reserved");
+            Input = "Taskbar+MouseLeft",
+            Layer = "Taskbar",
+            Kind = ActionKind.None,
+            LongPressKind = ActionKind.Shortcut,
+            LongPressValue = "Ctrl+Shift+Escape"
+        });
+        bool protectedTaskbarLeftHoldRejected = ConfigValidator.Validate(protectedTaskbarLeftHold).Count > 0;
+        cases++;
+        var protectedTaskbarRightHold = CompleteConfig();
+        protectedTaskbarRightHold.Profiles[0].Mappings.Add(new Mapping
+        {
+            Input = "Taskbar+MouseRight",
+            Layer = "Taskbar",
+            Kind = ActionKind.None,
+            LongPressKind = ActionKind.Shortcut,
+            LongPressValue = "Ctrl+Shift+Escape"
+        });
+        bool protectedTaskbarRightHoldValid = ConfigValidator.Validate(protectedTaskbarRightHold).Count == 0;
+        cases++;
+        report.Check(protectedTaskbarLeftHoldRejected && protectedTaskbarRightHoldValid,
+            "taskbar left rejects HOLD to preserve pinned-icon dragging while taskbar right accepts HOLD-only assignments with its Windows TAP reserved");
     }
 
     static void TestNormalizationAndRejection(VerificationReport report, string directory, ref int cases)
@@ -339,7 +346,7 @@ internal static class ConfigurationMatrixTest
             new() { Input = "MouseX", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new() { Input = "CapsLock", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
             new() { Input = "Space+Space", Layer = "Space", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
-            new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+            new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L", LongPressKind = ActionKind.Key, LongPressValue = "F9" },
             new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R", LongPressKind = ActionKind.Key, LongPressValue = "F10" },
             new() { Input = "MouseRight", Layer = "通常", Kind = ActionKind.Mouse, Value = "MouseRight", LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+K" },
             new() { Input = "MouseRight+K", Layer = "MouseRight", Kind = ActionKind.Shortcut, Value = "Ctrl+C" },
@@ -378,6 +385,7 @@ internal static class ConfigurationMatrixTest
         {
             new Mapping { Input = "MouseLeft", Layer = "通常", Kind = ActionKind.Disabled },
             new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+            new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F9" },
             new Mapping { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R" },
             new Mapping { Input = "F6", Layer = "通常", Kind = ActionKind.Shortcut, Value = "DefinitelyUnknownKey" },
             new Mapping { Input = "F7", Layer = "通常", Kind = ActionKind.Mouse, Value = "UnknownMouse" },

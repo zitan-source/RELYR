@@ -1148,12 +1148,11 @@ public partial class MainWindow : Window
             ShowInlineNotice("CapsLockは割り当て元にはできません");
             return;
         }
-        var button = (System.Windows.Controls.Button)sender;
-        var menu = CreateInputContextMenu(key, KeyboardPanel.Children.Contains(button) || InputButtons(MousePanel).Contains(button));
+        var menu = CreateInputContextMenu(key);
         menu.PlacementTarget = (System.Windows.Controls.Button)sender;
         menu.IsOpen = true;
     }
-    internal ContextMenu CreateInputContextMenu(string key, bool includeAllLayers = true)
+    internal ContextMenu CreateInputContextMenu(string key)
     {
         string input = currentLayer == "通常" ? key : currentLayer + "+" + key;
         string? unavailableReason = InputAssignmentPolicy.UnavailableInputReason(input);
@@ -1201,7 +1200,7 @@ public partial class MainWindow : Window
             MarkDirty();
             UpdateLayerButtons();
             ColorButtons();
-            ShowInlineNotice($"{DisplayInputName(input)} の割り当てをデフォルト以外の{applied}レイヤーへ適用しました");
+            ShowInlineNotice($"{DisplayInputName(input)} の割り当てを他の{applied}レイヤーへ適用しました");
         };
         string? allProfilesReason = unavailableReason ?? (config.Profiles.Count <= 1 ? "他のプロファイルがありません" : null);
         var assignAllProfiles = new MenuItem { Header = "全プロファイルに割り当て", IsEnabled = existing != null && allProfilesReason == null, ToolTip = allProfilesReason };
@@ -1218,16 +1217,51 @@ public partial class MainWindow : Window
             ColorButtons();
             ShowInlineNotice($"{DisplayInputName(input)} の割り当てを他の{applied}プロファイルへ適用しました");
         };
+        var deleteAllLayers = new MenuItem
+        {
+            Header = "全レイヤーから削除",
+            IsEnabled = HasMappingInAnyLayer(CurrentProfile.Mappings, key),
+            Foreground = ThemeService.Brush("DangerBrush")
+        };
+        deleteAllLayers.Click += (_, _) =>
+        {
+            int removed = RemoveMappingsFromAllLayers(CurrentProfile.Mappings, key);
+            if (removed == 0)
+                return;
+            ClearSelectedInput();
+            MarkDirty();
+            UpdateLayerButtons();
+            ColorButtons();
+            ShowInlineNotice($"{DisplayInputName(key)} を全レイヤーから削除しました（{removed}件）");
+        };
+        var deleteAllProfiles = new MenuItem
+        {
+            Header = "全プロファイルから削除",
+            IsEnabled = config.Profiles.Any(profile => profile.Mappings.Any(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase))),
+            Foreground = ThemeService.Brush("DangerBrush")
+        };
+        deleteAllProfiles.Click += (_, _) =>
+        {
+            int removed = RemoveMappingsFromAllProfiles(config.Profiles, input);
+            if (removed == 0)
+                return;
+            ClearSelectedInput();
+            MarkDirty();
+            UpdateLayerButtons();
+            ColorButtons();
+            ShowInlineNotice($"{DisplayInputName(input)} を全プロファイルから削除しました（{removed}件）");
+        };
         var delete = new MenuItem { Header = "この割り当てを削除", IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => { if (existing == null) return; CurrentProfile.Mappings.Remove(existing); MarkDirty(); UpdateLayerButtons(); ClearSelectedInput(); ShowInlineNotice(DisplayInputName(input) + " の割り当てを削除しました"); };
         menu.Items.Add(copy);
         menu.Items.Add(paste);
         menu.Items.Add(new Separator());
-        if (includeAllLayers)
-            menu.Items.Add(assignAllLayers);
+        menu.Items.Add(assignAllLayers);
         menu.Items.Add(assignAllProfiles);
         menu.Items.Add(new Separator());
         menu.Items.Add(delete);
+        menu.Items.Add(deleteAllLayers);
+        menu.Items.Add(deleteAllProfiles);
         return menu;
     }
     internal static int AssignMappingToAllLayers(List<Mapping> mappings, string key, Mapping source)
@@ -1236,12 +1270,14 @@ public partial class MainWindow : Window
             || key.Equals("MouseX", StringComparison.OrdinalIgnoreCase))
             return 0;
         int applied = 0;
-        foreach (string layer in AllAssignmentLayerNames)
+        foreach (string layer in new[] { "通常" }.Concat(AllAssignmentLayerNames))
         {
             // A layer activation key cannot trigger itself while it is being held.
             if (layer.Equals(key, StringComparison.OrdinalIgnoreCase))
                 continue;
-            string targetInput = layer + "+" + key;
+            string targetInput = layer == "通常" ? key : layer + "+" + key;
+            if (targetInput.Equals(source.Input, StringComparison.OrdinalIgnoreCase))
+                continue;
             if (InputAssignmentPolicy.IsUnreachableInput(targetInput))
                 continue;
             if (!TryPrepareTransferredMapping(source, targetInput, layer, mappings, out var copy))
@@ -1273,6 +1309,36 @@ public partial class MainWindow : Window
         }
         return applied;
     }
+    internal static int AssignMappingsToAllLayers(List<Mapping> mappings, IReadOnlyList<(string Key, Mapping Source)> sources)
+    {
+        int applied = 0;
+        foreach (var source in sources)
+            applied += AssignMappingToAllLayers(mappings, source.Key, source.Source);
+        return applied;
+    }
+    internal static int AssignMappingsToAllProfiles(IReadOnlyList<Profile> profiles, Profile sourceProfile, IReadOnlyList<(string Input, Mapping Source)> sources)
+    {
+        int applied = 0;
+        foreach (var source in sources)
+            applied += AssignMappingToAllProfiles(profiles, sourceProfile, source.Input, source.Source);
+        return applied;
+    }
+    internal static bool HasMappingInAnyLayer(IReadOnlyList<Mapping> mappings, string key)
+        => mappings.Any(mapping => InputBelongsToKeyInAnyLayer(mapping.Input, key));
+    internal static int RemoveMappingsFromAllLayers(List<Mapping> mappings, string key)
+        => string.IsNullOrWhiteSpace(key) ? 0 : mappings.RemoveAll(mapping => InputBelongsToKeyInAnyLayer(mapping.Input, key));
+    internal static int RemoveMappingsFromAllProfiles(IReadOnlyList<Profile> profiles, string input)
+    {
+        if (profiles == null || string.IsNullOrWhiteSpace(input))
+            return 0;
+        int removed = 0;
+        foreach (var profile in profiles)
+            removed += profile.Mappings.RemoveAll(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        return removed;
+    }
+    static bool InputBelongsToKeyInAnyLayer(string input, string key)
+        => input.Equals(key, StringComparison.OrdinalIgnoreCase)
+            || AllAssignmentLayerNames.Any(layer => input.Equals(layer + "+" + key, StringComparison.OrdinalIgnoreCase));
 
     internal static bool TryPrepareTransferredMapping(Mapping source, string input, string layer, IReadOnlyList<Mapping>? mappings, out Mapping prepared)
     {
@@ -1291,15 +1357,45 @@ public partial class MainWindow : Window
     internal ContextMenu CreateMultiSelectionContextMenu()
     {
         var menu = new ContextMenu();
+        var selectedMappings = SelectedMultiMappings();
+        bool canAssignAcrossScopes = !deckManagementMode && selectedMappings.Count > 0;
+        bool canDeleteFromAllLayers = !deckManagementMode && multiSelectedInputs.Any(key => HasMappingInAnyLayer(CurrentProfile.Mappings, key));
+        bool canDeleteFromAllProfiles = !deckManagementMode && multiSelectedInputs.Any(key =>
+            config.Profiles.Any(profile => profile.Mappings.Any(mapping => mapping.Input.Equals(InputForCurrentLayer(key), StringComparison.OrdinalIgnoreCase))));
         var copy = new MenuItem { Header = "選択した割り当てをコピー", IsEnabled = multiSelectedInputs.Count > 0 };
         copy.Click += (_, _) => CopyMultiSelection();
         var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode };
         paste.Click += (_, _) => PasteMultiSelection();
+        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = canAssignAcrossScopes };
+        assignAllLayers.Click += (_, _) => AssignMultiSelectionToAllLayers();
+        var assignAllProfiles = new MenuItem
+        {
+            Header = "全プロファイルに割り当て",
+            IsEnabled = canAssignAcrossScopes && config.Profiles.Count > 1,
+            ToolTip = canAssignAcrossScopes && config.Profiles.Count <= 1 ? "他のプロファイルがありません" : null
+        };
+        assignAllProfiles.Click += (_, _) => AssignMultiSelectionToAllProfiles();
         var delete = new MenuItem { Header = "選択した割り当てを削除", IsEnabled = multiSelectedInputs.Count > 0, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => DeleteMultiSelection();
+        var deleteAllLayers = new MenuItem { Header = "全レイヤーから削除", IsEnabled = canDeleteFromAllLayers, Foreground = ThemeService.Brush("DangerBrush") };
+        deleteAllLayers.Click += (_, _) => DeleteMultiSelectionFromAllLayers();
+        var deleteAllProfiles = new MenuItem { Header = "全プロファイルから削除", IsEnabled = canDeleteFromAllProfiles, Foreground = ThemeService.Brush("DangerBrush") };
+        deleteAllProfiles.Click += (_, _) => DeleteMultiSelectionFromAllProfiles();
         menu.Items.Add(copy);
         menu.Items.Add(paste);
+        if (!deckManagementMode)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(assignAllLayers);
+            menu.Items.Add(assignAllProfiles);
+            menu.Items.Add(new Separator());
+        }
         menu.Items.Add(delete);
+        if (!deckManagementMode)
+        {
+            menu.Items.Add(deleteAllLayers);
+            menu.Items.Add(deleteAllProfiles);
+        }
         return menu;
     }
     void MultiCopy_Click(object sender, RoutedEventArgs e) => CopyMultiSelection();
@@ -1325,6 +1421,67 @@ public partial class MainWindow : Window
         copiedMultiMappingsAreDeck = deckManagementMode;
         UpdateMultiSelectControls();
         ShowInlineNotice($"{copiedMultiMappings.Count}入力の割り当てをコピーしました");
+    }
+    List<(string Key, Mapping Source)> SelectedMultiMappings()
+    {
+        if (deckManagementMode || multiSelectedInputs.Count == 0)
+            return [];
+        return multiSelectedInputs
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .Select(key => (Key: key, Source: CurrentProfile.Mappings.LastOrDefault(mapping => mapping.Input.Equals(InputForCurrentLayer(key), StringComparison.OrdinalIgnoreCase))))
+            .Where(item => item.Source != null)
+            .Select(item => (item.Key, item.Source!))
+            .ToList();
+    }
+    void AssignMultiSelectionToAllLayers()
+    {
+        var sources = SelectedMultiMappings();
+        int applied = AssignMappingsToAllLayers(CurrentProfile.Mappings, sources);
+        CompleteMultiBulkAction(applied, applied == 0
+            ? "全レイヤーへ割り当てられるActionがありません"
+            : $"選択した割り当てを全レイヤーへ適用しました（{applied}件）");
+    }
+    void AssignMultiSelectionToAllProfiles()
+    {
+        var sources = SelectedMultiMappings()
+            .Select(source => (Input: InputForCurrentLayer(source.Key), source.Source))
+            .ToList();
+        int applied = AssignMappingsToAllProfiles(config.Profiles, CurrentProfile, sources);
+        CompleteMultiBulkAction(applied, applied == 0
+            ? "他のプロファイルへ割り当てられるActionがありません"
+            : $"選択した割り当てを全プロファイルへ適用しました（{applied}件）");
+    }
+    void DeleteMultiSelectionFromAllLayers()
+    {
+        int removed = 0;
+        foreach (string key in multiSelectedInputs)
+            removed += RemoveMappingsFromAllLayers(CurrentProfile.Mappings, key);
+        CompleteMultiBulkAction(removed, removed == 0
+            ? "全レイヤーに削除対象はありません"
+            : $"選択した割り当てを全レイヤーから削除しました（{removed}件）");
+    }
+    void DeleteMultiSelectionFromAllProfiles()
+    {
+        int removed = 0;
+        foreach (string key in multiSelectedInputs)
+            removed += RemoveMappingsFromAllProfiles(config.Profiles, InputForCurrentLayer(key));
+        CompleteMultiBulkAction(removed, removed == 0
+            ? "全プロファイルに削除対象はありません"
+            : $"選択した割り当てを全プロファイルから削除しました（{removed}件）");
+    }
+    void CompleteMultiBulkAction(int changed, string message)
+    {
+        if (changed == 0)
+        {
+            ShowInlineNotice(message);
+            return;
+        }
+        MarkDirty();
+        UpdateLayerButtons();
+        ColorButtons();
+        MultiSelectToggle.IsChecked = false;
+        ClearSelectedInput();
+        ShowInlineNotice(message);
     }
     void PasteMultiSelection()
     {
@@ -2680,11 +2837,12 @@ public partial class MainWindow : Window
     internal static string? TaskbarShortClickReplay(Mapping? map, string baseInput, bool longPress = false, bool dragStart = false, bool dragEnd = false, bool pressStart = false, bool pressEnd = false)
     {
         if (longPress || dragStart || dragEnd || pressStart || pressEnd
+            || InputAssignmentPolicy.IsFullyReservedInput(baseInput)
             || !baseInput.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
             return null;
-        // The taskbar's primary and context clicks always belong to Windows. Even if an old,
-        // hand-edited, or not-yet-saved profile still contains a TAP action,
-        // restore the physical click instead of executing that action.
+        // The fully reserved primary click returned above without ever being captured.
+        // If an old, hand-edited, or not-yet-saved profile still contains a right TAP
+        // action, restore the physical context click instead of executing that action.
         if (InputAssignmentPolicy.PreservesNativeShortPress(baseInput))
             return InputAssignmentPolicy.BaseInput(baseInput);
         return null;
@@ -2742,7 +2900,8 @@ public partial class MainWindow : Window
             return false;
         // A profile created by an older build may still contain this mapping.
         // Never intercept the system's primary click outside explicit layers
-        // such as Space+MouseLeft or Taskbar+MouseLeft.
+        // such as Space+MouseLeft. Taskbar+MouseLeft is fully reserved so
+        // Windows can start and complete pinned-app icon dragging.
         if (input.Equals("MouseLeft", StringComparison.OrdinalIgnoreCase)
             || input.StartsWith("MouseLeft+", StringComparison.OrdinalIgnoreCase))
             return false;
@@ -2793,9 +2952,10 @@ public partial class MainWindow : Window
     internal static bool HasConfiguredShortAction(Mapping? map) => map != null && map.Kind != ActionKind.None && (map.Kind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(map.Value));
     internal static bool MappingInterceptsInput(Mapping? map) => MappingHasConfiguredAction(map);
     internal static bool MappingInterceptsTaskbarInvocation(Mapping? map)
-        => map != null && InputAssignmentPolicy.PreservesNativeShortPress(map.Input)
-            ? HasConfiguredLongPress(map)
-            : MappingInterceptsInput(map);
+        => map != null && !InputAssignmentPolicy.IsFullyReservedInput(map.Input)
+            && (InputAssignmentPolicy.PreservesNativeShortPress(map.Input)
+                ? HasConfiguredLongPress(map)
+                : MappingInterceptsInput(map));
     internal static bool HasConfiguredLongPress(Mapping? map) => map != null && map.LongPressKind != ActionKind.None && (map.LongPressKind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(map.LongPressValue));
     internal static void NormalizeLongOnlyMapping(Mapping map)
     {

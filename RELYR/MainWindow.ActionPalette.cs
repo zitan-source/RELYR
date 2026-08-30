@@ -171,7 +171,7 @@ public partial class MainWindow
             // imported/runtime value must not leave the inspector half-switched
             // or escape through WPF's dispatcher exception handler.
             RefreshActionPalette();
-            SelectActionPaletteCategory(ActionPaletteFavoritesCategory);
+            SelectActionPaletteCategory(ActionPaletteRecentCategory);
             StartActionPaletteApplicationDiscovery();
             ++actionPaletteMotionGeneration;
             actionPaletteOpen = true;
@@ -393,7 +393,7 @@ public partial class MainWindow
             ActionPaletteCategoryBox.ItemsSource = actionPaletteCategoryOptions;
             SelectActionPaletteCategory(actionPaletteCategoryOptions.Any(option => option.Name.Equals(previousCategory, StringComparison.OrdinalIgnoreCase))
                 ? previousCategory
-                : ActionPaletteFavoritesCategory);
+                : ActionPaletteRecentCategory);
         }
         finally
         {
@@ -484,7 +484,7 @@ public partial class MainWindow
     string SelectedActionPaletteCategory()
         => ActionPaletteCategoryBox?.SelectedItem is ActionPaletteCategoryOption option
             ? option.Name
-            : ActionPaletteCategoryBox?.SelectedItem?.ToString() ?? ActionPaletteAllCategory;
+            : ActionPaletteCategoryBox?.SelectedItem?.ToString() ?? ActionPaletteRecentCategory;
 
     void SelectActionPaletteCategory(string category)
     {
@@ -694,6 +694,16 @@ public partial class MainWindow
             FilterActionPalette();
     }
 
+    void ActionPaletteCategoryDropDownOpened(object sender, EventArgs e)
+    {
+        if (ActionPaletteCategoryBox == null || ActionPalettePane == null)
+            return;
+        double categoryBottom = ActionPaletteCategoryBox.TranslatePoint(
+            new Point(0, ActionPaletteCategoryBox.ActualHeight), ActionPalettePane).Y;
+        double availableHeight = ActionPalettePane.ActualHeight - categoryBottom - 12;
+        ActionPaletteCategoryBox.MaxDropDownHeight = Math.Max(160, availableHeight);
+    }
+
     void FilterActionPalette()
     {
         var categoryBox = ActionPaletteCategoryBox;
@@ -773,6 +783,18 @@ public partial class MainWindow
         };
         ActionPaletteEmptyText.Visibility = result.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ActionPaletteCustomShortcutButton.Visibility = category == ActionPaletteShortcutsCategory ? Visibility.Visible : Visibility.Collapsed;
+        ActionPaletteClearRecentButton.Visibility = category == ActionPaletteRecentCategory ? Visibility.Visible : Visibility.Collapsed;
+        ActionPaletteClearRecentButton.IsEnabled = config.ActionPaletteRecentActions.Count > 0;
+    }
+
+    void ClearRecentPaletteActions_Click(object sender, RoutedEventArgs e)
+    {
+        if (config.ActionPaletteRecentActions.Count == 0)
+            return;
+        config.ActionPaletteRecentActions.Clear();
+        PersistActionPaletteLibraryPreferences();
+        FilterActionPalette();
+        ShowInlineNotice("最近使ったActionをクリアしました");
     }
 
     void ActionPaletteItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -191,9 +191,8 @@ public static class SelfTest
                 ]
             });
             var protectedLeftClickMappings = protectedLeftClickService.Load().Profiles[0].Mappings;
-            Check(protectedLeftClickMappings.Select(mapping => mapping.Input).SequenceEqual(["Space+MouseLeft", "Taskbar+MouseLeft"])
-                && protectedLeftClickMappings[1] is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+Escape" },
-                "normal and taskbar TAP left-click assignments are removed while explicit Space and taskbar HOLD left-click actions remain available");
+            Check(protectedLeftClickMappings.Select(mapping => mapping.Input).SequenceEqual(["Space+MouseLeft"]),
+                "normal left click and every taskbar left-click assignment are removed while explicit Space+MouseLeft remains available");
             var pendingCaps = new AppConfig { CapsLockRemapPendingRestart = true, CapsLockRemapChangedAtUtcTicks = DateTime.UtcNow.AddMinutes(-1).Ticks };
             Check(LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromHours(1).TotalMilliseconds) && !LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromSeconds(10).TotalMilliseconds), "CapsLock remap distinguishes the current boot from a completed restart");
             Check(!App.UninstallRestartNeeded(new AppConfig(), false, false) && App.UninstallRestartNeeded(new AppConfig(), true, false) && !App.UninstallRestartNeeded(new AppConfig { CapsLockLayerEnabled = true }, false, false) && App.UninstallRestartNeeded(new AppConfig(), false, true), "normal updates and a saved CapsLock preference do not request a restart; only an active or pending system remap does");
@@ -252,7 +251,8 @@ public static class SelfTest
                 && overlayHoverRow is { Name: "クロック", Detail: "オーバーレイ", Keycaps.Count: 0 },
                 "assigned-key hover uses concise TAP/HOLD rows and provides a non-empty friendly display for shortcuts, overlays, keys, text, apps, mouse actions, macros, profiles, gestures, and disabled actions");
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
-            var taskbarLongOnly = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
+            var staleTaskbarLeftHold = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
+            var taskbarRightLongOnly = new Mapping { Input = "Taskbar+MouseRight", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
             var staleTaskbarTap = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction };
             var staleTaskbarRightTap = new Mapping { Input = "Taskbar+MouseRight", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction };
             var taskbarReplayEvents = new List<string>();
@@ -290,13 +290,14 @@ public static class SelfTest
             {
                 InputEngine.MouseClickBatchOutputForTest = null;
             }
-            Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
-                && MainWindow.TaskbarShortClickReplay(staleTaskbarTap, "Taskbar+MouseLeft") == "MouseLeft"
-                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
+            Check(MainWindow.TaskbarShortClickReplay(staleTaskbarLeftHold, "Taskbar+MouseLeft") == null
+                && MainWindow.TaskbarShortClickReplay(staleTaskbarTap, "Taskbar+MouseLeft") == null
+                && MainWindow.TaskbarShortClickReplay(taskbarRightLongOnly, "Taskbar+MouseRight") == "MouseRight"
                 && MainWindow.TaskbarShortClickReplay(staleTaskbarRightTap, "Taskbar+MouseRight") == "MouseRight"
-                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
-                && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft", longPress: true) == null
-                && MainWindow.MappingInterceptsTaskbarInvocation(taskbarLongOnly)
+                && MainWindow.TaskbarShortClickReplay(taskbarRightLongOnly, "MouseLeft") == null
+                && MainWindow.TaskbarShortClickReplay(taskbarRightLongOnly, "Taskbar+MouseRight", longPress: true) == null
+                && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarLeftHold)
+                && MainWindow.MappingInterceptsTaskbarInvocation(taskbarRightLongOnly)
                 && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarTap)
                 && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarRightTap)
                 && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
@@ -310,7 +311,7 @@ public static class SelfTest
                 && taskbarReplayCompletedAfterHookReturn
                 && !taskbarReplayQueuedAfterCompletion
                 && taskbarReplayFallback == fallbackRequest,
-                "taskbar left/right TAP actions never intercept Windows, while taskbar HOLD short-click restoration survives queue completion, waits for the physical hook to return, and replays one atomic input batch");
+                "taskbar left click is never intercepted, while taskbar right HOLD short-click restoration survives queue completion, waits for the physical hook to return, and replays one atomic input batch");
             Check(MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
@@ -344,16 +345,17 @@ public static class SelfTest
             };
             var staleTaskbarMappings = new List<Mapping>
             {
-                new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L" },
+                new() { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+L", LongPressKind = ActionKind.Key, LongPressValue = "F9" },
                 new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.Shortcut, Value = "Ctrl+R", LongPressKind = ActionKind.Key, LongPressValue = "F10" }
             };
             Check(InputAssignmentPolicy.IsImpulseInput("Space+WheelUp")
                 && !InputAssignmentPolicy.SupportsGesture("CapsLock+TiltRight")
-                && new[] { "Space", "CapsLock", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && new[] { "Space", "CapsLock", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX", "Taskbar+MouseLeft" }.All(InputAssignmentPolicy.IsUnreachableInput)
                 && InputAssignmentPolicy.PreservesNativeShortPress("Taskbar+MouseLeft")
                 && InputAssignmentPolicy.PreservesNativeShortPress("Taskbar+MouseRight")
                 && !InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseLeft")
                 && !InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseRight")
+                && !InputAssignmentPolicy.CanExecuteLongPress(new Mapping { Input = "Taskbar+MouseLeft", Layer = "Taskbar", Kind = ActionKind.None })
                 && InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseMiddle")
                 && InputEngine.MustReplayNativeLayerTap("Space") && !InputEngine.MustReplayNativeLayerTap("CapsLock")
                 && InputAssignmentPolicy.SanitizeMappings(staleSpaceMappings)
@@ -362,7 +364,7 @@ public static class SelfTest
                 && staleTaskbarMappings is [{ Input: "Taskbar+MouseRight", Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "F10" }]
                 && InputAssignmentPolicy.SanitizeMappings(rightLayerConflict)
                 && rightLayerConflict[0] is { LongPressKind: ActionKind.None, LongPressValue: "" },
-                "the shared assignment policy rejects impulse gestures, stale bare layer-source actions, taskbar left/right TAP actions, fake X1/self-layer inputs, and direct mouse long press while its layer is configured");
+                "the shared assignment policy fully reserves taskbar left click/drag, reserves taskbar right TAP, and rejects impulse gestures, stale layer-source actions, fake X1/self-layer inputs, and conflicting direct mouse long press");
             var protectedTransferMappings = new List<Mapping>
             {
                 new() { Input = "Taskbar+MouseRight", Layer = "Taskbar", Kind = ActionKind.None, LongPressKind = ActionKind.Key, LongPressValue = "F10" }
@@ -371,13 +373,24 @@ public static class SelfTest
             var dualTransfer = new Mapping { Input = "F9", Layer = "通常", Kind = ActionKind.Shortcut, Value = "Ctrl+9", LongPressKind = ActionKind.Key, LongPressValue = "F11" };
             bool shortTransferPrepared = MainWindow.TryPrepareTransferredMapping(shortOnlyTransfer, "Taskbar+MouseRight", "Taskbar", protectedTransferMappings, out _);
             bool dualTransferPrepared = MainWindow.TryPrepareTransferredMapping(dualTransfer, "Taskbar+MouseRight", "Taskbar", protectedTransferMappings, out var protectedDualTransfer);
+            bool taskbarLeftTransferPrepared = MainWindow.TryPrepareTransferredMapping(dualTransfer, "Taskbar+MouseLeft", "Taskbar", protectedTransferMappings, out _);
             int protectedAllLayerApplied = MainWindow.AssignMappingToAllLayers(protectedTransferMappings, "MouseRight", shortOnlyTransfer);
+            var nonDefaultAllLayerMappings = new List<Mapping>
+            {
+                new() { Input = "Space+F8", Layer = "Space", Kind = ActionKind.Text, Value = "all-layers" }
+            };
+            int nonDefaultAllLayerApplied = MainWindow.AssignMappingToAllLayers(nonDefaultAllLayerMappings, "F8", nonDefaultAllLayerMappings[0]);
             Check(!shortTransferPrepared
                 && dualTransferPrepared
+                && !taskbarLeftTransferPrepared
                 && protectedDualTransfer is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "F11" }
-                && protectedAllLayerApplied == MainWindow.AllAssignmentLayerNames.Count - 2
+                && protectedAllLayerApplied == MainWindow.AllAssignmentLayerNames.Count - 1
                 && protectedTransferMappings.Single(mapping => mapping.Input == "Taskbar+MouseRight") is { Kind: ActionKind.None, LongPressKind: ActionKind.Key, LongPressValue: "F10" },
-                "copy, multi-copy, and all-layer transfers cannot overwrite a reserved taskbar TAP or erase its existing HOLD while valid layer destinations still receive the Action");
+                "copy, multi-copy, and all-layer transfers cannot target taskbar left click/drag or overwrite taskbar right TAP while valid destinations still receive the Action");
+            Check(nonDefaultAllLayerApplied == MainWindow.AllAssignmentLayerNames.Count
+                && nonDefaultAllLayerMappings.Any(mapping => mapping.Input == "F8" && mapping.Layer == "通常")
+                && MainWindow.AllAssignmentLayerNames.All(layer => nonDefaultAllLayerMappings.Any(mapping => mapping.Input == layer + "+F8" && mapping.Value == "all-layers")),
+                "all-layer assignment started from a non-default layer also fills the default layer while preserving its source");
             var allProfileSource = new Profile { Name = "元", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Text, Value = "source" }] };
             var allProfileFirstTarget = new Profile { Name = "先1", Mappings = [new Mapping { Input = "F8", Kind = ActionKind.Shortcut, Value = "Ctrl+8" }] };
             var allProfileSecondTarget = new Profile { Name = "先2", Mappings = [new Mapping { Input = "A", Kind = ActionKind.Key, Value = "B" }] };
@@ -800,6 +813,38 @@ public static class SelfTest
                     && gestureEvents.SequenceEqual(["G:Gesture:Right", "H:Gesture:Center"])
                     && !perGestureSettingsEngine.HasCapturedStateForTest(),
                     "each gesture snapshots its own cursor behavior and movement threshold for the complete input press state");
+
+                gestureEvents.Clear();
+                perGestureSettingsEngine.ResetStateForTest();
+                thresholds["G"] = 8;
+                cursorLocks["G"] = true;
+                perGestureSettingsEngine.DirectKeyForTest(0x47, false);
+                perGestureSettingsEngine.DirectMouseForTest(0x200, 0, 112, 100);
+                Thread.Sleep(140);
+                perGestureSettingsEngine.DirectMouseForTest(0x200, 0, 112, 100);
+                Thread.Sleep(140);
+                perGestureSettingsEngine.DirectMouseForTest(0x200, 0, 112, 100);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, true);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, false);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, true);
+                Check(gestureEvents.SequenceEqual(["G:Gesture:Right", "G:Gesture:Right", "G:Gesture:Right", "G:Gesture:Center"])
+                    && !perGestureSettingsEngine.HasCapturedStateForTest(),
+                    "any gesture-capable key repeats same-direction move-stop Actions while held and its first fresh tap executes Center after release");
+
+                gestureEvents.Clear();
+                perGestureSettingsEngine.ResetStateForTest();
+                perGestureSettingsEngine.DirectKeyForTest(0x47, false);
+                perGestureSettingsEngine.DirectMouseForTest(0x200, 0, 112, 100);
+                Thread.Sleep(140);
+                bool resynchronized = perGestureSettingsEngine.TryPrepareForProfileChange(_ => false);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, false);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, true);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, false);
+                perGestureSettingsEngine.DirectKeyForTest(0x47, true);
+                Check(resynchronized
+                    && gestureEvents.SequenceEqual(["G:Gesture:Right", "G:Gesture:Center"])
+                    && !perGestureSettingsEngine.HasCapturedStateForTest(),
+                    "profile resynchronization still suppresses a repeated Down from the held gesture without consuming the following fresh tap");
             }
             var defensiveMouseReleases = new List<(uint Flag, uint Data)>();
             try

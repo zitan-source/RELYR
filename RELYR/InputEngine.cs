@@ -1075,63 +1075,73 @@ public sealed partial class InputEngine : IDisposable
         }
         if (up && presses.Remove(input, out var current))
         {
-            HookDiagnosticsTrace.Record(HookDiagnosticStage.PressUpRemoved, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase), result: current.Handled ? 1 : 0);
-            committedGesture |= current.GestureActionCommitted;
-            committedGestureSources.Remove(gestureSource);
-            current.IsDown = false;
-            current.Timer?.Dispose();
-            current.GestureSafetyTimer?.Dispose();
-            current.GestureMotionTimer?.Dispose();
-            if (current.NativeMouseDrag)
+            try
             {
-                // Let the physical Up hook return before emitting the synthetic
-                // mouse-up/modifier-up pair. Office finalizes Ctrl-drag copy at
-                // that boundary.
-                current.ReleaseSignal?.TrySetResult();
-                return (IntPtr)1;
-            }
-            if (current.Handled)
-            {
-                try
+                HookDiagnosticsTrace.Record(HookDiagnosticStage.PressUpRemoved, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: input.GetHashCode(StringComparison.OrdinalIgnoreCase), result: current.Handled ? 1 : 0);
+                committedGesture |= current.GestureActionCommitted;
+                current.IsDown = false;
+                current.Timer?.Dispose();
+                current.GestureSafetyTimer?.Dispose();
+                current.GestureMotionTimer?.Dispose();
+                if (current.NativeMouseDrag)
                 {
-                    if (current.Cancelled)
-                        return (IntPtr)1;
-                    if (current.Immediate)
-                    {
-                        if (Interlocked.Exchange(ref current.Ended, 1) == 0)
-                            InputReceived?.Invoke(input + ":PressEnd");
-                    }
-                    else if (current.FireOnDown)
-                        return (IntPtr)1;
-                    else if (current.IsGesture)
-                    {
-                        CommitGestureMovement(input, current);
-                        if (current.GestureActive && !current.GestureExpired && !current.GestureMoved && !committedGesture && current.GestureDirection == null)
-                            InputReceived?.Invoke(input + ":Gesture:Center");
-                    }
-                    else if (current.Dragged)
-                        InputReceived?.Invoke(input + ":DragEnd");
-                    else if (current.LongPressMs > 0 && Environment.TickCount64 - current.DownTick >= current.LongPressMs && Interlocked.CompareExchange(ref current.LongFired, 1, 0) == 0)
-                    {
-                        if (current.IsGesture)
-                        {
-                            ActivateGesture(input, current);
-                            if (!current.GestureExpired)
-                                InputReceived?.Invoke(input + ":Gesture:Center");
-                        }
-                        else
-                        {
-                            InputReceived?.Invoke(input + ":Long");
-                            Detected?.Invoke(input + " Long");
-                        }
-                    }
-                    else if (Volatile.Read(ref current.LongFired) == 0)
-                        InputReceived?.Invoke(input);
+                    // Let the physical Up hook return before emitting the synthetic
+                    // mouse-up/modifier-up pair. Office finalizes Ctrl-drag copy at
+                    // that boundary.
+                    current.ReleaseSignal?.TrySetResult();
                     return (IntPtr)1;
                 }
-                finally { InputEnded?.Invoke(input); }
+                if (current.Handled)
+                {
+                    try
+                    {
+                        if (current.Cancelled)
+                            return (IntPtr)1;
+                        if (current.Immediate)
+                        {
+                            if (Interlocked.Exchange(ref current.Ended, 1) == 0)
+                                InputReceived?.Invoke(input + ":PressEnd");
+                        }
+                        else if (current.FireOnDown)
+                            return (IntPtr)1;
+                        else if (current.IsGesture)
+                        {
+                            CommitGestureMovement(input, current);
+                            if (current.GestureActive && !current.GestureExpired && !current.GestureMoved && !committedGesture && current.GestureDirection == null)
+                                InputReceived?.Invoke(input + ":Gesture:Center");
+                        }
+                        else if (current.Dragged)
+                            InputReceived?.Invoke(input + ":DragEnd");
+                        else if (current.LongPressMs > 0 && Environment.TickCount64 - current.DownTick >= current.LongPressMs && Interlocked.CompareExchange(ref current.LongFired, 1, 0) == 0)
+                        {
+                            if (current.IsGesture)
+                            {
+                                ActivateGesture(input, current);
+                                if (!current.GestureExpired)
+                                    InputReceived?.Invoke(input + ":Gesture:Center");
+                            }
+                            else
+                            {
+                                InputReceived?.Invoke(input + ":Long");
+                                Detected?.Invoke(input + " Long");
+                            }
+                        }
+                        else if (Volatile.Read(ref current.LongFired) == 0)
+                            InputReceived?.Invoke(input);
+                        return (IntPtr)1;
+                    }
+                    finally { InputEnded?.Invoke(input); }
+                }
+                return Next(n, w, l);
             }
-            return Next(n, w, l);
+            finally
+            {
+                // A final movement can be committed only when this physical Up
+                // arrives. Clear the suppression after that commit, not before it,
+                // so the next fresh press can execute the Center action while a
+                // held gesture still supports repeated move-stop segments.
+                committedGestureSources.Remove(gestureSource);
+            }
         }
         if (up)
         {
