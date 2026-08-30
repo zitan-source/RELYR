@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MenuItem = System.Windows.Controls.MenuItem;
@@ -2779,6 +2780,23 @@ internal static class UiIntegrationTest
             string linkedGroup = standardDeck.ProfileGroupId;
             var linkedVariants = window.ConfigForTest.DeckLayouts.Where(layout => layout.ProfileSwitchEnabled && layout.ProfileGroupId.Equals(linkedGroup, StringComparison.OrdinalIgnoreCase)).ToList();
             Check(window.ProfileBox.IsEnabled && window.ProfileBox.Opacity == 1 && linkedVariants.Count == window.ProfilesForTest.Count && linkedVariants.All(layout => layout.Columns == standardDeck.Columns && layout.Rows == standardDeck.Rows) && linkedVariants.Where(layout => !ReferenceEquals(layout, standardDeck)).All(layout => layout.Mappings.Count == 0), "enabling one Deck creates an independent same-shaped blank Deck for every other profile and restores profile selection");
+            window.MultiSelectToggle.IsChecked = false;
+            window.ClickDeckInputForTest(1, ModifierKeys.None);
+            window.ClickDeckInputForTest(3, ModifierKeys.Control);
+            Pump(window);
+            Check(window.MultiSelectToggle.IsChecked == true
+                && window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+03" }),
+                "Deck Ctrl+click enters multi-select and preserves the previous single slot as a non-contiguous selection");
+            window.ClickDeckInputForTest(1, ModifierKeys.Control);
+            window.ClickDeckInputForTest(3, ModifierKeys.Shift);
+            Pump(window);
+            Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03" }),
+                "Deck Ctrl+click toggles one slot and Shift+click selects its contiguous anchor range");
+            window.ClickDeckInputForTest(4, ModifierKeys.None);
+            Pump(window);
+            Check(window.MultiSelectToggle.IsChecked == false && window.MultiSelectedInputsForTest.Length == 0
+                && MainWindow.GetIsCurrentSelected(window.DeckManagementButtonsForTest[3]),
+                "an ordinary Deck click after modifier selection returns to one selected slot like Windows");
             if (anotherProfile != null)
             {
                 window.MultiSelectToggle.IsChecked = false;
@@ -3369,6 +3387,35 @@ internal static class UiIntegrationTest
                 && Math.Abs(multiA.Opacity - MainWindow.SelectionDimOpacity) < .01
                 && previousSingleSelection.BorderBrush is SolidColorBrush singleBorder && singleBorder.Color == ThemeService.Color("AccentBrush") && previousSingleSelection.BorderThickness == new Thickness(2),
                 "a singly selected key stays bright with the shared selection outline while every peer dims, without a badge");
+            window.ClickVisualInputForTest("F1", ModifierKeys.None);
+            window.ClickVisualInputForTest("F3", ModifierKeys.Control);
+            Pump(window);
+            Check(window.MultiSelectToggle.IsChecked == true
+                && window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "F1", "F3" }),
+                "Ctrl+click enters multi-select and adds a non-contiguous key while preserving the previous single selection");
+            window.ClickVisualInputForTest("F1", ModifierKeys.Control);
+            window.ClickVisualInputForTest("F3", ModifierKeys.Shift);
+            Pump(window);
+            Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "F1", "F2", "F3" }),
+                "Ctrl+click toggles one key and Shift+click replaces the selection with the contiguous anchor range");
+            window.ClickVisualInputForTest("F5", ModifierKeys.Control | ModifierKeys.Shift);
+            Pump(window);
+            Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "F1", "F2", "F3", "F4", "F5" }),
+                "Ctrl+Shift+click adds the contiguous anchor range without clearing the existing selection");
+            window.ClickVisualInputForTest("F6", ModifierKeys.None);
+            Pump(window);
+            Check(window.MultiSelectToggle.IsChecked == false && window.MultiSelectedInputsForTest.Length == 0
+                && MainWindow.GetIsCurrentSelected(keys.First(candidate => Equals(candidate.Tag, "F6"))),
+                "an ordinary click after modifier selection returns to one selected key like Windows");
+            window.ClickVisualInputForTest("F2", ModifierKeys.None);
+            window.ClickVisualInputForTest("F4", ModifierKeys.Shift);
+            Pump(window);
+            Check(window.MultiSelectToggle.IsChecked == true
+                && window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "F2", "F3", "F4" }),
+                "Shift+click enters multi-select directly and uses the preceding ordinary click as its range anchor");
+            window.MultiSelectToggle.IsChecked = false;
+            previousSingleSelection.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
             window.MultiSelectToggle.IsChecked = true;
             Pump(window);
             Check(!MainWindow.GetIsCurrentSelected(previousSingleSelection) && previousSingleSelection.BorderThickness == new Thickness(1)
@@ -3431,6 +3478,16 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" }
                 && window.EditorUndoButton.IsEnabled, "toolbar redo reapplies the assignment state");
+            bool shortcutUndoHandled = window.HandleEditorHistoryShortcutForTest(Key.Z, ModifierKeys.Control);
+            Pump(window);
+            bool shortcutUndoRestored = window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Shortcut, Value: "Ctrl+B" };
+            bool shortcutRedoHandled = window.HandleEditorHistoryShortcutForTest(Key.Y, ModifierKeys.Control);
+            Pump(window);
+            Check(shortcutUndoHandled && shortcutUndoRestored && shortcutRedoHandled
+                && window.CurrentProfileForTest.Mappings.LastOrDefault(x => x.Input == "B") is { Kind: ActionKind.Text, Value: "multi-A" }
+                && !window.HandleEditorHistoryShortcutForTest(Key.Z, ModifierKeys.Control, textEditing: true)
+                && !window.HandleEditorHistoryShortcutForTest(Key.Z, ModifierKeys.Control | ModifierKeys.Shift),
+                "Ctrl+Z and Ctrl+Y use the toolbar editor history while text-entry and modified shortcut handling remain native");
             var capsPaste = (MenuItem)window.CreateInputContextMenu("CapsLock").Items[1];
             var x1Paste = (MenuItem)window.CreateInputContextMenu("MouseX").Items[1];
             Check(!capsPaste.IsEnabled && capsPaste.ToolTip?.ToString() == "CapsLockは割り当て元にはできません"

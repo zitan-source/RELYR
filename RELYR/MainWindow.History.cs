@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace RELYR;
 
@@ -95,6 +96,29 @@ public partial class MainWindow
         editorRedoHistory.RemoveAt(editorRedoHistory.Count - 1);
         editorUndoHistory.Add(current);
         RestoreEditorHistory(target, "1つ進めました");
+    }
+
+    void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (TryHandleEditorHistoryShortcut(e.Key, Keyboard.Modifiers, Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase))
+            e.Handled = true;
+    }
+
+    bool TryHandleEditorHistoryShortcut(Key key, ModifierKeys modifiers, bool textEditing)
+    {
+        if (textEditing || modifiers != ModifierKeys.Control)
+            return false;
+        if (key == Key.Z && editorUndoHistory.Count > 0)
+        {
+            EditorUndo_Click(this, new RoutedEventArgs());
+            return true;
+        }
+        if (key == Key.Y && editorRedoHistory.Count > 0)
+        {
+            EditorRedo_Click(this, new RoutedEventArgs());
+            return true;
+        }
+        return false;
     }
 
     void RestoreEditorHistory(AppConfig snapshot, string message)

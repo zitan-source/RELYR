@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace RELYR;
 
@@ -58,6 +59,15 @@ public partial class MainWindow
     internal IReadOnlyList<(CatalogAction Action, string Detail)> ActionPaletteDetailsForTest => actionPaletteItems.Select(item => (item.Action, item.Detail)).ToArray();
     internal IReadOnlyList<CatalogAction> VisibleActionPaletteActionsForTest => ActionPaletteList.Items.Cast<ActionPaletteItem>().Select(item => item.Action).ToArray();
     internal void ClickVisualInputForTest(string key) => SelectVisualInput(key);
+    internal void ClickVisualInputForTest(string key, ModifierKeys modifiers) => SelectVisualInput(key, modifiers);
+    internal void ClickDeckInputForTest(int slot, ModifierKeys modifiers)
+    {
+        string input = DeckPanelLayout.InputName(slot);
+        var button = deckManagementButtons.Single(candidate => string.Equals(candidate.Tag as string, input, StringComparison.OrdinalIgnoreCase));
+        DeckManagementButtonClicked(button, input, modifiers);
+    }
+    internal bool HandleEditorHistoryShortcutForTest(Key key, ModifierKeys modifiers, bool textEditing = false)
+        => TryHandleEditorHistoryShortcut(key, modifiers, textEditing);
     internal void SetActionPaletteApplicationsForTest(params InstalledApplicationInfo[] applications)
     {
         actionPaletteApplicationDiscoveryStarted = true;

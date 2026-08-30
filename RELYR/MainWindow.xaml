@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:RELYR"
         Title="RELYR" Icon="Assets/RELYR.ico" Height="900" Width="1280" MinHeight="640" MinWidth="880" WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" Closing="Window_Closing" PreviewMouseDown="MainWindow_PreviewMouseDown">
+        Background="{DynamicResource AppBackground}" Foreground="{DynamicResource PrimaryText}" Closing="Window_Closing" PreviewMouseDown="MainWindow_PreviewMouseDown" PreviewKeyDown="MainWindow_PreviewKeyDown">
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     <Style TargetType="Button" BasedOn="{StaticResource AppButtonStyle}">
@@ -916,10 +916,10 @@
             </TextBlock>
             <ComboBox x:Name="KeyboardLayoutBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="84" SelectionChanged="KeyboardLayoutChanged"><ComboBoxItem Content="JIS"/><ComboBoxItem Content="US"/></ComboBox>
             <StackPanel x:Name="MultiSelectActionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
-              <Button x:Name="EditorUndoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorUndo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ戻る" AutomationProperties.Name="1つ戻る">
+              <Button x:Name="EditorUndoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorUndo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ戻る (Ctrl+Z)" AutomationProperties.Name="1つ戻る">
                 <Viewbox Width="22" Height="22"><Canvas Width="24" Height="24"><Path Data="M9,5.5 L4,10 L9,14.5 M4,10 H14 C18,10 20,12.5 20,16 C20,18.4 18.3,20 16,20 H12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/></Canvas></Viewbox>
               </Button>
-              <Button x:Name="EditorRedoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorRedo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ進む" AutomationProperties.Name="1つ進む">
+              <Button x:Name="EditorRedoButton" Style="{StaticResource ToolbarButtonStyle}" Click="EditorRedo_Click" Width="44" MinWidth="44" Padding="0" IsEnabled="False" ToolTip="1つ進む (Ctrl+Y)" AutomationProperties.Name="1つ進む">
                 <Viewbox Width="22" Height="22"><Canvas Width="24" Height="24"><Path Data="M15,5.5 L20,10 L15,14.5 M20,10 H10 C6,10 4,12.5 4,16 C4,18.4 5.7,20 8,20 H12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="Transparent"/></Canvas></Viewbox>
               </Button>
               <ToggleButton x:Name="MultiSelectToggle" Style="{StaticResource ToolbarToggleStyle}" Width="44" MinWidth="44" Padding="0" Checked="MultiSelectChanged" Unchecked="MultiSelectChanged" ToolTip="複数選択" AutomationProperties.Name="複数選択"><TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" FontSize="15"/></ToggleButton>

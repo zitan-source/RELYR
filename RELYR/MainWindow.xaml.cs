@@ -130,7 +130,8 @@ public partial class MainWindow : Window
     Dictionary<string, Mapping?>? copiedMultiMappings;
     bool copiedMultiMappingsAreDeck;
     readonly HashSet<string> multiSelectedInputs = new(StringComparer.OrdinalIgnoreCase);
-    int deckMultiSelectionAnchor;
+    string? multiSelectionAnchorInput;
+    bool modifierActivatedMultiSelect;
     TextBox? destinationInputTarget;
     readonly List<System.Windows.Controls.Button> deckManagementButtons = [];
     readonly Dictionary<System.Windows.Controls.Button, TextBlock> deckManagementNameLabels = [];
@@ -945,7 +946,9 @@ public partial class MainWindow : Window
         b.MouseDoubleClick += (_, _) => OpenShortcutForVisualInput(key);
         return b;
     }
-    void SelectVisualInput(string key)
+    void SelectVisualInput(string key) => SelectVisualInput(key, Keyboard.Modifiers);
+
+    void SelectVisualInput(string key, ModifierKeys modifiers)
     {
         string input = InputForCurrentLayer(key);
         if (InputAssignmentPolicy.UnavailableInputReason(input) is { } unavailableReason)
@@ -968,19 +971,108 @@ public partial class MainWindow : Window
             ShowInlineNotice("CapsLockは割り当て元にはできません。別のキーを選んだ後、割り当て先として使用できます");
             return;
         }
-        if (MultiSelectToggle.IsChecked == true)
+        bool extendedSelection = (modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+        if (extendedSelection)
         {
-            if (!multiSelectedInputs.Add(key))
-                multiSelectedInputs.Remove(key);
+            string? previousSingleSelection = MultiSelectToggle.IsChecked == true || selected == null
+                ? null
+                : selectedBaseInput;
+            if (MultiSelectToggle.IsChecked != true)
+            {
+                MultiSelectToggle.IsChecked = true;
+                modifierActivatedMultiSelect = true;
+                if (!string.IsNullOrWhiteSpace(previousSingleSelection)
+                    && VisualMultiSelectionOrder().Contains(previousSingleSelection, StringComparer.OrdinalIgnoreCase))
+                {
+                    multiSelectedInputs.Add(previousSingleSelection);
+                    multiSelectionAnchorInput = previousSingleSelection;
+                }
+            }
+            ApplyWindowsMultiSelection(key, modifiers, VisualMultiSelectionOrder());
             UpdateMultiSelectControls();
             ColorButtons();
             return;
         }
+        if (MultiSelectToggle.IsChecked == true)
+        {
+            if (modifierActivatedMultiSelect)
+                MultiSelectToggle.IsChecked = false;
+            else
+            {
+                if (!multiSelectedInputs.Add(key))
+                    multiSelectedInputs.Remove(key);
+                multiSelectionAnchorInput = key;
+                UpdateMultiSelectControls();
+                ColorButtons();
+                return;
+            }
+        }
         ClearExecutionFocus();
         if (actionPaletteOpen)
             CloseActionPalette(animated: false);
+        multiSelectionAnchorInput = key;
         SelectInput(input, false);
         AnimateAssignmentEditorReveal();
+    }
+
+    string[] VisualMultiSelectionOrder()
+        => VisualInputButtons()
+            .Select(button => button.Tag as string)
+            .Where(key => !string.IsNullOrWhiteSpace(key) && CanSelectVisualInputWithoutNotice(key))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    bool CanSelectVisualInputWithoutNotice(string key)
+    {
+        string input = InputForCurrentLayer(key);
+        return InputAssignmentPolicy.UnavailableInputReason(input) == null
+            && !IsProtectedNormalLeftClick(key)
+            && !(key == "Space" && currentLayer is "通常" or "Space")
+            && !(key == "CapsLock" && !editingSelectedInput && destinationInputTarget == null);
+    }
+
+    void ApplyWindowsMultiSelection(string target, ModifierKeys modifiers, IReadOnlyList<string> orderedInputs)
+    {
+        bool controlPressed = (modifiers & ModifierKeys.Control) != 0;
+        bool shiftPressed = (modifiers & ModifierKeys.Shift) != 0;
+        if (shiftPressed)
+        {
+            string anchor = multiSelectionAnchorInput != null
+                && orderedInputs.Contains(multiSelectionAnchorInput, StringComparer.OrdinalIgnoreCase)
+                    ? multiSelectionAnchorInput
+                    : target;
+            if (!controlPressed)
+                multiSelectedInputs.Clear();
+            foreach (string input in SelectionRange(orderedInputs, anchor, target))
+                multiSelectedInputs.Add(input);
+            multiSelectionAnchorInput ??= target;
+            return;
+        }
+
+        if (!multiSelectedInputs.Add(target))
+            multiSelectedInputs.Remove(target);
+        multiSelectionAnchorInput = target;
+    }
+
+    internal static IEnumerable<string> SelectionRange(IReadOnlyList<string> orderedInputs, string anchor, string target)
+    {
+        int anchorIndex = IndexOfInput(orderedInputs, anchor);
+        int targetIndex = IndexOfInput(orderedInputs, target);
+        if (anchorIndex < 0 || targetIndex < 0)
+            yield break;
+        int first = Math.Min(anchorIndex, targetIndex);
+        int last = Math.Max(anchorIndex, targetIndex);
+        for (int index = first; index <= last; index++)
+            yield return orderedInputs[index];
+    }
+
+    static int IndexOfInput(IReadOnlyList<string> inputs, string target)
+    {
+        for (int index = 0; index < inputs.Count; index++)
+            if (inputs[index].Equals(target, StringComparison.OrdinalIgnoreCase))
+                return index;
+        return -1;
     }
 
     void AnimateAssignmentEditorReveal()
@@ -1560,6 +1652,7 @@ public partial class MainWindow : Window
     {
         if (MultiSelectToggle.IsChecked == true)
         {
+            modifierActivatedMultiSelect = false;
             if (destinationInputTarget != null || editingSelectedInput)
                 CompleteDestinationInput(MultiSelectToggle);
             // Multi-select has one source of truth: explicitly selected keys
@@ -1568,13 +1661,14 @@ public partial class MainWindow : Window
             if (selected != null)
                 ClearSelectedInput();
             multiSelectedInputs.Clear();
-            deckMultiSelectionAnchor = 0;
+            multiSelectionAnchorInput = null;
             ShowInlineNotice(deckManagementMode ? "複数選択: Deckボタンをクリックして選択します" : "複数選択: キーやマウスボタンをクリックして選択します");
         }
         else
         {
+            modifierActivatedMultiSelect = false;
             multiSelectedInputs.Clear();
-            deckMultiSelectionAnchor = 0;
+            multiSelectionAnchorInput = null;
             ShowInlineNotice("複数選択を終了しました");
         }
         UpdateMultiSelectControls();

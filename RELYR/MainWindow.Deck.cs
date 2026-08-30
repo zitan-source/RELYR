@@ -853,24 +853,46 @@ public partial class MainWindow
             UpdateDeckManagementButtonVisual(button);
     }
     void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input)
+        => DeckManagementButtonClicked(source, input, Keyboard.Modifiers);
+
+    void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input, ModifierKeys modifiers)
     {
+        bool extendedSelection = (modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+        if (extendedSelection)
+        {
+            string? previousSingleSelection = MultiSelectToggle.IsChecked == true
+                || selected == null
+                || !DeckPanelLayout.IsInputName(selected.Input)
+                    ? null
+                    : selected.Input;
+            if (MultiSelectToggle.IsChecked != true)
+            {
+                MultiSelectToggle.IsChecked = true;
+                modifierActivatedMultiSelect = true;
+                if (!string.IsNullOrWhiteSpace(previousSingleSelection))
+                {
+                    multiSelectedInputs.Add(previousSingleSelection);
+                    multiSelectionAnchorInput = previousSingleSelection;
+                }
+            }
+            ApplyWindowsMultiSelection(input, modifiers, DeckMultiSelectionOrder());
+            UpdateMultiSelectControls();
+            ColorDeckManagementButtons();
+            return;
+        }
         if (MultiSelectToggle.IsChecked == true)
         {
-            int slot = DeckPanelLayout.SlotNumber(input);
-            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 && deckMultiSelectionAnchor > 0)
-            {
-                foreach (string selectedInput in DeckSelectionRange(deckMultiSelectionAnchor, slot))
-                    multiSelectedInputs.Add(selectedInput);
-            }
+            if (modifierActivatedMultiSelect)
+                MultiSelectToggle.IsChecked = false;
             else
             {
                 if (!multiSelectedInputs.Add(input))
                     multiSelectedInputs.Remove(input);
-                deckMultiSelectionAnchor = slot;
+                multiSelectionAnchorInput = input;
+                UpdateMultiSelectControls();
+                ColorDeckManagementButtons();
+                return;
             }
-            UpdateMultiSelectControls();
-            ColorDeckManagementButtons();
-            return;
         }
         // Deck selection mirrors the main keyboard: selecting a slot reveals
         // its editor without forcing the execution field into edit mode. This
@@ -878,6 +900,7 @@ public partial class MainWindow
         // first click only completing an implicit edit session.
         if (actionPaletteOpen)
             CloseActionPalette(animated: false);
+        multiSelectionAnchorInput = input;
         SelectInput(input, false);
         CloseDeckEditorMediaPreview();
         var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
@@ -889,6 +912,15 @@ public partial class MainWindow
         else if (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) || DeckPanelLayout.IsVideoFile(mapping.DeckFilePath))
             ShowDeckEditorThumbnail(source, mapping.DeckFilePath);
     }
+
+    string[] DeckMultiSelectionOrder()
+        => deckManagementButtons
+            .Select(button => button.Tag as string)
+            .Where(input => !string.IsNullOrWhiteSpace(input))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(DeckPanelLayout.SlotNumber)
+            .ToArray();
     internal static IEnumerable<string> DeckSelectionRange(int anchorSlot, int targetSlot)
     {
         int first = Math.Min(anchorSlot, targetSlot);
