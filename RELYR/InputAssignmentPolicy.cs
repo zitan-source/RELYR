@@ -49,6 +49,27 @@ internal static class InputAssignmentPolicy
             || IsSelfLayerInput(value);
     }
 
+    internal static bool PreservesNativeShortPress(string? input)
+        => (input ?? "").Trim().Equals("Taskbar+MouseLeft", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool CanAssignShortPress(string? input)
+        => !IsUnreachableInput(input) && !PreservesNativeShortPress(input);
+
+    internal static string? ShortPressUnavailableReason(string? input)
+        => PreservesNativeShortPress(input)
+            ? "タスクバーの左クリックはWindows操作専用です"
+            : UnavailableInputReason(input);
+
+    internal static bool ClearReservedShortPress(Mapping? mapping)
+    {
+        if (mapping == null || !PreservesNativeShortPress(mapping.Input))
+            return false;
+        bool changed = HasConfiguredShortAction(mapping) || !string.IsNullOrWhiteSpace(mapping.Value);
+        mapping.Kind = ActionKind.None;
+        mapping.Value = "";
+        return changed;
+    }
+
     internal static string? UnavailableInputReason(string? input)
     {
         if (BaseInput(input).Equals("MouseX", StringComparison.OrdinalIgnoreCase))
@@ -116,6 +137,7 @@ internal static class InputAssignmentPolicy
         bool changed = mappings.RemoveAll(mapping => IsUnreachableInput(mapping.Input)) > 0;
         foreach (var mapping in mappings)
         {
+            changed |= ClearReservedShortPress(mapping);
             if (IsImpulseInput(mapping.Input) && mapping.Kind == ActionKind.Gesture)
             {
                 mapping.Kind = ActionKind.None;
@@ -126,6 +148,7 @@ internal static class InputAssignmentPolicy
         }
         foreach (var mapping in mappings)
             changed |= ClearImpossibleLongPress(mapping, mappings);
+        changed |= mappings.RemoveAll(mapping => PreservesNativeShortPress(mapping.Input) && !HasConfiguredLongPress(mapping)) > 0;
         return changed;
     }
 

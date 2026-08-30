@@ -200,7 +200,7 @@
     <Style x:Key="ShortPressDropGlowStyle" TargetType="Border">
       <Setter Property="Opacity" Value="0"/><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="CornerRadius" Value="9"/>
       <Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#1DA78C" BlurRadius="12" ShadowDepth="0" Opacity="0.72"/></Setter.Value></Setter>
-      <Style.Triggers><DataTrigger Binding="{Binding Path=(local:MainWindow.IsLongPressAssignmentDropSlot), RelativeSource={RelativeSource TemplatedParent}}" Value="False"><Setter Property="Opacity" Value="0.82"/></DataTrigger></Style.Triggers>
+      <Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding Path=(local:MainWindow.IsLongPressAssignmentDropSlot), RelativeSource={RelativeSource TemplatedParent}}" Value="False"/><Condition Binding="{Binding Path=(local:MainWindow.IsShortPressAssignmentDropAvailable), RelativeSource={RelativeSource TemplatedParent}}" Value="True"/></MultiDataTrigger.Conditions><Setter Property="Opacity" Value="0.82"/></MultiDataTrigger></Style.Triggers>
     </Style>
     <Style x:Key="LongPressDropGlowStyle" TargetType="Border">
       <Setter Property="Opacity" Value="0"/><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="CornerRadius" Value="9"/>
@@ -209,7 +209,7 @@
     </Style>
     <Style x:Key="ShortPressDropLabelStyle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/><Setter Property="Opacity" Value="0.68"/><Setter Property="FontFamily" Value="Segoe UI Variable Text"/><Setter Property="FontSize" Value="9"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontStretch" Value="SemiCondensed"/>
-      <Style.Triggers><DataTrigger Binding="{Binding Path=(local:MainWindow.IsLongPressAssignmentDropSlot), RelativeSource={RelativeSource TemplatedParent}}" Value="False"><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Opacity" Value="1"/></DataTrigger></Style.Triggers>
+      <Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding Path=(local:MainWindow.IsLongPressAssignmentDropSlot), RelativeSource={RelativeSource TemplatedParent}}" Value="False"/><Condition Binding="{Binding Path=(local:MainWindow.IsShortPressAssignmentDropAvailable), RelativeSource={RelativeSource TemplatedParent}}" Value="True"/></MultiDataTrigger.Conditions><Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/><Setter Property="Opacity" Value="1"/></MultiDataTrigger><DataTrigger Binding="{Binding Path=(local:MainWindow.IsShortPressAssignmentDropAvailable), RelativeSource={RelativeSource TemplatedParent}}" Value="False"><Setter Property="Opacity" Value="0.28"/></DataTrigger></Style.Triggers>
     </Style>
     <Style x:Key="LongPressDropLabelStyle" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/><Setter Property="Opacity" Value="0.68"/><Setter Property="FontFamily" Value="Segoe UI Variable Text"/><Setter Property="FontSize" Value="9"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontStretch" Value="SemiCondensed"/>
@@ -218,6 +218,10 @@
     <Style x:Key="LongPressUnavailableMarkStyle" TargetType="Path">
       <Setter Property="Opacity" Value="0"/>
       <Style.Triggers><DataTrigger Binding="{Binding Path=(local:MainWindow.IsLongPressAssignmentDropAvailable), RelativeSource={RelativeSource TemplatedParent}}" Value="False"><Setter Property="Opacity" Value="1"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="ShortPressUnavailableMarkStyle" TargetType="Path">
+      <Setter Property="Opacity" Value="0"/>
+      <Style.Triggers><DataTrigger Binding="{Binding Path=(local:MainWindow.IsShortPressAssignmentDropAvailable), RelativeSource={RelativeSource TemplatedParent}}" Value="False"><Setter Property="Opacity" Value="1"/></DataTrigger></Style.Triggers>
     </Style>
     <Style x:Key="AssignmentHoverToolTipStyle" TargetType="{x:Type ToolTip}">
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
@@ -249,7 +253,7 @@
               <Border x:Name="AssignmentSlotOverlay" Background="{DynamicResource KeyBackground}" CornerRadius="{StaticResource ControlCornerRadius}" Style="{StaticResource AssignmentSlotOverlayStyle}" ClipToBounds="True">
                 <Grid>
                   <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                  <Border x:Name="ShortPressDropZone" Grid.Row="0" Style="{StaticResource ShortPressDropBorderStyle}" ClipToBounds="True"><Grid><Border x:Name="ShortPressDropGlow" Width="38" Height="16" Style="{StaticResource ShortPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="ShortPressDropLabel" Text="TAP" Style="{StaticResource ShortPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+                  <Border x:Name="ShortPressDropZone" Grid.Row="0" Style="{StaticResource ShortPressDropBorderStyle}" ClipToBounds="True"><Grid><Border x:Name="ShortPressDropGlow" Width="38" Height="16" Style="{StaticResource ShortPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="ShortPressDropLabel" Text="TAP" Style="{StaticResource ShortPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><Path x:Name="ShortPressDropUnavailableMark" Style="{StaticResource ShortPressUnavailableMarkStyle}" Data="M3,3 L17,17" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2" StrokeStartLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Width="12" Height="12" Stretch="Fill"/></Grid></Border>
                   <Border x:Name="LongPressDropZone" Grid.Row="1" Style="{StaticResource LongPressDropBorderStyle}" ClipToBounds="True"><Grid><Border x:Name="LongPressDropGlow" Width="42" Height="16" Style="{StaticResource LongPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="LongPressDropLabel" Text="HOLD" Style="{StaticResource LongPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><Path x:Name="LongPressDropUnavailableMark" Style="{StaticResource LongPressUnavailableMarkStyle}" Data="M3,3 L17,17" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2" StrokeStartLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Width="12" Height="12" Stretch="Fill"/></Grid></Border>
                 </Grid>
               </Border>
@@ -280,7 +284,7 @@
             <Path x:Name="ShortPressDropZone" Grid.Row="0" Grid.RowSpan="2" Style="{StaticResource ShortPressDropPathStyle}" Data="M8,0 H152 A8,8 0 0 1 160,8 V53 H0 V8 A8,8 0 0 1 8,0 Z" StrokeThickness="0.5"/>
             <Path x:Name="LongPressDropZone" Grid.Row="0" Grid.RowSpan="2" Style="{StaticResource LongPressDropPathStyle}" Data="M24,53 H160 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 Z" StrokeThickness="0.5"/>
             <Path Grid.Row="0" Grid.RowSpan="2" Data="M24,53 H160" Stroke="{DynamicResource SubtleBorderBrush}" StrokeThickness="1" IsHitTestVisible="False"/>
-            <Grid Grid.Row="0"><Border x:Name="ShortPressDropGlow" Width="38" Height="16" Style="{StaticResource ShortPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="ShortPressDropLabel" Text="TAP" Style="{StaticResource ShortPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+            <Grid Grid.Row="0"><Border x:Name="ShortPressDropGlow" Width="38" Height="16" Style="{StaticResource ShortPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="ShortPressDropLabel" Text="TAP" Style="{StaticResource ShortPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><Path x:Name="ShortPressDropUnavailableMark" Style="{StaticResource ShortPressUnavailableMarkStyle}" Data="M3,3 L17,17" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Width="20" Height="20" Stretch="Fill"/></Grid>
             <Grid Grid.Row="1" Margin="24,0,0,0"><Border x:Name="LongPressDropGlow" Width="42" Height="16" Style="{StaticResource LongPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock x:Name="LongPressDropLabel" Text="HOLD" Style="{StaticResource LongPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/><Path x:Name="LongPressDropUnavailableMark" Style="{StaticResource LongPressUnavailableMarkStyle}" Data="M3,3 L17,17" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Width="20" Height="20" Stretch="Fill"/></Grid>
             <Path x:Name="AssignmentSlotOutline" Grid.Row="0" Grid.RowSpan="2" Data="M8,0 H152 A8,8 0 0 1 160,8 V98.86 A8,8 0 0 1 152,106.86 H32 A8,8 0 0 1 24,98.86 V60 C24,55.582 20.418,52 16,52 H8 A8,8 0 0 1 0,44 V8 A8,8 0 0 1 8,0 Z" Fill="Transparent" Stroke="{DynamicResource AccentBrush}" StrokeThickness="3" StrokeLineJoin="Round" IsHitTestVisible="False"/>
           </Grid>
@@ -345,6 +349,7 @@
                         <Grid>
                           <Border x:Name="ShortPressDropGlow" Width="38" Height="16" Style="{StaticResource ShortPressDropGlowStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                           <TextBlock x:Name="ShortPressDropLabel" Text="TAP" Style="{StaticResource ShortPressDropLabelStyle}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          <Path x:Name="ShortPressDropUnavailableMark" Style="{StaticResource ShortPressUnavailableMarkStyle}" Data="M3,3 L17,17" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2" StrokeStartLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" Width="12" Height="12" Stretch="Fill"/>
                         </Grid>
                       </Border>
                       <Border x:Name="LongPressDropZone" Grid.Row="1" Style="{StaticResource LongPressDropBorderStyle}" ClipToBounds="True">

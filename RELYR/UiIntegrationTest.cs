@@ -1013,6 +1013,24 @@ internal static class UiIntegrationTest
             window.ClearAssignmentDropTargetForTest();
             Check(System.Windows.Controls.Panel.GetZIndex(window.MouseHost) == 1,
                 "clearing a mouse drop target restores the mouse host's normal stacking order");
+            window.TaskbarLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            window.SetPaletteAssignmentDropTargetForTest(window.MouseLeftVisual, enterAction, longPress: false);
+            window.MouseLeftVisual.ApplyTemplate();
+            var reservedTaskbarTapMark = (UIElement)window.MouseLeftVisual.Template.FindName("ShortPressDropUnavailableMark", window.MouseLeftVisual)!;
+            bool taskbarTapApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseLeft", "MouseLeft", longPress: false);
+            bool taskbarHoldApplied = window.ApplyPaletteActionForTest(enterAction, "Taskbar+MouseLeft", "MouseLeft", longPress: true);
+            var taskbarLeftMapping = window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "Taskbar+MouseLeft");
+            Check(!MainWindow.GetIsShortPressAssignmentDropAvailable(window.MouseLeftVisual)
+                && MainWindow.GetIsLongPressAssignmentDropAvailable(window.MouseLeftVisual)
+                && reservedTaskbarTapMark.Opacity == 1
+                && !taskbarTapApplied && taskbarHoldApplied
+                && taskbarLeftMapping is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Key, LongPressValue: "Enter" },
+                "Taskbar+MouseLeft keeps TAP visibly reserved for Windows while the same split target still accepts a HOLD Action");
+            window.ClearAssignmentDropTargetForTest();
+            window.CurrentProfileForTest.Mappings.RemoveAll(mapping => mapping.Input == "Taskbar+MouseLeft");
+            window.NormalLayerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
             bool longPaletteApplied = window.ApplyPaletteActionForTest(enterAction, "F24", "F24", longPress: true);
             Pump(window);
             var dualF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
@@ -4138,7 +4156,7 @@ internal static class UiIntegrationTest
                 foreach (string visualKey in visualKeys)
                 {
                     string input = layer == "通常" ? visualKey : layer + "+" + visualKey;
-                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer == "通常")
+                    if (visualKey == "CapsLock" || (visualKey == "Space" && layer is "通常" or "Space") || (visualKey == "MouseLeft" && layer is "通常" or "Taskbar")
                         || InputAssignmentPolicy.IsUnreachableInput(input))
                         continue;
                     window.CurrentProfileForTest.Mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
@@ -4151,7 +4169,7 @@ internal static class UiIntegrationTest
                     string key = (string)x.Tag;
                     string input = layer == "通常" ? key : layer + "+" + key;
                     return key != "CapsLock" && !(key == "Space" && layer is "通常" or "Space")
-                        && !(key == "MouseLeft" && layer == "通常") && !InputAssignmentPolicy.IsUnreachableInput(input)
+                        && !(key == "MouseLeft" && layer is "通常" or "Taskbar") && !InputAssignmentPolicy.IsUnreachableInput(input)
                         && !HasBackgroundColor(x, replacementColor);
                 }).Select(x => (string)x.Tag).Distinct().ToArray();
                 Check(visualInputs.Count > 100 && missed.Length == 0, $"every assignable visual key is orange on the {layer} layer" + (missed.Length == 0 ? "" : " (missing: " + string.Join(",", missed) + ")"));

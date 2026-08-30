@@ -1031,8 +1031,19 @@ public partial class MainWindow
         if (DeckPanelLayout.IsInputName(input))
             return selectedDeckLayout != null && action.Kind != ActionKind.Gesture;
         string key = input[(input.LastIndexOf('+') + 1)..];
-        return CanUseAssignmentDragKey(key, source: false)
+        return InputAssignmentPolicy.CanAssignShortPress(input)
+            && CanUseAssignmentDragKey(key, source: false)
             && (action.Kind != ActionKind.Gesture || InputAssignmentPolicy.SupportsGesture(input));
+    }
+
+    string PaletteShortPressDropUnavailableReason(CatalogAction action, string targetInput, string targetKey)
+    {
+        string unavailableInput = PaletteDropTargets(targetInput, targetKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(input => !CanAssignPaletteAction(input, action, AssignmentDropSlot.ShortPress))
+            ?? targetInput;
+        return InputAssignmentPolicy.ShortPressUnavailableReason(unavailableInput)
+            ?? "この入力ではTAPを変更できません";
     }
 
     Mapping PaletteLongPressProbe(string input)

@@ -183,14 +183,16 @@ public static class SelfTest
                             new Mapping { Input = "MouseLeft", Kind = ActionKind.Disabled },
                             new Mapping { Input = "MouseLeft+J", Kind = ActionKind.Key, Value = "A" },
                             new Mapping { Input = "Space+MouseLeft", Kind = ActionKind.Key, Value = "B" },
-                            new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Key, Value = "C" }
+                            new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Key, Value = "C" },
+                            new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape", Application = "notepad.exe" }
                         ]
                     }
                 ]
             });
             var protectedLeftClickMappings = protectedLeftClickService.Load().Profiles[0].Mappings;
-            Check(protectedLeftClickMappings.Select(mapping => mapping.Input).SequenceEqual(["Space+MouseLeft", "Taskbar+MouseLeft"]),
-                "normal MouseLeft and MouseLeft-started chords are removed while explicit Space and Taskbar left-click layer inputs remain available");
+            Check(protectedLeftClickMappings.Select(mapping => mapping.Input).SequenceEqual(["Space+MouseLeft", "Taskbar+MouseLeft"])
+                && protectedLeftClickMappings[1] is { Kind: ActionKind.None, Value: "", LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+Shift+Escape" },
+                "normal and taskbar TAP left-click assignments are removed while explicit Space and taskbar HOLD left-click actions remain available");
             var pendingCaps = new AppConfig { CapsLockRemapPendingRestart = true, CapsLockRemapChangedAtUtcTicks = DateTime.UtcNow.AddMinutes(-1).Ticks };
             Check(LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromHours(1).TotalMilliseconds) && !LegacyKeyRemapService.IsRestartStillPending(pendingCaps, DateTime.UtcNow, (long)TimeSpan.FromSeconds(10).TotalMilliseconds), "CapsLock remap distinguishes the current boot from a completed restart");
             Check(!App.UninstallRestartNeeded(new AppConfig(), false, false) && App.UninstallRestartNeeded(new AppConfig(), true, false) && !App.UninstallRestartNeeded(new AppConfig { CapsLockLayerEnabled = true }, false, false) && App.UninstallRestartNeeded(new AppConfig(), false, true), "normal updates and a saved CapsLock preference do not request a restart; only an active or pending system remap does");
@@ -249,7 +251,8 @@ public static class SelfTest
                 && overlayHoverRow is { Name: "クロック", Detail: "オーバーレイ", Keycaps.Count: 0 },
                 "assigned-key hover uses concise TAP/HOLD rows and provides a non-empty friendly display for shortcuts, overlays, keys, text, apps, mouse actions, macros, profiles, gestures, and disabled actions");
             Check(MainWindow.DisplayInputName("MouseRight+K") == "右クリック + K" && MainWindow.DisplayInputName("Taskbar+MouseMiddle") == "タスクバー + ホイールクリック" && MainWindow.DisplayInputName("MouseBack+WheelUp") == "戻る + ホイール上", "internal layer names are presented as beginner-friendly input names");
-            var taskbarLongOnly = new Mapping { Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
+            var taskbarLongOnly = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.None, LongPressKind = ActionKind.Shortcut, LongPressValue = "Ctrl+Shift+Escape" };
+            var staleTaskbarTap = new Mapping { Input = "Taskbar+MouseLeft", Kind = ActionKind.Shortcut, Value = OverlayService.DeckPanelAction };
             var taskbarReplayEvents = new List<string>();
             int taskbarReplayFailures = 0;
             MainWindow.ProcessTaskbarClickReplays(["MouseLeft", "MouseRight"], click => { taskbarReplayEvents.Add(click); return true; }, () => { }, () => taskbarReplayFailures++);
@@ -278,9 +281,12 @@ public static class SelfTest
                 InputEngine.MouseClickBatchOutputForTest = null;
             }
             Check(MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft") == "MouseLeft"
+                && MainWindow.TaskbarShortClickReplay(staleTaskbarTap, "Taskbar+MouseLeft") == "MouseLeft"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseRight") == "MouseRight"
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "MouseLeft") == null
                 && MainWindow.TaskbarShortClickReplay(taskbarLongOnly, "Taskbar+MouseLeft", longPress: true) == null
+                && MainWindow.MappingInterceptsTaskbarInvocation(taskbarLongOnly)
+                && !MainWindow.MappingInterceptsTaskbarInvocation(staleTaskbarTap)
                 && taskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
                 && failedTaskbarReplayEvents.SequenceEqual(["MouseLeft", "MouseRight"])
                 && taskbarReplayFailures == 1
@@ -290,7 +296,7 @@ public static class SelfTest
                 && taskbarReplayBatches[1].SequenceEqual([(8u, 0u), (16u, 0u)])
                 && taskbarReplayWaitedForHookReturn
                 && taskbarReplayCompletedAfterHookReturn,
-                "taskbar long-press-only short clicks wait for the physical hook to return, then restore the original left or right button Down/Up as one atomic input batch");
+                "taskbar left TAP actions never intercept Windows, while taskbar HOLD short-click restoration waits for the physical hook to return and replays one atomic input batch");
             Check(MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle:Long")
                   && !MainWindow.IsTaskbarMappedInput("MouseMiddle"),
@@ -324,6 +330,9 @@ public static class SelfTest
             Check(InputAssignmentPolicy.IsImpulseInput("Space+WheelUp")
                 && !InputAssignmentPolicy.SupportsGesture("CapsLock+TiltRight")
                 && new[] { "Space", "Space+Space", "CapsLock+CapsLock", "MouseRight+MouseRight", "MouseBack+MouseBack", "MouseForward+MouseForward", "MouseX", "Taskbar+MouseX" }.All(InputAssignmentPolicy.IsUnreachableInput)
+                && InputAssignmentPolicy.PreservesNativeShortPress("Taskbar+MouseLeft")
+                && !InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseLeft")
+                && InputAssignmentPolicy.CanAssignShortPress("Taskbar+MouseRight")
                 && InputEngine.MustReplayNativeLayerTap("Space") && !InputEngine.MustReplayNativeLayerTap("CapsLock")
                 && InputAssignmentPolicy.SanitizeMappings(staleSpaceMappings)
                 && staleSpaceMappings.Count == 1 && staleSpaceMappings[0].Input == "Space+K"

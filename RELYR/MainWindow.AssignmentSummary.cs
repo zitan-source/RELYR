@@ -22,12 +22,13 @@ public partial class MainWindow
             return;
 
         bool deckInput = DeckPanelLayout.IsInputName(selected.Input);
+        bool nativeShortPress = InputAssignmentPolicy.PreservesNativeShortPress(selected.Input);
         AssignmentActionSectionLabel.Text = deckInput ? "Action" : "割り当て";
         AssignmentTapSlotText.Text = deckInput ? "ACTION" : "TAP";
         AssignmentHoldCard.Visibility = deckInput ? Visibility.Collapsed : Visibility.Visible;
         AssignmentReplaceHintText.Text = deckInput
             ? "変更はActionをDeckボタンへドラッグ"
-            : "変更はActionをキーのTAP / HOLDへドラッグ";
+            : nativeShortPress ? "ActionはHOLDへドラッグ" : "変更はActionをキーのTAP / HOLDへドラッグ";
 
         if (deckInput)
         {
@@ -44,12 +45,12 @@ public partial class MainWindow
             AssignmentTapCard,
             AssignmentTapNameText,
             AssignmentTapDetailText,
-            HasConfiguredShortAction(selected)
+            !nativeShortPress && HasConfiguredShortAction(selected)
                 ? CreateAssignmentToolTipRow("TAP", selected.Kind, selected.Value, config)
                 : null,
-            emptyName: "元の入力",
-            emptyDetail: "TAPは未設定");
-        assignmentTapSummaryAction = HasConfiguredShortAction(selected)
+            emptyName: nativeShortPress ? "Windowsの左クリック" : "元の入力",
+            emptyDetail: nativeShortPress ? "TAPは変更できません" : "TAPは未設定");
+        assignmentTapSummaryAction = !nativeShortPress && HasConfiguredShortAction(selected)
             ? CatalogActionForAssignment(selected.Kind, selected.Value)
             : null;
         UpdateAssignmentSummaryInteraction(AssignmentTapCard, AssignmentTapFavoriteButton, assignmentTapSummaryAction);

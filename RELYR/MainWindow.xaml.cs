@@ -65,6 +65,9 @@ public partial class MainWindow : Window
     public static readonly DependencyProperty IsLongPressAssignmentDropAvailableProperty = DependencyProperty.RegisterAttached("IsLongPressAssignmentDropAvailable", typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
     public static bool GetIsLongPressAssignmentDropAvailable(DependencyObject element) => (bool)element.GetValue(IsLongPressAssignmentDropAvailableProperty);
     public static void SetIsLongPressAssignmentDropAvailable(DependencyObject element, bool value) => element.SetValue(IsLongPressAssignmentDropAvailableProperty, value);
+    public static readonly DependencyProperty IsShortPressAssignmentDropAvailableProperty = DependencyProperty.RegisterAttached("IsShortPressAssignmentDropAvailable", typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
+    public static bool GetIsShortPressAssignmentDropAvailable(DependencyObject element) => (bool)element.GetValue(IsShortPressAssignmentDropAvailableProperty);
+    public static void SetIsShortPressAssignmentDropAvailable(DependencyObject element, bool value) => element.SetValue(IsShortPressAssignmentDropAvailableProperty, value);
     readonly ConfigService store = new();
     readonly InputEngine engine = new();
     readonly MappingExecutor executor;
@@ -1791,6 +1794,11 @@ public partial class MainWindow : Window
         var target = selected;
         if (target == null)
             return;
+        if (!longPress && !InputAssignmentPolicy.CanAssignShortPress(target.Input))
+        {
+            ShowInlineNotice(InputAssignmentPolicy.ShortPressUnavailableReason(target.Input)!);
+            return;
+        }
         if (!longPress && action.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(target.Input))
         {
             ShowInlineNotice("ホイール／チルトではジェスチャーを設定できません");
@@ -1893,6 +1901,11 @@ public partial class MainWindow : Window
     {
         if (selected == null || longPress && !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input)))
             return;
+        if (!longPress && !InputAssignmentPolicy.CanAssignShortPress(selected.Input))
+        {
+            ShowInlineNotice(InputAssignmentPolicy.ShortPressUnavailableReason(selected.Input)!);
+            return;
+        }
         loading = true;
         try
         {
@@ -1964,6 +1977,11 @@ public partial class MainWindow : Window
     {
         if (selected == null || longPress && !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input)) || !config.Profiles.Any(x => x.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase)))
             return;
+        if (!longPress && !InputAssignmentPolicy.CanAssignShortPress(selected.Input))
+        {
+            ShowInlineNotice(InputAssignmentPolicy.ShortPressUnavailableReason(selected.Input)!);
+            return;
+        }
         loading = true;
         try
         {
@@ -1996,6 +2014,11 @@ public partial class MainWindow : Window
     {
         if (assign && longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
             return;
+        if (assign && !longPress && selected != null && !InputAssignmentPolicy.CanAssignShortPress(selected.Input))
+        {
+            ShowInlineNotice(InputAssignmentPolicy.ShortPressUnavailableReason(selected.Input)!);
+            return;
+        }
         string target = assign ? $"{InputName.Text}（{(longPress ? "長押し" : "短押し")}）" : "";
         var window = new MacroWindow(config, SetMacroRecording, assign, target) { Owner = this };
         window.Saved += () => SaveAndApply("マクロを保存して反映しました");
@@ -2056,6 +2079,11 @@ public partial class MainWindow : Window
     {
         if (longPress && (selected == null || !IsLongPressSupportedFor(selected, MappingCollectionForInput(selected.Input))))
             return;
+        if (!longPress && selected != null && !InputAssignmentPolicy.CanAssignShortPress(selected.Input))
+        {
+            ShowInlineNotice(InputAssignmentPolicy.ShortPressUnavailableReason(selected.Input)!);
+            return;
+        }
         if (longPress)
         {
             LongKindBox.SelectedValue = ActionKind.Launch;
@@ -2199,6 +2227,7 @@ public partial class MainWindow : Window
         var longAction = NormalizeEditorAction(longEditorKind, LongValueBox.Text, selected.LongPressKind, selected.LongPressValue);
         selected.Kind = Kind;
         selected.Value = Value;
+        InputAssignmentPolicy.ClearReservedShortPress(selected);
         var selectedMappings = MappingCollectionForInput(selected.Input);
         if (selected.Kind == ActionKind.Gesture && !InputAssignmentPolicy.SupportsGesture(selected.Input))
         {
@@ -2593,12 +2622,15 @@ public partial class MainWindow : Window
     internal static string? TaskbarShortClickReplay(Mapping? map, string baseInput, bool longPress = false, bool dragStart = false, bool dragEnd = false, bool pressStart = false, bool pressEnd = false)
     {
         if (longPress || dragStart || dragEnd || pressStart || pressEnd
-            || map is not { Kind: ActionKind.None }
-            || map.LongPressKind == ActionKind.None
             || !baseInput.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
             return null;
+        // The taskbar's primary click always belongs to Windows. Even if an old,
+        // hand-edited, or not-yet-saved profile still contains a TAP action,
+        // restore the physical click instead of executing that action.
         if (baseInput.EndsWith("MouseLeft", StringComparison.OrdinalIgnoreCase))
             return "MouseLeft";
+        if (map is not { Kind: ActionKind.None } || map.LongPressKind == ActionKind.None)
+            return null;
         return baseInput.EndsWith("MouseRight", StringComparison.OrdinalIgnoreCase) ? "MouseRight" : null;
     }
     bool QueueDragAction(Mapping? map, string input)
@@ -2623,7 +2655,7 @@ public partial class MainWindow : Window
         string taskbarInput = "Taskbar+" + input;
         // Cursor inspection crosses into user32. Only pay that cost when the
         // active profile actually has an applicable taskbar mapping.
-        return FindApplicableProfileMapping(taskbarInput, MappingInterceptsInput) != null
+        return FindApplicableProfileMapping(taskbarInput, MappingInterceptsTaskbarInvocation) != null
             && ConditionMatcher.IsCursorOverTaskbar() ? taskbarInput : input;
     }
     Mapping? FindMapping(string input)
@@ -2640,7 +2672,7 @@ public partial class MainWindow : Window
             return layerSnapshot.Mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
         }
         if (input.StartsWith("Taskbar+", StringComparison.OrdinalIgnoreCase))
-            return FindApplicableProfileMapping(input, MappingInterceptsInput);
+            return FindApplicableProfileMapping(input, MappingInterceptsTaskbarInvocation);
         string qualified = QualifyInput(input);
         if (!qualified.Equals(input, StringComparison.OrdinalIgnoreCase))
             return FindApplicableProfileMapping(qualified, MappingInterceptsInput);
@@ -2704,6 +2736,10 @@ public partial class MainWindow : Window
     internal static bool MappingHasConfiguredAction(Mapping? map) => HasConfiguredShortAction(map) || HasConfiguredLongPress(map);
     internal static bool HasConfiguredShortAction(Mapping? map) => map != null && map.Kind != ActionKind.None && (map.Kind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(map.Value));
     internal static bool MappingInterceptsInput(Mapping? map) => MappingHasConfiguredAction(map);
+    internal static bool MappingInterceptsTaskbarInvocation(Mapping? map)
+        => map != null && InputAssignmentPolicy.PreservesNativeShortPress(map.Input)
+            ? HasConfiguredLongPress(map)
+            : MappingInterceptsInput(map);
     internal static bool HasConfiguredLongPress(Mapping? map) => map != null && map.LongPressKind != ActionKind.None && (map.LongPressKind == ActionKind.Disabled || !string.IsNullOrWhiteSpace(map.LongPressValue));
     internal static void NormalizeLongOnlyMapping(Mapping map)
     {

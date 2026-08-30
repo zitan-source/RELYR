@@ -153,6 +153,7 @@ public partial class MainWindow
         }
         return sourceMappings.Concat(targetMappings).All(mapping =>
             !InputAssignmentPolicy.IsUnreachableInput(mapping.Input)
+            && (!InputAssignmentPolicy.HasConfiguredShortAction(mapping) || InputAssignmentPolicy.CanAssignShortPress(mapping.Input))
             && (mapping.Kind != ActionKind.Gesture || InputAssignmentPolicy.SupportsGesture(mapping.Input))
             && (!InputAssignmentPolicy.HasConfiguredLongPress(mapping)
                 || InputAssignmentPolicy.CanExecuteLongPress(mapping, projected)));
@@ -222,8 +223,9 @@ public partial class MainWindow
             && TryGetPaletteAction(e.Data, out CatalogAction paletteAction))
         {
             string paletteTargetInput = InputForCurrentLayer(paletteTargetKey);
-            bool shortValid = CanAssignPaletteAction(paletteTargetInput, paletteAction);
-            if (!shortValid)
+            bool shortValid = CanAssignPaletteDropToSlot(paletteAction, paletteTargetInput, paletteTargetKey, AssignmentDropSlot.ShortPress);
+            bool longValid = CanAssignPaletteDropToSlot(paletteAction, paletteTargetInput, paletteTargetKey, AssignmentDropSlot.LongPress);
+            if (!shortValid && !longValid)
             {
                 SetAssignmentDropTarget(null);
                 e.Effects = DragDropEffects.None;
@@ -233,9 +235,11 @@ public partial class MainWindow
             AssignmentDropSlot slot = DropSlotAt(paletteTargetInput, paletteTarget, e.GetPosition(paletteTarget));
             bool slotValid = CanAssignPaletteDropToSlot(paletteAction, paletteTargetInput, paletteTargetKey, slot);
             SetAssignmentDropTarget(paletteTarget, paletteAction, slot);
-            if (slot == AssignmentDropSlot.LongPress && !slotValid)
+            if (!slotValid)
             {
-                string reason = PaletteLongPressDropUnavailableReason(paletteAction, paletteTargetInput, paletteTargetKey);
+                string reason = slot == AssignmentDropSlot.LongPress
+                    ? PaletteLongPressDropUnavailableReason(paletteAction, paletteTargetInput, paletteTargetKey)
+                    : PaletteShortPressDropUnavailableReason(paletteAction, paletteTargetInput, paletteTargetKey);
                 if (!reason.Equals(assignmentDropUnavailableReason, StringComparison.Ordinal))
                 {
                     assignmentDropUnavailableReason = reason;
@@ -461,13 +465,15 @@ public partial class MainWindow
             && !DeckPanelLayout.IsInputName(InputForCurrentLayer(targetKey));
         bool longPressAvailable = target?.Tag is string key && paletteAction != null
             && CanAssignPaletteDropToSlot(paletteAction, InputForCurrentLayer(key), key, AssignmentDropSlot.LongPress);
+        bool shortPressAvailable = target?.Tag is string shortKey && paletteAction != null
+            && CanAssignPaletteDropToSlot(paletteAction, InputForCurrentLayer(shortKey), shortKey, AssignmentDropSlot.ShortPress);
         if (ReferenceEquals(target, assignmentDropTarget)
             && Equals(paletteAction, assignmentPaletteDropAction)
             && slot == assignmentDropSlot)
         {
             if (target != null)
             {
-                SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable);
+                SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable, shortPressAvailable);
                 RepositionActionPaletteDragPreview();
             }
             return;
@@ -478,7 +484,7 @@ public partial class MainWindow
         assignmentDropTarget = target;
         assignmentPaletteDropAction = paletteAction;
         assignmentDropSlot = slot;
-        SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable);
+        SetAssignmentDropTargetVisual(target, true, palette, slot, longPressAvailable, shortPressAvailable);
         RepositionActionPaletteDragPreview();
     }
 
@@ -500,13 +506,15 @@ public partial class MainWindow
         bool active,
         bool palette = false,
         AssignmentDropSlot slot = AssignmentDropSlot.ShortPress,
-        bool longPressAvailable = true)
+        bool longPressAvailable = true,
+        bool shortPressAvailable = true)
     {
         SetIsAssignmentDropTarget(button, active);
         bool showSlots = active && palette;
         SetIsPaletteAssignmentDropTarget(button, showSlots);
         SetIsLongPressAssignmentDropSlot(button, showSlots && slot == AssignmentDropSlot.LongPress);
         SetIsLongPressAssignmentDropAvailable(button, longPressAvailable);
+        SetIsShortPressAssignmentDropAvailable(button, shortPressAvailable);
         button.ApplyTemplate();
         if (button.Template.FindName("DropTargetTint", button) is UIElement tint)
             tint.Opacity = 0;
@@ -516,6 +524,8 @@ public partial class MainWindow
             slotOverlay.Opacity = showSlots ? 1 : 0;
         if (button.Template.FindName("LongPressDropUnavailableMark", button) is UIElement unavailableMark)
             unavailableMark.Opacity = showSlots && !longPressAvailable ? 1 : 0;
+        if (button.Template.FindName("ShortPressDropUnavailableMark", button) is UIElement shortUnavailableMark)
+            shortUnavailableMark.Opacity = showSlots && !shortPressAvailable ? 1 : 0;
         if (active)
         {
             button.BorderBrush = ThemeService.Brush("AccentBrush");
