@@ -739,7 +739,8 @@ internal static class UiIntegrationTest
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("画面キャプチャ", "画面全体をスクリーンショット", "", ActionKind.Key, "PrintScreen"), "Windows") == "PrintScreen"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("アプリ", "Sample App", "", ActionKind.Launch, "sample.exe"), "アプリ") == "アプリ"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("パス・文字列", "文字列を入力…", "", ActionKind.Text, "", CatalogActionValueRequest.Text), "パス・文字列") == "ドロップ後に指定"
-                && MainWindow.ActionPaletteItemDetail(new CatalogAction("マクロ", "Sample Macro", "", ActionKind.Macro, "sample"), "マクロ") == "マクロ",
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction("マクロ", "Sample Macro", "", ActionKind.Macro, "sample"), "マクロ") == "マクロ"
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction(DeckMonitorCatalog.Category, "BRIGHTNESS", "", ActionKind.Disabled, "RELYR:DeckMonitor:brightness"), DeckMonitorCatalog.Category) == "画面の明るさ",
                 "Action rows show the actual key or shortcut below keyboard actions while non-key actions keep a concise type label");
             window.ActionPaletteSearchBox.Text = "音量";
             window.ActionPaletteSearchBox.Focus();
@@ -1652,6 +1653,10 @@ internal static class UiIntegrationTest
             }), "one undo restores every Deck slot in a multiple-target palette assignment, including its previous visual fields");
             Check(window.ActionPaletteActionsForTest.Any(action => action.Category == DeckMonitorCatalog.Category),
                 "the Deck editor alone exposes the monitor library in the existing Action pane");
+            var deckCategoryNames = window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString() ?? "").ToArray();
+            Check(Array.IndexOf(deckCategoryNames, DeckMonitorCatalog.Category) < Array.IndexOf(deckCategoryNames, "Windows")
+                && window.ActionPaletteDetailsForTest.Any(entry => entry.Action.Value == "RELYR:DeckMonitor:timer" && entry.Detail == "タイマーの残り時間"),
+                "Deck editing places the monitor category at the start of Functions and gives its English face labels concise Japanese library explanations");
             window.SelectActionPalettePopupItemForTest(DeckMonitorCatalog.Category);
             Pump(window);
             Check(window.IsActionPaletteOpenForTest && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == DeckMonitorCatalog.Category,
@@ -2135,6 +2140,83 @@ internal static class UiIntegrationTest
             Check(!DeckPanelOverlayWindow.CanDragPanelFromForTest(new Slider())
                 && !DeckPanelOverlayWindow.CanDragPanelFromForTest(new System.Windows.Controls.Primitives.Thumb()),
                 "Deck overlay monitor sliders and thumbs keep mouse capture instead of starting a panel drag");
+            var interactiveMonitorLayout = new DeckLayoutDefinition
+            {
+                Name = "Interactive monitors",
+                Columns = 3,
+                Rows = 1,
+                Mappings =
+                [
+                    new Mapping { Input = "Deck+01", Layer = DeckPanelLayout.Layer, DeckMonitor = "volume" },
+                    new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, DeckMonitor = "brightness" },
+                    new Mapping { Input = "Deck+03", Layer = DeckPanelLayout.Layer, DeckMonitor = "timer" }
+                ]
+            };
+            var interactiveMonitorOverlay = new DeckPanelOverlayWindow(
+                new AppConfig { DeckLayouts = [interactiveMonitorLayout] },
+                null,
+                selectedLayout: interactiveMonitorLayout);
+            interactiveMonitorOverlay.Show();
+            interactiveMonitorOverlay.UpdateLayout();
+            Pump(window);
+            interactiveMonitorOverlay.PresentMonitorWheelAdjustmentForTest(1, "volume", 42);
+            interactiveMonitorOverlay.PresentMonitorWheelAdjustmentForTest(2, "brightness", 68);
+            bool wheelStayedInline = !interactiveMonitorOverlay.MonitorControlVisibleForTest
+                && interactiveMonitorOverlay.DeckButtons[0].Content is DeckMonitorView volumeView
+                && Math.Abs(volumeView.CurrentPercent!.Value - 42) < .1
+                && interactiveMonitorOverlay.DeckButtons[1].Content is DeckMonitorView brightnessView
+                && Math.Abs(brightnessView.CurrentPercent!.Value - 68) < .1;
+            interactiveMonitorOverlay.ShowMonitorControlForTest(1, "volume", 42);
+            Pump(window);
+            var monitorControlButtons = interactiveMonitorOverlay.MonitorControlPanelForTest == null
+                ? []
+                : Descendants<System.Windows.Controls.Button>(interactiveMonitorOverlay.MonitorControlPanelForTest).ToArray();
+            bool detailedActionsAreFlat = monitorControlButtons.Length == 2
+                && monitorControlButtons.All(button => button.BorderThickness == new Thickness(0)
+                    && button.Background is SolidColorBrush { Color.A: 0 }
+                    && button.BorderBrush is SolidColorBrush { Color.A: 0 });
+            Check(wheelStayedInline && interactiveMonitorOverlay.MonitorControlVisibleForTest && detailedActionsAreFlat,
+                "volume and brightness wheels update only their Deck face while the deliberately opened detailed control uses flat borderless close and mute actions");
+            interactiveMonitorOverlay.CloseMonitorControlForTest();
+
+            Func<MenuItem, string, bool> hasDeckMenuLabel = (item, expected) => item.Header is Grid header
+                && header.Children.OfType<TextBlock>().Any(text => text.Text == expected);
+            var timerMenu = interactiveMonitorOverlay.DeckButtons[2].ContextMenu!;
+            timerMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+            string[] expectedTimerPresets = ["1分", "3分", "10分", "30分", "任意..."];
+            bool timerPresetsVisible = expectedTimerPresets.All(expected => timerMenu.Items.OfType<MenuItem>()
+                .Any(item => item.Visibility == Visibility.Visible && hasDeckMenuLabel(item, expected)));
+            var threeMinute = timerMenu.Items.OfType<MenuItem>().Single(item => hasDeckMenuLabel(item, "3分"));
+            threeMinute.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            DeckTimerSnapshot runningTimer = DeckTimerService.Shared.Snapshot();
+            timerMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.ClosedEvent));
+            timerMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+            bool stopVisible = timerMenu.Items.OfType<MenuItem>().Any(item => item.Visibility == Visibility.Visible && hasDeckMenuLabel(item, "タイマーを停止"));
+            timerMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.ClosedEvent));
+            bool timerInputsValidate = DeckPanelOverlayWindow.TryParseTimerMinutes("2.5", out double customMinutes)
+                && Math.Abs(customMinutes - 2.5) < .001
+                && !DeckPanelOverlayWindow.TryParseTimerMinutes("0", out _)
+                && !DeckPanelOverlayWindow.TryParseTimerMinutes("1441", out _);
+            bool cancelledTimer = DeckTimerService.Shared.Cancel();
+            Check(timerPresetsVisible
+                && runningTimer.IsRunning
+                && runningTimer.Duration == TimeSpan.FromMinutes(3)
+                && runningTimer.Remaining > TimeSpan.FromMinutes(2.9)
+                && stopVisible
+                && timerInputsValidate
+                && cancelledTimer
+                && !DeckTimerService.Shared.Snapshot().IsRunning,
+                "the Timer tile right-click menu exposes 1/3/10/30-minute and bounded custom presets, keeps running independently, and offers stop only while active");
+            var timerNotification = new DeckTimerNotificationWindow(TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(2));
+            timerNotification.Show();
+            Pump(window);
+            Check(timerNotification.UsesCompactClickThroughSurfaceForTest
+                && timerNotification.CaptionForTest == "タイマーが終了しました"
+                && timerNotification.DetailForTest == "3分のタイマー",
+                "timer completion uses one compact non-activating click-through overlay instead of blocking the working window");
+            timerNotification.HideImmediatelyForProcessExit();
+            timerNotification.Close();
+            interactiveMonitorOverlay.Close();
             var cornerHits = new[] { new System.Windows.Point(1, 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, 1), new System.Windows.Point(1, deckOverlay.ActualHeight - 1), new System.Windows.Point(deckOverlay.ActualWidth - 1, deckOverlay.ActualHeight - 1) }.Select(deckOverlay.ResizeHitTestForTest).ToArray();
             Check(deckOverlay.ResizeMode == ResizeMode.CanResize && cornerHits.All(hit => hit != 0) && cornerHits.Distinct().Count() == 4 && deckOverlay.ResizeHitTestForTest(new System.Windows.Point(deckOverlay.ActualWidth / 2, deckOverlay.ActualHeight / 2)) == 0, "all four Deck overlay corners expose distinct resize hit zones without consuming the center");
             Check(deckOverlay.DeckButtons.Count == 45 && deckOverlay.DeckButtons.All(x => x.IsEnabled && Math.Abs(x.Opacity - 1) < .001 && x.Background is SolidColorBrush && !Descendants<Border>(x).Any(border => border.Background is LinearGradientBrush)) && Math.Abs(deckOverlay.VisualOpacityForTest - .67) < .001 && !deckOverlay.AllowsTransparency && deckOverlay.Background is SolidColorBrush { Color.A: > 0 } && !deckOverlay.ShowActivated && deckOverlay.UsesNoActivateStyle && Descendants<TextBlock>(deckOverlay).Any(x => x.Text == "コピー") && Math.Abs(deckOverlay.Left - 120) < .1 && Math.Abs(deckOverlay.Top - 140) < .1, "Deck retains the shared pre-0.1.367 panel opacity inside a non-layered no-activate native window");

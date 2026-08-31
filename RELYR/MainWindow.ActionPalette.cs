@@ -378,8 +378,8 @@ public partial class MainWindow
         var preferredOrder = new[]
         {
             ActionPaletteCreateCategory, ActionPaletteKeysCategory, "マウス", ActionPaletteShortcutsCategory,
-            "Windows", "Windowsアプリ", ActionPaletteApplicationsCategory, "プロファイル", "マクロ",
-            "ジェスチャー", "Deckパネル", "オーバーレイ", DeckMonitorCatalog.Category,
+            DeckMonitorCatalog.Category, "Windows", "Windowsアプリ", ActionPaletteApplicationsCategory,
+            "プロファイル", "マクロ", "ジェスチャー", "Deckパネル", "オーバーレイ",
             "入力・編集", "ファイル・文書", "メディア", "ウィンドウ・デスクトップ",
             "ブラウザー", "エクスプローラー", "システム操作", "その他"
         };
@@ -510,6 +510,11 @@ public partial class MainWindow
 
     internal static string ActionPaletteItemDetail(CatalogAction action, string group)
     {
+        if (action.Kind == ActionKind.Disabled
+            && string.Equals(action.Category, DeckMonitorCatalog.Category, StringComparison.OrdinalIgnoreCase)
+            && action.Value.StartsWith(DeckMonitorActionPrefix, StringComparison.OrdinalIgnoreCase)
+            && DeckMonitorCatalog.TryGet(action.Value[DeckMonitorActionPrefix.Length..], out var monitor))
+            return DeckMonitorCatalog.PaletteDescription(monitor.Id);
         if (action.ValueRequest != CatalogActionValueRequest.None)
             return "ドロップ後に指定";
         string value = action.Value?.Trim() ?? string.Empty;

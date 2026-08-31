@@ -159,6 +159,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     internal int VideoPreviewCountForTest => videoPreview == null ? 0 : 1;
     internal bool? VideoPreviewUsesSourceHoverForTest => videoPreview?.SourceHoverEnabled;
     internal bool AudioPreviewActiveForTest => hoverAudioPlayer != null;
+    internal bool MonitorControlVisibleForTest => monitorControlPanel != null;
+    internal FrameworkElement? MonitorControlPanelForTest => monitorControlPanel;
     internal Func<System.Drawing.Point>? CursorPositionProviderForTest { get; set; }
     internal Func<bool>? PointerButtonsPressedProviderForTest { get; set; }
     internal Button CloseButton { get; private set; } = null!;
@@ -2010,8 +2012,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             if (currentBrightness is not double brightness)
                 return;
             double requestedBrightness = WheelAdjustedPercent(brightness, e.Delta, 2);
-            ShowMonitorControl((Button)sender, monitor, requestedBrightness);
-            ApplyInteractiveMonitorValue((Button)sender, monitor, requestedBrightness);
+            PresentMonitorWheelAdjustment((Button)sender, monitor, requestedBrightness);
             QueueBrightnessValue(requestedBrightness);
             e.Handled = true;
             return;
@@ -2023,8 +2024,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         double requested = WheelAdjustedPercent(current, e.Delta, 2);
         if (!SystemControlService.TrySetVolume(false, requested))
             return;
-        ShowMonitorControl((Button)sender, monitor, requested, muted);
-        ApplyInteractiveMonitorValue((Button)sender, monitor, requested);
+        PresentMonitorWheelAdjustment((Button)sender, monitor, requested);
         e.Handled = true;
         SystemMonitorService.Shared.RequestRefresh();
     }
@@ -2046,6 +2046,35 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         if (source.Content is DeckMonitorView view)
             view.ApplyInteractivePercent(requested, monitor.Interaction == DeckMonitorInteraction.Microphone ? "MIC" : monitor.Name);
     }
+
+    void PresentMonitorWheelAdjustment(Button source, DeckMonitorDefinition monitor, double requested)
+    {
+        // The monitor tile already provides immediate percentage feedback.
+        // Wheel input therefore stays lightweight and never opens a persistent
+        // detailed Slider over the Deck. If the user deliberately opened that
+        // control by clicking, keep its value synchronized without reopening it.
+        if (ReferenceEquals(source, monitorControlSource)
+            && monitorControlInteraction == monitor.Interaction
+            && monitorControlSlider != null)
+            UpdateMonitorControlDisplay(requested);
+        ApplyInteractiveMonitorValue(source, monitor, requested);
+    }
+
+    internal void PresentMonitorWheelAdjustmentForTest(int slot, string monitorId, double requested)
+    {
+        if (slot < 1 || slot > deckButtons.Count || !DeckMonitorCatalog.TryGet(monitorId, out var monitor))
+            return;
+        PresentMonitorWheelAdjustment(deckButtons[slot - 1], monitor, requested);
+    }
+
+    internal void ShowMonitorControlForTest(int slot, string monitorId, double value, bool muted = false)
+    {
+        if (slot < 1 || slot > deckButtons.Count || !DeckMonitorCatalog.TryGet(monitorId, out var monitor))
+            return;
+        ShowMonitorControl(deckButtons[slot - 1], monitor, value, muted);
+    }
+
+    internal void CloseMonitorControlForTest() => CloseMonitorControl();
 
     void QueueBrightnessValue(double requested)
     {
@@ -2208,7 +2237,12 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             MinWidth = 0,
             MinHeight = 0,
             Padding = new Thickness(0),
-            Style = GlassButtonStyle(),
+            BorderThickness = new Thickness(0),
+            Background = WpfBrushes.Transparent,
+            BorderBrush = WpfBrushes.Transparent,
+            Foreground = ThemeService.Brush("SecondaryText"),
+            FontSize = 16,
+            Style = CloseButtonStyle(),
             Focusable = false
         };
         close.Click += (_, _) => CloseMonitorControl();
@@ -2281,10 +2315,16 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             {
                 Content = muted ? "解除" : "ミュート",
                 Height = 28,
-                MinWidth = 58,
+                MinWidth = 48,
                 Margin = new Thickness(8, 0, 0, 0),
-                Padding = new Thickness(8, 2, 8, 2),
-                Style = GlassButtonStyle(),
+                Padding = new Thickness(4, 2, 4, 2),
+                BorderThickness = new Thickness(0),
+                Background = WpfBrushes.Transparent,
+                BorderBrush = WpfBrushes.Transparent,
+                Foreground = muted ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SecondaryText"),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Style = CloseButtonStyle(),
                 Focusable = false
             };
             controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2295,6 +2335,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
                 if (SystemControlService.TrySetMute(capture, muted))
                 {
                     mute.Content = muted ? "解除" : "ミュート";
+                    mute.Foreground = muted ? ThemeService.Brush("AccentBrush") : ThemeService.Brush("SecondaryText");
                     SystemMonitorService.Shared.RequestRefresh();
                 }
                 else

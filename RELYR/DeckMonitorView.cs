@@ -432,6 +432,7 @@ internal sealed class DeckMonitorView : Grid
             "battery" => dark ? "#8FDA54" : "#4E8A20",
             "volume" or "microphone" => dark ? "#F0809D" : "#B42A50",
             "brightness" => dark ? "#FFD34E" : "#946D00",
+            "timer" => dark ? "#F1B82D" : "#9A6B00",
             "bluetooth" => dark ? "#7F9DFF" : "#405DB8",
             "clock" or "date" or "uptime" or "virtual-desktop" => dark ? "#A98CFF" : "#6246A9",
             "system-status" => dark ? "#74DD77" : "#2F8132",

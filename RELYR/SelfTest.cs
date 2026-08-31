@@ -470,7 +470,7 @@ public static class SelfTest
             Check(loaded.DetailedDiagnosticsEnabled, "the explicit detailed-diagnostics consent setting roundtrips without being enabled by default");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
             Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 2) is { DeckMonitor: "battery" }, "Deck monitor identity roundtrip");
-            Check(DeckMonitorCatalog.Items.Count >= 20 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop") && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor) && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle, "Deck monitor catalog includes status, desktop, direct-control, and auto-extraction toggle tiles");
+            Check(DeckMonitorCatalog.Items.Count >= 27 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop") && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor) && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle && DeckMonitorCatalog.TryGet("timer", out var timerMonitor) && timerMonitor.Interaction == DeckMonitorInteraction.Timer, "Deck monitor catalog includes status, desktop, direct-control, auto-extraction, and timer tiles");
             Check(DeckMonitorCatalog.Items.All(item => item.Glyph.Length == 1 && item.Glyph[0] is >= '\uE000' and <= '\uF8FF'), "every Deck monitor uses one supported private-use Fluent icon instead of text rendered through an icon font");
             Check(DeckMonitorCatalog.Items.All(item => item.Name.All(character => character <= 0x7f))
                 && DeckMonitorCatalog.TryGet("disk-write", out var writeMonitor) && writeMonitor.Name == "WRITE"
@@ -478,6 +478,14 @@ public static class SelfTest
                 && DeckMonitorCatalog.TryGet("network-up", out var uploadMonitor) && uploadMonitor.Name == "UPLOAD"
                 && DeckMonitorCatalog.TryGet("network-down", out var downloadMonitor) && downloadMonitor.Name == "DOWNLOAD",
                 "Deck monitor face labels use compact English terminology consistently");
+            Check(DeckMonitorCatalog.PaletteDescription("cpu") == "CPU使用率"
+                && DeckMonitorCatalog.PaletteDescription("brightness") == "画面の明るさ"
+                && DeckMonitorCatalog.PaletteDescription("timer") == "タイマーの残り時間"
+                && !DeckMonitorCatalog.PaletteDescription("volume").Contains("クリック", StringComparison.Ordinal),
+                "Deck monitor library uses concise Japanese explanations without operation instructions on Action cards");
+            Check(DeckTimerService.FormatRemaining(TimeSpan.FromSeconds(61)) == "01:01"
+                && DeckTimerService.FormatRemaining(TimeSpan.FromHours(1) + TimeSpan.FromSeconds(2)) == "1:00:02",
+                "Deck timer countdown formatting remains compact on the English Deck face");
             var desktopReading = SystemMonitorService.VirtualDesktopReading(4, 2);
             Check(desktopReading is { Text: "2", Detail: "OF 4", Available: true }
                 && Math.Abs(desktopReading.Level!.Value - .5) < .001

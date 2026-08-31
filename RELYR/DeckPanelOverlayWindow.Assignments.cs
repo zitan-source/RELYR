@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -30,6 +31,25 @@ internal sealed partial class DeckPanelOverlayWindow
     System.Windows.Controls.ContextMenu CreateDeckButtonContextMenu(int slot)
     {
         var menu = new System.Windows.Controls.ContextMenu { MinWidth = 242 };
+        var timerOne = CreateDeckContextMenuItem("\uE823", "1分", "");
+        timerOne.Click += (_, _) => StartDeckTimer(TimeSpan.FromMinutes(1));
+        var timerThree = CreateDeckContextMenuItem("\uE823", "3分", "");
+        timerThree.Click += (_, _) => StartDeckTimer(TimeSpan.FromMinutes(3));
+        var timerTen = CreateDeckContextMenuItem("\uE823", "10分", "");
+        timerTen.Click += (_, _) => StartDeckTimer(TimeSpan.FromMinutes(10));
+        var timerThirty = CreateDeckContextMenuItem("\uE823", "30分", "");
+        timerThirty.Click += (_, _) => StartDeckTimer(TimeSpan.FromMinutes(30));
+        var timerCustom = CreateDeckContextMenuItem("\uE787", "任意...", "");
+        timerCustom.Click += (_, _) => PromptAndStartDeckTimer();
+        var timerCancel = CreateDeckContextMenuItem("\uE711", "タイマーを停止", "", true);
+        timerCancel.Click += (_, _) => DeckTimerService.Shared.Cancel();
+        var timerSeparator = new Separator();
+        FrameworkElement[] timerControls = [timerOne, timerThree, timerTen, timerThirty, timerCustom, timerCancel, timerSeparator];
+        foreach (FrameworkElement control in timerControls)
+        {
+            control.Visibility = Visibility.Collapsed;
+            menu.Items.Add(control);
+        }
         var rename = CreateDeckContextMenuItem("\uE70F", "名前の変更...", "");
         rename.Click += (_, _) => RenameDeckButton(slot);
         var copy = CreateDeckContextMenuItem("\uE8C8", "コピー", "");
@@ -60,6 +80,11 @@ internal sealed partial class DeckPanelOverlayWindow
         menu.Opened += (_, _) =>
         {
             var mapping = DeckPanelLayout.FindMapping(layout, slot);
+            bool timerMonitor = string.Equals(mapping?.DeckMonitor, "timer", StringComparison.OrdinalIgnoreCase);
+            bool timerRunning = DeckTimerService.Shared.Snapshot().IsRunning;
+            foreach (FrameworkElement control in timerControls)
+                control.Visibility = timerMonitor ? Visibility.Visible : Visibility.Collapsed;
+            timerCancel.Visibility = timerMonitor && timerRunning ? Visibility.Visible : Visibility.Collapsed;
             copy.IsEnabled = DeckPanelLayout.IsAvailableFile(mapping);
             paste.IsEnabled = ClipboardFile() != null;
             reveal.IsEnabled = DeckPanelLayout.IsAvailableFile(mapping);
@@ -68,6 +93,109 @@ internal sealed partial class DeckPanelOverlayWindow
         };
         TrackContextMenu(menu);
         return menu;
+    }
+
+    static void StartDeckTimer(TimeSpan duration)
+        => DeckTimerService.Shared.Start(duration);
+
+    void PromptAndStartDeckTimer()
+    {
+        DeckTimerSnapshot snapshot = DeckTimerService.Shared.Snapshot();
+        double initialMinutes = snapshot.Duration.TotalMinutes is >= 1 and <= 1440
+            ? snapshot.Duration.TotalMinutes
+            : 5;
+        var dialog = new Window
+        {
+            Title = "タイマー",
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = 400,
+            Height = 228,
+            ResizeMode = ResizeMode.NoResize,
+            Background = ThemeService.Brush("SurfaceBackground"),
+            Foreground = ThemeService.Brush("PrimaryText"),
+            ShowInTaskbar = false,
+            Topmost = true
+        };
+        var panel = new StackPanel { Margin = new Thickness(22) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "時間（分）",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        var box = new System.Windows.Controls.TextBox
+        {
+            Text = initialMinutes.ToString("0.#", CultureInfo.CurrentCulture),
+            FontSize = 15,
+            Height = 40,
+            Padding = new Thickness(10, 7, 10, 7),
+            MaxLength = 6,
+            Background = ThemeService.Brush("InputBackground"),
+            Foreground = ThemeService.Brush("PrimaryText"),
+            BorderBrush = ThemeService.Brush("BorderBrush")
+        };
+        panel.Children.Add(box);
+        var validation = new TextBlock
+        {
+            Text = "1〜1440分で指定",
+            FontSize = 11,
+            Margin = new Thickness(1, 5, 0, 0),
+            Foreground = ThemeService.Brush("SecondaryText")
+        };
+        panel.Children.Add(validation);
+        var buttons = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 14, 0, 0)
+        };
+        var cancel = new Button
+        {
+            Content = "キャンセル",
+            Width = 98,
+            Height = 40,
+            Margin = new Thickness(6, 0, 0, 0),
+            Style = (Style)WpfApplication.Current.FindResource("AppButtonStyle")
+        };
+        var start = new Button
+        {
+            Content = "開始",
+            Width = 98,
+            Height = 40,
+            Margin = new Thickness(6, 0, 0, 0),
+            Style = (Style)WpfApplication.Current.FindResource("AccentAppButtonStyle"),
+            IsDefault = true
+        };
+        cancel.Click += (_, _) => dialog.DialogResult = false;
+        start.Click += (_, _) =>
+        {
+            if (!TryParseTimerMinutes(box.Text, out double minutes))
+            {
+                validation.Text = "1〜1440分の数値を入力してください";
+                validation.Foreground = ThemeService.Brush("DangerBrush");
+                box.Focus();
+                box.SelectAll();
+                return;
+            }
+            dialog.Tag = TimeSpan.FromMinutes(minutes);
+            dialog.DialogResult = true;
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(start);
+        panel.Children.Add(buttons);
+        dialog.Content = panel;
+        dialog.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+        if (dialog.ShowDialog() == true && dialog.Tag is TimeSpan requested)
+            StartDeckTimer(requested);
+    }
+
+    internal static bool TryParseTimerMinutes(string? text, out double minutes)
+    {
+        bool parsed = double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out minutes)
+            || double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out minutes);
+        return parsed && double.IsFinite(minutes) && minutes is >= 1 and <= 1440;
     }
     static System.Windows.Controls.MenuItem CreateDeckContextMenuItem(string icon, string label, string shortcut, bool danger = false)
     {

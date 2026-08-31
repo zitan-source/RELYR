@@ -17,7 +17,8 @@ public enum DeckMonitorInteraction
     Brightness,
     WifiSettings,
     BluetoothSettings,
-    AutoExtractToggle
+    AutoExtractToggle,
+    Timer
 }
 
 public static class DeckMonitorCatalog
@@ -41,6 +42,7 @@ public static class DeckMonitorCatalog
         new("network-status", "NETWORK", "ネットワーク接続状態。クリックでタスクマネージャー", "\uE701", Category, DeckMonitorInteraction.TaskManager),
         new("network-latency", "PING", "既定ゲートウェイまでの応答時間。クリックでタスクマネージャー", "\uE823", Category, DeckMonitorInteraction.TaskManager),
         new("virtual-desktop", "DESKTOP", "現在の仮想デスクトップ番号", "\uE7C4", Category),
+        new("timer", "TIMER", "残り時間。右クリックで時間を設定", "\uE823", Category, DeckMonitorInteraction.Timer),
         new("clock", "CLOCK", "現在時刻", "\uE823", Category),
         new("date", "DATE", "今日の日付", "\uE787", Category),
         new("uptime", "UPTIME", "Windowsの連続稼働時間", "\uE81C", Category),
@@ -61,4 +63,36 @@ public static class DeckMonitorCatalog
     }
 
     public static bool IsMonitor(string? id) => TryGet(id, out _);
+
+    public static string PaletteDescription(string? id) => id?.ToLowerInvariant() switch
+    {
+        "cpu" => "CPU使用率",
+        "memory" => "メモリ使用率",
+        "temperature" => "CPU温度",
+        "gpu-temperature" => "GPU温度",
+        "gpu" => "GPU使用率",
+        "vram" => "GPUメモリ使用量",
+        "fan" => "ファン回転数",
+        "disk" => "システムドライブ使用率",
+        "disk-read" => "ディスク読み込み速度",
+        "disk-write" => "ディスク書き込み速度",
+        "network-up" => "ネットワーク送信速度",
+        "network-down" => "ネットワーク受信速度",
+        "network-status" => "ネットワーク接続状態",
+        "network-latency" => "ネットワーク応答時間",
+        "virtual-desktop" => "現在の仮想デスクトップ",
+        "timer" => "タイマーの残り時間",
+        "clock" => "現在時刻",
+        "date" => "今日の日付",
+        "uptime" => "Windowsの連続稼働時間",
+        "battery" => "バッテリー残量",
+        "volume" => "現在の音量",
+        "microphone" => "マイクの状態",
+        "brightness" => "画面の明るさ",
+        "wifi" => "Wi-Fi接続状態",
+        "bluetooth" => "Bluetooth接続状態",
+        "auto-extract" => "自動解凍の状態",
+        "system-status" => "システム全体の状態",
+        _ => "モニター"
+    };
 }

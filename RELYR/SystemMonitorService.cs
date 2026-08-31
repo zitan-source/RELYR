@@ -183,6 +183,7 @@ internal sealed class SystemMonitorService : IDisposable
             : new SystemMonitorReading("—", "N/A", Available: false);
 
         readings["virtual-desktop"] = ReadVirtualDesktop();
+        readings["timer"] = DeckTimerService.Shared.Reading();
         DateTime now = DateTime.Now;
         readings["clock"] = new SystemMonitorReading(now.ToString("HH:mm"), now.ToString("ddd"), (now.Minute * 60d + now.Second) / 3600);
         readings["date"] = new SystemMonitorReading(now.ToString("M/d"), now.ToString("yyyy"), (now.Day - 1d) / DateTime.DaysInMonth(now.Year, now.Month));
