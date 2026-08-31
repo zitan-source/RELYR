@@ -740,7 +740,7 @@ internal static class UiIntegrationTest
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("アプリ", "Sample App", "", ActionKind.Launch, "sample.exe"), "アプリ") == "アプリ"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("パス・文字列", "文字列を入力…", "", ActionKind.Text, "", CatalogActionValueRequest.Text), "パス・文字列") == "ドロップ後に指定"
                 && MainWindow.ActionPaletteItemDetail(new CatalogAction("マクロ", "Sample Macro", "", ActionKind.Macro, "sample"), "マクロ") == "マクロ"
-                && MainWindow.ActionPaletteItemDetail(new CatalogAction(DeckMonitorCatalog.Category, "BRIGHTNESS", "", ActionKind.Disabled, "RELYR:DeckMonitor:brightness"), DeckMonitorCatalog.Category) == "画面の明るさ",
+                && MainWindow.ActionPaletteItemDetail(new CatalogAction(DeckMonitorCatalog.Category, "画面の明るさ", "", ActionKind.Disabled, "RELYR:DeckMonitor:brightness"), DeckMonitorCatalog.Category) == "モニター",
                 "Action rows show the actual key or shortcut below keyboard actions while non-key actions keep a concise type label");
             window.ActionPaletteSearchBox.Text = "音量";
             window.ActionPaletteSearchBox.Focus();
@@ -1655,8 +1655,8 @@ internal static class UiIntegrationTest
                 "the Deck editor alone exposes the monitor library in the existing Action pane");
             var deckCategoryNames = window.ActionPaletteCategoryBox.Items.Cast<object>().Select(item => item.ToString() ?? "").ToArray();
             Check(Array.IndexOf(deckCategoryNames, DeckMonitorCatalog.Category) < Array.IndexOf(deckCategoryNames, "Windows")
-                && window.ActionPaletteDetailsForTest.Any(entry => entry.Action.Value == "RELYR:DeckMonitor:timer" && entry.Detail == "タイマーの残り時間"),
-                "Deck editing places the monitor category at the start of Functions and gives its English face labels concise Japanese library explanations");
+                && window.ActionPaletteDetailsForTest.Any(entry => entry.Action.Value == "RELYR:DeckMonitor:timer" && entry.Action.Name == "タイマーの残り時間" && entry.Detail == "モニター"),
+                "Deck editing places the monitor category at the start of Functions, uses Japanese Action names, and keeps the small type label as Monitor");
             window.SelectActionPalettePopupItemForTest(DeckMonitorCatalog.Category);
             Pump(window);
             Check(window.IsActionPaletteOpenForTest && window.ActionPaletteCategoryBox.SelectedItem?.ToString() == DeckMonitorCatalog.Category,

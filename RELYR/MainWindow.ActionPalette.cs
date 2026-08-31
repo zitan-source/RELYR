@@ -348,8 +348,8 @@ public partial class MainWindow
         {
             actions.AddRange(DeckMonitorCatalog.Items.Select(monitor => new CatalogAction(
                 DeckMonitorCatalog.Category,
-                monitor.Name,
-                monitor.Description,
+                DeckMonitorCatalog.PaletteDescription(monitor.Id),
+                $"{monitor.Name}：{monitor.Description}",
                 ActionKind.Disabled,
                 DeckMonitorActionPrefix + monitor.Id)));
         }
@@ -510,11 +510,6 @@ public partial class MainWindow
 
     internal static string ActionPaletteItemDetail(CatalogAction action, string group)
     {
-        if (action.Kind == ActionKind.Disabled
-            && string.Equals(action.Category, DeckMonitorCatalog.Category, StringComparison.OrdinalIgnoreCase)
-            && action.Value.StartsWith(DeckMonitorActionPrefix, StringComparison.OrdinalIgnoreCase)
-            && DeckMonitorCatalog.TryGet(action.Value[DeckMonitorActionPrefix.Length..], out var monitor))
-            return DeckMonitorCatalog.PaletteDescription(monitor.Id);
         if (action.ValueRequest != CatalogActionValueRequest.None)
             return "ドロップ後に指定";
         string value = action.Value?.Trim() ?? string.Empty;
