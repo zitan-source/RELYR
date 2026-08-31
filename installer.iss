@@ -25,16 +25,11 @@ DefaultDirName={autopf}\RELYR
 DefaultGroupName=RELYR
 OutputDir={#InstallerOutputDir}
 OutputBaseFilename=RELYR-{#DistributionName}-{#AppVersion}
-; Keep the runtime-bearing full setup transparent. Use Inno Setup's normal,
-; non-solid compression for the lightweight update so endpoint scanners can
-; inspect its payload without the high-entropy ultra64/solid container.
-#ifdef IncludeRuntime
+; Keep both distributions transparent and non-solid so endpoint scanners can
+; inspect each payload directly. The update remains smaller because it omits
+; the bundled .NET Desktop Runtime.
 Compression=none
 SolidCompression=no
-#else
-Compression=lzma2/normal
-SolidCompression=no
-#endif
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

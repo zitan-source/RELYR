@@ -60,8 +60,8 @@ if($installerText -notmatch '(?is)function\s+PrepareToInstall.*?\{app\}\\\{#AppE
 if($installerText -match '(?im)^ApplicationsFound=.*(?:2件表示|管理者入力ヘルパー).*$' -or $installerText -notmatch '(?im)^ApplicationsFound=.*実行中のRELYRを自動終了.*$'){
   throw "Installer must describe the single-process RELYR shutdown flow"
 }
-if($installerText -notmatch '(?is)#ifdef\s+IncludeRuntime.*?Compression=none.*?SolidCompression=no.*?#else.*?Compression=lzma2/normal.*?SolidCompression=no.*?#endif'){
-  throw "Full setup must stay transparent while the lightweight update uses the Defender-safe compressed container"
+if($installerText -notmatch '(?im)^Compression=none\s*$' -or $installerText -notmatch '(?im)^SolidCompression=no\s*$' -or $installerText -match '(?im)^Compression=(?!none\s*$)'){
+  throw "Both installers must use transparent non-solid containers for reliable endpoint inspection"
 }
 if($installerText -notmatch '(?im)^UninstallDisplayName=\{#AppName\}\s*$' -or $installerText -notmatch '(?im)^Name:.*\{uninstallexe\}'){
   throw "Installer must present the uninstaller with the RELYR name"
@@ -173,7 +173,7 @@ $setupLength=(Get-Item -LiteralPath $installers[0]).Length
 $updateLength=(Get-Item -LiteralPath $installers[1]).Length
 $runtimeLength=(Get-Item -LiteralPath $runtimeInstaller).Length
 if($setupLength -le $runtimeLength){throw "Full setup does not contain the bundled .NET Desktop Runtime."}
-if($updateLength -ge 25MB){throw "Update installer unexpectedly contains a large runtime payload."}
+if($updateLength -ge $runtimeLength){throw "Update installer unexpectedly contains the bundled runtime payload."}
 
 # Scan the isolated, fully validated installer pair before replacing the retained
 # production release. A failed/disabled Defender scan must leave the old release
@@ -184,6 +184,10 @@ if(-not $defenderStatus.AntivirusEnabled -or -not $defenderStatus.RealTimeProtec
 }
 $scanStarted=Get-Date
 Start-MpScan -ScanType CustomScan -ScanPath $installerOutputDirectory -ErrorAction Stop
+# Defender may report a cloud/behavior result several seconds after the custom
+# scan command returns. Keep the candidate isolated during that settling window
+# so a delayed quarantine can never race production replacement.
+Start-Sleep -Seconds 30
 $installerPatterns=@($installers|ForEach-Object{[regex]::Escape([System.IO.Path]::GetFullPath($_))})
 $matchingDetections=@(Get-MpThreatDetection -ErrorAction SilentlyContinue|Where-Object{
   $resources=($_.Resources -join "`n")
