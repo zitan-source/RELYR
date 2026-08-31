@@ -24,6 +24,26 @@ namespace RELYR;
 
 public partial class MainWindow
 {
+    void RefreshLocalizedUi()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(RefreshLocalizedUi);
+            return;
+        }
+        if (editorUiInitialized)
+        {
+            RefreshActionPalette();
+            UpdateAutoSaveToggleText();
+            UpdateStatus();
+        }
+        if (appliedConfig != null)
+        {
+            RebuildTrayMenu();
+            UpdateTrayNumber();
+        }
+    }
+
     internal void OpenSettingsFrom(Window owner, string? category = null)
     {
         if (settingsWindow is { IsVisible: true } existing)
@@ -114,6 +134,10 @@ public partial class MainWindow
         config.ShowProfileSwitchOverlay = window.ShowProfileSwitchOverlay;
         config.WindowActionTarget = window.SelectedWindowActionTarget;
         config.ThemeMode = window.SelectedThemeMode;
+        config.UiLanguage = window.SelectedUiLanguage;
+        LocalizationService.Apply(config.UiLanguage);
+        if (editorUiInitialized)
+            RefreshActionPalette();
         config.UiAnimationsEnabled = window.UiAnimationsEnabled;
         config.DetailedDiagnosticsEnabled = window.DetailedDiagnosticsEnabled;
         DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
@@ -154,6 +178,7 @@ public partial class MainWindow
         destination.LastShownUpdateNotesVersion = source.LastShownUpdateNotesVersion;
         destination.WindowActionTarget = source.WindowActionTarget;
         destination.ThemeMode = source.ThemeMode;
+        destination.UiLanguage = source.UiLanguage;
         destination.UiAnimationsEnabled = source.UiAnimationsEnabled;
         destination.DetailedDiagnosticsEnabled = source.DetailedDiagnosticsEnabled;
         destination.AutoSave = source.AutoSave;
@@ -176,6 +201,7 @@ public partial class MainWindow
         config = value;
         ResetEditorHistory();
         DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
+        LocalizationService.Apply(config.UiLanguage);
         UiMotionService.Apply(config.UiAnimationsEnabled);
         if (!config.UiAnimationsEnabled && editorUiInitialized)
             SettleLayerEditorMotion();

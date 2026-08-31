@@ -343,6 +343,7 @@ public sealed class ConfigService
         value.PendingUpdateNotesBody ??= "";
         value.LastShownUpdateNotesVersion ??= "";
         value.KeyboardLayout = value.KeyboardLayout?.Equals("US", StringComparison.OrdinalIgnoreCase) == true ? "US" : "JIS";
+        value.UiLanguage = LocalizationService.Normalize(value.UiLanguage);
         value.EmergencyShortcut = string.IsNullOrWhiteSpace(value.EmergencyShortcut) ? "Ctrl+Alt+Shift+F12" : value.EmergencyShortcut;
         value.ClockBackgroundImage ??= "";
         value.ClockSolidColor ??= "#101F2E";

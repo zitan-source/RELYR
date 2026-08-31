@@ -171,6 +171,7 @@ public sealed class AppConfig
     public WindowActionTarget WindowActionTarget { get; set; } = WindowActionTarget.ActiveWindow;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
+    public string UiLanguage { get; set; } = LocalizationService.Japanese;
     public bool UiAnimationsEnabled { get; set; } = true;
     public List<string> ActionPaletteFavorites { get; set; } = [];
     public List<string> ActionPaletteRecentActions { get; set; } = [];

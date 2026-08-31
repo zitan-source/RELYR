@@ -783,12 +783,12 @@
         <Grid Margin="5,0,5,0">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <Border Grid.Row="0" Height="1" Margin="7,7,7,5" Background="{DynamicResource SubtleBorderBrush}" Visibility="{Binding ShowDivider,Converter={StaticResource BooleanToVisibilityConverter}}"/>
-          <TextBlock Grid.Row="1" Text="{Binding Section}" Margin="9,1,9,4" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource MutedText}" Visibility="{Binding StartsSection,Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <TextBlock Grid.Row="1" Text="{Binding DisplaySection}" Margin="9,1,9,4" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource MutedText}" Visibility="{Binding StartsSection,Converter={StaticResource BooleanToVisibilityConverter}}"/>
           <Border x:Name="CategoryItemBorder" Grid.Row="2" MinHeight="36" Padding="9,0,8,0" Background="Transparent" CornerRadius="7" SnapsToDevicePixels="True">
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
               <TextBlock Style="{StaticResource ActionPaletteCategoryGlyphStyle}" Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" HorizontalAlignment="Left" VerticalAlignment="Center" TextAlignment="Center"/>
-              <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
               <TextBlock x:Name="CategorySelectedCheck" Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource AccentTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0"/>
             </Grid>
           </Border>

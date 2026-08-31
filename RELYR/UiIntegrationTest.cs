@@ -1317,6 +1317,19 @@ internal static class UiIntegrationTest
             themedSettings.UpdateLayout();
             Check(themedSettings.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode(), "settings title bar follows the Windows app theme");
             themedSettings.Close();
+            var englishSettings = new SettingsWindow(new AppConfig { UiLanguage = LocalizationService.English }) { Owner = window, ShowInTaskbar = false };
+            englishSettings.Show();
+            englishSettings.UpdateLayout();
+            Check(englishSettings.Title == "Settings"
+                && englishSettings.CategoryList.Items.Cast<ListBoxItem>().First().Content?.ToString() == "General"
+                && englishSettings.SelectedUiLanguage == LocalizationService.English,
+                "English can be loaded from settings before the window is shown and applies throughout the settings UI");
+            englishSettings.LanguageBox.SelectedIndex = 0;
+            englishSettings.UpdateLayout();
+            Check(englishSettings.Title == "設定" && englishSettings.SelectedUiLanguage == LocalizationService.Japanese,
+                "changing the display language in Settings updates the open UI immediately");
+            englishSettings.Close();
+            LocalizationService.Apply(LocalizationService.Japanese);
             var numpadOverlay = new InputPanelOverlayWindow(false, 63);
             var extendedOverlay = new InputPanelOverlayWindow(true);
             numpadOverlay.Show();
@@ -3992,7 +4005,9 @@ internal static class UiIntegrationTest
                 appSwitch.ApplyTemplate();
             Check(settingsSwitches.Length == 12 && settingsSwitches.All(appSwitch => appSwitch.Template.FindName("SwitchTrack", appSwitch) is Border),
                 "all twelve remaining settings checkboxes render through the shared RELYR switch template");
-            Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll => ReferenceEquals(scroll, settings.LayersScrollPanel)), "only the longer layer category uses a bounded scroll surface");
+            Check(Descendants<System.Windows.Controls.ScrollViewer>(settings).All(scroll =>
+                    ReferenceEquals(scroll, settings.GeneralScrollPanel) || ReferenceEquals(scroll, settings.LayersScrollPanel)),
+                "general and the longer layer category use bounded scroll surfaces while compact pages stay fixed");
             settings.CategoryList.SelectedIndex = 6;
             settings.UpdateLayout();
             Check(settings.UpdatePanel.Visibility == Visibility.Visible && settings.GeneralPanel.Visibility == Visibility.Collapsed && settings.CheckForUpdatesButton.Content?.ToString() == "アップデートを確認" && settings.InstallUpdateButton.Content?.ToString() == "今すぐアップデート" && settings.InstallUpdateButton.Visibility == Visibility.Visible && settings.UpdateStatusText.Text.Contains("v99.0.0") && settings.UpdateStatusText.Foreground is SolidColorBrush availableBrush && availableBrush.Color == ThemeService.Color("WarningBrush") && !settings.UpdateStatusText.Text.EndsWith('。'), "available update uses a clear orange status without unnecessary terminal punctuation");
@@ -4115,7 +4130,10 @@ internal static class UiIntegrationTest
             var settingsWithAutoSave = new SettingsWindow(new AppConfig { AutoSave = true, SpaceHoldRepeatEnabled = true, SpaceHoldRepeatDelayMs = 450 }) { Owner = window, ShowInTaskbar = false };
             settingsWithAutoSave.Show();
             settingsWithAutoSave.UpdateLayout();
-            Check(settingsWithAutoSave.GeneralPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.GeneralPanel.Parent).ActualHeight + .5, "general settings surface fits above the footer without clipping");
+            Check(settingsWithAutoSave.GeneralScrollPanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.GeneralScrollPanel.Parent).ActualHeight + .5
+                && settingsWithAutoSave.GeneralScrollPanel.ViewportHeight > 0
+                && settingsWithAutoSave.GeneralScrollPanel.ScrollableHeight >= 0,
+                "general settings remain fully reachable through a bounded scroll surface without covering the footer");
             settingsWithAutoSave.CategoryList.SelectedIndex = 6;
             settingsWithAutoSave.UpdateLayout();
             Check(settingsWithAutoSave.UpdatePanel.ActualHeight <= ((FrameworkElement)settingsWithAutoSave.UpdatePanel.Parent).ActualHeight + .5, "update settings surface fits above the footer without clipping");

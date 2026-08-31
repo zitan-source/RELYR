@@ -145,6 +145,7 @@ public partial class MainWindow : Window
     UpdateInfo? availableUpdate;
     UpdateCheckResult? lastUpdateCheck;
     SettingsWindow? settingsWindow;
+    readonly Action languageChangedHandler;
     internal event Action<UpdateCheckResult>? UpdateCheckCompleted;
     readonly StableNotifyIcon tray = new();
     readonly bool suppressTray;
@@ -182,8 +183,13 @@ public partial class MainWindow : Window
         this.suppressTray = !NativeTrayRegistrationAllowed(suppressTray);
         this.runtimeRole = runtimeRole;
         inputHooksRequired = startInputHooks;
+        config = startupConfig ?? store.Load();
+        LocalizationService.Apply(config.UiLanguage);
+        languageChangedHandler = RefreshLocalizedUi;
+        LocalizationService.LanguageChanged += languageChangedHandler;
         loading = true;
         InitializeComponent();
+        LocalizationService.LocalizeTree(this);
         Loaded += (_, _) =>
         {
             EnsureUpdateCheckStarted();
@@ -205,7 +211,6 @@ public partial class MainWindow : Window
         ArrangeInputWorkspace();
         VersionText.Text = "v" + DisplayVersion;
         Title = "RELYR v" + DisplayVersion;
-        config = startupConfig ?? store.Load();
         DiagnosticLogStorage.Configure(config.DetailedDiagnosticsEnabled);
         ArchiveAutomationState.Set(config.AutoExtractDesktopArchives);
         ThemeService.Apply(config.ThemeMode);

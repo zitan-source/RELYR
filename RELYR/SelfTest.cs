@@ -10,7 +10,7 @@ public static class SelfTest
     {
         var report = new VerificationReport(output);
         Action<bool, string> Check = report.Check;
-        Check(new AppConfig() is { AutoSave: true, UiAnimationsEnabled: true, DetailedDiagnosticsEnabled: false }, "new installations default auto-save and RELYR animations to on while detailed diagnostics stay opt-in");
+        Check(new AppConfig() is { AutoSave: true, UiAnimationsEnabled: true, DetailedDiagnosticsEnabled: false, UiLanguage: LocalizationService.Japanese }, "new installations default to Japanese, auto-save and RELYR animations on, while detailed diagnostics stay opt-in");
         string dir = VerificationPaths.CreateRunDirectory("self-test");
         try
         {
@@ -55,6 +55,17 @@ public static class SelfTest
                 "production-style status logs exclude details, detailed diagnostics require explicit consent, and old or disabled details are deleted");
             var service = new ConfigService(dir);
             var config = service.Load();
+            string languageDirectory = Path.Combine(dir, "language-roundtrip");
+            var languageService = new ConfigService(languageDirectory);
+            languageService.Save(new AppConfig { UiLanguage = "english" });
+            var englishConfig = languageService.Load();
+            LocalizationService.Apply(englishConfig.UiLanguage);
+            bool englishLocalized = englishConfig.UiLanguage == LocalizationService.English
+                && LocalizationService.Text("設定") == "Settings"
+                && LocalizationService.Text("GPU温度") == "GPU temperature";
+            LocalizationService.Apply(LocalizationService.Japanese);
+            Check(englishLocalized && LocalizationService.Normalize("unsupported") == LocalizationService.Japanese,
+                "display language normalizes, persists, translates shared UI and monitor labels, and safely falls back to Japanese");
             var inputPanelPositions = new AppConfig { NumpadPanelLeft = 123.5, NumpadPanelTop = 234.5, ExtendedKeypadPanelLeft = 345.5, ExtendedKeypadPanelTop = 456.5 };
             (bool Extended, double Left, double Top)? persistedInputPosition = null;
             var savedNumpad = new InputPanelOverlayWindow(false, config: inputPanelPositions, positionChanged: (extended, left, top) => persistedInputPosition = (extended, left, top));

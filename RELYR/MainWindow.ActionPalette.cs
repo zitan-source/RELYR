@@ -60,10 +60,10 @@ public partial class MainWindow
         bool IsFavorite = false)
     {
         public string FavoriteGlyph => IsFavorite ? "★" : "☆";
-        public string FavoriteToolTip => IsFavorite ? "お気に入りから外す" : "お気に入りに追加";
+        public string FavoriteToolTip => LocalizationService.Text(IsFavorite ? "お気に入りから外す" : "お気に入りに追加");
         public string ToolTipText => string.IsNullOrWhiteSpace(Action.Description)
             ? Name
-            : $"{Name}\n{Action.Description}";
+            : $"{Name}\n{LocalizationService.Text(Action.Description)}";
     }
 
     internal sealed record ActionPaletteCategoryOption(
@@ -74,7 +74,9 @@ public partial class MainWindow
         bool StartsSection,
         bool ShowDivider)
     {
-        public override string ToString() => Name;
+        public string DisplayName => LocalizationService.Text(Name);
+        public string DisplaySection => LocalizationService.Text(Section);
+        public override string ToString() => DisplayName;
     }
 
     sealed record IndexedMapping(int Index, Mapping Mapping);
@@ -349,7 +351,9 @@ public partial class MainWindow
             actions.AddRange(DeckMonitorCatalog.Items.Select(monitor => new CatalogAction(
                 DeckMonitorCatalog.Category,
                 DeckMonitorCatalog.PaletteDescription(monitor.Id),
-                $"{monitor.Name}：{monitor.Description}",
+                LocalizationService.IsEnglish
+                    ? $"{monitor.Name}: {LocalizationService.Text(monitor.Description)}"
+                    : $"{monitor.Name}：{monitor.Description}",
                 ActionKind.Disabled,
                 DeckMonitorActionPrefix + monitor.Id)));
         }
@@ -359,9 +363,9 @@ public partial class MainWindow
             .Where(action => action != null && action.Kind != ActionKind.None && !string.IsNullOrWhiteSpace(action.Name))
             .Select(action => new ActionPaletteItem(
                 action,
-                action.Name,
+                ActionPaletteDisplayName(action),
                 ActionPaletteGroup(action),
-                ActionPaletteItemDetail(action, ActionPaletteGroup(action)),
+                LocalizationService.Text(ActionPaletteItemDetail(action, ActionPaletteGroup(action))),
                 ActionPaletteGlyph(action),
                 usage.GetValueOrDefault(ActionPaletteSignature(action.Kind, action.Value)),
                 favoriteSignatures.Contains(ActionPaletteSignature(action.Kind, action.Value))))
@@ -400,6 +404,13 @@ public partial class MainWindow
             refreshingActionPalette = false;
         }
         FilterActionPalette();
+    }
+
+    static string ActionPaletteDisplayName(CatalogAction action)
+    {
+        bool userNamed = action.Kind is ActionKind.Profile or ActionKind.Macro or ActionKind.Gesture
+            || action.Category is "インストールアプリ" or "プロファイル切替" or "マクロ" or "ジェスチャー" or "Deckパネル";
+        return userNamed ? action.Name : LocalizationService.Text(action.Name);
     }
 
     static List<ActionPaletteCategoryOption> BuildActionPaletteCategoryOptions(IEnumerable<string> categories)
@@ -724,7 +735,7 @@ public partial class MainWindow
         else if (category != ActionPaletteAllCategory)
             filtered = filtered.Where(item => string.Equals(item.Group, category, StringComparison.OrdinalIgnoreCase));
         if (query.Length > 0)
-            filtered = filtered.Where(item => new[] { item.Name, item.Group, item.Action.Category, item.Action.Description, item.Action.Value }
+            filtered = filtered.Where(item => new[] { item.Name, item.Group, LocalizationService.Text(item.Group), item.Action.Category, LocalizationService.Text(item.Action.Category), item.Action.Description, LocalizationService.Text(item.Action.Description), item.Action.Value }
                 .Any(text => text?.Contains(query, StringComparison.OrdinalIgnoreCase) == true));
         if (category is ActionPaletteFavoritesCategory or ActionPaletteRecentCategory or ActionPaletteAllCategory or ActionPaletteUsedCategory)
             filtered = filtered

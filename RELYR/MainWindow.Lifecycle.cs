@@ -35,6 +35,7 @@ public partial class MainWindow
         SystemEvents.UserPreferenceChanged -= WindowsThemeChanged;
         SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
         ThemeService.ThemeChanged -= AppThemeChanged;
+        LocalizationService.LanguageChanged -= languageChangedHandler;
         MacroPlayer.PlaybackFinished -= MacroPlaybackFinished;
         updateCancellation.Cancel();
         profileOverlay?.Close();

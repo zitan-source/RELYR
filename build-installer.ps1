@@ -45,6 +45,14 @@ $startupRuns=[regex]::Matches($installerText,'(?im)^Filename:.*--configure-start
 if($startupRuns.Count -ne 2 -or @($startupRuns|Where-Object{$_.Value -notmatch '(?i)Check:\s*not IsUpgradeInstall'}).Count -ne 0){
   throw "Upgrade installs must not overwrite the existing Windows startup setting"
 }
+$languageRuns=[regex]::Matches($installerText,'(?im)^Filename:.*--configure-language.*$')
+$hasFreshSetupLanguagePage=$installerText -match '(?is)procedure\s+InitializeWizard.*?#ifdef\s+IncludeRuntime.*?if\s+not\s+UpgradeInstall.*?CreateInputOptionPage\(.*?Display language'
+if($languageRuns.Count -ne 1 -or $languageRuns[0].Value -notmatch '(?i)Check:\s*not IsUpgradeInstall' -or -not $hasFreshSetupLanguagePage){
+  throw "Only a fresh full setup may select and initialize the app display language"
+}
+if($installerText -match '(?im)^\s*Name:\s*"english";\s*MessagesFile:'){
+  throw "The update installer must not show Inno Setup's built-in language dialog"
+}
 if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
   throw "An installer entry unexpectedly forces a Windows restart"
 }

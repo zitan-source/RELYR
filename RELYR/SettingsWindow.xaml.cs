@@ -13,12 +13,15 @@ public partial class SettingsWindow : Window
     readonly AppConfig config;
     readonly bool initialStartWithWindows;
     readonly AppThemeMode originalThemeMode;
+    readonly string originalUiLanguage;
     readonly CancellationTokenSource updateCancellation = new();
     UpdateInfo? availableUpdate;
     UpdateCheckResult? lastUpdateCheck;
     bool updateCheckInProgress;
     private readonly bool themeSelectionLoading = true;
+    private readonly bool languageSelectionLoading = true;
     private bool themeAccepted;
+    private bool languageAccepted;
     private bool ownerUpdateSubscribed;
     readonly List<string> inputDisabledApplications;
 
@@ -48,6 +51,7 @@ public partial class SettingsWindow : Window
     public bool ShowProfileSwitchOverlay => ProfileOverlayBox.IsChecked == true;
     public WindowActionTarget SelectedWindowActionTarget => CursorWindowTargetBox.IsChecked == true ? WindowActionTarget.WindowUnderCursor : WindowActionTarget.ActiveWindow;
     public AppThemeMode SelectedThemeMode => LightThemeBox.IsChecked == true ? AppThemeMode.Light : DarkThemeBox.IsChecked == true ? AppThemeMode.Dark : AppThemeMode.System;
+    public string SelectedUiLanguage => LocalizationService.Normalize((LanguageBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString());
     public bool UiAnimationsEnabled => UiAnimationsBox.IsChecked == true;
     public bool DetailedDiagnosticsEnabled => DetailedDiagnosticsBox.IsChecked == true;
     public bool AutoSave => AutoSaveBox.IsChecked == true;
@@ -90,7 +94,10 @@ public partial class SettingsWindow : Window
     {
         this.config = config;
         originalThemeMode = config.ThemeMode;
+        originalUiLanguage = LocalizationService.Normalize(config.UiLanguage);
+        LocalizationService.Apply(originalUiLanguage);
         InitializeComponent();
+        LocalizationService.LocalizeTree(this);
         inputDisabledApplications = [.. config.InputDisabledApplications];
         RefreshInputDisabledApplications();
         MainWindow.FollowWindowsTitleBarTheme(this, value => TitleBarUsesDarkMode = value);
@@ -106,9 +113,11 @@ public partial class SettingsWindow : Window
         SystemThemeBox.IsChecked = config.ThemeMode == AppThemeMode.System;
         LightThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Light;
         DarkThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Dark;
+        LanguageBox.SelectedIndex = originalUiLanguage == LocalizationService.English ? 1 : 0;
         UiAnimationsBox.IsChecked = config.UiAnimationsEnabled;
         DetailedDiagnosticsBox.IsChecked = config.DetailedDiagnosticsEnabled;
         themeSelectionLoading = false;
+        languageSelectionLoading = false;
         AutoSaveBox.IsChecked = config.AutoSave;
         SpaceRepeatBox.IsChecked = config.SpaceHoldRepeatEnabled;
         SpaceRepeatDelayBox.Text = config.SpaceHoldRepeatDelayMs.ToString();
@@ -208,6 +217,8 @@ public partial class SettingsWindow : Window
             main.UpdateCheckCompleted -= MainUpdateCheckCompleted;
         if (!themeAccepted)
             ThemeService.Apply(originalThemeMode);
+        if (!languageAccepted)
+            LocalizationService.Apply(originalUiLanguage);
     }
     void MainUpdateCheckCompleted(UpdateCheckResult result) => ApplyUpdateResult(result, true);
     void Category_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -215,6 +226,7 @@ public partial class SettingsWindow : Window
         if (GeneralPanel == null)
             return;
         string selected = (CategoryList.SelectedItem as System.Windows.Controls.ListBoxItem)?.Tag?.ToString() ?? "General";
+        GeneralScrollPanel.Visibility = selected == "General" ? Visibility.Visible : Visibility.Collapsed;
         GeneralPanel.Visibility = selected == "General" ? Visibility.Visible : Visibility.Collapsed;
         AppearancePanel.Visibility = selected == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
         UpdatePanel.Visibility = selected == "Update" ? Visibility.Visible : Visibility.Collapsed;
@@ -241,6 +253,14 @@ public partial class SettingsWindow : Window
             return;
         ThemeService.Apply(SelectedThemeMode);
         RefreshCapsRemapStatus();
+    }
+
+    void Language_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (languageSelectionLoading || LanguageBox == null)
+            return;
+        LocalizationService.Apply(SelectedUiLanguage);
+        LocalizationService.LocalizeTree(this);
     }
 
     void ClockBackground_Changed(object sender, RoutedEventArgs e) => UpdateClockBackgroundControls();
@@ -419,12 +439,14 @@ public partial class SettingsWindow : Window
             }
         }
         themeAccepted = true;
+        languageAccepted = true;
         Accepted = true;
         Close();
     }
     void Cancel_Click(object sender, RoutedEventArgs e)
     {
         ThemeService.Apply(originalThemeMode);
+        LocalizationService.Apply(originalUiLanguage);
         Accepted = false;
         Close();
     }

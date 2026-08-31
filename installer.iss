@@ -56,6 +56,9 @@ SetupLogging=yes
 ChangesAssociations=yes
 
 [Languages]
+; Keep a single installer UI language so Inno Setup never opens its built-in
+; language dialog during an update. The full setup has a separate app-language
+; page that is compiled out of the lightweight update installer below.
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Messages]
@@ -92,6 +95,9 @@ Name: "desktopicon"; Description: "デスクトップにショートカットを
 Name: "autostart"; Description: "Windowsへのサインイン時に自動起動する"; GroupDescription: "自動起動:"; Flags: unchecked
 
 [Run]
+#ifdef IncludeRuntime
+Filename: "{app}\{#AppExe}"; Parameters: "--configure-language {code:SelectedAppLanguage}"; Flags: runhidden waituntilterminated runasoriginaluser; Check: not IsUpgradeInstall
+#endif
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup on"; Flags: runhidden waituntilterminated; Tasks: autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--configure-startup off"; Flags: runhidden waituntilterminated; Tasks: not autostart; Check: not IsUpgradeInstall
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Description: "RELYRを起動する"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -112,6 +118,9 @@ var
   DeleteUserSettings: Boolean;
   UpgradeInstall: Boolean;
   PreviousVersion: String;
+#ifdef IncludeRuntime
+  AppLanguagePage: TInputOptionWizardPage;
+#endif
 
 function IsUpgradeInstall(): Boolean;
 begin
@@ -122,6 +131,16 @@ function IsRelyrInAppUpdate(): Boolean;
 begin
   Result := CompareText(ExpandConstant('{param:RELYRUPDATE|0}'), '1') = 0;
 end;
+
+#ifdef IncludeRuntime
+function SelectedAppLanguage(Param: String): String;
+begin
+  if (AppLanguagePage <> nil) and (AppLanguagePage.SelectedValueIndex = 1) then
+    Result := 'en-US'
+  else
+    Result := 'ja-JP';
+end;
+#endif
 
 function IsDotNetDesktopRuntimeInstalled(): Boolean;
 var
@@ -199,6 +218,24 @@ begin
       'プロファイル、割り当て、マクロ、Windowsへのサインイン時の自動起動設定はそのまま引き継がれます。';
     WizardForm.NextButton.Caption := 'アップデート(&U)';
   end;
+#ifdef IncludeRuntime
+  if not UpgradeInstall then
+  begin
+    AppLanguagePage := CreateInputOptionPage(
+      wpWelcome,
+      '表示言語 / Display language',
+      'RELYRで使用する言語を選択 / Choose the language used in RELYR',
+      'この設定は、インストール後にRELYRの設定画面から変更できます。' + #13#10 +
+      'You can change this later in RELYR Settings.',
+      True, False);
+    AppLanguagePage.Add('日本語');
+    AppLanguagePage.Add('English');
+    if GetUILanguage = $0411 then
+      AppLanguagePage.SelectedValueIndex := 0
+    else
+      AppLanguagePage.SelectedValueIndex := 1;
+  end;
+#endif
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;

@@ -26,7 +26,7 @@ public partial class MainWindow
 {
     void UpdateStatus()
     {
-        EngineStatus.Text = engine.Enabled ? "● エンジン稼働中" : "■ エンジン停止中";
+        EngineStatus.Text = LocalizationService.Text(engine.Enabled ? "● エンジン稼働中" : "■ エンジン停止中");
         EngineStatus.Foreground = ThemeService.Brush(engine.Enabled ? "AccentTextBrush" : "DangerBrush");
     }
     void SetupTray()
@@ -66,7 +66,7 @@ public partial class MainWindow
             numberedTrayIcon?.Dispose();
             numberedTrayIcon = icon;
             tray.Icon = icon;
-            tray.Text = $"RELYR v{DisplayVersion} — デスクトップ {number}";
+            tray.Text = LocalizationService.Text($"RELYR v{DisplayVersion} — デスクトップ {number}");
         }
         catch { tray.Icon = defaultTrayIcon; }
     }
@@ -105,9 +105,9 @@ public partial class MainWindow
     {
         var old = tray.ContextMenuStrip;
         var menu = TrayMenuTheme.Create(ThemeService.UsesDark);
-        menu.Items.Add("表示", null, (_, _) => Dispatcher.BeginInvoke(ShowFromExternalLaunch));
-        menu.Items.Add("有効 / 一時停止", null, (_, _) => Dispatcher.BeginInvoke(() => EngineToggle.IsChecked = !EngineToggle.IsChecked));
-        var profiles = new System.Windows.Forms.ToolStripMenuItem("プロファイル");
+        menu.Items.Add(LocalizationService.Text("表示"), null, (_, _) => Dispatcher.BeginInvoke(ShowFromExternalLaunch));
+        menu.Items.Add(LocalizationService.Text("有効 / 一時停止"), null, (_, _) => Dispatcher.BeginInvoke(() => EngineToggle.IsChecked = !EngineToggle.IsChecked));
+        var profiles = new System.Windows.Forms.ToolStripMenuItem(LocalizationService.Text("プロファイル"));
         foreach (var profile in appliedConfig.Profiles.Where(p => config.Profiles.Any(x => x.Name == p.Name)))
         {
             var item = new System.Windows.Forms.ToolStripMenuItem(profile.Name) { Checked = profile.Name == appliedConfig.ActiveProfile };
@@ -116,10 +116,10 @@ public partial class MainWindow
         }
         menu.Items.Add(profiles);
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("押下キーをすべて解除", null, (_, _) => InputEngine.ReleaseAllDefensively());
-        menu.Items.Add("再起動", null, (_, _) => Dispatcher.BeginInvoke(RequestApplicationRestart));
+        menu.Items.Add(LocalizationService.Text("押下キーをすべて解除"), null, (_, _) => InputEngine.ReleaseAllDefensively());
+        menu.Items.Add(LocalizationService.Text("再起動"), null, (_, _) => Dispatcher.BeginInvoke(RequestApplicationRestart));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("終了", null, (_, _) => RequestApplicationExit("tray-exit"));
+        menu.Items.Add(LocalizationService.Text("終了"), null, (_, _) => RequestApplicationExit("tray-exit"));
         TrayMenuTheme.Apply(menu, ThemeService.UsesDark);
         tray.ContextMenuStrip = menu;
         old?.Dispose();

@@ -148,11 +148,24 @@
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
 
       <Grid>
-        <StackPanel x:Name="GeneralPanel">
+        <ScrollViewer x:Name="GeneralScrollPanel" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="GeneralPanel" Margin="0,0,10,0">
           <TextBlock Text="一般" FontSize="24" FontWeight="SemiBold"/>
           <TextBlock Text="Windowsと保存" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,18"/>
           <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,8">
             <StackPanel>
+              <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                  <TextBlock Text="表示言語" FontSize="18" FontWeight="SemiBold"/>
+                  <TextBlock Text="アプリ全体の表示言語を選びます。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+                <ComboBox x:Name="LanguageBox" Grid.Column="1" VerticalAlignment="Center" SelectionChanged="Language_SelectionChanged">
+                  <ComboBoxItem Content="日本語" Tag="ja-JP"/>
+                  <ComboBoxItem Content="English" Tag="en-US"/>
+                </ComboBox>
+              </Grid>
+              <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
               <TextBlock Text="Windows" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,5"/>
               <CheckBox x:Name="StartupBox" Content="サインイン時に自動で起動する"/>
               <CheckBox x:Name="DesktopNumberTrayBox" Content="通知領域に現在の仮想デスクトップ番号を表示する"/>
@@ -172,6 +185,7 @@
             </StackPanel>
           </Border>
         </StackPanel>
+        </ScrollViewer>
 
         <StackPanel x:Name="AppearancePanel" Visibility="Collapsed">
           <TextBlock Text="外観" FontSize="27" FontWeight="Bold"/>

@@ -72,6 +72,8 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         string[] args = WaitForRestartParent(e.Args);
+        LocalizationService.Initialize();
+        try { LocalizationService.Apply(new ConfigService().Load().UiLanguage); } catch { LocalizationService.Apply(LocalizationService.Japanese); }
 #if !PRODUCTION_PUBLISH
         if (args.Contains("--drop-diagnostics", StringComparer.OrdinalIgnoreCase))
             Environment.SetEnvironmentVariable("RELYR_DROP_DIAGNOSTICS", "1");
@@ -331,6 +333,19 @@ public partial class App : System.Windows.Application
             catch { ExitImmediately(1); }
             return;
         }
+        if (args.Length >= 2 && args[0].Equals("--configure-language", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var languageConfig = new ConfigService();
+                var value = languageConfig.Load();
+                value.UiLanguage = LocalizationService.Normalize(args[1]);
+                languageConfig.Save(value);
+                ExitImmediately(0);
+            }
+            catch { ExitImmediately(1); }
+            return;
+        }
 #if !PRODUCTION_PUBLISH
         if (args.Contains("--elevated-helper", StringComparer.OrdinalIgnoreCase))
         {
@@ -496,6 +511,7 @@ public partial class App : System.Windows.Application
         }
         catch { }
         var loadedStartupConfig = new ConfigService().Load();
+        LocalizationService.Apply(loadedStartupConfig.UiLanguage);
         DiagnosticLogStorage.Configure(loadedStartupConfig.DetailedDiagnosticsEnabled);
         ThemeService.Apply(loadedStartupConfig.ThemeMode);
         UiMotionService.Apply(loadedStartupConfig.UiAnimationsEnabled);
