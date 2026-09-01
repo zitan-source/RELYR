@@ -1465,6 +1465,16 @@ internal static class UiIntegrationTest
                 selectedLayout: englishDeckLayout);
             englishDeckOverlay.Show();
             englishDeckOverlay.UpdateLayout();
+            window.EditDeckLayoutForTest(window.ConfigForTest.DeckLayouts.First());
+            window.CloseActionPaletteForTest();
+            Pump(window);
+            var englishCapsLockImportDialog = new AppDialog(
+                window,
+                SettingsWindow.CapsLockImportWarningText,
+                SettingsWindow.CapsLockImportWarningTitle,
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning);
+            LocalizationService.LocalizeTree(englishCapsLockImportDialog);
             var englishSingleKeyMenu = window.CreateInputContextMenu("F7");
             var englishMultiKeyMenu = window.CreateMultiSelectionContextMenu();
             var englishResidue = new (string Scope, DependencyObject Root)[]
@@ -1477,6 +1487,7 @@ internal static class UiIntegrationTest
                 ("DeckOverlay", englishDeckOverlay),
                 ("DeckButtonMenu", englishDeckOverlay.DeckButtons[0].ContextMenu!),
                 ("DeckPanelMenu", englishDeckOverlay.PanelContextMenuForTest!),
+                ("CapsLockImportDialog", englishCapsLockImportDialog),
                 ("KeyMenu", englishSingleKeyMenu),
                 ("MultiKeyMenu", englishMultiKeyMenu)
             }.SelectMany(item => JapaneseUiResidue(item.Root).Select(value => $"{item.Scope}:{value}"))
@@ -1495,6 +1506,7 @@ internal static class UiIntegrationTest
             [
                 "アプリ", "自動保存 オン", "標準Deck", "標準プロファイル", "新しいDeck", "新しいジェスチャー", "新しいマクロ",
                 "新規レイアウト", "新しいDeckレイアウトを作成", "Spaceキーはレイヤー専用のため変更できません", "CapsLock\n(F13設定時)",
+                "一覧からDeckへドラッグ", "Deckへ割り当て", "Deckボタンをクリック", "この設定ではCapsLockレイヤーがオンです。\n\nインポートするとCapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。変更はWindowsを再起動するまで有効にならず、それまではCapsLockレイヤーも使用できません。\n\nこの設定をインポートしますか？", "CapsLockレイヤーを含む設定",
                 "ナビゲーション", "カーソルキー", "この割り当てをコピー", "コピーした割り当てを貼り付け", "全レイヤーに割り当てる",
                 "全プロファイルに割り当て", "全レイヤーから削除", "全プロファイルから削除", "この割り当てを削除",
                 "選択した割り当てをコピー", "選択した割り当てを削除", "色を変更...", "色を標準に戻す", "他のプロファイルがありません",

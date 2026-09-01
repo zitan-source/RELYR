@@ -1808,7 +1808,7 @@ public partial class MainWindow : Window
         InspectorEmptyState.Visibility = Visibility.Visible;
         InspectorHintsPanel.Visibility = Visibility.Visible;
         InspectorEmptyTitleText.Text = "Actionを選択";
-        InspectorEmptyDescriptionText.Text = deckManagementMode ? "一覧からDeckへドラッグ" : "一覧からキーへドラッグ";
+        InspectorEmptyDescriptionText.Text = LocalizationService.Text(deckManagementMode ? "一覧からDeckへドラッグ" : "一覧からキーへドラッグ");
         UpdateInspectorHintsForContext();
         SelectionHeader.Visibility = Visibility.Collapsed;
         AssignmentEditor.Visibility = Visibility.Collapsed;
@@ -2184,9 +2184,9 @@ public partial class MainWindow : Window
         InspectorHintOneDescription.Text = "検索して選択";
         InspectorHintTwoIcon.Data = Geometry.Parse("M5,5 L19,19 M19,19 L14,19 M19,19 L19,14 M19,5 L5,19 M5,19 L10,19 M5,19 L5,14");
         InspectorHintTwoTitle.Text = "ドラッグ";
-        InspectorHintTwoDescription.Text = deckManagementMode ? "Deckへ割り当て" : "キーへ割り当て";
+        InspectorHintTwoDescription.Text = LocalizationService.Text(deckManagementMode ? "Deckへ割り当て" : "キーへ割り当て");
         InspectorHintThreeIcon.Data = Geometry.Parse("M5,3 L5,20 L9.5,15.5 L13,22 L16,20.5 L12.5,14 L19,14 Z");
-        InspectorHintThreeTitle.Text = deckManagementMode ? "Deckボタンをクリック" : "キーをクリック";
+        InspectorHintThreeTitle.Text = LocalizationService.Text(deckManagementMode ? "Deckボタンをクリック" : "キーをクリック");
         InspectorHintThreeDescription.Text = "詳細を編集";
     }
     void OpenProfilePicker(bool longPress, ListBox placementTarget)

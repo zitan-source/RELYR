@@ -10,6 +10,8 @@ public partial class SettingsWindow : Window
     internal const string ExportFileFilter = "RELYR 設定ファイル (*.relyr)|*.relyr";
     internal const string ImportFileFilter = "RELYR 設定ファイル (*.relyr)|*.relyr|以前のRELYR設定 (*.json)|*.json";
     internal const string SupportPageUrl = "https://ko-fi.com/relyr";
+    internal const string CapsLockImportWarningText = "この設定ではCapsLockレイヤーがオンです。\n\nインポートするとCapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。変更はWindowsを再起動するまで有効にならず、それまではCapsLockレイヤーも使用できません。\n\nこの設定をインポートしますか？";
+    internal const string CapsLockImportWarningTitle = "CapsLockレイヤーを含む設定";
     readonly AppConfig config;
     readonly bool initialStartWithWindows;
     readonly AppThemeMode originalThemeMode;
@@ -501,8 +503,8 @@ public partial class SettingsWindow : Window
             bool desired = imported.CapsLockLayerEnabled;
             if (desired)
             {
-                string warning = "この設定ではCapsLockレイヤーがオンです。\n\nインポートするとCapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。変更はWindowsを再起動するまで有効にならず、それまではCapsLockレイヤーも使用できません。\n\nこの設定をインポートしますか？";
-                if (AppDialog.Show(this, warning, "CapsLockレイヤーを含む設定", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+                string warning = LocalizationService.Text(CapsLockImportWarningText);
+                if (AppDialog.Show(this, warning, LocalizationService.Text(CapsLockImportWarningTitle), MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
                     return;
             }
             if (desired != current)
