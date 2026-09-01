@@ -131,7 +131,7 @@ public partial class ProfileManagerWindow : Window
             ShowStatus("標準プロファイルは削除できません。", true);
             return;
         }
-        if (AppDialog.Show(this, $"「{profile.Name}」を削除しますか？\nこの操作は『変更を反映』を押すまで確定しません。", "プロファイルを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (AppDialog.Show(this, LocalizationService.Format("「{0}」を削除しますか？\nこの操作は『変更を反映』を押すまで確定しません。", profile.Name), "プロファイルを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         string deleted = profile.Name;
         profiles.Remove(profile);
@@ -169,7 +169,7 @@ public partial class ProfileManagerWindow : Window
             ShowStatus("先にコピー元プロファイルの割り当てをコピーしてください。", true);
             return;
         }
-        if (AppDialog.Show(this, $"「{SelectedProfile.Name}」の割り当てを、コピーした {copiedAssignments.Count}件で置き換えますか？", "割り当てを貼り付け", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (AppDialog.Show(this, LocalizationService.Format("「{0}」の割り当てを、コピーした {1}件で置き換えますか？", SelectedProfile.Name, copiedAssignments.Count), "割り当てを貼り付け", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         SelectedProfile.Mappings = [.. copiedAssignments.Select(CloneMapping)];
         RefreshSelectedProfile();

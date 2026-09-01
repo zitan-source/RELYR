@@ -1475,6 +1475,13 @@ internal static class UiIntegrationTest
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning);
             LocalizationService.LocalizeTree(englishCapsLockImportDialog);
+            var englishUnknownErrorDialog = new AppDialog(window, "未登録の日本語エラーです。", "未登録の見出し", MessageBoxButton.OK, MessageBoxImage.Error);
+            var englishUnknownConfirmationDialog = new AppDialog(window, "未登録の日本語確認です。", "未登録の見出し", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            Check(englishUnknownErrorDialog.MessageText.Text == "The operation could not be completed. Please try again."
+                && englishUnknownConfirmationDialog.MessageText.Text == "Continue with this operation?"
+                && englishUnknownErrorDialog.Title == "RELYR"
+                && englishUnknownConfirmationDialog.Title == "RELYR",
+                "dialogs never expose an unregistered Japanese message or caption in English UI");
             var englishSingleKeyMenu = window.CreateInputContextMenu("F7");
             var englishMultiKeyMenu = window.CreateMultiSelectionContextMenu();
             var englishResidue = new (string Scope, DependencyObject Root)[]
@@ -1488,6 +1495,8 @@ internal static class UiIntegrationTest
                 ("DeckButtonMenu", englishDeckOverlay.DeckButtons[0].ContextMenu!),
                 ("DeckPanelMenu", englishDeckOverlay.PanelContextMenuForTest!),
                 ("CapsLockImportDialog", englishCapsLockImportDialog),
+                ("UnknownErrorDialog", englishUnknownErrorDialog),
+                ("UnknownConfirmationDialog", englishUnknownConfirmationDialog),
                 ("KeyMenu", englishSingleKeyMenu),
                 ("MultiKeyMenu", englishMultiKeyMenu)
             }.SelectMany(item => JapaneseUiResidue(item.Root).Select(value => $"{item.Scope}:{value}"))
@@ -1507,6 +1516,7 @@ internal static class UiIntegrationTest
                 "アプリ", "自動保存 オン", "標準Deck", "標準プロファイル", "新しいDeck", "新しいジェスチャー", "新しいマクロ",
                 "新規レイアウト", "新しいDeckレイアウトを作成", "Spaceキーはレイヤー専用のため変更できません", "CapsLock\n(F13設定時)",
                 "一覧からDeckへドラッグ", "Deckへ割り当て", "Deckボタンをクリック", "この設定ではCapsLockレイヤーがオンです。\n\nインポートするとCapsLockはF13へ割り当てられ、元のCapsLock機能は使用できなくなります。変更はWindowsを再起動するまで有効にならず、それまではCapsLockレイヤーも使用できません。\n\nこの設定をインポートしますか？", "CapsLockレイヤーを含む設定",
+                "この操作を続行しますか？", "処理を完了できませんでした。もう一度お試しください。", "「{0}」を削除しますか？\nこのジェスチャーを参照している長押し割り当ても解除されます。", "「{0}」を削除しますか？\nこの操作は『変更を反映』を押すまで確定しません。", "「{0}」の割り当てを、コピーした {1}件で置き換えますか？", "RELYR v{0} をダウンロードして更新します。\n\nSHA-256で検証後、RELYRを終了して更新し、自動で再起動します。続行しますか？", "「{0}」を削除しますか？\nこのマクロを使う割り当て {1} 件も未設定に戻します。", "「{0}」を削除しますか？", "マクロを削除", "RELYRをアップデート",
                 "ナビゲーション", "カーソルキー", "この割り当てをコピー", "コピーした割り当てを貼り付け", "全レイヤーに割り当てる",
                 "全プロファイルに割り当て", "全レイヤーから削除", "全プロファイルから削除", "この割り当てを削除",
                 "選択した割り当てをコピー", "選択した割り当てを削除", "色を変更...", "色を標準に戻す", "他のプロファイルがありません",

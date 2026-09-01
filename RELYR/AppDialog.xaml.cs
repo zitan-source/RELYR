@@ -10,6 +10,9 @@ public partial class AppDialog : Window
     internal AppDialog(Window? owner, string message, string caption, MessageBoxButton buttons, MessageBoxImage image)
     {
         InitializeComponent();
+        bool confirmation = buttons is MessageBoxButton.OKCancel or MessageBoxButton.YesNo or MessageBoxButton.YesNoCancel;
+        message = LocalizationService.DialogText(message, confirmation);
+        caption = LocalizationService.DialogText(caption, false, caption: true);
         Owner = owner?.IsVisible == true ? owner : null;
         WindowStartupLocation = Owner == null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner;
         Title = caption;
@@ -75,7 +78,7 @@ public partial class AppDialog : Window
 
     void AddButton(string label, MessageBoxResult value, bool cancel = false, bool primary = false)
     {
-        var button = new System.Windows.Controls.Button { Content = label, IsCancel = cancel, IsDefault = primary };
+        var button = new System.Windows.Controls.Button { Content = LocalizationService.Text(label), IsCancel = cancel, IsDefault = primary };
         if (primary)
         {
             button.Background = ThemeService.Brush("AccentStrongBrush");

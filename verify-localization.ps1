@@ -47,6 +47,13 @@ foreach($culture in $cultures){
             throw "$culture placeholder mismatch: $template"
         }
     }
+    foreach($entry in @($properties | Where-Object { -not $_.Name.StartsWith([char]1 + 'runtime:', [StringComparison]::Ordinal) })){
+        $expected = @([regex]::Matches($entry.Name, '\{\d+\}') | ForEach-Object Value | Sort-Object)
+        $actual = @([regex]::Matches([string]$entry.Value, '\{\d+\}') | ForEach-Object Value | Sort-Object)
+        if((Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw "$culture static placeholder mismatch: $($entry.Name)"
+        }
+    }
     $requiredKeys = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6Kit5a6afOS4gOiIrHzlpJboprN85L+d5a2YfOOCreODo+ODs+OCu+ODq3zjgYrmsJfjgavlhaXjgop85pyA6L+R5L2/44Gj44Gf44KC44GufOODouODi+OCv+ODvA==')).Split('|')
     $translatedCoreCount = 0
     foreach($requiredKey in $requiredKeys){

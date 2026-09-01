@@ -191,7 +191,7 @@ public partial class GestureManagerWindow : Window
         var gesture = SelectedGesture;
         if (gesture == null)
             return;
-        if (AppDialog.Show(this, $"「{gesture.Name}」を削除しますか？\nこのジェスチャーを参照している長押し割り当ても解除されます。", "ジェスチャーを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (AppDialog.Show(this, LocalizationService.Format("「{0}」を削除しますか？\nこのジェスチャーを参照している長押し割り当ても解除されます。", gesture.Name), "ジェスチャーを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         string deleted = gesture.Name;
         gestures.Remove(gesture);

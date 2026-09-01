@@ -304,8 +304,10 @@ public partial class MacroWindow : Window
         if (current == null)
             return;
         int references = config.Profiles.SelectMany(x => x.Mappings).Count(x => (x.Kind == ActionKind.Macro && x.Value.Equals(current.Name, StringComparison.OrdinalIgnoreCase)) || (x.LongPressKind == ActionKind.Macro && x.LongPressValue.Equals(current.Name, StringComparison.OrdinalIgnoreCase)));
-        string note = references > 0 ? $"\nこのマクロを使う割り当て {references} 件も未設定に戻します。" : "";
-        if (AppDialog.Show(this, $"「{current.Name}」を削除しますか？{note}", "マクロを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        string message = references > 0
+            ? LocalizationService.Format("「{0}」を削除しますか？\nこのマクロを使う割り当て {1} 件も未設定に戻します。", current.Name, references)
+            : LocalizationService.Format("「{0}」を削除しますか？", current.Name);
+        if (AppDialog.Show(this, message, "マクロを削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         StopRecording();
         StopManualCapture();

@@ -174,6 +174,29 @@ internal static class LocalizationService
         return value;
     }
 
+    internal static string Format(string sourceTemplate, params object[] values) =>
+        string.Format(CultureInfo.CurrentUICulture, Text(sourceTemplate), values);
+
+    internal static string DialogText(string? source, bool confirmation, bool caption = false)
+    {
+        string value = source ?? string.Empty;
+        string translated = Text(value);
+        if (IsJapanese || !ContainsJapaneseSource(translated))
+            return translated;
+
+        // Dialogs are transient and many are reached only on uncommon error
+        // paths. Never expose forgotten Japanese source text in another UI
+        // language; confirmations must also remain safe and understandable.
+        return caption
+            ? "RELYR"
+            : Text(confirmation ? "この操作を続行しますか？" : "処理を完了できませんでした。もう一度お試しください。");
+    }
+
+    static bool ContainsJapaneseSource(string value) => value.Any(character =>
+        character is >= '\u3040' and <= '\u30FF'
+        or >= '\u3400' and <= '\u9FFF'
+        or >= '\uF900' and <= '\uFAFF');
+
     internal static string DisplayGeneratedName(string? source)
     {
         string value = source ?? string.Empty;
