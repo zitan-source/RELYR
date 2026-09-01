@@ -33,6 +33,8 @@ public partial class MainWindow
         }
         if (editorUiInitialized)
         {
+            KindBox.Items.Refresh();
+            LongKindBox.Items.Refresh();
             RefreshActionPalette();
             UpdateAutoSaveToggleText();
             UpdateStatus();

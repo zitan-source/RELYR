@@ -113,7 +113,8 @@ public partial class SettingsWindow : Window
         SystemThemeBox.IsChecked = config.ThemeMode == AppThemeMode.System;
         LightThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Light;
         DarkThemeBox.IsChecked = config.ThemeMode == AppThemeMode.Dark;
-        LanguageBox.SelectedIndex = originalUiLanguage == LocalizationService.English ? 1 : 0;
+        LanguageBox.SelectedItem = LanguageBox.Items.Cast<System.Windows.Controls.ComboBoxItem>()
+            .First(item => string.Equals(item.Tag?.ToString(), originalUiLanguage, StringComparison.OrdinalIgnoreCase));
         UiAnimationsBox.IsChecked = config.UiAnimationsEnabled;
         DetailedDiagnosticsBox.IsChecked = config.DetailedDiagnosticsEnabled;
         themeSelectionLoading = false;
@@ -124,7 +125,7 @@ public partial class SettingsWindow : Window
         ClockFrostedBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.FrostedScreen;
         ClockImageBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.Image;
         ClockSolidBackgroundBox.IsChecked = config.ClockBackgroundMode == ClockBackgroundMode.Solid;
-        ClockDisplayModeBox.ItemsSource = new[] { "時・分", "時・分・秒", "月日・曜日・時刻", "年月日・曜日・秒まで" };
+        RefreshClockDisplayModeItems();
         ClockDisplayModeBox.SelectedIndex = (int)config.ClockDisplayMode;
         ClockBackgroundImageBox.Text = config.ClockBackgroundImage;
         ClockSolidColorBox.Text = NormalizeClockColor(config.ClockSolidColor);
@@ -260,7 +261,17 @@ public partial class SettingsWindow : Window
         if (languageSelectionLoading || LanguageBox == null)
             return;
         LocalizationService.Apply(SelectedUiLanguage);
+        RefreshClockDisplayModeItems();
         LocalizationService.LocalizeTree(this);
+    }
+
+    void RefreshClockDisplayModeItems()
+    {
+        int selectedIndex = Math.Max(0, ClockDisplayModeBox.SelectedIndex);
+        ClockDisplayModeBox.ItemsSource = new[] { "時・分", "時・分・秒", "月日・曜日・時刻", "年月日・曜日・秒まで" }
+            .Select(LocalizationService.Text)
+            .ToArray();
+        ClockDisplayModeBox.SelectedIndex = Math.Clamp(selectedIndex, 0, ClockDisplayModeBox.Items.Count - 1);
     }
 
     void ClockBackground_Changed(object sender, RoutedEventArgs e) => UpdateClockBackgroundControls();

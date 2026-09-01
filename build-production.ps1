@@ -14,6 +14,7 @@ $output=if([string]::IsNullOrWhiteSpace($OutputDirectory)){Join-Path $root "arti
 $productionExecutable=Join-Path $output "RELYR.exe"
 
 & (Join-Path $root "verify-source-safety.ps1")
+& (Join-Path $root "verify-localization.ps1")
 
 function Stop-ProductionInstance([string]$executable) {
     if(-not (Test-Path -LiteralPath $executable)){return}

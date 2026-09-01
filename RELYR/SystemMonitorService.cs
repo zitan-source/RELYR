@@ -33,6 +33,7 @@ internal sealed class SystemMonitorService : IDisposable
 
     readonly object sync = new();
     readonly System.Threading.Timer timer;
+    readonly Dictionary<string, int> requestedMonitors = new(StringComparer.OrdinalIgnoreCase);
     int subscribers;
     int sampling;
     long previousIdle;
@@ -41,8 +42,10 @@ internal sealed class SystemMonitorService : IDisposable
     long previousNetworkSent;
     long previousNetworkReceived;
     long previousNetworkAt;
-    int slowSampleCounter;
-    bool slowSampleInitialized;
+    long lastHardwareSampleAt;
+    long lastGpuSampleAt;
+    long lastDiskSampleAt;
+    long lastLatencySampleAt;
     double? cachedTemperature;
     string cachedTemperatureName = "";
     double? cachedGpuTemperature;
@@ -66,26 +69,62 @@ internal sealed class SystemMonitorService : IDisposable
         previousNetworkAt = Stopwatch.GetTimestamp();
     }
 
-    internal void Subscribe(EventHandler<SystemMonitorSnapshot> handler)
+    internal readonly record struct MonitorWorkPlan(bool HardwareSensors, bool GpuWmi, bool DiskWmi, bool GatewayPing);
+
+    internal static MonitorWorkPlan WorkPlan(IEnumerable<string> monitorIds)
+    {
+        var ids = monitorIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new(
+            ids.Overlaps(["temperature", "gpu-temperature", "fan"]),
+            ids.Overlaps(["gpu", "vram"]),
+            ids.Overlaps(["disk-read", "disk-write"]),
+            ids.Contains("network-latency"));
+    }
+
+    internal int RequestCountForTest(string monitorId)
     {
         lock (sync)
+            return requestedMonitors.GetValueOrDefault(monitorId);
+    }
+
+    internal void Subscribe(string monitorId, EventHandler<SystemMonitorSnapshot> handler)
+    {
+        string id = monitorId.Trim().ToLowerInvariant();
+        lock (sync)
         {
+            bool hadHardware = WorkPlan(requestedMonitors.Keys).HardwareSensors;
             SnapshotChanged += handler;
             subscribers++;
+            requestedMonitors[id] = requestedMonitors.GetValueOrDefault(id) + 1;
+            if (!hadHardware && WorkPlan(requestedMonitors.Keys).HardwareSensors)
+                lastHardwareSampleAt = 0;
             if (subscribers == 1 && !disposed)
                 timer.Change(0, 1000);
         }
     }
 
-    internal void Unsubscribe(EventHandler<SystemMonitorSnapshot> handler)
+    internal void Unsubscribe(string monitorId, EventHandler<SystemMonitorSnapshot> handler)
     {
+        bool suspendHardware;
+        string id = monitorId.Trim().ToLowerInvariant();
         lock (sync)
         {
+            bool hadHardware = WorkPlan(requestedMonitors.Keys).HardwareSensors;
             SnapshotChanged -= handler;
             subscribers = Math.Max(0, subscribers - 1);
+            if (requestedMonitors.TryGetValue(id, out int count))
+            {
+                if (count <= 1)
+                    requestedMonitors.Remove(id);
+                else
+                    requestedMonitors[id] = count - 1;
+            }
             if (subscribers == 0)
                 timer.Change(Timeout.Infinite, Timeout.Infinite);
+            suspendHardware = hadHardware && !WorkPlan(requestedMonitors.Keys).HardwareSensors;
         }
+        if (suspendHardware)
+            HardwareSensorClient.Shared.Suspend();
     }
 
     internal void RequestRefresh()
@@ -103,7 +142,12 @@ internal sealed class SystemMonitorService : IDisposable
             return;
         try
         {
-            var snapshot = Capture();
+            HashSet<string> requested;
+            lock (sync)
+                requested = requestedMonitors.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (requested.Count == 0)
+                return;
+            var snapshot = Capture(requested);
             EventHandler<SystemMonitorSnapshot>? handlers;
             lock (sync) handlers = SnapshotChanged;
             if (handlers != null)
@@ -122,17 +166,30 @@ internal sealed class SystemMonitorService : IDisposable
         finally { Volatile.Write(ref sampling, 0); }
     }
 
-    SystemMonitorSnapshot Capture()
+    SystemMonitorSnapshot Capture(IReadOnlySet<string> requested)
     {
         var readings = new Dictionary<string, SystemMonitorReading>(StringComparer.OrdinalIgnoreCase);
+        bool Wants(string id) => requested.Contains(id);
+        var work = WorkPlan(requested);
 
-        double? cpu = CpuUsage();
-        readings["cpu"] = Percent(cpu, "CPU");
+        double? cpu = null;
+        if (Wants("cpu") || Wants("system-status"))
+        {
+            cpu = CpuUsage();
+            if (Wants("cpu"))
+                readings["cpu"] = Percent(cpu, "CPU");
+        }
 
-        double? memory = MemoryUsage();
-        readings["memory"] = Percent(memory, "RAM");
+        double? memory = null;
+        if (Wants("memory") || Wants("system-status"))
+        {
+            memory = MemoryUsage();
+            if (Wants("memory"))
+                readings["memory"] = Percent(memory, "RAM");
+        }
 
-        if (!slowSampleInitialized || ++slowSampleCounter >= 5)
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (work.HardwareSensors && SampleDue(lastHardwareSampleAt, 5))
         {
             HardwareSensorSnapshot? hardware = HardwareSensorClient.Shared.TryRead();
             cachedTemperature = hardware?.CpuTemperature;
@@ -143,70 +200,107 @@ internal sealed class SystemMonitorService : IDisposable
             cachedGpuTemperatureName = hardware?.GpuTemperature is double
                 ? ShortSensorName(hardware.GpuTemperatureName, "GPU")
                 : "";
-            cachedGpu = ReadGpuUsage();
-            cachedGpuMemory = ReadGpuMemoryUsage();
             cachedFanRpm = hardware?.FanRpm;
             cachedFanName = hardware?.FanRpm is double
                 ? ShortSensorName(hardware.FanName, "FAN")
                 : "";
-            cachedLatencyMs = ReadGatewayLatency();
-            slowSampleCounter = 0;
-            slowSampleInitialized = true;
+            lastHardwareSampleAt = nowTicks;
         }
-        readings["temperature"] = cachedTemperature is double temperature
-            ? new SystemMonitorReading($"{temperature:0}°", cachedTemperatureName, Math.Clamp(temperature / 100, 0, 1), Warning: temperature >= 85)
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        readings["gpu-temperature"] = cachedGpuTemperature is double gpuTemperature
-            ? new SystemMonitorReading($"{gpuTemperature:0}°", cachedGpuTemperatureName, Math.Clamp(gpuTemperature / 100, 0, 1), Warning: gpuTemperature >= 90)
-            : new SystemMonitorReading("—", "N/A", Available: false);
+        if (Wants("temperature"))
+            readings["temperature"] = cachedTemperature is double temperature
+                ? new SystemMonitorReading($"{temperature:0}°", cachedTemperatureName, Math.Clamp(temperature / 100, 0, 1), Warning: temperature >= 85)
+                : Unavailable();
+        if (Wants("gpu-temperature"))
+            readings["gpu-temperature"] = cachedGpuTemperature is double gpuTemperature
+                ? new SystemMonitorReading($"{gpuTemperature:0}°", cachedGpuTemperatureName, Math.Clamp(gpuTemperature / 100, 0, 1), Warning: gpuTemperature >= 90)
+                : Unavailable();
+        if (Wants("fan"))
+            readings["fan"] = cachedFanRpm is double fan
+                ? new SystemMonitorReading($"{fan:0}", string.IsNullOrWhiteSpace(cachedFanName) ? "RPM" : $"{cachedFanName} RPM", Math.Clamp(fan / 5000, 0, 1))
+                : Unavailable();
 
-        readings["gpu"] = Percent(cachedGpu, "3D");
-        readings["vram"] = cachedGpuMemory is { } gpuMemory
-            ? new SystemMonitorReading(FormatCapacity(gpuMemory.Bytes), gpuMemory.Detail,
-                Math.Clamp(gpuMemory.Bytes / (gpuMemory.Detail.StartsWith("SHARED", StringComparison.Ordinal) ? 16d : 8d) / (1024 * 1024 * 1024), 0, 1))
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        readings["fan"] = cachedFanRpm is double fan
-            ? new SystemMonitorReading($"{fan:0}", string.IsNullOrWhiteSpace(cachedFanName) ? "RPM" : $"{cachedFanName} RPM", Math.Clamp(fan / 5000, 0, 1))
-            : new SystemMonitorReading("—", "N/A", Available: false);
+        if (work.GpuWmi && SampleDue(lastGpuSampleAt, 5))
+        {
+            if (Wants("gpu")) cachedGpu = ReadGpuUsage();
+            if (Wants("vram")) cachedGpuMemory = ReadGpuMemoryUsage();
+            lastGpuSampleAt = nowTicks;
+        }
+        if (Wants("gpu")) readings["gpu"] = Percent(cachedGpu, "3D");
+        if (Wants("vram"))
+            readings["vram"] = cachedGpuMemory is { } gpuMemory
+                ? new SystemMonitorReading(FormatCapacity(gpuMemory.Bytes), gpuMemory.Detail,
+                    Math.Clamp(gpuMemory.Bytes / (gpuMemory.Detail.StartsWith("SHARED", StringComparison.Ordinal) ? 16d : 8d) / (1024 * 1024 * 1024), 0, 1))
+                : Unavailable();
 
-        readings["disk"] = DiskUsage();
-        (cachedDiskReadBytes, cachedDiskWriteBytes) = ReadDiskThroughput();
-        readings["disk-read"] = cachedDiskReadBytes is double diskRead
-            ? new SystemMonitorReading(FormatRate(diskRead), "READ/s", RateLevel(diskRead, 2L * 1024 * 1024 * 1024))
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        readings["disk-write"] = cachedDiskWriteBytes is double diskWrite
-            ? new SystemMonitorReading(FormatRate(diskWrite), "WRITE/s", RateLevel(diskWrite, 2L * 1024 * 1024 * 1024))
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        CaptureNetwork(readings);
-        readings["network-latency"] = cachedLatencyMs is double latency
-            ? new SystemMonitorReading($"{latency:0}ms", "GATEWAY", Math.Clamp(latency / 250, 0, 1), Warning: latency >= 150)
-            : new SystemMonitorReading("—", "N/A", Available: false);
+        if (Wants("disk")) readings["disk"] = DiskUsage();
+        if (work.DiskWmi && SampleDue(lastDiskSampleAt, 5))
+        {
+            (cachedDiskReadBytes, cachedDiskWriteBytes) = ReadDiskThroughput();
+            lastDiskSampleAt = nowTicks;
+        }
+        if (Wants("disk-read"))
+            readings["disk-read"] = cachedDiskReadBytes is double diskRead
+                ? new SystemMonitorReading(FormatRate(diskRead), "READ/s", RateLevel(diskRead, 2L * 1024 * 1024 * 1024)) : Unavailable();
+        if (Wants("disk-write"))
+            readings["disk-write"] = cachedDiskWriteBytes is double diskWrite
+                ? new SystemMonitorReading(FormatRate(diskWrite), "WRITE/s", RateLevel(diskWrite, 2L * 1024 * 1024 * 1024)) : Unavailable();
 
-        readings["virtual-desktop"] = ReadVirtualDesktop();
-        readings["timer"] = DeckTimerService.Shared.Reading();
+        if (requested.Any(id => id is "network-up" or "network-down" or "network-status" or "wifi"))
+            CaptureNetwork(readings, requested);
+        if (Wants("bluetooth"))
+        {
+            bool? bluetoothEnabled = RadioMonitorService.BluetoothEnabled;
+            readings["bluetooth"] = bluetoothEnabled is bool bluetooth
+                ? new SystemMonitorReading(bluetooth ? "ON" : "OFF", "CLICK TO OPEN", bluetooth ? 1 : 0, Warning: !bluetooth)
+                : Unavailable();
+        }
+        if (work.GatewayPing && SampleDue(lastLatencySampleAt, 5))
+        {
+            cachedLatencyMs = ReadGatewayLatency();
+            lastLatencySampleAt = nowTicks;
+        }
+        if (Wants("network-latency"))
+            readings["network-latency"] = cachedLatencyMs is double latency
+                ? new SystemMonitorReading($"{latency:0}ms", "GATEWAY", Math.Clamp(latency / 250, 0, 1), Warning: latency >= 150) : Unavailable();
+
+        if (Wants("virtual-desktop")) readings["virtual-desktop"] = ReadVirtualDesktop();
+        if (Wants("timer")) readings["timer"] = DeckTimerService.Shared.Reading();
         DateTime now = DateTime.Now;
-        readings["clock"] = new SystemMonitorReading(now.ToString("HH:mm"), now.ToString("ddd"), (now.Minute * 60d + now.Second) / 3600);
-        readings["date"] = new SystemMonitorReading(now.ToString("M/d"), now.ToString("yyyy"), (now.Day - 1d) / DateTime.DaysInMonth(now.Year, now.Month));
-        TimeSpan uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
-        readings["uptime"] = new SystemMonitorReading(uptime.TotalDays >= 1 ? $"{(int)uptime.TotalDays}d" : $"{(int)uptime.TotalHours}h", $"{uptime.Minutes:00}m", uptime.Minutes / 59d);
+        if (Wants("clock")) readings["clock"] = new SystemMonitorReading(now.ToString("HH:mm"), now.ToString("ddd"), (now.Minute * 60d + now.Second) / 3600);
+        if (Wants("date")) readings["date"] = new SystemMonitorReading(now.ToString("M/d"), now.ToString("yyyy"), (now.Day - 1d) / DateTime.DaysInMonth(now.Year, now.Month));
+        if (Wants("uptime"))
+        {
+            TimeSpan uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
+            readings["uptime"] = new SystemMonitorReading(uptime.TotalDays >= 1 ? $"{(int)uptime.TotalDays}d" : $"{(int)uptime.TotalHours}h", $"{uptime.Minutes:00}m", uptime.Minutes / 59d);
+        }
 
-        SystemMonitorReading battery = Battery();
-        readings["battery"] = battery;
-
-        readings["volume"] = SystemControlService.TryGetVolume(false, out double volume, out bool muted)
-            ? new SystemMonitorReading(muted ? "MUTE" : $"{volume:0}%", muted ? "MUTED" : "VOLUME", volume / 100, Warning: muted)
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        readings["microphone"] = SystemControlService.TryGetVolume(true, out double microphone, out bool micMuted)
-            ? new SystemMonitorReading(micMuted ? "OFF" : $"{microphone:0}%", micMuted ? "MUTED" : "MIC", microphone / 100, Warning: micMuted)
-            : new SystemMonitorReading("—", "N/A", Available: false);
-        readings["brightness"] = SystemControlService.TryGetBrightness(out double brightness)
-            ? new SystemMonitorReading($"{brightness:0}%", "BRIGHTNESS", brightness / 100)
-            : new SystemMonitorReading("—", "N/A", Available: false);
-
-        bool warning = (cpu ?? 0) >= 90 || (memory ?? 0) >= 90 || battery.Warning;
-        readings["system-status"] = new SystemMonitorReading(warning ? "CHECK" : "OK", warning ? "ATTENTION" : "NORMAL", warning ? .25 : 1, Warning: warning);
+        SystemMonitorReading? battery = null;
+        if (Wants("battery") || Wants("system-status"))
+        {
+            battery = Battery();
+            if (Wants("battery")) readings["battery"] = battery;
+        }
+        if (Wants("volume"))
+            readings["volume"] = SystemControlService.TryGetVolume(false, out double volume, out bool muted)
+                ? new SystemMonitorReading(muted ? "MUTE" : $"{volume:0}%", muted ? "MUTED" : "VOLUME", volume / 100, Warning: muted) : Unavailable();
+        if (Wants("microphone"))
+            readings["microphone"] = SystemControlService.TryGetVolume(true, out double microphone, out bool micMuted)
+                ? new SystemMonitorReading(micMuted ? "OFF" : $"{microphone:0}%", micMuted ? "MUTED" : "MIC", microphone / 100, Warning: micMuted) : Unavailable();
+        if (Wants("brightness"))
+            readings["brightness"] = SystemControlService.TryGetBrightness(out double brightness)
+                ? new SystemMonitorReading($"{brightness:0}%", "BRIGHTNESS", brightness / 100) : Unavailable();
+        if (Wants("system-status"))
+        {
+            bool warning = (cpu ?? 0) >= 90 || (memory ?? 0) >= 90 || battery?.Warning == true;
+            readings["system-status"] = new SystemMonitorReading(warning ? "CHECK" : "OK", warning ? "ATTENTION" : "NORMAL", warning ? .25 : 1, Warning: warning);
+        }
         return new SystemMonitorSnapshot(readings);
     }
+
+    static bool SampleDue(long previous, int seconds)
+        => previous == 0 || Stopwatch.GetElapsedTime(previous) >= TimeSpan.FromSeconds(seconds);
+
+    static SystemMonitorReading Unavailable() => new("—", "N/A", Available: false);
 
     static SystemMonitorReading ReadVirtualDesktop()
     {
@@ -281,7 +375,7 @@ internal sealed class SystemMonitorService : IDisposable
         catch { return new SystemMonitorReading("—", "N/A", Available: false); }
     }
 
-    void CaptureNetwork(Dictionary<string, SystemMonitorReading> readings)
+    void CaptureNetwork(Dictionary<string, SystemMonitorReading> readings, IReadOnlySet<string> requested)
     {
         ReadNetworkTotals(out long sent, out long received, out bool connected);
         long now = Stopwatch.GetTimestamp();
@@ -291,16 +385,18 @@ internal sealed class SystemMonitorService : IDisposable
         previousNetworkSent = sent;
         previousNetworkReceived = received;
         previousNetworkAt = now;
-        readings["network-up"] = new SystemMonitorReading(FormatRate(sentPerSecond), "SEND", RateLevel(sentPerSecond, 1024L * 1024 * 1024));
-        readings["network-down"] = new SystemMonitorReading(FormatRate(receivedPerSecond), "RECEIVE", RateLevel(receivedPerSecond, 1024L * 1024 * 1024));
-        readings["network-status"] = new SystemMonitorReading(connected ? "ONLINE" : "OFF", connected ? "CONNECTED" : "OFFLINE", connected ? 1 : 0, Warning: !connected);
-        bool wifiConnected = NetworkInterface.GetAllNetworkInterfaces().Any(item => item.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 && item.OperationalStatus == OperationalStatus.Up);
-        bool? wifiRadio = SystemControlService.TryGetWifiRadio(out bool wifiEnabled) ? wifiEnabled : null;
-        readings["wifi"] = WifiReading(wifiConnected, wifiRadio);
-        bool? bluetoothEnabled = RadioMonitorService.BluetoothEnabled;
-        readings["bluetooth"] = bluetoothEnabled is bool bluetooth
-            ? new SystemMonitorReading(bluetooth ? "ON" : "OFF", "CLICK TO OPEN", bluetooth ? 1 : 0, Warning: !bluetooth)
-            : new SystemMonitorReading("—", "N/A", Available: false);
+        if (requested.Contains("network-up"))
+            readings["network-up"] = new SystemMonitorReading(FormatRate(sentPerSecond), "SEND", RateLevel(sentPerSecond, 1024L * 1024 * 1024));
+        if (requested.Contains("network-down"))
+            readings["network-down"] = new SystemMonitorReading(FormatRate(receivedPerSecond), "RECEIVE", RateLevel(receivedPerSecond, 1024L * 1024 * 1024));
+        if (requested.Contains("network-status"))
+            readings["network-status"] = new SystemMonitorReading(connected ? "ONLINE" : "OFF", connected ? "CONNECTED" : "OFFLINE", connected ? 1 : 0, Warning: !connected);
+        if (requested.Contains("wifi"))
+        {
+            bool wifiConnected = NetworkInterface.GetAllNetworkInterfaces().Any(item => item.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 && item.OperationalStatus == OperationalStatus.Up);
+            bool? wifiRadio = SystemControlService.TryGetWifiRadio(out bool wifiEnabled) ? wifiEnabled : null;
+            readings["wifi"] = WifiReading(wifiConnected, wifiRadio);
+        }
     }
 
     internal static SystemMonitorReading WifiReading(bool connected, bool? radioEnabled)

@@ -117,6 +117,13 @@ If a required item cannot be exercised safely in the current session, say so. Do
 - Query taskbar state only when a matching Taskbar mapping exists. Query foreground process only when a candidate has an application condition.
 - Mouse-move profile checks are coalesced. When automatic routing is disabled and already settled, do not queue a dispatcher operation.
 
+## Memory and Deck monitor budget
+
+- A Deck monitor subscribes only while its tile is visible. Hiding a reusable Deck must release every monitor subscription; showing it restores the subscriptions without rebuilding the cached window.
+- `SystemMonitorService` samples only the monitor IDs currently requested. Clock-only or date-only Decks must not start hardware sensors, GPU WMI, physical-disk WMI, or gateway ping.
+- The elevated hardware-sensor helper runs only while a visible temperature or fan tile needs it and shuts down after the final hardware tile is hidden.
+- Animated GIF frames, compact thumbnails, extracted application icons, and reusable Deck windows remain bounded by their explicit cache ceilings. Closing a translated window must detach its dependency-property localization observers.
+
 ## Shutdown and process ownership
 
 - Production has one elevated resident input owner protected by `RELYR.SingleInstance.v2`.

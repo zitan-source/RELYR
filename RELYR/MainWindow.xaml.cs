@@ -3797,7 +3797,7 @@ public partial class MainWindow : Window
     sealed record ActionOption(ActionKind Kind, string Icon, string Label, bool IsEnabled = true, bool IsKeypad = false, bool IsDeckPanel = false, bool IsDeckMonitor = false)
     {
         public ActionKind? SelectionKind => IsKeypad || IsDeckPanel || IsDeckMonitor ? null : Kind;
-        public string DisplayLabel => Label;
+        public string DisplayLabel => LocalizationService.Text(Label);
         public double LabelFontSize => IsKeypad ? 10 : 11;
     }
     sealed record InputMappingSnapshot(Mapping Mapping, GestureDefinition? Gesture);

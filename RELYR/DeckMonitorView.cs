@@ -23,7 +23,8 @@ internal sealed class DeckMonitorView : Grid
     readonly List<Border> dotItems = [];
     readonly Queue<double> history = new();
     SystemMonitorReading? lastReading;
-    bool subscribed;
+    bool loaded;
+    bool monitorSubscribed;
 
     internal string MonitorId => definition.Id;
     internal double? CurrentPercent => lastReading?.Level is double level ? Math.Clamp(level * 100, 0, 100) : null;
@@ -188,30 +189,45 @@ internal sealed class DeckMonitorView : Grid
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        IsVisibleChanged += (_, _) => UpdateMonitorSubscription();
         SizeChanged += (_, _) => RefreshVisualization();
         ApplyTheme();
     }
 
     void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (subscribed)
+        if (loaded)
             return;
-        subscribed = true;
+        loaded = true;
         ThemeService.ThemeChanged += ApplyTheme;
         ArchiveAutomationState.Changed += ArchiveAutomationStateChanged;
-        SystemMonitorService.Shared.Subscribe(SnapshotChanged);
+        UpdateMonitorSubscription();
         if (definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase))
             Apply(ArchiveAutomationState.Reading());
     }
 
     void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (!subscribed)
+        if (!loaded)
             return;
-        subscribed = false;
+        loaded = false;
         ThemeService.ThemeChanged -= ApplyTheme;
         ArchiveAutomationState.Changed -= ArchiveAutomationStateChanged;
-        SystemMonitorService.Shared.Unsubscribe(SnapshotChanged);
+        UpdateMonitorSubscription();
+    }
+
+    void UpdateMonitorSubscription()
+    {
+        if (definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase))
+            return;
+        bool shouldSubscribe = loaded && IsVisible;
+        if (shouldSubscribe == monitorSubscribed)
+            return;
+        monitorSubscribed = shouldSubscribe;
+        if (shouldSubscribe)
+            SystemMonitorService.Shared.Subscribe(definition.Id, SnapshotChanged);
+        else
+            SystemMonitorService.Shared.Unsubscribe(definition.Id, SnapshotChanged);
     }
 
     void ArchiveAutomationStateChanged()
@@ -223,7 +239,7 @@ internal sealed class DeckMonitorView : Grid
         else
             _ = Dispatcher.BeginInvoke(() =>
             {
-                if (subscribed)
+                if (loaded)
                     Apply(ArchiveAutomationState.Reading());
             });
     }
@@ -256,7 +272,7 @@ internal sealed class DeckMonitorView : Grid
             else
                 _ = Dispatcher.BeginInvoke(() =>
                 {
-                    if (subscribed)
+                    if (monitorSubscribed)
                         Apply(definition.Id.Equals("auto-extract", StringComparison.OrdinalIgnoreCase)
                             ? ArchiveAutomationState.Reading()
                             : snapshot.Get(definition.Id));

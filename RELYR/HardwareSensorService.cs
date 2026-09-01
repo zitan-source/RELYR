@@ -309,6 +309,33 @@ internal sealed class HardwareSensorClient : IDisposable
             await current.DisposeAsync();
     }
 
+    internal void Suspend()
+    {
+        if (!disposed)
+            _ = Task.Run(async () =>
+            {
+                try { await SuspendAsync().ConfigureAwait(false); }
+                catch (ObjectDisposedException) { }
+            });
+    }
+
+    async Task SuspendAsync()
+    {
+        await gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (disposed || client == null)
+                return;
+            var current = client;
+            client = null;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            try { await current.SendAsync(IpcCommand.Shutdown, cancellationToken: timeout.Token).ConfigureAwait(false); }
+            catch { }
+            await current.DisposeAsync().ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
+    }
+
     public void Dispose()
     {
         if (disposed)

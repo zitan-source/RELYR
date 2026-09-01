@@ -10,6 +10,7 @@ namespace RELYR;
 
 internal static class ApplicationIconService
 {
+    internal const int MaxCacheEntries = 256;
     static readonly object CacheLock = new();
     static readonly Dictionary<string, ImageSource> Cache = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, ImageSource?> ExtractedIconCache = new(StringComparer.OrdinalIgnoreCase);
@@ -24,7 +25,10 @@ internal static class ApplicationIconService
 
         ImageSource icon = TryGetExtractedIcon(pathOrExecutable) ?? FallbackIcon();
         lock (CacheLock)
+        {
+            TrimCache(Cache);
             Cache[cacheKey] = icon;
+        }
         return icon;
     }
 
@@ -41,8 +45,17 @@ internal static class ApplicationIconService
         string? path = ResolveExecutablePath(pathOrExecutable);
         ImageSource? icon = TryExtractIcon(path);
         lock (CacheLock)
+        {
+            TrimCache(ExtractedIconCache);
             ExtractedIconCache[cacheKey] = icon;
+        }
         return icon;
+    }
+
+    static void TrimCache<T>(Dictionary<string, T> cache)
+    {
+        while (cache.Count >= MaxCacheEntries)
+            cache.Remove(cache.Keys.First());
     }
 
     internal static string? ResolveExecutablePath(string? pathOrExecutable)

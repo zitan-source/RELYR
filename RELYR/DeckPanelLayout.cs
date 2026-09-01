@@ -16,6 +16,7 @@ internal static class DeckPanelLayout
 {
     readonly record struct ThumbnailCacheKey(string Path, long ModifiedTicks, int Width, int Height);
     static readonly ConcurrentDictionary<ThumbnailCacheKey, System.Windows.Media.ImageSource> ThumbnailCache = new();
+    internal const int MaxCachedThumbnails = 192;
     internal static int CachedLargeThumbnailCountForTest => ThumbnailCache.Keys.Count(key => key.Width > 160 || key.Height > 160);
     internal const string Layer = "Deck";
     internal const int Rows = 5;
@@ -377,8 +378,8 @@ internal static class DeckPanelLayout
         // transient; caching hundreds of them can exhaust WPF render memory.
         if (key.Width > 160 || key.Height > 160)
             return;
-        if (ThumbnailCache.Count >= 512)
-            ThumbnailCache.Clear();
+        if (ThumbnailCache.Count >= MaxCachedThumbnails)
+            ThumbnailCache.TryRemove(ThumbnailCache.Keys.FirstOrDefault(), out _);
         ThumbnailCache[key] = image;
     }
 

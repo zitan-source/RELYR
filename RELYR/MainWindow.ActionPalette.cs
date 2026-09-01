@@ -351,7 +351,7 @@ public partial class MainWindow
             actions.AddRange(DeckMonitorCatalog.Items.Select(monitor => new CatalogAction(
                 DeckMonitorCatalog.Category,
                 DeckMonitorCatalog.PaletteDescription(monitor.Id),
-                LocalizationService.IsEnglish
+                !LocalizationService.IsJapanese
                     ? $"{monitor.Name}: {LocalizationService.Text(monitor.Description)}"
                     : $"{monitor.Name}：{monitor.Description}",
                 ActionKind.Disabled,

@@ -43,10 +43,12 @@ internal static class OverlayService
     {
         internal string Action { get; set; } = action;
         internal DeckPanelOverlayWindow Window { get; } = window;
+        internal long LastUsedAt { get; set; } = Environment.TickCount64;
     }
 
     static InputPanelOverlayWindow? inputPanel;
     static readonly Dictionary<string, DeckPanelEntry> deckPanels = new(StringComparer.OrdinalIgnoreCase);
+    internal const int MaxHiddenDeckPanels = 1;
     static string lastDeckPanelKey = "";
     static readonly List<ScreenOverlayWindow> screenOverlays = [];
     static readonly object screenOverlayGate = new();
@@ -166,6 +168,7 @@ internal static class OverlayService
 
     static DeckPanelOverlayWindow CreateDeckPanel(AppConfig config, string action, string key, DeckLayoutDefinition layout, bool cascade)
     {
+        TrimHiddenDeckPanelCache();
         var previous = cascade ? deckPanels.Values.LastOrDefault(entry => entry.Window.IsVisible)?.Window : null;
         bool hasOwnPosition = layout.PanelLeft is double && layout.PanelTop is double;
         var panel = new DeckPanelOverlayWindow(
@@ -213,6 +216,20 @@ internal static class OverlayService
         return panel;
     }
 
+    static void TrimHiddenDeckPanelCache()
+    {
+        while (deckPanels.Values.Count(entry => !entry.Window.IsVisible) > MaxHiddenDeckPanels)
+        {
+            var oldest = deckPanels.Values
+                .Where(entry => !entry.Window.IsVisible)
+                .OrderBy(entry => entry.LastUsedAt)
+                .FirstOrDefault();
+            if (oldest == null)
+                return;
+            oldest.Window.Close();
+        }
+    }
+
     internal static bool IsDeckPanelVisible(string action)
     {
         var config = configProvider?.Invoke();
@@ -243,6 +260,7 @@ internal static class OverlayService
 
     static void NotifyDeckPresentationStateChanged()
     {
+        TrimHiddenDeckPanelCache();
         try { deckPresentationStateChanged?.Invoke(); } catch { }
     }
     internal static void Shutdown()
@@ -450,6 +468,7 @@ internal static class OverlayService
             {
                 key = matching.Key;
                 var entry = matching.Value;
+                entry.LastUsedAt = Environment.TickCount64;
                 var existing = entry.Window;
                 bool same = layout.Id.Equals(existing.LayoutId, StringComparison.OrdinalIgnoreCase);
                 if (same)

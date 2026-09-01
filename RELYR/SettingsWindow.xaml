@@ -120,7 +120,7 @@
   </Window.Resources>
 
   <Grid>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="196"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="224"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
 
     <Border Background="{DynamicResource PaneBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
       <Grid Margin="16,22">
@@ -163,6 +163,12 @@
                 <ComboBox x:Name="LanguageBox" Grid.Column="1" VerticalAlignment="Center" SelectionChanged="Language_SelectionChanged">
                   <ComboBoxItem Content="日本語" Tag="ja-JP"/>
                   <ComboBoxItem Content="English" Tag="en-US"/>
+                  <ComboBoxItem Content="简体中文" Tag="zh-CN"/>
+                  <ComboBoxItem Content="繁體中文" Tag="zh-TW"/>
+                  <ComboBoxItem Content="한국어" Tag="ko-KR"/>
+                  <ComboBoxItem Content="Français" Tag="fr-FR"/>
+                  <ComboBoxItem Content="Deutsch" Tag="de-DE"/>
+                  <ComboBoxItem Content="Español" Tag="es-ES"/>
                 </ComboBox>
               </Grid>
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>

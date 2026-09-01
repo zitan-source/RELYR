@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,34 +16,79 @@ internal static class LocalizationService
 {
     internal const string Japanese = "ja-JP";
     internal const string English = "en-US";
+    internal const string ChineseSimplified = "zh-CN";
+    internal const string ChineseTraditional = "zh-TW";
+    internal const string Korean = "ko-KR";
+    internal const string French = "fr-FR";
+    internal const string German = "de-DE";
+    internal const string Spanish = "es-ES";
+
+    internal sealed record LanguageOption(string Code, string NativeName);
+    internal static IReadOnlyList<LanguageOption> SupportedLanguages { get; } =
+    [
+        new(Japanese, "日本語"),
+        new(English, "English"),
+        new(ChineseSimplified, "简体中文"),
+        new(ChineseTraditional, "繁體中文"),
+        new(Korean, "한국어"),
+        new(French, "Français"),
+        new(German, "Deutsch"),
+        new(Spanish, "Español")
+    ];
 
     sealed class ElementState
     {
         internal bool Updating;
+        internal bool Tracked;
         internal readonly Dictionary<DependencyProperty, string> Sources = [];
-        internal readonly Dictionary<DependencyProperty, EventHandler> Handlers = [];
+        internal readonly Dictionary<DependencyProperty, string> LastApplied = [];
+        internal Dictionary<DependencyProperty, EventHandler>? Handlers;
     }
 
     static readonly ConditionalWeakTable<DependencyObject, ElementState> ElementStates = new();
     static readonly List<WeakReference<DependencyObject>> TrackedElements = [];
     static readonly object TrackingLock = new();
-    static readonly IReadOnlyDictionary<string, string> EnglishText = LocalizationEnglish.Text;
     static bool initialized;
     static string currentLanguage = Japanese;
+    static IReadOnlyDictionary<string, string>? currentText;
+    const string RuntimePrefix = "\u0001runtime:";
 
     internal static event Action? LanguageChanged;
 
     internal static string CurrentLanguage => currentLanguage;
     internal static bool IsEnglish => currentLanguage == English;
+    internal static bool IsJapanese => currentLanguage == Japanese;
+    internal static int CurrentCatalogCountForTest => currentText?.Count ?? 0;
+    internal static int TrackedReferenceCountForTest
+    {
+        get { lock (TrackingLock) return TrackedElements.Count; }
+    }
 
     internal static string Normalize(string? language)
     {
-        string value = language?.Trim() ?? string.Empty;
-        return value.Equals(English, StringComparison.OrdinalIgnoreCase)
-            || value.Equals("en", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("english", StringComparison.OrdinalIgnoreCase)
-            ? English
-            : Japanese;
+        string value = (language?.Trim() ?? string.Empty).Replace('_', '-');
+        if (value.Equals("english", StringComparison.OrdinalIgnoreCase) || value.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            return English;
+        if (value.Equals("日本語", StringComparison.OrdinalIgnoreCase) || value.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
+            return Japanese;
+        if (value.Equals("繁體中文", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("zh-TW", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("zh-Hant", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("zh-HK", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("zh-MO", StringComparison.OrdinalIgnoreCase))
+            return ChineseTraditional;
+        if (value.Equals("简体中文", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+            return ChineseSimplified;
+        if (value.Equals("한국어", StringComparison.OrdinalIgnoreCase) || value.StartsWith("ko", StringComparison.OrdinalIgnoreCase))
+            return Korean;
+        if (value.Equals("français", StringComparison.OrdinalIgnoreCase) || value.StartsWith("fr", StringComparison.OrdinalIgnoreCase))
+            return French;
+        if (value.Equals("deutsch", StringComparison.OrdinalIgnoreCase) || value.StartsWith("de", StringComparison.OrdinalIgnoreCase))
+            return German;
+        if (value.Equals("español", StringComparison.OrdinalIgnoreCase) || value.StartsWith("es", StringComparison.OrdinalIgnoreCase))
+            return Spanish;
+        return Japanese;
     }
 
     internal static void Initialize()
@@ -52,6 +100,18 @@ internal static class LocalizationService
             typeof(FrameworkElement),
             FrameworkElement.LoadedEvent,
             new RoutedEventHandler(ElementLoaded));
+        EventManager.RegisterClassHandler(
+            typeof(FrameworkContentElement),
+            FrameworkContentElement.LoadedEvent,
+            new RoutedEventHandler(ElementLoaded));
+        EventManager.RegisterClassHandler(
+            typeof(FrameworkElement),
+            FrameworkElement.UnloadedEvent,
+            new RoutedEventHandler(ElementUnloaded));
+        EventManager.RegisterClassHandler(
+            typeof(FrameworkContentElement),
+            FrameworkContentElement.UnloadedEvent,
+            new RoutedEventHandler(ElementUnloaded));
     }
 
     internal static void Apply(string? language)
@@ -59,7 +119,9 @@ internal static class LocalizationService
         Initialize();
         string normalized = Normalize(language);
         bool changed = !currentLanguage.Equals(normalized, StringComparison.Ordinal);
+        IReadOnlyDictionary<string, string>? languageText = changed ? LoadLanguageText(normalized) : currentText;
         currentLanguage = normalized;
+        currentText = languageText;
         CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(normalized);
         CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo(normalized);
 
@@ -68,7 +130,8 @@ internal static class LocalizationService
         {
             for (int i = TrackedElements.Count - 1; i >= 0; i--)
             {
-                if (TrackedElements[i].TryGetTarget(out DependencyObject? element))
+                if (TrackedElements[i].TryGetTarget(out DependencyObject? element)
+                    && element is FrameworkElement { IsLoaded: true } or FrameworkContentElement { IsLoaded: true })
                     elements.Add(element);
                 else
                     TrackedElements.RemoveAt(i);
@@ -87,11 +150,37 @@ internal static class LocalizationService
     internal static string Text(string? source)
     {
         string value = source ?? string.Empty;
-        if (!IsEnglish || value.Length == 0)
+        if (IsJapanese || value.Length == 0)
             return value;
-        if (EnglishText.TryGetValue(value, out string? translated))
+        if (currentText != null && currentText.TryGetValue(value, out string? translated))
             return translated;
         return TranslateRuntimeText(value);
+    }
+
+    static string Runtime(string englishTemplate, params object[] values)
+    {
+        string template = englishTemplate;
+        if (!IsEnglish && currentText != null
+            && currentText.TryGetValue(RuntimePrefix + englishTemplate, out string? translated))
+            template = translated;
+        return string.Format(CultureInfo.CurrentUICulture, template, values);
+    }
+
+    static IReadOnlyDictionary<string, string>? LoadLanguageText(string language)
+    {
+        if (language == Japanese)
+            return null;
+        if (language == English)
+            return LocalizationEnglish.Text;
+
+        string suffix = $".Localization.{language}.json";
+        Assembly assembly = typeof(LocalizationService).Assembly;
+        string resourceName = assembly.GetManifestResourceNames()
+            .Single(name => name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        using Stream stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidDataException($"Missing localization resource: {language}");
+        return JsonSerializer.Deserialize<Dictionary<string, string>>(stream)
+            ?? throw new InvalidDataException($"Invalid localization resource: {language}");
     }
 
     internal static void LocalizeTree(DependencyObject root)
@@ -118,88 +207,88 @@ internal static class LocalizationService
     {
         Match match = Regex.Match(value, @"^(\d+)手順のマクロを実行します$");
         if (match.Success)
-            return $"Runs a {match.Groups[1].Value}-step macro";
+            return Runtime("Runs a {0}-step macro", match.Groups[1].Value);
         match = Regex.Match(value, @"^(.*)からアプリを起動します$");
         if (match.Success)
-            return $"Launches the app from {match.Groups[1].Value}";
+            return Runtime("Launches the app from {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+)×(\d+)のDeckを表示します$");
         if (match.Success)
-            return $"Shows a {match.Groups[1].Value} × {match.Groups[2].Value} Deck";
+            return Runtime("Shows a {0} × {1} Deck", match.Groups[1].Value, match.Groups[2].Value);
         match = Regex.Match(value, @"^(\d+)件のAction$");
         if (match.Success)
-            return $"{match.Groups[1].Value} actions";
+            return Runtime("{0} actions", match.Groups[1].Value);
         match = Regex.Match(value, @"^デスクトップ (\d+)$");
         if (match.Success)
-            return $"Desktop {match.Groups[1].Value}";
+            return Runtime("Desktop {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^RELYR v(.+) — デスクトップ (\d+)$");
         if (match.Success)
-            return $"RELYR v{match.Groups[1].Value} — Desktop {match.Groups[2].Value}";
+            return Runtime("RELYR v{0} — Desktop {1}", match.Groups[1].Value, match.Groups[2].Value);
         match = Regex.Match(value, @"^新しいバージョン v(.+) を利用できます$");
         if (match.Success)
-            return $"Version {match.Groups[1].Value} is available";
+            return Runtime("Version {0} is available", match.Groups[1].Value);
         match = Regex.Match(value, @"^最新バージョンです（v(.+)）$");
         if (match.Success)
-            return $"You are up to date (v{match.Groups[1].Value})";
+            return Runtime("You are up to date (v{0})", match.Groups[1].Value);
         match = Regex.Match(value, @"^(.+) をダウンロード済み$");
         if (match.Success)
-            return $"{match.Groups[1].Value} downloaded";
+            return Runtime("{0} downloaded", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+)件$");
         if (match.Success)
-            return $"{match.Groups[1].Value} items";
+            return Runtime("{0} items", match.Groups[1].Value);
         match = Regex.Match(value, @"^キーボード（(.+)配列）とマウス$");
         if (match.Success)
-            return $"Keyboard ({match.Groups[1].Value} layout) and mouse";
+            return Runtime("Keyboard ({0} layout) and mouse", match.Groups[1].Value);
         match = Regex.Match(value, @"^直前に押したキー：(.+)$");
         if (match.Success)
-            return $"Last key pressed: {match.Groups[1].Value}";
+            return Runtime("Last key pressed: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^現在の入力：(.+)$");
         if (match.Success)
-            return $"Current input: {match.Groups[1].Value}";
+            return Runtime("Current input: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^入力: (.+)$");
         if (match.Success)
-            return $"Input: {match.Groups[1].Value}";
+            return Runtime("Input: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^検出: (.+)$");
         if (match.Success)
-            return $"Detected: {match.Groups[1].Value}";
+            return Runtime("Detected: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^割り当て先: (.+)$");
         if (match.Success)
-            return $"Assignment target: {match.Groups[1].Value}";
+            return Runtime("Assignment target: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^選択中: (.+)$");
         if (match.Success)
-            return $"Selected: {match.Groups[1].Value}";
+            return Runtime("Selected: {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+)個のレイアウト$");
         if (match.Success)
-            return $"{match.Groups[1].Value} layouts";
+            return Runtime("{0} layouts", match.Groups[1].Value);
         match = Regex.Match(value, @"^列数 (\d+)・行数 (\d+)・(\d+)ボタン$");
         if (match.Success)
-            return $"{match.Groups[1].Value} columns · {match.Groups[2].Value} rows · {match.Groups[3].Value} buttons";
+            return Runtime("{0} columns · {1} rows · {2} buttons", match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value);
         match = Regex.Match(value, @"^(\d+)個の入力へドラッグ$");
         if (match.Success)
-            return $"Drag to {match.Groups[1].Value} inputs";
+            return Runtime("Drag to {0} inputs", match.Groups[1].Value);
         match = Regex.Match(value, @"^HOLDの判定を(.+)に変更しました$");
         if (match.Success)
-            return $"HOLD detection changed to {match.Groups[1].Value}";
+            return Runtime("HOLD detection changed to {0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+)件の手順をコピーしました。$");
         if (match.Success)
-            return $"Copied {match.Groups[1].Value} steps.";
+            return Runtime("Copied {0} steps.", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+)件の手順を選択中$");
         if (match.Success)
-            return $"{match.Groups[1].Value} steps selected";
+            return Runtime("{0} steps selected", match.Groups[1].Value);
         match = Regex.Match(value, @"^(\d+) 手順・待機合計 (\d+) ms$");
         if (match.Success)
-            return $"{match.Groups[1].Value} steps · {match.Groups[2].Value} ms total delay";
+            return Runtime("{0} steps · {1} ms total delay", match.Groups[1].Value, match.Groups[2].Value);
         match = Regex.Match(value, @"^新しいバージョンが利用可能です（v(.+)）$");
         if (match.Success)
-            return $"A new version is available (v{match.Groups[1].Value})";
+            return Runtime("A new version is available (v{0})", match.Groups[1].Value);
         match = Regex.Match(value, @"^現在のバージョンは v(.+) です。［アップデートを確認］から手動で確認できます。$");
         if (match.Success)
-            return $"Current version: v{match.Groups[1].Value}. Use Check for Updates to check manually.";
+            return Runtime("Current version: v{0}. Use Check for Updates to check manually.", match.Groups[1].Value);
         match = Regex.Match(value, @"^RELYR v(.+) の変更内容$");
         if (match.Success)
-            return $"What's new in RELYR v{match.Groups[1].Value}";
+            return Runtime("What's new in RELYR v{0}", match.Groups[1].Value);
         match = Regex.Match(value, @"^(.+)を押したまま、組み合わせるキーを押してください$");
         if (match.Success)
-            return $"Hold {match.Groups[1].Value} and press the key to combine";
+            return Runtime("Hold {0} and press the key to combine", match.Groups[1].Value);
         return value;
     }
 
@@ -235,22 +324,56 @@ internal static class LocalizationService
             return;
 
         ElementState state = ElementStates.GetOrCreateValue(element);
-        if (!state.Handlers.ContainsKey(property))
+        TrackElement(element, state);
+        if (ShouldObserveChanges(element) && !(state.Handlers?.ContainsKey(property) ?? false))
         {
             EventHandler handler = (_, _) => PropertyChanged(element, property);
             DependencyPropertyDescriptor? descriptor = DependencyPropertyDescriptor.FromProperty(property, element.GetType());
             if (descriptor != null)
             {
                 descriptor.AddValueChanged(element, handler);
-                state.Handlers[property] = handler;
-                lock (TrackingLock)
-                    TrackedElements.Add(new WeakReference<DependencyObject>(element));
+                (state.Handlers ??= [])[property] = handler;
             }
         }
 
         if (!state.Sources.ContainsKey(property))
             state.Sources[property] = current;
-        ApplyProperty(element, property, state, refreshFromSource ? state.Sources[property] : current);
+        else if (refreshFromSource && state.LastApplied.TryGetValue(property, out string? lastApplied)
+            && !current.Equals(lastApplied, StringComparison.Ordinal))
+            state.Sources[property] = current;
+        ApplyProperty(element, property, state, state.Sources[property]);
+    }
+
+    static bool ShouldObserveChanges(DependencyObject element) => true;
+
+    static void TrackElement(DependencyObject element, ElementState state)
+    {
+        if (state.Tracked)
+            return;
+        state.Tracked = true;
+        lock (TrackingLock)
+        {
+            if (TrackedElements.Count >= 256)
+                TrackedElements.RemoveAll(reference => !reference.TryGetTarget(out _));
+            TrackedElements.Add(new WeakReference<DependencyObject>(element));
+        }
+    }
+
+    static void ElementUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DependencyObject element
+            || !ElementStates.TryGetValue(element, out ElementState? state))
+            return;
+        if (state.Handlers != null)
+        {
+            foreach (var (property, handler) in state.Handlers)
+                DependencyPropertyDescriptor.FromProperty(property, element.GetType())?.RemoveValueChanged(element, handler);
+            state.Handlers.Clear();
+            state.Handlers = null;
+        }
+        state.Tracked = false;
+        lock (TrackingLock)
+            TrackedElements.RemoveAll(reference => !reference.TryGetTarget(out DependencyObject? target) || ReferenceEquals(target, element));
     }
 
     static void PropertyChanged(DependencyObject element, DependencyProperty property)
@@ -266,11 +389,15 @@ internal static class LocalizationService
     {
         string translated = Text(source);
         if (Equals(element.GetValue(property), translated))
+        {
+            state.LastApplied[property] = translated;
             return;
+        }
         state.Updating = true;
         try
         {
             element.SetCurrentValue(property, translated);
+            state.LastApplied[property] = translated;
         }
         finally
         {

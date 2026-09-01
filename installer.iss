@@ -135,10 +135,20 @@ end;
 #ifdef IncludeRuntime
 function SelectedAppLanguage(Param: String): String;
 begin
-  if (AppLanguagePage <> nil) and (AppLanguagePage.SelectedValueIndex = 1) then
-    Result := 'en-US'
+  if AppLanguagePage = nil then
+    Result := 'ja-JP'
   else
-    Result := 'ja-JP';
+    case AppLanguagePage.SelectedValueIndex of
+      1: Result := 'en-US';
+      2: Result := 'zh-CN';
+      3: Result := 'zh-TW';
+      4: Result := 'ko-KR';
+      5: Result := 'fr-FR';
+      6: Result := 'de-DE';
+      7: Result := 'es-ES';
+    else
+      Result := 'ja-JP';
+    end;
 end;
 #endif
 
@@ -230,8 +240,26 @@ begin
       True, False);
     AppLanguagePage.Add('日本語');
     AppLanguagePage.Add('English');
+    AppLanguagePage.Add('简体中文');
+    AppLanguagePage.Add('繁體中文');
+    AppLanguagePage.Add('한국어');
+    AppLanguagePage.Add('Français');
+    AppLanguagePage.Add('Deutsch');
+    AppLanguagePage.Add('Español');
     if GetUILanguage = $0411 then
       AppLanguagePage.SelectedValueIndex := 0
+    else if (GetUILanguage = $0404) or (GetUILanguage = $0C04) or (GetUILanguage = $1404) then
+      AppLanguagePage.SelectedValueIndex := 3
+    else if (GetUILanguage and $03FF) = $0004 then
+      AppLanguagePage.SelectedValueIndex := 2
+    else if (GetUILanguage and $03FF) = $0012 then
+      AppLanguagePage.SelectedValueIndex := 4
+    else if (GetUILanguage and $03FF) = $000C then
+      AppLanguagePage.SelectedValueIndex := 5
+    else if (GetUILanguage and $03FF) = $0007 then
+      AppLanguagePage.SelectedValueIndex := 6
+    else if (GetUILanguage and $03FF) = $000A then
+      AppLanguagePage.SelectedValueIndex := 7
     else
       AppLanguagePage.SelectedValueIndex := 1;
   end;

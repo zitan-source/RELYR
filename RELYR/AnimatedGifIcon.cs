@@ -19,6 +19,7 @@ internal sealed class AnimatedGifIcon : System.Windows.Controls.Image
     const int MaxSourceEdge = 4096;
     const int MaxRetainedFrames = 24;
     const int MaxRenderedEdge = 64;
+    internal const int MaxCachedAnimations = 32;
     static readonly SemaphoreSlim DecodeSlots = new(2, 2);
     static readonly ConcurrentDictionary<string, Lazy<Task<AnimationData?>>> Cache = new(StringComparer.OrdinalIgnoreCase);
     static readonly List<WeakReference<AnimatedGifIcon>> Active = [];
@@ -62,7 +63,7 @@ internal sealed class AnimatedGifIcon : System.Windows.Controls.Image
         try
         {
             string cacheKey = $"{path}|{File.GetLastWriteTimeUtc(path).Ticks}|{renderedEdge}";
-            if (Cache.Count >= 128)
+            if (Cache.Count >= MaxCachedAnimations)
                 Cache.TryRemove(Cache.Keys.FirstOrDefault() ?? "", out _);
             var lazy = Cache.GetOrAdd(cacheKey, _ => new Lazy<Task<AnimationData?>>(() => DecodeAsync(path, renderedEdge)));
             animation = await lazy.Value;

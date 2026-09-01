@@ -50,6 +50,12 @@ $hasFreshSetupLanguagePage=$installerText -match '(?is)procedure\s+InitializeWiz
 if($languageRuns.Count -ne 1 -or $languageRuns[0].Value -notmatch '(?i)Check:\s*not IsUpgradeInstall' -or -not $hasFreshSetupLanguagePage){
   throw "Only a fresh full setup may select and initialize the app display language"
 }
+$supportedLanguageCodes=@('ja-JP','en-US','zh-CN','zh-TW','ko-KR','fr-FR','de-DE','es-ES')
+foreach($languageCode in $supportedLanguageCodes){
+  if($installerText -notmatch [regex]::Escape("'$languageCode'")){
+    throw "Fresh setup language selection is missing $languageCode"
+  }
+}
 if($installerText -match '(?im)^\s*Name:\s*"english";\s*MessagesFile:'){
   throw "The update installer must not show Inno Setup's built-in language dialog"
 }
@@ -95,6 +101,14 @@ if($manifestText -notmatch 'requestedExecutionLevel\s+level="asInvoker"'){
 $projectText=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Raw -Encoding UTF8
 if($projectText -notmatch '(?im)<AppHostDotNetSearch>Global</AppHostDotNetSearch>'){
   throw "Published RELYR.exe must search the registered global .NET installation"
+}
+if($projectText -notmatch '(?im)<EmbeddedResource Include="Localization\\\*\.json"'){
+  throw "Non-English localization catalogs must be embedded resources"
+}
+foreach($languageCode in $supportedLanguageCodes|Where-Object{$_ -notin @('ja-JP','en-US')}){
+  if(-not (Test-Path -LiteralPath (Join-Path $root "RELYR\Localization\$languageCode.json"))){
+    throw "Localization catalog is missing: $languageCode"
+  }
 }
 if($installerText -notmatch '(?i)IsDotNetDesktopRuntimeInstalled' -or $installerText -notmatch '(?i)Microsoft\.WindowsDesktop\.App'){
   throw "Both distributions must detect the .NET Desktop Runtime"

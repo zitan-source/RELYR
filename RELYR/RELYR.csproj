@@ -13,7 +13,7 @@
     <AssemblyName>RELYR</AssemblyName>
     <Product>RELYR</Product>
     <Description>キーボードとマウスの入力を自由に割り当てるWindowsアプリ</Description>
-    <Version>0.1.376</Version>
+    <Version>0.1.377</Version>
     <Authors>RELYR</Authors>
     <Copyright>Copyright (c) 2026 RELYR contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -26,6 +26,7 @@
     <Resource Include="Assets\RELYR.ico" />
     <Resource Include="Assets\Tutorial\*.png"
               Exclude="Assets\Tutorial\tutorial-deck-editor.png;Assets\Tutorial\tutorial-macro-editor.png" />
+    <EmbeddedResource Include="Localization\*.json" />
     <Content Include="Assets\RELYR-Macro.ico" Link="RELYR-Macro.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Include="VirtualDesktopAccessor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />

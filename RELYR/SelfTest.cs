@@ -63,9 +63,20 @@ public static class SelfTest
             bool englishLocalized = englishConfig.UiLanguage == LocalizationService.English
                 && LocalizationService.Text("設定") == "Settings"
                 && LocalizationService.Text("GPU温度") == "GPU temperature";
+            bool everyLanguageLoaded = true;
+            foreach (var language in LocalizationService.SupportedLanguages)
+            {
+                LocalizationService.Apply(language.Code);
+                everyLanguageLoaded &= LocalizationService.CurrentLanguage == language.Code
+                    && !string.IsNullOrWhiteSpace(LocalizationService.Text("設定"))
+                    && (language.Code == LocalizationService.Japanese || LocalizationService.Text("お気に入り") != "お気に入り")
+                    && (language.Code is LocalizationService.Japanese or LocalizationService.English || LocalizationService.CurrentCatalogCountForTest >= 815);
+            }
             LocalizationService.Apply(LocalizationService.Japanese);
-            Check(englishLocalized && LocalizationService.Normalize("unsupported") == LocalizationService.Japanese,
-                "display language normalizes, persists, translates shared UI and monitor labels, and safely falls back to Japanese");
+            Check(englishLocalized && everyLanguageLoaded && LocalizationService.SupportedLanguages.Count == 8
+                && LocalizationService.Normalize("zh-Hant-HK") == LocalizationService.ChineseTraditional
+                && LocalizationService.Normalize("unsupported") == LocalizationService.Japanese,
+                "all eight display languages load complete catalogs, normalize aliases, persist, translate shared UI, and safely fall back to Japanese");
             var inputPanelPositions = new AppConfig { NumpadPanelLeft = 123.5, NumpadPanelTop = 234.5, ExtendedKeypadPanelLeft = 345.5, ExtendedKeypadPanelTop = 456.5 };
             (bool Extended, double Left, double Top)? persistedInputPosition = null;
             var savedNumpad = new InputPanelOverlayWindow(false, config: inputPanelPositions, positionChanged: (extended, left, top) => persistedInputPosition = (extended, left, top));
@@ -530,11 +541,25 @@ public static class SelfTest
                 && MainWindow.TryResolveDeckLayoutSize("6x4", "", "", out int mediumDeckColumns, out int mediumDeckRows)
                 && (mediumDeckColumns, mediumDeckRows) == (6, 4),
                 "Deck size presets grow consistently while legacy 8x2 Deck dimensions remain custom data");
+            var clockWork = SystemMonitorService.WorkPlan(["clock"]);
+            var temperatureWork = SystemMonitorService.WorkPlan(["temperature"]);
+            var gpuWork = SystemMonitorService.WorkPlan(["gpu", "vram"]);
+            var diskWork = SystemMonitorService.WorkPlan(["disk-read"]);
+            var latencyWork = SystemMonitorService.WorkPlan(["network-latency"]);
             Check(SystemMonitorService.DiskThroughputQuery.Contains("PerfDisk_PhysicalDisk", StringComparison.Ordinal)
                 && !SystemMonitorService.DiskThroughputQuery.Contains("LogicalDisk", StringComparison.Ordinal)
                 && SystemMonitorService.RateLevel(0, 1024) == 0
-                && SystemMonitorService.RateLevel(1024, 1024) == 1,
-                "disk throughput samples the physical-disk total every monitor tick with a bounded visual scale");
+                && SystemMonitorService.RateLevel(1024, 1024) == 1
+                && clockWork == new SystemMonitorService.MonitorWorkPlan(false, false, false, false)
+                && temperatureWork.HardwareSensors && !temperatureWork.GpuWmi
+                && gpuWork.GpuWmi && !gpuWork.HardwareSensors
+                && diskWork.DiskWmi && latencyWork.GatewayPing,
+                "Deck monitoring requests expensive sensor, GPU, disk, and ping work only for visible tiles while keeping the physical-disk scale bounded");
+            Check(AnimatedGifIcon.MaxCachedAnimations <= 32
+                && DeckPanelLayout.MaxCachedThumbnails <= 192
+                && ApplicationIconService.MaxCacheEntries <= 256
+                && OverlayService.MaxHiddenDeckPanels <= 1,
+                "image, thumbnail, application-icon, and reusable Deck caches have explicit low memory ceilings");
             Check(DeckMonitorView.VisualKind("cpu") == MonitorVisualKind.Sparkline
                 && DeckMonitorView.VisualKind("disk-read") == MonitorVisualKind.Columns
                 && DeckMonitorView.VisualKind("memory") == MonitorVisualKind.Dots

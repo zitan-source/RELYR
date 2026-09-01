@@ -1317,6 +1317,7 @@ internal static class UiIntegrationTest
             themedSettings.UpdateLayout();
             Check(themedSettings.TitleBarUsesDarkMode == MainWindow.IsWindowsAppDarkMode(), "settings title bar follows the Windows app theme");
             themedSettings.Close();
+            int localizationTrackedBeforeSettings = LocalizationService.TrackedReferenceCountForTest;
             var englishSettings = new SettingsWindow(new AppConfig { UiLanguage = LocalizationService.English }) { Owner = window, ShowInTaskbar = false };
             englishSettings.Show();
             englishSettings.UpdateLayout();
@@ -1329,7 +1330,59 @@ internal static class UiIntegrationTest
             Check(englishSettings.Title == "設定" && englishSettings.SelectedUiLanguage == LocalizationService.Japanese,
                 "changing the display language in Settings updates the open UI immediately");
             englishSettings.Close();
+            bool multilingualSettingsFit = true;
+            foreach (var language in LocalizationService.SupportedLanguages.Where(item => item.Code is not LocalizationService.Japanese and not LocalizationService.English))
+            {
+                var localizedSettings = new SettingsWindow(new AppConfig { UiLanguage = language.Code })
+                {
+                    Owner = window,
+                    ShowInTaskbar = false,
+                    Width = 740,
+                    Height = 620
+                };
+                localizedSettings.Show();
+                localizedSettings.UpdateLayout();
+                bool languageFits = localizedSettings.SelectedUiLanguage == language.Code
+                    && localizedSettings.LanguageBox.Items.Count == LocalizationService.SupportedLanguages.Count
+                    && localizedSettings.CategoryList.Items.Cast<ListBoxItem>().All(item => item.ActualHeight <= 48 && !string.IsNullOrWhiteSpace(item.Content?.ToString()));
+                foreach (ListBoxItem category in localizedSettings.CategoryList.Items)
+                {
+                    localizedSettings.CategoryList.SelectedItem = category;
+                    localizedSettings.UpdateLayout();
+                    languageFits &= Descendants<ScrollViewer>(localizedSettings)
+                        .Where(scroll => scroll.IsVisible)
+                        .All(scroll => scroll.ScrollableWidth <= 1);
+                }
+                string saveLabel = LocalizationService.Text("保存");
+                string cancelLabel = LocalizationService.Text("キャンセル");
+                languageFits &= Descendants<System.Windows.Controls.Button>(localizedSettings)
+                    .Where(button => button.Content?.ToString() is string text && (text == saveLabel || text == cancelLabel))
+                    .All(button => button.TranslatePoint(new System.Windows.Point(button.ActualWidth, 0), localizedSettings).X <= localizedSettings.ActualWidth + .1);
+                multilingualSettingsFit &= languageFits;
+                localizedSettings.Close();
+            }
             LocalizationService.Apply(LocalizationService.Japanese);
+            Check(multilingualSettingsFit
+                && LocalizationService.TrackedReferenceCountForTest <= localizationTrackedBeforeSettings + 10,
+                "Chinese, Korean, French, German, and Spanish settings remain contained at minimum size, and closing translated windows releases their localization observers");
+            int cpuMonitorSubscriptionsBefore = SystemMonitorService.Shared.RequestCountForTest("cpu");
+            var monitorVisibilityHost = new Window
+            {
+                Content = new DeckMonitorView(DeckMonitorCatalog.Items.Single(item => item.Id == "cpu")),
+                Width = 120,
+                Height = 100,
+                ShowInTaskbar = false,
+                Owner = window
+            };
+            monitorVisibilityHost.Show();
+            Pump(window);
+            bool visibleMonitorSubscribed = SystemMonitorService.Shared.RequestCountForTest("cpu") == cpuMonitorSubscriptionsBefore + 1;
+            monitorVisibilityHost.Hide();
+            Pump(window);
+            bool hiddenMonitorReleased = SystemMonitorService.Shared.RequestCountForTest("cpu") == cpuMonitorSubscriptionsBefore;
+            monitorVisibilityHost.Close();
+            Check(visibleMonitorSubscribed && hiddenMonitorReleased,
+                "Deck monitor sampling starts only while the tile is visible and stops immediately when its reusable overlay is hidden");
             var numpadOverlay = new InputPanelOverlayWindow(false, 63);
             var extendedOverlay = new InputPanelOverlayWindow(true);
             numpadOverlay.Show();
