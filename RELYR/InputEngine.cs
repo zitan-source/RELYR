@@ -55,6 +55,10 @@ public sealed partial class InputEngine : IDisposable
     const int WH_KEYBOARD_LL = 13, WH_MOUSE_LL = 14, WM_KEYDOWN = 0x100, WM_KEYUP = 0x101, WM_SYSKEYDOWN = 0x104, WM_SYSKEYUP = 0x105;
     const uint WM_QUIT = 0x0012, WM_RUN_HOOK_TEST = 0x8001;
     const uint Marker = 0x1C0570;
+    const uint GeneratedMouseModifierMask = 0x0F;
+    const uint GeneratedMouseShiftCode = 0x01;
+    const uint GeneratedMouseControlCode = 0x02;
+    const uint GeneratedMouseAltCode = 0x03;
     IntPtr keyboardHook, mouseHook;
     Thread? hookThread;
     uint hookThreadId;
@@ -386,7 +390,7 @@ public sealed partial class InputEngine : IDisposable
         var d = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(l);
         HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardCallbackDecoded, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: d.vkCode, value2: unchecked((long)d.dwExtraInfo.ToUInt64()), result: unchecked((int)d.flags));
         // 自分で生成した入力は再マッピングしないが、Windowsと後続フックへは必ず渡す。
-        if (d.dwExtraInfo == (UIntPtr)Marker)
+        if (IsGeneratedInputMarker(d.dwExtraInfo))
         {
             HookDiagnosticsTrace.Record(HookDiagnosticStage.KeyboardGeneratedMarker, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: d.vkCode, value2: w.ToInt64(), result: unchecked((int)d.flags));
             return Next(n, w, l);
@@ -625,7 +629,7 @@ public sealed partial class InputEngine : IDisposable
         }
         var d = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(l);
         int msg = w.ToInt32();
-        if (d.dwExtraInfo == (UIntPtr)Marker)
+        if (IsGeneratedInputMarker(d.dwExtraInfo))
         {
             HookDiagnosticsTrace.Record(HookDiagnosticStage.MouseGeneratedMarker, keyboardHook: keyboardHook, mouseHook: mouseHook, value1: msg, value2: d.mouseData);
             return Next(n, w, l);

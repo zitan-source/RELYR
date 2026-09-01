@@ -175,6 +175,9 @@ public sealed partial class InputEngine
     private static extern short GetAsyncKeyState(int virtualKey);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr GetMessageExtraInfo();
+
+    [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT point);
 
     [DllImport("user32.dll")]

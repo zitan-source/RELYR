@@ -73,6 +73,12 @@ public partial class MainWindow
         CaptureDeckClickModifiers(button, mouseDownModifiers);
         DeckManagementButtonClicked(button, input, ConsumeDeckClickModifiers(button, clickModifiers));
     }
+    internal void ClickDeckInputFromGeneratedMouseDownForTest(int slot, ModifierKeys generatedModifier, ModifierKeys clickModifiers = ModifierKeys.None)
+    {
+        UIntPtr extraInfo = InputEngine.MouseInputMarkerForModifierForTest(generatedModifier);
+        ClickDeckInputFromMouseDownForTest(slot, InputEngine.ModifierKeysFromMouseExtraInfo(extraInfo), clickModifiers);
+    }
+    internal void SetMultiDeckButtonColorForTest(string color) => SetMultiDeckButtonColor(color);
     internal bool HandleEditorHistoryShortcutForTest(Key key, ModifierKeys modifiers, bool textEditing = false)
         => TryHandleEditorHistoryShortcut(key, modifiers, textEditing);
     internal void SetActionPaletteApplicationsForTest(params InstalledApplicationInfo[] applications)

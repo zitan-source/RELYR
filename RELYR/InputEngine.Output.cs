@@ -799,7 +799,7 @@ public sealed partial class InputEngine
             modifierDragKey = 0;
             throw new InvalidOperationException("ドラッグ用の修飾キーを押せませんでした。");
         }
-        if (!SendMouseFlag(2))
+        if (!SendMouseFlag(2, 0, MouseInputMarkerForModifier(modifier)))
         {
             EndModifierDragLocked();
             throw new InvalidOperationException("ドラッグ用の左ボタンを押せませんでした。");
@@ -825,13 +825,14 @@ public sealed partial class InputEngine
     {
         ushort key = modifierDragKey;
         bool mouseDown = modifierDragMouseDown;
+        UIntPtr mouseMarker = MouseInputMarkerForModifier(key);
         modifierDragKey = 0;
         modifierDragMouseDown = false;
         Interlocked.Exchange(ref modifierDragStartedAt, 0);
         modifierDragSafetyTimer?.Dispose();
         modifierDragSafetyTimer = null;
         if (mouseDown)
-            SendMouseUpWithRetry(4);
+            SendMouseUpWithRetry(4, 0, mouseMarker);
         if (key != 0)
             SendKeyUpWithRetry(key);
         if ((mouseDown && InjectedMouseButtonsDown.Contains(1)) || (key != 0 && InjectedKeysDown.Contains(key)))
@@ -885,6 +886,9 @@ public sealed partial class InputEngine
         return true;
     }
     static bool SendMouseFlag(uint flag, uint data = 0)
+        => SendMouseFlag(flag, data, (UIntPtr)Marker);
+
+    static bool SendMouseFlag(uint flag, uint data, UIntPtr extraInfo)
     {
         lock (OutputLock)
         {
@@ -908,7 +912,7 @@ public sealed partial class InputEngine
             }
             else
             {
-                uint count = SendInput(1, [new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = flag, mouseData = data, dwExtraInfo = (UIntPtr)Marker } } }], Marshal.SizeOf<INPUT>());
+                uint count = SendInput(1, [new INPUT { type = 0, U = new InputUnion { mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = flag, mouseData = data, dwExtraInfo = extraInfo } } }], Marshal.SizeOf<INPUT>());
                 sent = count == 1;
                 DeckIpcDiagnostics.RecordSendInput(sent, sent ? 0 : Marshal.GetLastWin32Error());
             }
@@ -944,13 +948,16 @@ public sealed partial class InputEngine
     }
 
     static bool SendMouseUpWithRetry(uint flag, uint data = 0)
+        => SendMouseUpWithRetry(flag, data, (UIntPtr)Marker);
+
+    static bool SendMouseUpWithRetry(uint flag, uint data, UIntPtr extraInfo)
     {
         for (int attempt = 0; attempt < 3; attempt++)
-        if (SendMouseFlag(flag, data))
+        if (SendMouseFlag(flag, data, extraInfo))
             return true;
         if (MouseFlagOutputForTest != null)
             return false;
-        mouse_event(flag, 0, 0, data, (UIntPtr)Marker);
+        mouse_event(flag, 0, 0, data, extraInfo);
         int button = flag switch
         {
             4 => 1,
@@ -966,6 +973,52 @@ public sealed partial class InputEngine
         }
         return true;
     }
+
+    static UIntPtr MouseInputMarkerForModifier(ushort modifier)
+    {
+        uint code = modifier switch
+        {
+            0x10 => GeneratedMouseShiftCode,
+            0x11 => GeneratedMouseControlCode,
+            0x12 => GeneratedMouseAltCode,
+            _ => 0
+        };
+        return (UIntPtr)(Marker | code);
+    }
+
+    static bool IsGeneratedInputMarker(UIntPtr extraInfo)
+        => (extraInfo.ToUInt64() & ~GeneratedMouseModifierMask) == Marker;
+
+    internal static ModifierKeys ModifierKeysFromMouseExtraInfo(UIntPtr extraInfo)
+    {
+        if (!IsGeneratedInputMarker(extraInfo))
+            return ModifierKeys.None;
+        return (uint)(extraInfo.ToUInt64() & GeneratedMouseModifierMask) switch
+        {
+            GeneratedMouseShiftCode => ModifierKeys.Shift,
+            GeneratedMouseControlCode => ModifierKeys.Control,
+            GeneratedMouseAltCode => ModifierKeys.Alt,
+            _ => ModifierKeys.None
+        };
+    }
+
+    internal static ModifierKeys CurrentMessageGeneratedModifierKeys()
+    {
+        long value = GetMessageExtraInfo().ToInt64();
+        return ModifierKeysFromMouseExtraInfo((UIntPtr)unchecked((ulong)value));
+    }
+
+    internal static UIntPtr MouseInputMarkerForModifierForTest(ModifierKeys modifier)
+        => MouseInputMarkerForModifier(modifier switch
+        {
+            ModifierKeys.Shift => 0x10,
+            ModifierKeys.Control => 0x11,
+            ModifierKeys.Alt => 0x12,
+            _ => 0
+        });
+
+    internal static bool IsGeneratedInputMarkerForTest(UIntPtr extraInfo)
+        => IsGeneratedInputMarker(extraInfo);
     static void ReleaseStaleInjectedInputs()
     {
         lock (OutputLock)

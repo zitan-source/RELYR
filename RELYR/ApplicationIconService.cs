@@ -46,7 +46,9 @@ internal static class ApplicationIconService
         string candidate = Environment.ExpandEnvironmentVariables(pathOrExecutable.Trim().Trim('"'));
         ImageSource? icon = candidate.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
             ? TryExtractShortcutIcon(candidate)
-            : null;
+            : candidate.EndsWith(".url", StringComparison.OrdinalIgnoreCase)
+                ? TryExtractInternetShortcutIcon(candidate)
+                : null;
         icon ??= TryExtractIcon(ResolveExecutablePath(candidate));
         lock (CacheLock)
         {
@@ -68,8 +70,19 @@ internal static class ApplicationIconService
             return null;
 
         string candidate = Environment.ExpandEnvironmentVariables(pathOrExecutable.Trim().Trim('"'));
-        if (candidate.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-            candidate = ShortcutService.ResolveShortcutTarget(candidate) ?? candidate;
+        var visitedShortcuts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int depth = 0; depth < 8 && candidate.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase); depth++)
+        {
+            string fullShortcut = Path.GetFullPath(candidate);
+            if (!visitedShortcuts.Add(fullShortcut))
+                return null;
+            string? target = ShortcutService.ResolveShortcutTarget(fullShortcut);
+            if (string.IsNullOrWhiteSpace(target))
+                return null;
+            candidate = Environment.ExpandEnvironmentVariables(target.Trim().Trim('"'));
+        }
+        if (IsShortcutContainer(candidate))
+            return null;
         if (File.Exists(candidate))
             return Path.GetFullPath(candidate);
 
@@ -157,8 +170,11 @@ internal static class ApplicationIconService
 
     static ImageSource? TryExtractIcon(string? path)
     {
-        if (!File.Exists(path))
+        if (!File.Exists(path) || IsShortcutContainer(path!))
             return null;
+        ImageSource? raw = TryExtractRawIcon(path!, 0);
+        if (raw != null)
+            return raw;
         try
         {
             using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
@@ -173,41 +189,86 @@ internal static class ApplicationIconService
     static ImageSource? TryExtractShortcutIcon(string shortcutPath)
     {
         string? location = ShortcutService.ResolveShortcutIconLocation(shortcutPath);
-        if (string.IsNullOrWhiteSpace(location))
-            return null;
+        if (TryParseIconLocation(location, out string iconPath, out int iconIndex)
+            && !IsShortcutContainer(iconPath))
+        {
+            ImageSource? explicitIcon = TryExtractRawIcon(iconPath, iconIndex);
+            if (explicitIcon != null)
+                return explicitIcon;
+        }
 
+        // Never ask the Shell for the .lnk presentation: that is where Windows
+        // paints the shortcut-arrow overlay. Resolve nested links and extract
+        // only the target's raw icon resource instead.
+        return TryExtractIcon(ResolveExecutablePath(shortcutPath));
+    }
+
+    static ImageSource? TryExtractInternetShortcutIcon(string shortcutPath)
+    {
+        try
+        {
+            string? iconFile = null;
+            int iconIndex = 0;
+            foreach (string line in File.ReadLines(shortcutPath))
+            {
+                if (line.StartsWith("IconFile=", StringComparison.OrdinalIgnoreCase))
+                    iconFile = line[9..].Trim();
+                else if (line.StartsWith("IconIndex=", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(line[10..].Trim(), out iconIndex);
+            }
+            if (string.IsNullOrWhiteSpace(iconFile))
+                return null;
+            string iconPath = Environment.ExpandEnvironmentVariables(iconFile.Trim().Trim('"'));
+            return IsShortcutContainer(iconPath) ? null : TryExtractRawIcon(iconPath, iconIndex);
+        }
+        catch { return null; }
+    }
+
+    static bool TryParseIconLocation(string? location, out string iconPath, out int iconIndex)
+    {
+        iconPath = string.Empty;
+        iconIndex = 0;
+        if (string.IsNullOrWhiteSpace(location))
+            return false;
         string expanded = Environment.ExpandEnvironmentVariables(location.Trim());
-        int iconIndex = 0;
         int comma = expanded.LastIndexOf(',');
         if (comma >= 0 && int.TryParse(expanded[(comma + 1)..].Trim(), out int parsedIndex))
         {
             iconIndex = parsedIndex;
             expanded = expanded[..comma];
         }
-        string iconPath = expanded.Trim().Trim('"');
-        // Some shortcuts point IconLocation back to the .lnk. Asking Windows
-        // for that shell presentation returns the shortcut overlay arrow.
-        // Only extract a raw icon resource; otherwise fall back to the target.
-        if (!File.Exists(iconPath) || Path.GetExtension(iconPath) is string extension
-            && (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".url", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase)))
+        iconPath = expanded.Trim().Trim('"');
+        return File.Exists(iconPath);
+    }
+
+    static bool IsShortcutContainer(string path)
+        => Path.GetExtension(path) is string extension
+           && (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+               || extension.Equals(".url", StringComparison.OrdinalIgnoreCase)
+               || extension.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase));
+
+    static ImageSource? TryExtractRawIcon(string iconPath, int iconIndex)
+    {
+        if (!File.Exists(iconPath) || IsShortcutContainer(iconPath))
             return null;
 
-        IntPtr[] large = [IntPtr.Zero];
+        IntPtr large = IntPtr.Zero;
+        IntPtr small = IntPtr.Zero;
         try
         {
-            if (ExtractIconEx(iconPath, iconIndex, large, null, 1) == 0 || large[0] == IntPtr.Zero)
+            const uint requestedIconSize = 256u | (32u << 16);
+            int result = SHDefExtractIcon(iconPath, iconIndex, 0, out large, out small, requestedIconSize);
+            if (result < 0 || large == IntPtr.Zero)
                 return null;
-            // ExtractIconEx returns the icon resource itself, not the Shell's
-            // shortcut presentation, so the small arrow overlay is excluded.
-            return CreateImage(large[0]);
+            return CreateImage(large);
         }
         catch { return null; }
         finally
         {
-            if (large[0] != IntPtr.Zero)
-                DestroyIcon(large[0]);
+            if (large != IntPtr.Zero)
+                DestroyIcon(large);
+            if (small != IntPtr.Zero)
+                DestroyIcon(small);
         }
     }
 
@@ -219,13 +280,13 @@ internal static class ApplicationIconService
 
     static ImageSource CreateImage(IntPtr iconHandle)
     {
-        BitmapSource image = Imaging.CreateBitmapSourceFromHIcon(iconHandle, Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(32, 32));
+        BitmapSource image = Imaging.CreateBitmapSourceFromHIcon(iconHandle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
         image.Freeze();
         return image;
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    static extern uint ExtractIconEx(string file, int index, IntPtr[]? largeIcons, IntPtr[]? smallIcons, uint iconCount);
+    static extern int SHDefExtractIcon(string iconFile, int iconIndex, uint flags, out IntPtr largeIcon, out IntPtr smallIcon, uint iconSize);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

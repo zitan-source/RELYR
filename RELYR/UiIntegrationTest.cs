@@ -74,7 +74,7 @@ internal static class UiIntegrationTest
                 && executableDeckMapping.Value == executableForDeckDrop
                 && executableDeckMapping.DeckFilePath == executableForDeckDrop
                 && executableDeckIcon is System.Windows.Controls.Image
-                && executableDeckFace is System.Windows.Controls.Image { Width: 32, Height: 32 },
+                && executableDeckFace is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize },
                 "dropping an executable creates a launch Action with a readable app-sized associated icon while external Deck file drags remain copy-only");
             var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
             var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
@@ -1960,7 +1960,7 @@ internal static class UiIntegrationTest
             colorPicker.Close();
             string deckPreviewImage = Path.Combine(testConfigDirectory, "deck-preview.png");
             string deckDropExecutable = Path.GetFullPath(Environment.ProcessPath!);
-            string deckDropShortcut = ShortcutService.CreateMacroShortcut("Deck shortcut test", testConfigDirectory, deckDropExecutable);
+            string deckDropShortcut = CreatePlainShortcutForTest(deckDropExecutable, Path.Combine(testConfigDirectory, "Deck shortcut test.lnk"));
             var previewBitmap = BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8);
             var previewEncoder = new PngBitmapEncoder();
             previewEncoder.Frames.Add(BitmapFrame.Create(previewBitmap));
@@ -2581,7 +2581,7 @@ internal static class UiIntegrationTest
             Check(executableOverlayMapping is { Kind: ActionKind.Launch }
                 && executableOverlayMapping.Value == deckDropExecutable
                 && executableOverlayMapping.DeckFilePath == deckDropExecutable
-                && differentialDeckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image
+                && differentialDeckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize }
                 && differentialDeckExecuted is { Kind: ActionKind.Launch }
                 && differentialDeckExecuted.Value == deckDropExecutable,
                 "an executable dropped directly on the live Deck shows its file icon and clicking that button dispatches the executable Launch Action");
@@ -2592,7 +2592,8 @@ internal static class UiIntegrationTest
             Check(shortcutOverlayMapping is { Kind: ActionKind.Launch }
                 && shortcutOverlayMapping.Value == deckDropShortcut
                 && shortcutOverlayMapping.DeckFilePath == deckDropShortcut
-                && differentialDeckOverlay.DeckButtons[2].Content is System.Windows.Controls.Image
+                && differentialDeckOverlay.DeckButtons[2].Content is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize } shortcutImage
+                && SameBitmapPixels(shortcutImage.Source, ApplicationIconService.TryGetExtractedIcon(deckDropExecutable))
                 && differentialDeckExecuted is { Kind: ActionKind.Launch }
                 && differentialDeckExecuted.Value == deckDropShortcut
                 && SystemInputOutput.CreateLaunchStartInfo(deckDropShortcut).UseShellExecute,
@@ -3069,11 +3070,15 @@ internal static class UiIntegrationTest
             Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03" }),
                 "Deck Ctrl+click toggles one slot and Shift+click selects its contiguous anchor range");
             window.ClickDeckInputForTest(1, ModifierKeys.None);
-            window.ClickDeckInputFromMouseDownForTest(6, ModifierKeys.Shift);
+            Check(InputEngine.IsGeneratedInputMarkerForTest(InputEngine.MouseInputMarkerForModifierForTest(ModifierKeys.Shift))
+                && InputEngine.ModifierKeysFromMouseExtraInfo(InputEngine.MouseInputMarkerForModifierForTest(ModifierKeys.Shift)) == ModifierKeys.Shift
+                && InputEngine.ModifierKeysFromMouseExtraInfo(InputEngine.MouseInputMarkerForModifierForTest(ModifierKeys.Control)) == ModifierKeys.Control,
+                "generated Shift/Ctrl mouse markers bypass remapping and retain their modifier across the input queue");
+            window.ClickDeckInputFromGeneratedMouseDownForTest(6, ModifierKeys.Shift);
             Pump(window);
             Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03", "Deck+04", "Deck+05", "Deck+06" }),
                 "Deck range selection retains Shift captured at mouse-down when a mapped modifier-click releases Shift before Button.Click");
-            window.ClickDeckInputFromMouseDownForTest(8, ModifierKeys.Control);
+            window.ClickDeckInputFromGeneratedMouseDownForTest(8, ModifierKeys.Control);
             Pump(window);
             Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03", "Deck+04", "Deck+05", "Deck+06", "Deck+08" }),
                 "Deck non-contiguous selection retains Ctrl captured at mouse-down without depending on Button.Click timing");
@@ -3082,6 +3087,26 @@ internal static class UiIntegrationTest
             Check(window.MultiSelectToggle.IsChecked == false && window.MultiSelectedInputsForTest.Length == 0
                 && MainWindow.GetIsCurrentSelected(window.DeckManagementButtonsForTest[3]),
                 "an ordinary Deck click after modifier selection returns to one selected slot like Windows");
+            string[] bulkColorInputs = ["Deck+01", "Deck+03"];
+            var colorsBeforeBulkChange = bulkColorInputs.ToDictionary(
+                input => input,
+                input => window.SelectedDeckLayoutForTest!.Mappings.LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase))?.DeckColor ?? "",
+                StringComparer.OrdinalIgnoreCase);
+            window.ClickDeckInputForTest(1, ModifierKeys.None);
+            window.ClickDeckInputForTest(3, ModifierKeys.Control);
+            var bulkColorMenu = window.CreateMultiSelectionContextMenu();
+            string[] bulkColorMenuLabels = bulkColorMenu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString() ?? "").ToArray();
+            window.SetMultiDeckButtonColorForTest("#234567");
+            Pump(window);
+            bool bulkColorApplied = bulkColorInputs.All(input =>
+                window.SelectedDeckLayoutForTest!.Mappings.LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase))?.DeckColor == "#234567");
+            window.EditorUndoButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            bool bulkColorUndoneOnce = bulkColorInputs.All(input =>
+                (window.SelectedDeckLayoutForTest!.Mappings.LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase))?.DeckColor ?? "") == colorsBeforeBulkChange[input]);
+            Check(bulkColorMenuLabels.Contains("色を変更...") && bulkColorMenuLabels.Contains("色を標準に戻す")
+                && bulkColorApplied && bulkColorUndoneOnce,
+                "Deck multi-selection right-click changes every selected button color and one Undo restores the complete batch");
             if (anotherProfile != null)
             {
                 window.MultiSelectToggle.IsChecked = false;
@@ -5337,6 +5362,42 @@ internal static class UiIntegrationTest
     struct NativeRectangle { internal int Left, Top, Right, Bottom; }
     [System.Runtime.InteropServices.DllImport("user32.dll")] [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] static extern bool GetWindowRect(IntPtr hwnd, out NativeRectangle rectangle);
     static bool HasBackgroundColor(System.Windows.Controls.Button button, System.Windows.Media.Color expected) => button.Background is SolidColorBrush b && b.Color == expected;
+    static string CreatePlainShortcutForTest(string targetPath, string shortcutPath)
+    {
+        Type shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new PlatformNotSupportedException("Windows shortcut support is unavailable.");
+        object? shell = null;
+        object? shortcut = null;
+        try
+        {
+            shell = Activator.CreateInstance(shellType) ?? throw new PlatformNotSupportedException("Windows shortcut support is unavailable.");
+            shortcut = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, [shortcutPath]);
+            Type shortcutType = shortcut?.GetType() ?? throw new PlatformNotSupportedException("Windows shortcut support is unavailable.");
+            shortcutType.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, shortcut, [targetPath]);
+            shortcutType.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
+            return shortcutPath;
+        }
+        finally
+        {
+            if (shortcut != null && System.Runtime.InteropServices.Marshal.IsComObject(shortcut))
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
+            if (shell != null && System.Runtime.InteropServices.Marshal.IsComObject(shell))
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+        }
+    }
+    static bool SameBitmapPixels(ImageSource? left, ImageSource? right)
+    {
+        if (left is not BitmapSource leftBitmap || right is not BitmapSource rightBitmap
+            || leftBitmap.PixelWidth != rightBitmap.PixelWidth || leftBitmap.PixelHeight != rightBitmap.PixelHeight)
+            return false;
+        var leftConverted = new FormatConvertedBitmap(leftBitmap, PixelFormats.Bgra32, null, 0);
+        var rightConverted = new FormatConvertedBitmap(rightBitmap, PixelFormats.Bgra32, null, 0);
+        int stride = leftConverted.PixelWidth * 4;
+        byte[] leftPixels = new byte[stride * leftConverted.PixelHeight];
+        byte[] rightPixels = new byte[stride * rightConverted.PixelHeight];
+        leftConverted.CopyPixels(leftPixels, stride, 0);
+        rightConverted.CopyPixels(rightPixels, stride, 0);
+        return leftPixels.AsSpan().SequenceEqual(rightPixels);
+    }
     static IEnumerable<double> AdjacentGaps(IReadOnlyList<System.Windows.Controls.Button> keys)
     {
         for (int i = 1; i < keys.Count; i++)

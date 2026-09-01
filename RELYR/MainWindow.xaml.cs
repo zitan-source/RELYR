@@ -1463,6 +1463,15 @@ public partial class MainWindow : Window
         copy.Click += (_, _) => CopyMultiSelection();
         var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode };
         paste.Click += (_, _) => PasteMultiSelection();
+        var changeDeckColor = new MenuItem { Header = "色を変更...", IsEnabled = deckManagementMode && multiSelectedInputs.Count > 0 };
+        changeDeckColor.Click += (_, _) => ChooseMultiDeckButtonColor();
+        var resetDeckColor = new MenuItem
+        {
+            Header = "色を標準に戻す",
+            IsEnabled = deckManagementMode && multiSelectedInputs.Any(input =>
+                DeckPanelLayout.TryGetButtonColor(MappingCollectionForInput(input).LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase)), out _))
+        };
+        resetDeckColor.Click += (_, _) => SetMultiDeckButtonColor("");
         var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = canAssignAcrossScopes };
         assignAllLayers.Click += (_, _) => AssignMultiSelectionToAllLayers();
         var assignAllProfiles = new MenuItem
@@ -1480,6 +1489,13 @@ public partial class MainWindow : Window
         deleteAllProfiles.Click += (_, _) => DeleteMultiSelectionFromAllProfiles();
         menu.Items.Add(copy);
         menu.Items.Add(paste);
+        if (deckManagementMode)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(changeDeckColor);
+            menu.Items.Add(resetDeckColor);
+            menu.Items.Add(new Separator());
+        }
         if (!deckManagementMode)
         {
             menu.Items.Add(new Separator());

@@ -27,6 +27,7 @@ internal static class DeckPanelLayout
     internal const int MaximumSlotCount = MaximumRows * MaximumColumns;
     internal const double KeyWidth = 54;
     internal const double KeyHeight = 52;
+    internal const double RegisteredLaunchIconSize = 40;
     internal const double Gap = 4;
     internal const double NameLabelHeight = 13;
     internal const double NameLabelAreaHeight = 14;
@@ -434,7 +435,11 @@ internal static class DeckPanelLayout
             return new DeckMonitorView(monitor);
         if (HasRegisteredFile(mapping) && !File.Exists(mapping!.DeckFilePath))
             return CreateMissingFileIcon(22);
-        var configuredIcon = DeckIconCatalog.CreateVisual(mapping, 22);
+        bool registeredLaunchFace = HasRegisteredFile(mapping)
+            && IsShellLaunchFile(mapping!.DeckFilePath)
+            && string.IsNullOrWhiteSpace(mapping.DeckIcon)
+            && string.IsNullOrWhiteSpace(mapping.DeckIconPath);
+        var configuredIcon = DeckIconCatalog.CreateVisual(mapping, registeredLaunchFace ? RegisteredLaunchIconSize : 22);
         if (configuredIcon != null)
             return configuredIcon;
         if (HasRegisteredFile(mapping))
@@ -464,7 +469,7 @@ internal static class DeckPanelLayout
                 root.Children.Add(badge);
                 return root;
             }
-            return CreateFileIcon(mapping.DeckFilePath, IsShellLaunchFile(mapping.DeckFilePath) ? 32 : IsAudioFile(mapping.DeckFilePath) ? 20 : 18);
+            return CreateFileIcon(mapping.DeckFilePath, IsShellLaunchFile(mapping.DeckFilePath) ? RegisteredLaunchIconSize : IsAudioFile(mapping.DeckFilePath) ? 20 : 18);
         }
         return new TextBlock
         {

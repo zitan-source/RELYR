@@ -381,6 +381,61 @@ public partial class MainWindow
         var selectedColor = picker.SelectedColor;
         SetDeckButtonColor(input, $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}");
     }
+    void ChooseMultiDeckButtonColor()
+    {
+        if (!deckManagementMode || multiSelectedInputs.Count == 0)
+            return;
+        var colors = multiSelectedInputs
+            .Select(input => MappingCollectionForInput(input).LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase)))
+            .Select(mapping => DeckPanelLayout.TryGetButtonColor(mapping, out var color) ? color : (System.Windows.Media.Color?)null)
+            .Distinct()
+            .ToArray();
+        var initial = colors.Length == 1 && colors[0] is { } commonColor ? commonColor : ThemeService.Color("AccentBrush");
+        var picker = new ThemeColorPickerWindow(initial) { Owner = this };
+        if (picker.ShowDialog() != true)
+            return;
+        var selectedColor = picker.SelectedColor;
+        SetMultiDeckButtonColor($"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}");
+    }
+    void SetMultiDeckButtonColor(string color)
+    {
+        if (!deckManagementMode || selectedDeckLayout == null || multiSelectedInputs.Count == 0)
+            return;
+        string[] inputs = multiSelectedInputs
+            .Where(DeckPanelLayout.IsInputName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(DeckPanelLayout.SlotNumber)
+            .ToArray();
+        bool changed = false;
+        foreach (string input in inputs)
+        {
+            var mappings = MappingCollectionForInput(input);
+            var mapping = mappings.LastOrDefault(candidate => candidate.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+            if (mapping == null)
+            {
+                if (string.IsNullOrWhiteSpace(color))
+                    continue;
+                mapping = new Mapping { Input = input, Layer = DeckPanelLayout.Layer };
+                mappings.Add(mapping);
+            }
+            if (string.Equals(mapping.DeckColor, color, StringComparison.OrdinalIgnoreCase))
+                continue;
+            mapping.DeckColor = color;
+            if (!HasDeckButtonContent(mapping))
+                mappings.Remove(mapping);
+            changed = true;
+        }
+        if (!changed)
+            return;
+        // Mutate every selected slot first, then record and synchronize once.
+        // This makes one Undo restore the complete batch and avoids rebuilding
+        // the live Deck once per selected button.
+        MarkDirty();
+        foreach (string input in inputs)
+            RefreshSelectedInputVisual(input);
+        UpdateDeckColorPicker();
+        ShowInlineNotice($"{inputs.Length}個のDeckボタンの色を変更しました");
+    }
     void ChooseDeckButtonIcon(string input)
     {
         var mappings = MappingCollectionForInput(input);
@@ -1277,7 +1332,12 @@ public partial class MainWindow
     {
         if (sender is not System.Windows.Controls.Button { Tag: string input } button || !DeckPanelLayout.IsInputName(input))
             return;
-        CaptureDeckClickModifiers(button, Keyboard.Modifiers);
+        // A mapped modifier-click can enqueue modifier Up immediately after
+        // synthetic left Up. By the time WPF dispatches this mouse-down,
+        // Keyboard.Modifiers may already be empty. The generated mouse marker
+        // carries the modifier across that queue boundary and across the
+        // elevated input-helper/UI-process boundary.
+        CaptureDeckClickModifiers(button, Keyboard.Modifiers | InputEngine.CurrentMessageGeneratedModifierKeys());
         if (MultiSelectToggle.IsChecked == true && !multiSelectedInputs.Contains(input))
             return;
         deckReorderSource = button;
