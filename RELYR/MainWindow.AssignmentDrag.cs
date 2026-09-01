@@ -85,7 +85,7 @@ public partial class MainWindow
         var data = new DataObject();
         data.SetData(AssignmentActionMoveFormat, new AssignmentActionMovePayload(selected.Input, slot, action));
         data.SetData(ActionPaletteDragFormat, action);
-        RunActionPaletteDrag(card, AssignmentPaletteItemFor(action), data, DragDropEffects.Move);
+        RunActionPaletteDrag(card, AssignmentPaletteItemFor(action), data, DragDropEffects.Move | DragDropEffects.Copy);
         e.Handled = true;
     }
 
@@ -215,7 +215,7 @@ public partial class MainWindow
             AssignmentDropSlot slot = DropSlotAt(moveTargetInput, moveTarget, e.GetPosition(moveTarget));
             bool moveValid = CanMoveAssignmentAction(move, moveTargetInput, moveTargetKey, slot);
             SetAssignmentDropTarget(moveValid ? moveTarget : null, move.Action, slot);
-            e.Effects = moveValid ? DragDropEffects.Move : DragDropEffects.None;
+            e.Effects = AssignmentActionTransferEffect(moveValid, e.KeyStates);
             e.Handled = true;
             return;
         }
@@ -279,8 +279,10 @@ public partial class MainWindow
             string moveTargetInput = InputForCurrentLayer(moveTargetKey);
             AssignmentDropSlot slot = DropSlotAt(moveTargetInput, moveTarget, e.GetPosition(moveTarget));
             ClearAssignmentDropTarget();
-            bool moved = ApplyAssignmentActionMove(move, moveTargetInput, moveTargetKey, slot);
-            e.Effects = moved ? DragDropEffects.Move : DragDropEffects.None;
+            DragDropEffects requestedEffect = AssignmentActionTransferEffect(true, e.KeyStates);
+            bool copy = requestedEffect == DragDropEffects.Copy;
+            bool transferred = ApplyAssignmentActionTransfer(move, moveTargetInput, moveTargetKey, slot, copy);
+            e.Effects = transferred ? requestedEffect : DragDropEffects.None;
             e.Handled = true;
             return;
         }
@@ -354,7 +356,14 @@ public partial class MainWindow
             && CanAssignPaletteDropToSlot(payload.Action, targetInput, targetKey, targetSlot);
     }
 
-    bool ApplyAssignmentActionMove(AssignmentActionMovePayload payload, string targetInput, string targetKey, AssignmentDropSlot targetSlot)
+    internal static DragDropEffects AssignmentActionTransferEffect(bool valid, DragDropKeyStates keyStates)
+        => !valid
+            ? DragDropEffects.None
+            : (keyStates & DragDropKeyStates.ControlKey) != 0
+                ? DragDropEffects.Copy
+                : DragDropEffects.Move;
+
+    bool ApplyAssignmentActionTransfer(AssignmentActionMovePayload payload, string targetInput, string targetKey, AssignmentDropSlot targetSlot, bool copy)
     {
         if (!CanMoveAssignmentAction(payload, targetInput, targetKey, targetSlot))
             return false;
@@ -362,30 +371,34 @@ public partial class MainWindow
         var snapshots = affectedInputs.Select(CapturePaletteAssignment).ToArray();
         ApplyPaletteActionToInput(payload.Action, targetInput, targetSlot);
 
-        Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping =>
-            mapping.Input.Equals(payload.SourceInput, StringComparison.OrdinalIgnoreCase));
-        if (source == null)
-            return false;
-        if (payload.SourceSlot == AssignmentDropSlot.LongPress)
+        if (!copy)
         {
-            source.LongPressKind = ActionKind.None;
-            source.LongPressValue = string.Empty;
+            Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping =>
+                mapping.Input.Equals(payload.SourceInput, StringComparison.OrdinalIgnoreCase));
+            if (source == null)
+                return false;
+            if (payload.SourceSlot == AssignmentDropSlot.LongPress)
+            {
+                source.LongPressKind = ActionKind.None;
+                source.LongPressValue = string.Empty;
+            }
+            else
+            {
+                source.Kind = ActionKind.None;
+                source.Value = string.Empty;
+            }
+            if (!MappingHasConfiguredAction(source))
+                CurrentProfile.Mappings.Remove(source);
+            else
+                NormalizeLongOnlyMapping(source);
         }
-        else
-        {
-            source.Kind = ActionKind.None;
-            source.Value = string.Empty;
-        }
-        if (!MappingHasConfiguredAction(source))
-            CurrentProfile.Mappings.Remove(source);
-        else
-            NormalizeLongOnlyMapping(source);
         InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
         RememberRecentPaletteAction(payload.Action);
 
         string sourceSlot = payload.SourceSlot == AssignmentDropSlot.LongPress ? "HOLD" : "TAP";
         string targetSlotLabel = targetSlot == AssignmentDropSlot.LongPress ? "HOLD" : "TAP";
-        string message = $"{DisplayInputName(payload.SourceInput)} の {sourceSlot} を {DisplayInputName(targetInput)} の {targetSlotLabel} へ移動しました";
+        string operation = copy ? "コピー" : "移動";
+        string message = $"{DisplayInputName(payload.SourceInput)} の {sourceSlot} を {DisplayInputName(targetInput)} の {targetSlotLabel} へ{operation}しました";
         actionPaletteUndoState = new ActionPaletteUndoState(snapshots, message);
         ShowActionPaletteUndo(message);
         CommitPaletteAssignment(message, affectedInputs);

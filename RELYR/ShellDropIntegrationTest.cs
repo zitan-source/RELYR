@@ -56,6 +56,20 @@ internal static class ShellDropIntegrationTest
             SendMessage(hwnd, WmDropFiles, drop, IntPtr.Zero);
             overlay.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
             bool accepted = DeckPanelLayout.FindMapping(layout, 1)?.DeckFilePath?.Equals(Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase) == true;
+            string executable = Path.GetFullPath(Environment.ProcessPath!);
+            var executableCenter = overlay.DeckButtons[1].PointToScreen(new Point(overlay.DeckButtons[1].ActualWidth / 2, overlay.DeckButtons[1].ActualHeight / 2));
+            var executablePoint = new NativePoint { X = (int)Math.Round(executableCenter.X), Y = (int)Math.Round(executableCenter.Y) };
+            if (!ScreenToClient(hwnd, ref executablePoint))
+                throw new InvalidOperationException("Could not resolve the executable Deck button client point.");
+            IntPtr executableDrop = CreateDropHandle(executable, executablePoint);
+            SendMessage(hwnd, WmDropFiles, executableDrop, IntPtr.Zero);
+            overlay.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
+            Mapping? executableMapping = DeckPanelLayout.FindMapping(layout, 2);
+            bool executableAccepted = executableMapping is { Kind: ActionKind.Launch }
+                && executableMapping.Value.Equals(executable, StringComparison.OrdinalIgnoreCase)
+                && executableMapping.DeckFilePath.Equals(executable, StringComparison.OrdinalIgnoreCase)
+                && DeckPanelLayout.CreateFileIcon(executable, 24) is System.Windows.Controls.Image;
+            accepted &= executableAccepted;
             File.WriteAllText(report, accepted ? "SHELL DROP INTEGRATION TEST PASSED" : "SHELL DROP INTEGRATION TEST FAILED", Encoding.UTF8);
             return accepted ? 0 : 1;
         }

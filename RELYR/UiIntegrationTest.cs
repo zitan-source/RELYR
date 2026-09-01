@@ -45,7 +45,35 @@ internal static class UiIntegrationTest
                 && !window.RuntimeInterceptsInputForTest("Space"),
                 "normal left click and stale bare-Space actions cannot intercept native Windows input even if an old mapping remains");
             window.RemoveAppliedMappingForTest(staleBareSpace);
-            Check(DeckPanelLayout.ExternalFileDragEffects == System.Windows.DragDropEffects.Copy, "Deck file drags expose copy-only semantics so Explorer cannot move or delete the registered source file");
+            string executableForDeckDrop = Path.GetFullPath(Environment.ProcessPath!);
+            var executableDeckMapping = new Mapping
+            {
+                Input = "Deck+01",
+                Layer = DeckPanelLayout.Layer,
+                Kind = ActionKind.Shortcut,
+                Value = "Ctrl+C",
+                LongPressKind = ActionKind.Key,
+                LongPressValue = "F1",
+                DeckIcon = "home",
+                DeckIconPath = @"C:\Icons\old.png",
+                DeckIconAutoAssigned = true
+            };
+            DeckPanelLayout.ApplyRegisteredFile(executableDeckMapping, executableForDeckDrop);
+            FrameworkElement executableDeckIcon = DeckPanelLayout.CreateFileIcon(executableForDeckDrop, 24);
+            Check(DeckPanelLayout.ExternalFileDragEffects == System.Windows.DragDropEffects.Copy
+                && executableDeckMapping is
+                {
+                    Kind: ActionKind.Launch,
+                    LongPressKind: ActionKind.None,
+                    LongPressValue: "",
+                    DeckIcon: "",
+                    DeckIconPath: "",
+                    DeckIconAutoAssigned: false
+                }
+                && executableDeckMapping.Value == executableForDeckDrop
+                && executableDeckMapping.DeckFilePath == executableForDeckDrop
+                && executableDeckIcon is System.Windows.Controls.Image,
+                "dropping an executable creates a launch Action with its associated icon while external Deck file drags remain copy-only");
             var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
             var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
             var tiltLeft = mouseButtons.First(x => Equals(x.Tag, "TiltLeft"));
@@ -1172,6 +1200,22 @@ internal static class UiIntegrationTest
                 && restoredMoveF23.Length == previousF23BeforeMove.Length
                 && restoredMoveF23.Zip(previousF23BeforeMove).All(pair => pair.First.Kind == pair.Second.Kind && pair.First.Value == pair.Second.Value && pair.First.LongPressKind == pair.Second.LongPressKind && pair.First.LongPressValue == pair.Second.LongPressValue),
                 "undo restores both the source and overwritten destination after moving a summary Action");
+            bool summaryActionCopied = window.CopyAssignedActionForTest("F24", sourceLongPress: false, targetInput: "F23", targetKey: "F23", targetLongPress: true);
+            var copiedSourceF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            var copiedTargetF23 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F23");
+            Check(summaryActionCopied
+                && MainWindow.AssignmentActionTransferEffect(true, DragDropKeyStates.None) == System.Windows.DragDropEffects.Move
+                && MainWindow.AssignmentActionTransferEffect(true, DragDropKeyStates.ControlKey) == System.Windows.DragDropEffects.Copy
+                && copiedSourceF24 is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && copiedTargetF23 is { LongPressKind: ActionKind.Shortcut, LongPressValue: "Ctrl+C" },
+                "Ctrl-dragging a summary Action copies it to the requested TAP/HOLD slot while preserving the source Action");
+            window.UndoPaletteActionForTest();
+            var restoredCopyF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            var restoredCopyF23 = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F23").ToArray();
+            Check(restoredCopyF24 is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && restoredCopyF23.Length == previousF23BeforeMove.Length
+                && restoredCopyF23.Zip(previousF23BeforeMove).All(pair => pair.First.Kind == pair.Second.Kind && pair.First.Value == pair.Second.Value && pair.First.LongPressKind == pair.Second.LongPressKind && pair.First.LongPressValue == pair.Second.LongPressValue),
+                "undo restores the overwritten destination after Ctrl-drag copy without changing the source");
             var normalAlphabetButton = window.VisualInputButtonsForTest.First(button => Equals(button.Tag, "A"));
             window.SetPaletteAssignmentDropTargetForTest(normalAlphabetButton, enterAction, longPress: true);
             normalAlphabetButton.ApplyTemplate();
@@ -1911,6 +1955,7 @@ internal static class UiIntegrationTest
             CaptureForReview(colorPicker, "theme-color-picker.png");
             colorPicker.Close();
             string deckPreviewImage = Path.Combine(testConfigDirectory, "deck-preview.png");
+            string deckDropExecutable = Path.GetFullPath(Environment.ProcessPath!);
             var previewBitmap = BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8);
             var previewEncoder = new PngBitmapEncoder();
             previewEncoder.Frames.Add(BitmapFrame.Create(previewBitmap));
@@ -2494,9 +2539,10 @@ internal static class UiIntegrationTest
                     new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "keep" }
                 ]
             };
+            Mapping? differentialDeckExecuted = null;
             var differentialDeckOverlay = new DeckPanelOverlayWindow(
                 new AppConfig { DeckLayouts = [differentialDeckLayout] },
-                null,
+                mapping => differentialDeckExecuted = mapping,
                 selectedLayout: differentialDeckLayout);
             differentialDeckOverlay.Show();
             differentialDeckOverlay.UpdateLayout();
@@ -2523,6 +2569,17 @@ internal static class UiIntegrationTest
                 && differentialDeckLayout.Mappings.Single(mapping => mapping.Input == "Deck+01").DeckFilePath == Path.GetFullPath(deckPreviewImage)
                 && OverlayService.DeckRefreshRequestCountForTest == 0,
                 $"Deck overlay delete and file drop replace only the changed cell, and the following save does not rebuild the whole Deck (delete={deleteTouchedOnlyTarget}, drop={fileDropTouchedOnlyTarget}, refreshes={OverlayService.DeckRefreshRequestCountForTest})");
+            differentialDeckOverlay.AssignDeckFileForTest(2, deckDropExecutable);
+            Pump(window);
+            differentialDeckOverlay.DeckButtons[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Mapping executableOverlayMapping = differentialDeckLayout.Mappings.Last(mapping => mapping.Input == "Deck+02");
+            Check(executableOverlayMapping is { Kind: ActionKind.Launch }
+                && executableOverlayMapping.Value == deckDropExecutable
+                && executableOverlayMapping.DeckFilePath == deckDropExecutable
+                && differentialDeckOverlay.DeckButtons[1].Content is System.Windows.Controls.Image
+                && differentialDeckExecuted is { Kind: ActionKind.Launch }
+                && differentialDeckExecuted.Value == deckDropExecutable,
+                "an executable dropped directly on the live Deck shows its file icon and clicking that button dispatches the executable Launch Action");
             differentialDeckOverlay.Close();
             OverlayService.Configure(null);
             var independentlySizedDeckA = new DeckLayoutDefinition { Name = "Deck A", Columns = 3, Rows = 3, PanelWidth = 320, PanelHeight = 320 };

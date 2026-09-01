@@ -291,8 +291,7 @@ internal sealed partial class DeckPanelOverlayWindow
         if (file == null)
             return;
         var target = GetOrCreateDeckMapping(slot);
-        target.DeckFilePath = Path.GetFullPath(file);
-        target.DeckMonitor = string.Empty;
+        DeckPanelLayout.ApplyRegisteredFile(target, file);
         CommitDeckSlotChange(slot);
     }
     void RevealDeckFile(int slot)
@@ -682,8 +681,7 @@ internal sealed partial class DeckPanelOverlayWindow
             mapping = new Mapping { Input = DeckPanelLayout.InputName(slot), Layer = DeckPanelLayout.Layer };
             layout.Mappings.Add(mapping);
         }
-        mapping.DeckFilePath = Path.GetFullPath(file);
-        mapping.DeckMonitor = string.Empty;
+        DeckPanelLayout.ApplyRegisteredFile(mapping, file);
         CommitDeckSlotChange(slot);
     }
     void StartDragPreview(Mapping mapping)

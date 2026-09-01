@@ -112,6 +112,8 @@ public partial class MainWindow
         favoriteButton.Visibility = action == null ? Visibility.Collapsed : Visibility.Visible;
         if (action == null)
             return;
+        if (card.ToolTip is string existingToolTip && !existingToolTip.Contains("Ctrl+ドラッグ", StringComparison.Ordinal))
+            card.ToolTip = existingToolTip + "\nドラッグで移動 / Ctrl+ドラッグでコピー";
         bool favorite = config.ActionPaletteFavorites.Contains(ActionPaletteSignature(action.Kind, action.Value), StringComparer.OrdinalIgnoreCase);
         favoriteButton.Content = new TextBlock { Text = favorite ? "★" : "☆", FontSize = 15 };
         favoriteButton.Foreground = ThemeService.Brush(favorite ? "ActionTextIconBrush" : "MutedText");

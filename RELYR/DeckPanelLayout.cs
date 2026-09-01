@@ -161,6 +161,32 @@ internal static class DeckPanelLayout
 
     internal static bool HasRegisteredFile(Mapping? mapping) => !string.IsNullOrWhiteSpace(mapping?.DeckFilePath);
     internal static bool IsAvailableFile(Mapping? mapping) => HasRegisteredFile(mapping) && File.Exists(mapping!.DeckFilePath);
+    internal static bool IsExecutableFile(string? path)
+        => Path.GetExtension(path ?? "").Equals(".exe", StringComparison.OrdinalIgnoreCase);
+
+    internal static void ApplyRegisteredFile(Mapping mapping, string path)
+    {
+        string normalized = Path.GetFullPath(path);
+        mapping.DeckFilePath = normalized;
+        mapping.DeckMonitor = string.Empty;
+        if (!IsExecutableFile(normalized))
+            return;
+
+        // An executable dropped on a Deck button is a launcher, not merely a
+        // decorative file face. Replace stale executable fields and let the
+        // button render the file's own associated icon.
+        mapping.Kind = ActionKind.Launch;
+        mapping.Value = normalized;
+        mapping.LongPressKind = ActionKind.None;
+        mapping.LongPressValue = string.Empty;
+        mapping.LongPressMs = 500;
+        mapping.DragValue = string.Empty;
+        mapping.DragEndValue = string.Empty;
+        mapping.Application = string.Empty;
+        mapping.DeckIcon = string.Empty;
+        mapping.DeckIconPath = string.Empty;
+        mapping.DeckIconAutoAssigned = false;
+    }
     internal static string? GetDroppedFile(System.Windows.IDataObject data)
     {
         object? value;
@@ -273,6 +299,17 @@ internal static class DeckPanelLayout
 
     internal static FrameworkElement CreateFileIcon(string? path, double size = 20)
     {
+        if (IsExecutableFile(path) && ApplicationIconService.TryGetExtractedIcon(path) is { } executableIcon)
+        {
+            return new System.Windows.Controls.Image
+            {
+                Source = executableIcon,
+                Width = size,
+                Height = size,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                IsHitTestVisible = false
+            };
+        }
         var icon = new System.Windows.Shapes.Path
         {
             Stretch = System.Windows.Media.Stretch.Uniform,

@@ -124,6 +124,10 @@ public partial class MainWindow
         => ApplyPaletteActionDrop(action, targetInput, targetKey,
             longPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress);
     internal bool MoveAssignedActionForTest(string sourceInput, bool sourceLongPress, string targetInput, string targetKey, bool targetLongPress)
+        => TransferAssignedActionForTest(sourceInput, sourceLongPress, targetInput, targetKey, targetLongPress, copy: false);
+    internal bool CopyAssignedActionForTest(string sourceInput, bool sourceLongPress, string targetInput, string targetKey, bool targetLongPress)
+        => TransferAssignedActionForTest(sourceInput, sourceLongPress, targetInput, targetKey, targetLongPress, copy: true);
+    bool TransferAssignedActionForTest(string sourceInput, bool sourceLongPress, string targetInput, string targetKey, bool targetLongPress, bool copy)
     {
         Mapping? source = CurrentProfile.Mappings.LastOrDefault(mapping => mapping.Input.Equals(sourceInput, StringComparison.OrdinalIgnoreCase));
         if (source == null)
@@ -132,14 +136,15 @@ public partial class MainWindow
         string value = sourceLongPress ? source.LongPressValue : source.Value;
         if (kind == ActionKind.None)
             return false;
-        return ApplyAssignmentActionMove(
+        return ApplyAssignmentActionTransfer(
             new AssignmentActionMovePayload(
                 sourceInput,
                 sourceLongPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress,
                 CatalogActionForAssignment(kind, value)),
             targetInput,
             targetKey,
-            targetLongPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress);
+            targetLongPress ? AssignmentDropSlot.LongPress : AssignmentDropSlot.ShortPress,
+            copy);
     }
     internal void SetActionPaletteValueResolverForTest(Func<CatalogAction, string?>? resolver)
         => actionPaletteValueResolverForTest = resolver;

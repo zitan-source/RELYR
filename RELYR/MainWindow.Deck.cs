@@ -125,14 +125,16 @@ public partial class MainWindow
         }
         if (mapping == null)
             return;
-        mapping.DeckFilePath = normalized;
         if (normalized.Length > 0)
-            mapping.DeckMonitor = string.Empty;
+            DeckPanelLayout.ApplyRegisteredFile(mapping, normalized);
+        else
+            mapping.DeckFilePath = string.Empty;
         if (selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true)
         {
-            selected.DeckFilePath = normalized;
             if (normalized.Length > 0)
-                selected.DeckMonitor = string.Empty;
+                DeckPanelLayout.ApplyRegisteredFile(selected, normalized);
+            else
+                selected.DeckFilePath = string.Empty;
         }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
