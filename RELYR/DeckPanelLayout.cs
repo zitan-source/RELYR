@@ -61,6 +61,11 @@ internal static class DeckPanelLayout
         ".txt", ".md", ".csv", ".json", ".xml", ".log", ".srt", ".ass", ".vtt"
     };
 
+    static readonly HashSet<string> ShellLaunchExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".lnk", ".url", ".appref-ms"
+    };
+
     internal static string InputName(int slot) => $"{Layer}+{slot:00}";
 
     internal static bool IsInputName(string? input)
@@ -163,18 +168,21 @@ internal static class DeckPanelLayout
     internal static bool IsAvailableFile(Mapping? mapping) => HasRegisteredFile(mapping) && File.Exists(mapping!.DeckFilePath);
     internal static bool IsExecutableFile(string? path)
         => Path.GetExtension(path ?? "").Equals(".exe", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsShellLaunchFile(string? path)
+        => ShellLaunchExtensions.Contains(Path.GetExtension(path ?? ""));
 
     internal static void ApplyRegisteredFile(Mapping mapping, string path)
     {
         string normalized = Path.GetFullPath(path);
         mapping.DeckFilePath = normalized;
         mapping.DeckMonitor = string.Empty;
-        if (!IsExecutableFile(normalized))
+        if (!IsShellLaunchFile(normalized))
             return;
 
-        // An executable dropped on a Deck button is a launcher, not merely a
-        // decorative file face. Replace stale executable fields and let the
-        // button render the file's own associated icon.
+        // Executables and Windows shortcuts dropped on a Deck button are
+        // launchers, not merely decorative file faces. Shell execution keeps
+        // shortcut arguments and URLs intact. Rendering the resolved target's
+        // icon deliberately omits the shortcut-arrow overlay.
         mapping.Kind = ActionKind.Launch;
         mapping.Value = normalized;
         mapping.LongPressKind = ActionKind.None;
@@ -299,11 +307,11 @@ internal static class DeckPanelLayout
 
     internal static FrameworkElement CreateFileIcon(string? path, double size = 20)
     {
-        if (IsExecutableFile(path) && ApplicationIconService.TryGetExtractedIcon(path) is { } executableIcon)
+        if (IsShellLaunchFile(path) && ApplicationIconService.TryGetExtractedIcon(path) is { } launchIcon)
         {
             return new System.Windows.Controls.Image
             {
-                Source = executableIcon,
+                Source = launchIcon,
                 Width = size,
                 Height = size,
                 Stretch = System.Windows.Media.Stretch.Uniform,

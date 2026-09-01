@@ -1956,6 +1956,7 @@ internal static class UiIntegrationTest
             colorPicker.Close();
             string deckPreviewImage = Path.Combine(testConfigDirectory, "deck-preview.png");
             string deckDropExecutable = Path.GetFullPath(Environment.ProcessPath!);
+            string deckDropShortcut = ShortcutService.CreateMacroShortcut("Deck shortcut test", testConfigDirectory, deckDropExecutable);
             var previewBitmap = BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8);
             var previewEncoder = new PngBitmapEncoder();
             previewEncoder.Frames.Add(BitmapFrame.Create(previewBitmap));
@@ -2580,6 +2581,18 @@ internal static class UiIntegrationTest
                 && differentialDeckExecuted is { Kind: ActionKind.Launch }
                 && differentialDeckExecuted.Value == deckDropExecutable,
                 "an executable dropped directly on the live Deck shows its file icon and clicking that button dispatches the executable Launch Action");
+            differentialDeckOverlay.AssignDeckFileForTest(3, deckDropShortcut);
+            Pump(window);
+            differentialDeckOverlay.DeckButtons[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Mapping shortcutOverlayMapping = differentialDeckLayout.Mappings.Last(mapping => mapping.Input == "Deck+03");
+            Check(shortcutOverlayMapping is { Kind: ActionKind.Launch }
+                && shortcutOverlayMapping.Value == deckDropShortcut
+                && shortcutOverlayMapping.DeckFilePath == deckDropShortcut
+                && differentialDeckOverlay.DeckButtons[2].Content is System.Windows.Controls.Image
+                && differentialDeckExecuted is { Kind: ActionKind.Launch }
+                && differentialDeckExecuted.Value == deckDropShortcut
+                && SystemInputOutput.CreateLaunchStartInfo(deckDropShortcut).UseShellExecute,
+                "a Windows shortcut dropped directly on the live Deck shows the resolved target icon without an overlay arrow and clicking dispatches the shortcut through Shell execution");
             differentialDeckOverlay.Close();
             OverlayService.Configure(null);
             var independentlySizedDeckA = new DeckLayoutDefinition { Name = "Deck A", Columns = 3, Rows = 3, PanelWidth = 320, PanelHeight = 320 };

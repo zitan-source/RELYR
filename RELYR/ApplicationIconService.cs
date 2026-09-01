@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -42,8 +43,11 @@ internal static class ApplicationIconService
             if (ExtractedIconCache.TryGetValue(cacheKey, out var cached))
                 return cached;
 
-        string? path = ResolveExecutablePath(pathOrExecutable);
-        ImageSource? icon = TryExtractIcon(path);
+        string candidate = Environment.ExpandEnvironmentVariables(pathOrExecutable.Trim().Trim('"'));
+        ImageSource? icon = candidate.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
+            ? TryExtractShortcutIcon(candidate)
+            : null;
+        icon ??= TryExtractIcon(ResolveExecutablePath(candidate));
         lock (CacheLock)
         {
             TrimCache(ExtractedIconCache);
@@ -166,6 +170,41 @@ internal static class ApplicationIconService
         }
     }
 
+    static ImageSource? TryExtractShortcutIcon(string shortcutPath)
+    {
+        string? location = ShortcutService.ResolveShortcutIconLocation(shortcutPath);
+        if (string.IsNullOrWhiteSpace(location))
+            return null;
+
+        string expanded = Environment.ExpandEnvironmentVariables(location.Trim());
+        int iconIndex = 0;
+        int comma = expanded.LastIndexOf(',');
+        if (comma >= 0 && int.TryParse(expanded[(comma + 1)..].Trim(), out int parsedIndex))
+        {
+            iconIndex = parsedIndex;
+            expanded = expanded[..comma];
+        }
+        string iconPath = expanded.Trim().Trim('"');
+        if (!File.Exists(iconPath))
+            return null;
+
+        IntPtr[] large = [IntPtr.Zero];
+        try
+        {
+            if (ExtractIconEx(iconPath, iconIndex, large, null, 1) == 0 || large[0] == IntPtr.Zero)
+                return null;
+            // ExtractIconEx returns the icon resource itself, not the Shell's
+            // shortcut presentation, so the small arrow overlay is excluded.
+            return CreateImage(large[0]);
+        }
+        catch { return null; }
+        finally
+        {
+            if (large[0] != IntPtr.Zero)
+                DestroyIcon(large[0]);
+        }
+    }
+
     static ImageSource FallbackIcon()
     {
         lock (CacheLock)
@@ -178,6 +217,13 @@ internal static class ApplicationIconService
         image.Freeze();
         return image;
     }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    static extern uint ExtractIconEx(string file, int index, IntPtr[]? largeIcons, IntPtr[]? smallIcons, uint iconCount);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool DestroyIcon(IntPtr icon);
 }
 
 internal sealed class ApplicationDisplayItem

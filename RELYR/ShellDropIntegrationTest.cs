@@ -34,6 +34,7 @@ internal static class ShellDropIntegrationTest
         string report = VerificationPaths.GetFile("shell-drop-test-last.log");
         string directory = VerificationPaths.CreateRunDirectory("shell-drop-test");
         string file = Path.Combine(directory, "dropped-file.txt");
+        string shortcut = ShortcutService.CreateMacroShortcut("Shell drop shortcut", directory, Path.GetFullPath(Environment.ProcessPath!));
         DeckPanelOverlayWindow? overlay = null;
         try
         {
@@ -69,7 +70,19 @@ internal static class ShellDropIntegrationTest
                 && executableMapping.Value.Equals(executable, StringComparison.OrdinalIgnoreCase)
                 && executableMapping.DeckFilePath.Equals(executable, StringComparison.OrdinalIgnoreCase)
                 && DeckPanelLayout.CreateFileIcon(executable, 24) is System.Windows.Controls.Image;
-            accepted &= executableAccepted;
+            var shortcutCenter = overlay.DeckButtons[2].PointToScreen(new Point(overlay.DeckButtons[2].ActualWidth / 2, overlay.DeckButtons[2].ActualHeight / 2));
+            var shortcutPoint = new NativePoint { X = (int)Math.Round(shortcutCenter.X), Y = (int)Math.Round(shortcutCenter.Y) };
+            if (!ScreenToClient(hwnd, ref shortcutPoint))
+                throw new InvalidOperationException("Could not resolve the shortcut Deck button client point.");
+            IntPtr shortcutDrop = CreateDropHandle(shortcut, shortcutPoint);
+            SendMessage(hwnd, WmDropFiles, shortcutDrop, IntPtr.Zero);
+            overlay.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => { }));
+            Mapping? shortcutMapping = DeckPanelLayout.FindMapping(layout, 3);
+            bool shortcutAccepted = shortcutMapping is { Kind: ActionKind.Launch }
+                && shortcutMapping.Value.Equals(shortcut, StringComparison.OrdinalIgnoreCase)
+                && shortcutMapping.DeckFilePath.Equals(shortcut, StringComparison.OrdinalIgnoreCase)
+                && DeckPanelLayout.CreateFileIcon(shortcut, 24) is System.Windows.Controls.Image;
+            accepted &= executableAccepted && shortcutAccepted;
             File.WriteAllText(report, accepted ? "SHELL DROP INTEGRATION TEST PASSED" : "SHELL DROP INTEGRATION TEST FAILED", Encoding.UTF8);
             return accepted ? 0 : 1;
         }
