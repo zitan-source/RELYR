@@ -410,7 +410,7 @@ public partial class MainWindow
     {
         bool userNamed = action.Kind is ActionKind.Profile or ActionKind.Macro or ActionKind.Gesture
             || action.Category is "インストールアプリ" or "プロファイル切替" or "マクロ" or "ジェスチャー" or "Deckパネル";
-        return userNamed ? action.Name : LocalizationService.Text(action.Name);
+        return userNamed ? LocalizationService.DisplayGeneratedName(action.Name) : LocalizationService.Text(action.Name);
     }
 
     static List<ActionPaletteCategoryOption> BuildActionPaletteCategoryOptions(IEnumerable<string> categories)

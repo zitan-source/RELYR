@@ -17,7 +17,7 @@ foreach($culture in $cultures){
     $properties = @($catalog.PSObject.Properties)
     $keys = @($properties.Name | Sort-Object)
     $runtime = @($properties | Where-Object { $_.Name.StartsWith([char]1 + 'runtime:', [StringComparison]::Ordinal) })
-    if($properties.Count -ne $englishEntryCount + 28 -or $runtime.Count -ne 28){
+    if($properties.Count -ne $englishEntryCount + 42 -or $runtime.Count -ne 42){
         throw "$culture catalog count mismatch: entries=$($properties.Count), runtime=$($runtime.Count)"
     }
     if(@($properties | Where-Object { [string]::IsNullOrWhiteSpace($_.Value) -or $_.Value.Contains([char]0xFFFD) }).Count -ne 0){
@@ -70,4 +70,4 @@ foreach($culture in @('ja-JP','en-US') + $cultures){
     }
 }
 
-Write-Host "Localization verification passed: 8 languages, $englishEntryCount static entries, 28 runtime templates."
+Write-Host "Localization verification passed: 8 languages, $englishEntryCount static entries, 42 runtime templates."

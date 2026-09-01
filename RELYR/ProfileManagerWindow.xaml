@@ -69,7 +69,7 @@
         <ListBox x:Name="ProfileList" Grid.Row="1" Style="{StaticResource FlatListBox}" SelectionChanged="ProfileSelectionChanged" PreviewMouseRightButtonDown="ProfileList_PreviewMouseRightButtonDown">
           <ListBox.ItemTemplate><DataTemplate>
             <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding Name,Converter={StaticResource LocalizedGeneratedNameConverter}}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="自動" FontSize="10" Foreground="{DynamicResource AccentTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding AutoSwitchEnabled,Converter={StaticResource BooleanToVisibilityConverter},FallbackValue=Collapsed}"/>
             </Grid>
           </DataTemplate></ListBox.ItemTemplate>

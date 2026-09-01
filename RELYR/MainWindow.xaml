@@ -910,7 +910,9 @@
                 <Path Data="M13.9,9 C14.3,6.9 15.4,6.2 16.6,6.2 C17.8,6.2 18.9,6.9 19.3,9" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.35" StrokeStartLineCap="Round" Fill="Transparent"/>
               </Canvas></Viewbox>
             </Grid>
-            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed"/>
+            <ComboBox x:Name="ProfileBox" Style="{StaticResource ToolbarHeaderComboBoxStyle}" Width="170" SelectionChanged="ProfileChanged" DropDownOpened="ProfileDropDownOpened" DropDownClosed="ProfileDropDownClosed">
+              <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource LocalizedGeneratedNameConverter}}"/></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
             <TextBlock x:Name="KeyboardLayoutToolbarIcon" Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="18" Width="24" Height="24" TextAlignment="Center" VerticalAlignment="Center" Margin="18,0,8,0" Foreground="{DynamicResource SecondaryText}" ToolTip="キーボード配列" AutomationProperties.Name="キーボード配列">
               <TextBlock.RenderTransform><TranslateTransform Y="5"/></TextBlock.RenderTransform>
             </TextBlock>

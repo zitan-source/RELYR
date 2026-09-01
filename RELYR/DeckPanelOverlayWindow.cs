@@ -118,6 +118,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     bool pointerEnteredSinceShown;
     bool autoHideRequiresPointerOutside;
     int openContextMenus;
+    readonly HashSet<System.Windows.Controls.ContextMenu> trackedContextMenus = [];
     bool dragging;
     bool positionDirty;
     Button? fileDragButton;
@@ -276,7 +277,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         renderedColumns = layout.Columns;
         renderedRows = layout.Rows;
         renderedPanelInset = PanelInset;
-        Title = "RELYR Deck - " + layout.Name;
+        Title = LocalizationService.Text("RELYR Deck - " + layout.Name);
         deckGrid = new UniformGrid();
         UpdateDeckDimensions(layout.PanelWidth, layout.PanelHeight);
         WindowStyle = WindowStyle.None;
@@ -355,7 +356,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         StateChanged += WindowStateChanged;
         ThemeService.ThemeChanged += ThemeChanged;
         panelCard.LostMouseCapture += (_, _) => dragging = false;
-        Closed += (_, _) => { CloseMonitorControl(); ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); presentationFadeTimer.Stop(); presentationRevealTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
+        Closing += (_, _) => CloseTrackedContextMenus();
+        Closed += (_, _) => { CloseTrackedContextMenus(); CloseMonitorControl(); ThemeService.ThemeChanged -= ThemeChanged; autoHideTimer.Stop(); presentationFadeTimer.Stop(); presentationRevealTimer.Stop(); ReleaseOwnedMouseCapture(); CancelDeferredPreviews(); ClearDeckReorderTarget(); StopDragPreview(); ClearVideoPreviews(); CancelPendingHoverAudio(); StopHoverAudio(); StopShellFileDrop(); PersistPosition(); PersistCollapsedPosition(); PersistSize(); };
     }
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
@@ -496,6 +498,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     internal void HideForReuse()
     {
+        CloseTrackedContextMenus();
         presentationGeneration++;
         presentationFadePending = false;
         presentationFadeTimer.Stop();
@@ -519,6 +522,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     internal void RequestHideForReuse()
     {
+        CloseTrackedContextMenus();
         if (!IsVisible || !UiMotionService.Enabled)
         {
             HideForReuse();
@@ -733,6 +737,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     {
         if (collapsedToEdge || layout.PanelPinned || !IsVisible)
             return;
+        CloseTrackedContextMenus();
         double width = ActualWidth > 0 ? ActualWidth : Width;
         double height = ActualHeight > 0 ? ActualHeight : Height;
         expandedBounds = new Rect(Left, Top, width, height);
@@ -1280,9 +1285,10 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         dragArea.Margin = new Thickness(-PanelInset, 0, -PanelInset, 0);
         glassButtonStyle = null;
         ApplyPanelColor();
-        Title = "RELYR Deck - " + layout.Name;
-        headerTitle.Text = layout.Name;
-        dragArea.ToolTip = layout.Name;
+        string displayName = LocalizationService.DisplayGeneratedName(layout.Name);
+        Title = LocalizationService.Text("RELYR Deck - " + layout.Name);
+        headerTitle.Text = displayName;
+        dragArea.ToolTip = displayName;
         bool dimensionsChanged = renderedColumns != layout.Columns || renderedRows != layout.Rows;
         bool panelInsetChanged = Math.Abs(renderedPanelInset - PanelInset) > .01;
         renderedColumns = layout.Columns;
@@ -1425,6 +1431,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     void TrackContextMenu(System.Windows.Controls.ContextMenu menu)
     {
+        trackedContextMenus.Add(menu);
         menu.Opened += (_, _) => { openContextMenus++; autoHideTimer.Stop(); };
         menu.Closed += (_, _) =>
         {
@@ -1433,6 +1440,17 @@ internal sealed partial class DeckPanelOverlayWindow : Window
                 ScheduleAutoDismiss(pointerLeaveBehavior, PointerLeaveAutoHideDelay, true);
         };
     }
+
+    void CloseTrackedContextMenus()
+    {
+        foreach (System.Windows.Controls.ContextMenu menu in trackedContextMenus.ToArray())
+            if (menu.IsOpen)
+                menu.IsOpen = false;
+        openContextMenus = 0;
+    }
+
+    internal int OpenContextMenuCountForTest => trackedContextMenus.Count(menu => menu.IsOpen);
+    internal void CloseTrackedContextMenusForTest() => CloseTrackedContextMenus();
 
     void ApplyPanelColor()
     {
@@ -1479,7 +1497,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             Padding = new Thickness(8, 0, 2, 0),
             Cursor = WpfCursors.SizeAll,
             Background = WpfBrushes.Transparent,
-            ToolTip = layout.Name
+            ToolTip = LocalizationService.DisplayGeneratedName(layout.Name)
         };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1492,7 +1510,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var grip = CreateHeaderGrip();
         headerGrip = grip;
-        var title = new TextBlock { Text = layout.Name, FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        var title = new TextBlock { Text = LocalizationService.DisplayGeneratedName(layout.Name), FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         headerTitle = title;
         title.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryText");
         var pinGlyph = new TextBlock
@@ -1533,7 +1551,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             Margin = new Thickness(0),
             Padding = new Thickness(0),
             Focusable = false,
-            ToolTip = "初期サイズに戻す",
+            ToolTip = LocalizationService.Text("初期サイズに戻す"),
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalContentAlignment = System.Windows.VerticalAlignment.Center,
             Content = new System.Windows.Shapes.Path
@@ -1681,7 +1699,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             Padding = new Thickness(0),
             Background = WpfBrushes.Transparent,
             Cursor = WpfCursors.SizeAll,
-            ToolTip = "折りたたんだDeckを移動",
+            ToolTip = LocalizationService.Text("折りたたんだDeckを移動"),
             Child = glyph,
             Visibility = Visibility.Collapsed
         };
@@ -1690,14 +1708,14 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     System.Windows.Controls.ContextMenu CreateHeaderContextMenu()
     {
         var menu = new System.Windows.Controls.ContextMenu { MinWidth = 190 };
-        var store = new System.Windows.Controls.MenuItem { Header = "画面端に折りたたむ", IsCheckable = true };
+        var store = new System.Windows.Controls.MenuItem { Header = LocalizationService.Text("画面端に折りたたむ"), IsCheckable = true };
         store.Click += (_, _) =>
         {
             SetPinned(!store.IsChecked);
             if (store.IsChecked)
                 _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(CollapseToEdge));
         };
-        var reset = new System.Windows.Controls.MenuItem { Header = "初期サイズに戻す" };
+        var reset = new System.Windows.Controls.MenuItem { Header = LocalizationService.Text("初期サイズに戻す") };
         reset.Click += (_, _) => ResetToDefaultSize();
         menu.Items.Add(store);
         menu.Items.Add(reset);

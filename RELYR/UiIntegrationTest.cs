@@ -1421,6 +1421,106 @@ internal static class UiIntegrationTest
                 multilingualSettingsFit &= languageFits;
                 localizedSettings.Close();
             }
+            LocalizationService.Apply(LocalizationService.English);
+            var englishProfileManager = new ProfileManagerWindow(
+                [new Profile { Name = "標準" }, new Profile { Name = "English Profile" }],
+                "標準") { Owner = window, ShowInTaskbar = false };
+            englishProfileManager.Show();
+            englishProfileManager.UpdateLayout();
+            var englishGestureManager = new GestureManagerWindow(
+                [new GestureDefinition { Name = "新しいジェスチャー" }],
+                [new Profile { Name = "標準" }],
+                [new MacroDefinition { Name = "English Macro" }],
+                "JIS") { Owner = window, ShowInTaskbar = false };
+            englishGestureManager.Show();
+            englishGestureManager.UpdateLayout();
+            var englishMacroWindow = new MacroWindow(
+                new AppConfig
+                {
+                    UiLanguage = LocalizationService.English,
+                    Macros =
+                    [
+                        new MacroDefinition
+                        {
+                            Name = "English Macro",
+                            Steps = [new MacroStep { Event = "MouseMove:640,360", DelayMs = 120 }]
+                        }
+                    ]
+                },
+                (_, _, _) => { })
+            {
+                Owner = window,
+                ShowInTaskbar = false,
+                SuppressUnsavedPromptForTest = true
+            };
+            englishMacroWindow.Show();
+            englishMacroWindow.UpdateLayout();
+            var englishTutorial = new SetupWindow(true) { Owner = window, ShowInTaskbar = false };
+            englishTutorial.Show();
+            englishTutorial.UpdateLayout();
+            var englishDeckLayout = new DeckLayoutDefinition { Name = "標準Deck", Columns = 1, Rows = 1 };
+            var englishDeckOverlay = new DeckPanelOverlayWindow(
+                new AppConfig { UiLanguage = LocalizationService.English, DeckLayouts = [englishDeckLayout] },
+                null,
+                selectedLayout: englishDeckLayout);
+            englishDeckOverlay.Show();
+            englishDeckOverlay.UpdateLayout();
+            var englishSingleKeyMenu = window.CreateInputContextMenu("F7");
+            var englishMultiKeyMenu = window.CreateMultiSelectionContextMenu();
+            var englishResidue = new (string Scope, DependencyObject Root)[]
+            {
+                ("Main", window),
+                ("Profiles", englishProfileManager),
+                ("Gestures", englishGestureManager),
+                ("Macros", englishMacroWindow),
+                ("Tutorial", englishTutorial),
+                ("DeckOverlay", englishDeckOverlay),
+                ("DeckButtonMenu", englishDeckOverlay.DeckButtons[0].ContextMenu!),
+                ("DeckPanelMenu", englishDeckOverlay.PanelContextMenuForTest!),
+                ("KeyMenu", englishSingleKeyMenu),
+                ("MultiKeyMenu", englishMultiKeyMenu)
+            }.SelectMany(item => JapaneseUiResidue(item.Root).Select(value => $"{item.Scope}:{value}"))
+             .Distinct(StringComparer.Ordinal)
+             .OrderBy(value => value, StringComparer.Ordinal)
+             .ToArray();
+            Check(englishResidue.Length == 0,
+                "English UI contains no untranslated Japanese across the main, Profiles, Gestures, Macros, tutorial, and key-menu surfaces"
+                + (englishResidue.Length == 0 ? "" : $" (residue: {string.Join(" | ", englishResidue.Take(30))})"));
+            englishTutorial.Close();
+            englishMacroWindow.Close();
+            englishGestureManager.Close();
+            englishProfileManager.Close();
+            englishDeckOverlay.Close();
+            string[] newLocaleCatalogKeys =
+            [
+                "アプリ", "自動保存 オン", "標準Deck", "標準プロファイル", "新しいDeck", "新しいジェスチャー", "新しいマクロ",
+                "新規レイアウト", "新しいDeckレイアウトを作成", "Spaceキーはレイヤー専用のため変更できません", "CapsLock\n(F13設定時)",
+                "ナビゲーション", "カーソルキー", "この割り当てをコピー", "コピーした割り当てを貼り付け", "全レイヤーに割り当てる",
+                "全プロファイルに割り当て", "全レイヤーから削除", "全プロファイルから削除", "この割り当てを削除",
+                "選択した割り当てをコピー", "選択した割り当てを削除", "色を変更...", "色を標準に戻す", "他のプロファイルがありません",
+                "CapsLockは割り当て元にはできません", "通常レイヤーでは変更できません", "＋ 長押しを追加（任意）", "選択内容をコピーします",
+                "TAPは未設定", "直前の割り当てを元に戻しました", "クリックまたはドロップして登録", "ファイルを選択", "ドラッグして利用",
+                "ファイルが見つかりません", "マウスを指定位置へ移動", "マウスを相対移動", "元の入力",
+                "標準プロファイルは、自動切替対象がない場合の戻り先です。", "＋  新しいプロファイル", "新しいプロファイルを作成",
+                "Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます",
+                "ジェスチャー名は直接編集できません。変更する場合は「ショートカット」から別のジェスチャーを選んでください。",
+                "この時間だけ次の操作を待ちます",
+                "任意...", "タイマーを停止", "名前の変更...", "ファイルの場所を開く", "アイコン変更...", "折りたたんだDeckを移動",
+                "初期サイズに戻す", "タイマー", "時間（分）", "1〜1440分で指定", "1〜1440分の数値を入力してください", "開始",
+                "\u0001runtime:Drag to {0}'s TAP / HOLD slot", "\u0001runtime:Assigned to {0}", "\u0001runtime:Edit {0}",
+                "\u0001runtime:{0} (unsaved)", "\u0001runtime:Wait {0} ms", "\u0001runtime:Type text: {0}", "\u0001runtime:Open: {0}",
+                "\u0001runtime:Run macro: {0}", "\u0001runtime:Switch profile: {0}", "\u0001runtime:Press {0}",
+                "\u0001runtime:Release {0}", "\u0001runtime:{0} assignments / {1} target apps", "\u0001runtime:{0} min",
+                "\u0001runtime:RELYR Deck - {0}"
+            ];
+            bool addedLocaleCatalogsComplete = true;
+            foreach (var language in LocalizationService.SupportedLanguages.Where(item => item.Code is not LocalizationService.Japanese and not LocalizationService.English))
+            {
+                LocalizationService.Apply(language.Code);
+                addedLocaleCatalogsComplete &= newLocaleCatalogKeys.All(LocalizationService.CurrentCatalogContainsForTest);
+            }
+            Check(addedLocaleCatalogsComplete,
+                "Chinese, Korean, French, German, and Spanish include native catalog entries for every newly exposed UI and runtime string");
             LocalizationService.Apply(LocalizationService.Japanese);
             Check(multilingualSettingsFit
                 && LocalizationService.TrackedReferenceCountForTest <= localizationTrackedBeforeSettings + 10,
@@ -1858,11 +1958,13 @@ internal static class UiIntegrationTest
             var applicationIconMapping = DeckPanelLayout.FindMapping(standardDeck, 18);
             var existingApplicationWithoutFace = new Mapping { Kind = ActionKind.Launch, Value = applicationIconPath };
             var applicationWithManualFace = new Mapping { Kind = ActionKind.Launch, Value = applicationIconPath, DeckIcon = "home", DeckIconAutoAssigned = false };
+            var actionPaletteApplicationFace = applicationIconMapping == null ? null : DeckPanelLayout.CreateButtonContent(applicationIconMapping.Input, applicationIconMapping);
             Check(applicationIconMapping is { Kind: ActionKind.Launch, DeckIconAutoAssigned: true }
                 && DeckIconCatalog.CreateVisual(applicationIconMapping, 22) is System.Windows.Controls.Image { Source: not null }
+                && actionPaletteApplicationFace is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize }
                 && DeckIconCatalog.CreateVisual(existingApplicationWithoutFace, 22) is System.Windows.Controls.Image { Source: not null }
                 && DeckIconCatalog.CreateVisual(applicationWithManualFace, 22) is TextBlock,
-                "new and existing Deck application assignments use the executable's real icon while preserving a manually selected face");
+                "Installed Apps and Windows Apps assignments fill the Deck face with the executable icon while preserving a manually selected face");
             if (applicationIconMapping != null)
                 standardDeck.Mappings.Remove(applicationIconMapping);
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -2207,8 +2309,18 @@ internal static class UiIntegrationTest
                 Check(true, "the Deck drag surface can own capture while it is being moved");
             else
                 output.WriteLine("SKIP Deck drag capture acquisition: the current test session denied global mouse capture");
+            var openDeckMenu = deckOverlay.DeckButtons[0].ContextMenu!;
+            openDeckMenu.PlacementTarget = deckOverlay.DeckButtons[0];
+            openDeckMenu.IsOpen = true;
+            Pump(window);
+            bool deckMenuOpenedBeforeHide = openDeckMenu.IsOpen && deckOverlay.OpenContextMenuCountForTest == 1;
             deckOverlay.HideForReuse();
-            Check(!deckOverlay.OwnsMouseCaptureForTest, "hiding a cached Deck releases every Deck-owned mouse capture");
+            Pump(window);
+            Check(!deckOverlay.OwnsMouseCaptureForTest
+                && deckMenuOpenedBeforeHide
+                && !openDeckMenu.IsOpen
+                && deckOverlay.OpenContextMenuCountForTest == 0,
+                "hiding or closing a cached Deck releases mouse capture and closes every open Deck context menu");
             var deckReopenTime = System.Diagnostics.Stopwatch.StartNew();
             deckOverlay.Show();
             deckReopenTime.Stop();
@@ -2818,6 +2930,12 @@ internal static class UiIntegrationTest
                 autoHideOverlay.ArmPointerAutoHideForTest();
                 autoHideOverlay.RequestPointerAutoHideForTest();
                 PumpFor(TimeSpan.FromMilliseconds(760));
+                // The 500 ms leave delay and 230 ms animation watchdog can land
+                // on adjacent dispatcher frames in a busy Release validation run.
+                // Give only the still-visible case one extra frame budget while
+                // continuing to fail a Deck that never completes its hide.
+                if (autoHideOverlay.IsVisible)
+                    PumpFor(TimeSpan.FromMilliseconds(300));
                 Check(!autoHideOverlay.IsVisible && !autoHideOverlay.OwnsMouseCaptureForTest,
                     $"pointer-leave hide removes the Deck and its mouse capture instead of leaving an edge tab or hit-test surface ({autoHideOverlay.AutoHideStateForTest})");
                 autoHideOverlay.PrepareForShow();
@@ -5442,5 +5560,58 @@ internal static class UiIntegrationTest
             foreach (var nested in Descendants<T>(content))
                 yield return nested;
         }
+    }
+    static IReadOnlyList<string> JapaneseUiResidue(params DependencyObject[] roots)
+    {
+        var allowedPhysicalLabels = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "半角/全角", "無変換", "変換", "カタカナ"
+        };
+        var results = new HashSet<string>(StringComparer.Ordinal);
+        var visited = new HashSet<DependencyObject>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<DependencyObject>(roots.Where(root => root != null));
+        while (pending.Count > 0)
+        {
+            DependencyObject element = pending.Pop();
+            if (!visited.Add(element))
+                continue;
+            void Inspect(string property, object? value)
+            {
+                if (value is not string text || string.IsNullOrWhiteSpace(text)
+                    // Running/installed application labels, file paths, and
+                    // window titles are external user data, not RELYR UI copy.
+                    || element is FrameworkElement { DataContext: ApplicationDisplayItem }
+                    || allowedPhysicalLabels.Contains(text.Trim())
+                    || !MainWindow.ContainsJapaneseText(text))
+                    return;
+                string elementName = element is FrameworkElement { Name.Length: > 0 } named ? $"#{named.Name}" : "";
+                results.Add($"{element.GetType().Name}{elementName}.{property}={text.Replace('\r', ' ').Replace('\n', ' ')}");
+            }
+            if (element is TextBlock textBlock)
+                Inspect(nameof(TextBlock.Text), textBlock.Text);
+            if (element is AccessText accessText)
+                Inspect(nameof(AccessText.Text), accessText.Text);
+            if (element is Window childWindow)
+                Inspect(nameof(Window.Title), childWindow.Title);
+            if (element is ContentControl contentControl)
+                Inspect(nameof(ContentControl.Content), contentControl.Content);
+            if (element is HeaderedContentControl headeredContentControl)
+                Inspect(nameof(HeaderedContentControl.Header), headeredContentControl.Header);
+            if (element is FrameworkElement frameworkElement)
+                Inspect(nameof(FrameworkElement.ToolTip), frameworkElement.ToolTip);
+
+            if (element is ItemsControl itemsControl)
+                foreach (object item in itemsControl.Items)
+                    if (item is DependencyObject dependencyItem)
+                        pending.Push(dependencyItem);
+            if (element is FrameworkElement or FrameworkContentElement)
+                foreach (object child in LogicalTreeHelper.GetChildren(element))
+                    if (child is DependencyObject dependencyChild)
+                        pending.Push(dependencyChild);
+            if (element is Visual or System.Windows.Media.Media3D.Visual3D)
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+                    pending.Push(VisualTreeHelper.GetChild(element, i));
+        }
+        return [.. results.OrderBy(value => value, StringComparer.Ordinal)];
     }
 }

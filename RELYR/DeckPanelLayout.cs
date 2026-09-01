@@ -440,6 +440,16 @@ internal static class DeckPanelLayout
             && string.IsNullOrWhiteSpace(mapping.DeckIcon)
             && string.IsNullOrWhiteSpace(mapping.DeckIconPath);
         var configuredIcon = DeckIconCatalog.CreateVisual(mapping, registeredLaunchFace ? RegisteredLaunchIconSize : 22);
+        // App actions from both Installed Apps and Windows Apps use an
+        // automatically extracted Image face. Match direct EXE/shortcut drops
+        // without enlarging manual glyphs, custom artwork, or monitor tiles.
+        if (mapping is { DeckIconAutoAssigned: true }
+            && string.IsNullOrWhiteSpace(mapping.DeckIconPath)
+            && configuredIcon is System.Windows.Controls.Image automaticApplicationIcon)
+        {
+            automaticApplicationIcon.Width = RegisteredLaunchIconSize;
+            automaticApplicationIcon.Height = RegisteredLaunchIconSize;
+        }
         if (configuredIcon != null)
             return configuredIcon;
         if (HasRegisteredFile(mapping))

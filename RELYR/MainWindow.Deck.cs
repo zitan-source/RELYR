@@ -204,8 +204,8 @@ public partial class MainWindow
         content.Children.Add(icon);
         string name = DeckPanelLayout.FileDisplayName(selected);
         var labels = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        labels.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(name) ? "ファイルを選択" : name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        labels.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(path) ? "クリックまたはドロップして登録" : File.Exists(path) ? "ドラッグして利用" : "ファイルが見つかりません", FontSize = 11, Foreground = ThemeService.Brush(File.Exists(path) || string.IsNullOrWhiteSpace(path) ? "SecondaryText" : "DangerBrush"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 3, 0, 0) });
+        labels.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(name) ? LocalizationService.Text("ファイルを選択") : name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        labels.Children.Add(new TextBlock { Text = LocalizationService.Text(string.IsNullOrWhiteSpace(path) ? "クリックまたはドロップして登録" : File.Exists(path) ? "ドラッグして利用" : "ファイルが見つかりません"), FontSize = 11, Foreground = ThemeService.Brush(File.Exists(path) || string.IsNullOrWhiteSpace(path) ? "SecondaryText" : "DangerBrush"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 3, 0, 0) });
         Grid.SetColumn(labels, 1);
         content.Children.Add(labels);
         DeckFileDropTarget.Content = content;
@@ -320,7 +320,7 @@ public partial class MainWindow
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var color = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentBrush");
         header.Children.Add(new TextBlock { Text = icon, FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 15, Foreground = color, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = System.Windows.HorizontalAlignment.Center });
-        var text = new TextBlock { Text = label, FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("PrimaryText") };
+        var text = new TextBlock { Text = LocalizationService.Text(label), FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("PrimaryText") };
         Grid.SetColumn(text, 2);
         header.Children.Add(text);
         if (shortcut.Length > 0)
@@ -1690,7 +1690,7 @@ public partial class MainWindow
         if (actionPaletteOpen)
             CloseActionPalette(animated: false);
         ToolbarSaveButton.Visibility = Visibility.Visible;
-        WorkspaceSubtitle.Text = $"{DeckPanelLayout.LayoutsForActiveProfile(config).Count()}個のレイアウト";
+        WorkspaceSubtitle.Text = LocalizationService.Text($"{DeckPanelLayout.LayoutsForActiveProfile(config).Count()}個のレイアウト");
         RefreshDeckLayoutCards();
         UpdateDeckScopeUi();
     }
@@ -1708,8 +1708,8 @@ public partial class MainWindow
             Margin = new Thickness(0, 0, 18, 18),
             Padding = new Thickness(14),
             Tag = "NewDeckLayout",
-            ToolTip = "新しいDeckレイアウトを作成",
-            Content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = "＋", FontSize = 26, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") }, new TextBlock { Text = "新規レイアウト", FontSize = 14, FontWeight = FontWeights.Medium, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Center } } },
+            ToolTip = LocalizationService.Text("新しいDeckレイアウトを作成"),
+            Content = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = "＋", FontSize = 26, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, Foreground = ThemeService.Brush("SecondaryText") }, new TextBlock { Text = LocalizationService.Text("新規レイアウト"), FontSize = 14, FontWeight = FontWeights.Medium, Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Center } } },
             Background = WpfBrushes.Transparent,
             BorderBrush = WpfBrushes.Transparent,
             BorderThickness = new Thickness(0)
@@ -1730,22 +1730,23 @@ public partial class MainWindow
         bool isDefault = CurrentProfile.DefaultDeckLayoutId.Equals(layout.Id, StringComparison.OrdinalIgnoreCase);
         var content = new StackPanel();
         content.Children.Add(new Grid { Height = 72, Margin = new Thickness(0, 0, 0, 8), Children = { preview } });
-        content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = layout.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        content.Children.Add(new TextBlock { Text = $"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : ""), FontSize = 11, Margin = new Thickness(0, 4, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentTextBrush" : "SecondaryText") });
-        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 164, Margin = new Thickness(0, 0, 18, 18), Padding = new Thickness(14), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, BorderBrush = WpfBrushes.Transparent, BorderThickness = new Thickness(0), ToolTip = $"{layout.Name}を編集" };
+        string displayName = LocalizationService.DisplayGeneratedName(layout.Name);
+        content.Children.Add(new TextBlock { Tag = "DeckLayoutName", Text = displayName, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        content.Children.Add(new TextBlock { Text = LocalizationService.Text($"{layout.Columns}×{layout.Rows}・{DeckPanelLayout.VisibleSlotCount(layout)}ボタン" + (isDefault ? "  ・  既定" : "")), FontSize = 11, Margin = new Thickness(0, 4, 0, 0), Foreground = ThemeService.Brush(isDefault ? "AccentTextBrush" : "SecondaryText") });
+        var card = new System.Windows.Controls.Button { Tag = layout, Content = content, Width = 236, Height = 164, Margin = new Thickness(0, 0, 18, 18), Padding = new Thickness(14), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch, BorderBrush = WpfBrushes.Transparent, BorderThickness = new Thickness(0), ToolTip = LocalizationService.IsJapanese ? $"{layout.Name}を編集" : $"Edit {displayName}" };
         if (isDefault)
             card.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "AccentSoftBrush");
         else
             card.Background = WpfBrushes.Transparent;
         card.Click += (_, _) => EditDeckLayout(layout);
         var menu = new ContextMenu();
-        var toggleOverlay = new MenuItem { Header = "オーバーレイを表示／非表示" };
+        var toggleOverlay = new MenuItem { Header = LocalizationService.Text("オーバーレイを表示／非表示") };
         toggleOverlay.Click += (_, _) => OverlayService.TryShow(DeckPanelLayout.ActionValue(layout.Id));
-        var makeDefault = new MenuItem { Header = "既定のDeckにする", IsEnabled = !isDefault };
+        var makeDefault = new MenuItem { Header = LocalizationService.Text("既定のDeckにする"), IsEnabled = !isDefault };
         makeDefault.Click += (_, _) => SetDefaultDeckLayout(layout);
-        var duplicate = new MenuItem { Header = "複製" };
+        var duplicate = new MenuItem { Header = LocalizationService.Text("複製") };
         duplicate.Click += (_, _) => DuplicateDeckLayout(layout);
-        var delete = new MenuItem { Header = "削除" };
+        var delete = new MenuItem { Header = LocalizationService.Text("削除") };
         delete.Click += (_, _) => DeleteDeckLayout(layout);
         menu.Items.Add(toggleOverlay);
         menu.Items.Add(new Separator());
@@ -1779,7 +1780,7 @@ public partial class MainWindow
         foreach (var height in new[] { GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto })
             root.RowDefinitions.Add(new RowDefinition { Height = height });
         root.Children.Add(new TextBlock { Text = "レイアウト名", FontSize = 12, Foreground = ThemeService.Brush("SecondaryText") });
-        var name = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = "新しいDeck", Height = 40, Margin = new Thickness(0, 6, 0, 18), VerticalContentAlignment = VerticalAlignment.Center };
+        var name = new TextBox { Style = (Style)FindResource(typeof(TextBox)), Text = LocalizationService.Text("新しいDeck"), Height = 40, Margin = new Thickness(0, 6, 0, 18), VerticalContentAlignment = VerticalAlignment.Center };
         Grid.SetRow(name, 1);
         root.Children.Add(name);
 

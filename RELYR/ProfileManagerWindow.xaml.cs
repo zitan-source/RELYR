@@ -61,7 +61,7 @@ public partial class ProfileManagerWindow : Window
         if (profile == null)
             return;
         loading = true;
-        SelectedProfileTitle.Text = profile.Name;
+        SelectedProfileTitle.Text = LocalizationService.DisplayGeneratedName(profile.Name);
         AutoSwitchBox.IsEnabled = !ReferenceEquals(profile, profiles[0]);
         AutoSwitchBox.IsChecked = !ReferenceEquals(profile, profiles[0]) && profile.AutoSwitchEnabled;
         AssignedApplicationList.ItemsSource = null;
@@ -71,7 +71,7 @@ public partial class ProfileManagerWindow : Window
             .ToList();
         loading = false;
         UpdateCommandStates();
-        StatusText.Text = ReferenceEquals(profile, profiles[0]) ? "標準プロファイルは、自動切替対象がない場合の戻り先です。" : $"割り当て {profile.Mappings.Count}件 / 対象アプリ {profile.AutoSwitchApplications.Count}件";
+        StatusText.Text = LocalizationService.Text(ReferenceEquals(profile, profiles[0]) ? "標準プロファイルは、自動切替対象がない場合の戻り先です。" : $"割り当て {profile.Mappings.Count}件 / 対象アプリ {profile.AutoSwitchApplications.Count}件");
     }
     void AddProfileManager_Click(object sender, RoutedEventArgs e)
     {
@@ -369,7 +369,7 @@ public partial class ProfileManagerWindow : Window
     }
     void ShowStatus(string message, bool error = false)
     {
-        StatusText.Text = message;
+        StatusText.Text = LocalizationService.Text(message);
         StatusText.Foreground = ThemeService.Brush(error ? "DangerBrush" : "AccentTextBrush");
     }
     string UniqueName(string basis)

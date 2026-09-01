@@ -206,7 +206,7 @@ internal sealed partial class DeckPanelOverlayWindow
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var color = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentBrush");
         header.Children.Add(new TextBlock { Text = icon, FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 15, Foreground = color, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = System.Windows.HorizontalAlignment.Center });
-        var text = new TextBlock { Text = label, FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("PrimaryText") };
+        var text = new TextBlock { Text = LocalizationService.Text(label), FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = danger ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("PrimaryText") };
         Grid.SetColumn(text, 2);
         header.Children.Add(text);
         if (shortcut.Length > 0)

@@ -1233,7 +1233,7 @@ public partial class MacroWindow : Window
         var selectedSteps = selected?.ToList() ?? [];
         var views = current?.Steps.Select((step, index) => new StepView(step, index + 1, HumanTitle(step), HumanDetail(step), step.DelayMs > 0 ? $"{step.DelayMs} ms" : "", VisualKindFor(step))).ToList() ?? [];
         StepList.ItemsSource = views;
-        StepSummary.Text = current == null ? "" : $"{current.Steps.Count} 手順・待機合計 {current.Steps.Sum(x => x.DelayMs)} ms";
+        StepSummary.Text = current == null ? "" : LocalizationService.Text($"{current.Steps.Count} 手順・待機合計 {current.Steps.Sum(x => x.DelayMs)} ms");
         if (selectedSteps.Count > 0)
             SelectSteps(selectedSteps);
     }
@@ -1246,7 +1246,8 @@ public partial class MacroWindow : Window
         if (StepList.SelectedItem != null)
             StepList.ScrollIntoView(StepList.SelectedItem);
     }
-    static string HumanTitle(MacroStep step)
+    static string HumanTitle(MacroStep step) => LocalizationService.Text(HumanTitleSource(step));
+    static string HumanTitleSource(MacroStep step)
     {
         if (step.Event.Equals("Wait", StringComparison.OrdinalIgnoreCase))
             return $"待機 {step.DelayMs} ms";
@@ -1272,7 +1273,8 @@ public partial class MacroWindow : Window
             return MainWindow.DisplayInputName(step.Event[..^3]) + " を離す";
         return step.Event;
     }
-    static string HumanDetail(MacroStep step)
+    static string HumanDetail(MacroStep step) => LocalizationService.Text(HumanDetailSource(step));
+    static string HumanDetailSource(MacroStep step)
     {
         if (step.Event == "Wait")
             return "この時間だけ次の操作を待ちます";
@@ -1298,7 +1300,7 @@ public partial class MacroWindow : Window
             return MacroStepVisualKind.Mouse;
         return MacroStepVisualKind.Keyboard;
     }
-    static string ActionKindLabel(ActionKind kind) => kind switch { ActionKind.Key or ActionKind.Shortcut => "キー・ショートカット", ActionKind.Text => "文字列入力", ActionKind.Launch => "アプリ・ファイル・URL", ActionKind.Mouse => "マウス操作", ActionKind.Macro => "マクロ", ActionKind.Profile => "プロファイル", _ => "アクション" };
+    static string ActionKindLabel(ActionKind kind) => LocalizationService.Text(kind switch { ActionKind.Key or ActionKind.Shortcut => "キー・ショートカット", ActionKind.Text => "文字列入力", ActionKind.Launch => "アプリ・ファイル・URL", ActionKind.Mouse => "マウス操作", ActionKind.Macro => "マクロ", ActionKind.Profile => "プロファイル", _ => "アクション" });
     static string Shorten(string value, int length) => value.Length <= length ? value : value[..length] + "…";
 
     async void TestMacro_Click(object sender, RoutedEventArgs e)

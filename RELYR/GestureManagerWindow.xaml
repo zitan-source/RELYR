@@ -45,7 +45,9 @@
       <Grid Grid.Column="0">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <TextBlock Text="一覧" FontSize="17" FontWeight="SemiBold" Margin="4,2,0,10"/>
-        <ListBox x:Name="GestureList" Grid.Row="1" Style="{StaticResource FlatListBox}" DisplayMemberPath="Name" SelectionChanged="GestureSelectionChanged"/>
+        <ListBox x:Name="GestureList" Grid.Row="1" Style="{StaticResource FlatListBox}" SelectionChanged="GestureSelectionChanged">
+          <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name,Converter={StaticResource LocalizedGeneratedNameConverter}}"/></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
         <UniformGrid Grid.Row="2" Columns="3" Margin="0,8,0,0">
           <Button x:Name="AddGestureButton" Style="{StaticResource QuietIconButton}" Click="AddGesture_Click" ToolTip="ジェスチャーを追加" AutomationProperties.Name="ジェスチャーを追加"><Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M9,3 V15 M3,9 H15" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
           <Button x:Name="RenameGestureButton" Style="{StaticResource QuietIconButton}" Click="RenameGesture_Click" ToolTip="ジェスチャー名を編集" AutomationProperties.Name="ジェスチャー名を編集"><Viewbox Width="18" Height="18"><Canvas Width="18" Height="18"><Path Data="M3,15 L4.2,10.8 L12.6,2.4 Q13.3,1.7 14,2.4 L15.6,4 Q16.3,4.7 15.6,5.4 L7.2,13.8 Z M4.2,10.8 L7.2,13.8" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/></Canvas></Viewbox></Button>

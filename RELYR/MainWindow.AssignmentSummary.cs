@@ -24,12 +24,12 @@ public partial class MainWindow
         bool deckInput = DeckPanelLayout.IsInputName(selected.Input);
         bool nativeShortPress = InputAssignmentPolicy.PreservesNativeShortPress(selected.Input);
         string nativeShortPressName = InputAssignmentPolicy.NativeShortPressDisplayName(selected.Input) ?? "元の入力";
-        AssignmentActionSectionLabel.Text = deckInput ? "Action" : "割り当て";
+        AssignmentActionSectionLabel.Text = deckInput ? "Action" : LocalizationService.Text("割り当て");
         AssignmentTapSlotText.Text = deckInput ? "ACTION" : "TAP";
         AssignmentHoldCard.Visibility = deckInput ? Visibility.Collapsed : Visibility.Visible;
-        AssignmentReplaceHintText.Text = deckInput
+        AssignmentReplaceHintText.Text = LocalizationService.Text(deckInput
             ? "変更はActionをDeckボタンへドラッグ"
-            : nativeShortPress ? "ActionはHOLDへドラッグ" : "変更はActionをキーのTAP / HOLDへドラッグ";
+            : nativeShortPress ? "ActionはHOLDへドラッグ" : "変更はActionをキーのTAP / HOLDへドラッグ");
 
         if (deckInput)
         {
@@ -178,13 +178,13 @@ public partial class MainWindow
         string emptyName,
         string emptyDetail)
     {
-        nameText.Text = row?.Name ?? emptyName;
+        nameText.Text = LocalizationService.Text(row?.Name ?? emptyName);
         string detail = row == null
             ? emptyDetail
             : row.Keycaps.Count > 0
                 ? string.Join(" + ", row.Keycaps)
                 : row.Detail;
-        detailText.Text = string.IsNullOrWhiteSpace(detail) ? ActionSummaryFallbackDetail(row) : detail;
+        detailText.Text = LocalizationService.Text(string.IsNullOrWhiteSpace(detail) ? ActionSummaryFallbackDetail(row) : detail);
         card.ToolTip = row == null
             ? null
             : string.IsNullOrWhiteSpace(detail)
@@ -205,17 +205,17 @@ public partial class MainWindow
             return;
         if (MultiSelectToggle?.IsChecked == true && multiSelectedInputs.Count > 0)
         {
-            ActionPaletteContextText.Text = $"{multiSelectedInputs.Count}個の入力へドラッグ";
+            ActionPaletteContextText.Text = LocalizationService.Text($"{multiSelectedInputs.Count}個の入力へドラッグ");
             return;
         }
         if (selected == null)
         {
-            ActionPaletteContextText.Text = deckManagementMode ? "Deckボタンへドラッグ" : "キーへドラッグ";
+            ActionPaletteContextText.Text = LocalizationService.Text(deckManagementMode ? "Deckボタンへドラッグ" : "キーへドラッグ");
             return;
         }
-        ActionPaletteContextText.Text = DeckPanelLayout.IsInputName(selected.Input)
+        ActionPaletteContextText.Text = LocalizationService.Text(DeckPanelLayout.IsInputName(selected.Input)
             ? $"{DisplayInputName(selected.Input)} へドラッグ"
-            : $"{DisplayInputName(selected.Input)} の TAP / HOLDへドラッグ";
+            : $"{DisplayInputName(selected.Input)} の TAP / HOLDへドラッグ");
     }
 
     void LongPressDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

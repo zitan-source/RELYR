@@ -4,6 +4,8 @@
              xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              xmlns:local="clr-namespace:RELYR">
     <Application.Resources>
+    <local:LocalizedGeneratedNameConverter x:Key="LocalizedGeneratedNameConverter"/>
+    <local:LocalizedMacroStepCountConverter x:Key="LocalizedMacroStepCountConverter"/>
         <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
         <CornerRadius x:Key="SurfaceCornerRadius">14</CornerRadius>
         <CornerRadius x:Key="WindowCornerRadius">16</CornerRadius>

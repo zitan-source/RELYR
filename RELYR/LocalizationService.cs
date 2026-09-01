@@ -59,6 +59,7 @@ internal static class LocalizationService
     internal static bool IsEnglish => currentLanguage == English;
     internal static bool IsJapanese => currentLanguage == Japanese;
     internal static int CurrentCatalogCountForTest => currentText?.Count ?? 0;
+    internal static bool CurrentCatalogContainsForTest(string key) => currentText?.ContainsKey(key) == true;
     internal static int TrackedReferenceCountForTest
     {
         get { lock (TrackingLock) return TrackedElements.Count; }
@@ -100,6 +101,14 @@ internal static class LocalizationService
             typeof(FrameworkElement),
             FrameworkElement.LoadedEvent,
             new RoutedEventHandler(ElementLoaded));
+        // A Window's Loaded notification does not guarantee that every child
+        // is observed by the generic class handler. Localize the complete tree
+        // once after it has been composed so secondary windows cannot end up
+        // with only their title translated.
+        EventManager.RegisterClassHandler(
+            typeof(Window),
+            FrameworkElement.LoadedEvent,
+            new RoutedEventHandler(WindowLoaded));
         EventManager.RegisterClassHandler(
             typeof(FrameworkContentElement),
             FrameworkContentElement.LoadedEvent,
@@ -154,7 +163,32 @@ internal static class LocalizationService
             return value;
         if (currentText != null && currentText.TryGetValue(value, out string? translated))
             return translated;
-        return TranslateRuntimeText(value);
+        string runtimeTranslation = TranslateRuntimeText(value);
+        if (!runtimeTranslation.Equals(value, StringComparison.Ordinal))
+            return runtimeTranslation;
+        // A newly introduced UI string must never expose the Japanese source
+        // in another language. Locale catalogs still receive native entries,
+        // while English is the safe final fallback for a missing key.
+        if (!IsEnglish && LocalizationEnglish.Text.TryGetValue(value, out string? englishFallback))
+            return englishFallback;
+        return value;
+    }
+
+    internal static string DisplayGeneratedName(string? source)
+    {
+        string value = source ?? string.Empty;
+        if (IsJapanese)
+            return value;
+        return value switch
+        {
+            "標準" => Text("標準"),
+            "標準Deck" or "標準 Deck" => Text("標準Deck"),
+            "標準プロファイル" => Text("標準プロファイル"),
+            "新しいDeck" => Text("新しいDeck"),
+            "新しいジェスチャー" => Text("新しいジェスチャー"),
+            "新しいマクロ" => Text("新しいマクロ"),
+            _ => value
+        };
     }
 
     static string Runtime(string englishTemplate, params object[] values)
@@ -198,6 +232,10 @@ internal static class LocalizationService
             foreach (object child in LogicalTreeHelper.GetChildren(element))
                 if (child is DependencyObject dependencyChild)
                     LocalizeTreeCore(dependencyChild, visited);
+        if (element is ItemsControl itemsControl)
+            foreach (object item in itemsControl.Items)
+                if (item is DependencyObject dependencyItem)
+                    LocalizeTreeCore(dependencyItem, visited);
         if (element is Visual or System.Windows.Media.Media3D.Visual3D)
             for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
                 LocalizeTreeCore(VisualTreeHelper.GetChild(element, i), visited);
@@ -205,6 +243,10 @@ internal static class LocalizationService
 
     static string TranslateRuntimeText(string value)
     {
+        if (value.StartsWith("ⓘ ", StringComparison.Ordinal))
+            return "ⓘ " + Text(value[2..]);
+        if (value.StartsWith("⚠ ", StringComparison.Ordinal))
+            return "⚠ " + Text(value[2..]);
         Match match = Regex.Match(value, @"^(\d+)手順のマクロを実行します$");
         if (match.Success)
             return Runtime("Runs a {0}-step macro", match.Groups[1].Value);
@@ -259,6 +301,11 @@ internal static class LocalizationService
         match = Regex.Match(value, @"^(\d+)個のレイアウト$");
         if (match.Success)
             return Runtime("{0} layouts", match.Groups[1].Value);
+        match = Regex.Match(value, @"^(\d+)×(\d+)・(\d+)ボタン(?:\s*・\s*(既定))?$");
+        if (match.Success)
+            return match.Groups[4].Success
+                ? Runtime("{0} × {1} · {2} buttons · Default", match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value)
+                : Runtime("{0} × {1} · {2} buttons", match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value);
         match = Regex.Match(value, @"^列数 (\d+)・行数 (\d+)・(\d+)ボタン$");
         if (match.Success)
             return Runtime("{0} columns · {1} rows · {2} buttons", match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value);
@@ -289,7 +336,63 @@ internal static class LocalizationService
         match = Regex.Match(value, @"^(.+)を押したまま、組み合わせるキーを押してください$");
         if (match.Success)
             return Runtime("Hold {0} and press the key to combine", match.Groups[1].Value);
+        match = Regex.Match(value, @"^実行: (.+)$");
+        if (match.Success)
+            return Runtime("Running: {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^(.+) の TAP / HOLDへドラッグ$");
+        if (match.Success)
+            return Runtime("Drag to {0}'s TAP / HOLD slot", match.Groups[1].Value);
+        match = Regex.Match(value, @"^(.+)に割り当てました$");
+        if (match.Success)
+            return Runtime("Assigned to {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^(.+)を編集$");
+        if (match.Success)
+            return Runtime("Edit {0}", DisplayGeneratedName(match.Groups[1].Value));
+        match = Regex.Match(value, @"^(.+)（未保存）$");
+        if (match.Success)
+            return Runtime("{0} (unsaved)", Text(match.Groups[1].Value));
+        match = Regex.Match(value, @"^待機 (\d+) ms$");
+        if (match.Success)
+            return Runtime("Wait {0} ms", match.Groups[1].Value);
+        match = Regex.Match(value, @"^文字列を入力「(.+)」$");
+        if (match.Success)
+            return Runtime("Type text: {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^開く: (.+)$");
+        if (match.Success)
+            return Runtime("Open: {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^マクロを実行: (.+)$");
+        if (match.Success)
+            return Runtime("Run macro: {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^プロファイル切替: (.+)$");
+        if (match.Success)
+            return Runtime("Switch profile: {0}", DisplayGeneratedName(match.Groups[1].Value));
+        match = Regex.Match(value, @"^(.+) を押す$");
+        if (match.Success)
+            return Runtime("Press {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^(.+) を離す$");
+        if (match.Success)
+            return Runtime("Release {0}", match.Groups[1].Value);
+        match = Regex.Match(value, @"^割り当て (\d+)件 / 対象アプリ (\d+)件$");
+        if (match.Success)
+            return Runtime("{0} assignments / {1} target apps", match.Groups[1].Value, match.Groups[2].Value);
+        match = Regex.Match(value, @"^(\d+)分$");
+        if (match.Success)
+            return Runtime("{0} min", match.Groups[1].Value);
+        match = Regex.Match(value, @"^RELYR Deck - (.+)$");
+        if (match.Success)
+            return Runtime("RELYR Deck - {0}", DisplayGeneratedName(match.Groups[1].Value));
+        match = Regex.Match(value, @"^Edit (.+)$");
+        if (match.Success)
+            return Runtime("Edit {0}", DisplayGeneratedName(match.Groups[1].Value));
+        if (Regex.IsMatch(value, @"^＋\s+新しいプロファイル$"))
+            return "+  New Profile";
         return value;
+    }
+
+    static void WindowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Window window)
+            LocalizeTree(window);
     }
 
     static void ElementLoaded(object sender, RoutedEventArgs e)
@@ -404,4 +507,25 @@ internal static class LocalizationService
             state.Updating = false;
         }
     }
+}
+
+public sealed class LocalizedGeneratedNameConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => LocalizationService.DisplayGeneratedName(value?.ToString());
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => System.Windows.Data.Binding.DoNothing;
+}
+
+public sealed class LocalizedMacroStepCountConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        int count = value is int number ? number : 0;
+        return LocalizationService.IsJapanese ? $"{count} 手順" : $"{count} steps";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => System.Windows.Data.Binding.DoNothing;
 }

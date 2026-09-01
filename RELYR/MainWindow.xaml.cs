@@ -637,7 +637,7 @@ public partial class MainWindow : Window
         AddKey("Delete", "Delete", 970, 128, 72);
         AddKey("End", "End", 1046, 128, 72);
         AddKey("PageDown", "Page\nDown", 1122, 128, 72);
-        AddRow(156, [new("CapsLock", "CapsLock\n(F13設定時)", 104), new("A", "A", 54), new("S", "S", 54), new("D", "D", 54), new("F", "F", 54), new("G", "G", 54), new("H", "H", 54), new("J", "J", 54), new("K", "K", 54), new("L", "L", 54), new(";", ";", 54), new(":", ":", 54), new("]", "]", 54)]);
+        AddRow(156, [new("CapsLock", LocalizationService.Text("CapsLock\n(F13設定時)"), 104), new("A", "A", 54), new("S", "S", 54), new("D", "D", 54), new("F", "F", 54), new("G", "G", 54), new("H", "H", 54), new("J", "J", 54), new("K", "K", 54), new("L", "L", 54), new(";", ";", 54), new(":", ":", 54), new("]", "]", 54)]);
         AddJisEnter();
         AddRow(212, [new("LeftShift", "Shift", 126), new("Z", "Z", 54), new("X", "X", 54), new("C", "C", 54), new("V", "V", 54), new("B", "B", 54), new("N", "N", 54), new("M", "M", 54), new(",", ",", 54), new(".", ".", 54), new("/", "/", 54), new("_", "＼  _", 54), new("RightShift", "Shift", 174)]);
         AddKey("Up", "↑", 1046, 244, 54);
@@ -680,7 +680,7 @@ public partial class MainWindow : Window
         AddKey("Delete", "Delete", 970, 128, 72);
         AddKey("End", "End", 1046, 128, 72);
         AddKey("PageDown", "Page\nDown", 1122, 128, 72);
-        AddRow(156, [new("CapsLock", "CapsLock\n(F13設定時)", 102), new("A", "A", 56), new("S", "S", 56), new("D", "D", 56), new("F", "F", 56), new("G", "G", 56), new("H", "H", 56), new("J", "J", 56), new("K", "K", 56), new("L", "L", 56), new(";", ";", 56), new("'", "'", 56), new("Enter", "Enter", 134)]);
+        AddRow(156, [new("CapsLock", LocalizationService.Text("CapsLock\n(F13設定時)"), 102), new("A", "A", 56), new("S", "S", 56), new("D", "D", 56), new("F", "F", 56), new("G", "G", 56), new("H", "H", 56), new("J", "J", 56), new("K", "K", 56), new("L", "L", 56), new(";", ";", 56), new("'", "'", 56), new("Enter", "Enter", 134)]);
         AddRow(212, [new("LeftShift", "Shift", 136), new("Z", "Z", 56), new("X", "X", 56), new("C", "C", 56), new("V", "V", 56), new("B", "B", 56), new("N", "N", 56), new("M", "M", 56), new(",", ",", 56), new(".", ".", 56), new("/", "/", 56), new("RightShift", "Shift", 160)]);
         AddKey("Up", "↑", 1046, 244, 56);
         AddRow(268, [new("LeftCtrl", "Ctrl", 72), new("LWin", "Win", 72), new("LeftAlt", "Alt", 72), new("Space", "Space", 368), new("RightAlt", "Alt", 72), new("RWin", "Win", 72), new("Menu", "Menu", 72), new("RightCtrl", "Ctrl", 72)]);
@@ -863,7 +863,7 @@ public partial class MainWindow : Window
         Canvas.SetLeft(frame, x);
         Canvas.SetTop(frame, y);
         SecondaryKeyboardPanel.Children.Add(frame);
-        var heading = new TextBlock { Text = title, Foreground = ThemeService.Brush("MutedText"), FontSize = 11, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
+        var heading = new TextBlock { Text = LocalizationService.Text(title), Foreground = ThemeService.Brush("MutedText"), FontSize = 11, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
         Canvas.SetLeft(heading, x);
         Canvas.SetTop(heading, y + 7);
         SecondaryKeyboardPanel.Children.Add(heading);
@@ -935,7 +935,7 @@ public partial class MainWindow : Window
     readonly record struct KeySpec(string Key, string Label, double Width);
     System.Windows.Controls.Button MakeInputButton(string key)
     {
-        var b = new System.Windows.Controls.Button { Content = key == "CapsLock" ? "CapsLock\n(F13設定時)" : key, Tag = key, Style = (Style)FindResource("KeyButton") };
+        var b = new System.Windows.Controls.Button { Content = key == "CapsLock" ? LocalizationService.Text("CapsLock\n(F13設定時)") : key, Tag = key, Style = (Style)FindResource("KeyButton") };
         if (key == "Space")
             b.Width = 210;
         else if (key == "CapsLock")
@@ -1268,9 +1268,9 @@ public partial class MainWindow : Window
                 ?? "この入力には貼り付けできません";
         }
         var menu = new ContextMenu();
-        var copy = new MenuItem { Header = "この割り当てをコピー", IsEnabled = existing != null };
+        var copy = new MenuItem { Header = LocalizationService.Text("この割り当てをコピー"), IsEnabled = existing != null };
         copy.Click += (_, _) => { copiedMapping = existing == null ? null : CloneMapping(existing); ShowInlineNotice(input + " の割り当てをコピーしました"); };
-        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = canPaste, ToolTip = pasteUnavailableReason };
+        var paste = new MenuItem { Header = LocalizationService.Text("コピーした割り当てを貼り付け"), IsEnabled = canPaste, ToolTip = LocalizationService.Text(pasteUnavailableReason) };
         paste.Click += (_, _) =>
         {
             if (copiedMapping == null || unavailableReason != null
@@ -1285,7 +1285,7 @@ public partial class MainWindow : Window
             ClearSelectedInput();
             ShowInlineNotice(DisplayInputName(input) + " の割り当てを貼り付けました");
         };
-        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = existing != null && unavailableReason == null, ToolTip = unavailableReason };
+        var assignAllLayers = new MenuItem { Header = LocalizationService.Text("全レイヤーに割り当てる"), IsEnabled = existing != null && unavailableReason == null, ToolTip = LocalizationService.Text(unavailableReason) };
         assignAllLayers.Click += (_, _) =>
         {
             if (existing == null)
@@ -1300,7 +1300,7 @@ public partial class MainWindow : Window
             ShowInlineNotice($"{DisplayInputName(input)} の割り当てを他の{applied}レイヤーへ適用しました");
         };
         string? allProfilesReason = unavailableReason ?? (config.Profiles.Count <= 1 ? "他のプロファイルがありません" : null);
-        var assignAllProfiles = new MenuItem { Header = "全プロファイルに割り当て", IsEnabled = existing != null && allProfilesReason == null, ToolTip = allProfilesReason };
+        var assignAllProfiles = new MenuItem { Header = LocalizationService.Text("全プロファイルに割り当て"), IsEnabled = existing != null && allProfilesReason == null, ToolTip = LocalizationService.Text(allProfilesReason) };
         assignAllProfiles.Click += (_, _) =>
         {
             if (existing == null)
@@ -1316,7 +1316,7 @@ public partial class MainWindow : Window
         };
         var deleteAllLayers = new MenuItem
         {
-            Header = "全レイヤーから削除",
+            Header = LocalizationService.Text("全レイヤーから削除"),
             IsEnabled = HasMappingInAnyLayer(CurrentProfile.Mappings, key),
             Foreground = ThemeService.Brush("DangerBrush")
         };
@@ -1333,7 +1333,7 @@ public partial class MainWindow : Window
         };
         var deleteAllProfiles = new MenuItem
         {
-            Header = "全プロファイルから削除",
+            Header = LocalizationService.Text("全プロファイルから削除"),
             IsEnabled = config.Profiles.Any(profile => profile.Mappings.Any(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase))),
             Foreground = ThemeService.Brush("DangerBrush")
         };
@@ -1348,7 +1348,7 @@ public partial class MainWindow : Window
             ColorButtons();
             ShowInlineNotice($"{DisplayInputName(input)} を全プロファイルから削除しました（{removed}件）");
         };
-        var delete = new MenuItem { Header = "この割り当てを削除", IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
+        var delete = new MenuItem { Header = LocalizationService.Text("この割り当てを削除"), IsEnabled = existing != null, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => { if (existing == null) return; CurrentProfile.Mappings.Remove(existing); MarkDirty(); UpdateLayerButtons(); ClearSelectedInput(); ShowInlineNotice(DisplayInputName(input) + " の割り当てを削除しました"); };
         menu.Items.Add(copy);
         menu.Items.Add(paste);
@@ -1459,33 +1459,33 @@ public partial class MainWindow : Window
         bool canDeleteFromAllLayers = !deckManagementMode && multiSelectedInputs.Any(key => HasMappingInAnyLayer(CurrentProfile.Mappings, key));
         bool canDeleteFromAllProfiles = !deckManagementMode && multiSelectedInputs.Any(key =>
             config.Profiles.Any(profile => profile.Mappings.Any(mapping => mapping.Input.Equals(InputForCurrentLayer(key), StringComparison.OrdinalIgnoreCase))));
-        var copy = new MenuItem { Header = "選択した割り当てをコピー", IsEnabled = multiSelectedInputs.Count > 0 };
+        var copy = new MenuItem { Header = LocalizationService.Text("選択した割り当てをコピー"), IsEnabled = multiSelectedInputs.Count > 0 };
         copy.Click += (_, _) => CopyMultiSelection();
-        var paste = new MenuItem { Header = "コピーした割り当てを貼り付け", IsEnabled = copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode };
+        var paste = new MenuItem { Header = LocalizationService.Text("コピーした割り当てを貼り付け"), IsEnabled = copiedMultiMappings is { Count: > 0 } && copiedMultiMappingsAreDeck == deckManagementMode };
         paste.Click += (_, _) => PasteMultiSelection();
-        var changeDeckColor = new MenuItem { Header = "色を変更...", IsEnabled = deckManagementMode && multiSelectedInputs.Count > 0 };
+        var changeDeckColor = new MenuItem { Header = LocalizationService.Text("色を変更..."), IsEnabled = deckManagementMode && multiSelectedInputs.Count > 0 };
         changeDeckColor.Click += (_, _) => ChooseMultiDeckButtonColor();
         var resetDeckColor = new MenuItem
         {
-            Header = "色を標準に戻す",
+            Header = LocalizationService.Text("色を標準に戻す"),
             IsEnabled = deckManagementMode && multiSelectedInputs.Any(input =>
                 DeckPanelLayout.TryGetButtonColor(MappingCollectionForInput(input).LastOrDefault(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase)), out _))
         };
         resetDeckColor.Click += (_, _) => SetMultiDeckButtonColor("");
-        var assignAllLayers = new MenuItem { Header = "全レイヤーに割り当てる", IsEnabled = canAssignAcrossScopes };
+        var assignAllLayers = new MenuItem { Header = LocalizationService.Text("全レイヤーに割り当てる"), IsEnabled = canAssignAcrossScopes };
         assignAllLayers.Click += (_, _) => AssignMultiSelectionToAllLayers();
         var assignAllProfiles = new MenuItem
         {
-            Header = "全プロファイルに割り当て",
+            Header = LocalizationService.Text("全プロファイルに割り当て"),
             IsEnabled = canAssignAcrossScopes && config.Profiles.Count > 1,
-            ToolTip = canAssignAcrossScopes && config.Profiles.Count <= 1 ? "他のプロファイルがありません" : null
+            ToolTip = canAssignAcrossScopes && config.Profiles.Count <= 1 ? LocalizationService.Text("他のプロファイルがありません") : null
         };
         assignAllProfiles.Click += (_, _) => AssignMultiSelectionToAllProfiles();
-        var delete = new MenuItem { Header = "選択した割り当てを削除", IsEnabled = multiSelectedInputs.Count > 0, Foreground = ThemeService.Brush("DangerBrush") };
+        var delete = new MenuItem { Header = LocalizationService.Text("選択した割り当てを削除"), IsEnabled = multiSelectedInputs.Count > 0, Foreground = ThemeService.Brush("DangerBrush") };
         delete.Click += (_, _) => DeleteMultiSelection();
-        var deleteAllLayers = new MenuItem { Header = "全レイヤーから削除", IsEnabled = canDeleteFromAllLayers, Foreground = ThemeService.Brush("DangerBrush") };
+        var deleteAllLayers = new MenuItem { Header = LocalizationService.Text("全レイヤーから削除"), IsEnabled = canDeleteFromAllLayers, Foreground = ThemeService.Brush("DangerBrush") };
         deleteAllLayers.Click += (_, _) => DeleteMultiSelectionFromAllLayers();
-        var deleteAllProfiles = new MenuItem { Header = "全プロファイルから削除", IsEnabled = canDeleteFromAllProfiles, Foreground = ThemeService.Brush("DangerBrush") };
+        var deleteAllProfiles = new MenuItem { Header = LocalizationService.Text("全プロファイルから削除"), IsEnabled = canDeleteFromAllProfiles, Foreground = ThemeService.Brush("DangerBrush") };
         deleteAllProfiles.Click += (_, _) => DeleteMultiSelectionFromAllProfiles();
         menu.Items.Add(copy);
         menu.Items.Add(paste);
@@ -2491,25 +2491,29 @@ public partial class MainWindow : Window
             return "キーを選択してください";
         return string.Join(" + ", input.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(DisplayInputPart));
     }
-    static string DisplayInputPart(string value) => value switch
+    static string DisplayInputPart(string value)
     {
-        "通常" => "デフォルト",
-        "Space" => "Space",
-        "CapsLock" => "CapsLock",
-        "MouseRight" => "右クリック",
-        "MouseBack" => "戻る",
-        "MouseForward" => "進む",
-        "Taskbar" => "タスクバー",
-        DeckPanelLayout.Layer => "Deck",
-        "MouseLeft" => "左クリック",
-        "MouseMiddle" => "ホイールクリック",
-        "MouseX" => "追加ボタン",
-        "WheelUp" => "ホイール上",
-        "WheelDown" => "ホイール下",
-        "TiltLeft" => "チルト左",
-        "TiltRight" => "チルト右",
-        _ => value
-    };
+        string display = value switch
+        {
+            "通常" => "デフォルト",
+            "Space" => "Space",
+            "CapsLock" => "CapsLock",
+            "MouseRight" => "右クリック",
+            "MouseBack" => "戻る",
+            "MouseForward" => "進む",
+            "Taskbar" => "タスクバー",
+            DeckPanelLayout.Layer => "Deck",
+            "MouseLeft" => "左クリック",
+            "MouseMiddle" => "ホイールクリック",
+            "MouseX" => "追加ボタン",
+            "WheelUp" => "ホイール上",
+            "WheelDown" => "ホイール下",
+            "TiltLeft" => "チルト左",
+            "TiltRight" => "チルト右",
+            _ => value
+        };
+        return display == value ? value : LocalizationService.Text(display);
+    }
     void EditorChanged(object sender, EventArgs e)
     {
         if (loading || selected == null)
@@ -2596,9 +2600,13 @@ public partial class MainWindow : Window
         else if (ReferenceEquals(sender, LongKindBox))
             FocusExecutionValue(LongValueBox, true);
     }
-    static string ProfileDisplayValue(string profileName) => "プロファイル：" + profileName;
+    static string ProfileDisplayValue(string profileName) => LocalizationService.IsJapanese
+        ? "プロファイル：" + profileName
+        : LocalizationService.Text("プロファイル") + ": " + LocalizationService.DisplayGeneratedName(profileName);
     internal static bool ContainsJapaneseText(string? value) => !string.IsNullOrEmpty(value) && value.Any(character => character is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u9FFF' or >= '\uF900' and <= '\uFAFF');
-    static string GestureDisplayValue(string gestureName) => "ジェスチャー：" + gestureName;
+    static string GestureDisplayValue(string gestureName) => LocalizationService.IsJapanese
+        ? "ジェスチャー：" + gestureName
+        : LocalizationService.Text("ジェスチャー") + ": " + LocalizationService.DisplayGeneratedName(gestureName);
     internal static string DisplayActionValue(ActionKind kind, string value) => kind switch { ActionKind.Profile => ProfileDisplayValue(value), ActionKind.Gesture => GestureDisplayValue(value), ActionKind.Mouse => ActionCatalog.DisplayMouseAction(value), _ => value };
     string DisplayConfiguredActionValue(ActionKind kind, string value)
     {
@@ -2649,15 +2657,15 @@ public partial class MainWindow : Window
         ValueBox.IsTabStop = !shortGestureSelected;
         ValueBox.Opacity = shortGestureSelected ? .72 : 1;
         ValueBox.ToolTip = shortGestureSelected
-            ? "ジェスチャー名は直接編集できません。変更する場合は「ショートカット」から別のジェスチャーを選んでください。"
-            : "Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます";
+            ? LocalizationService.Text("ジェスチャー名は直接編集できません。変更する場合は「ショートカット」から別のジェスチャーを選んでください。")
+            : LocalizationService.Text("Ctrlを押しながらCなど、実際のキーボードでもショートカットを入力できます");
         LongValueBox.IsReadOnly = legacyLongGestureSelected;
         LongValueBox.IsTabStop = !legacyLongGestureSelected;
         LongValueBox.Opacity = legacyLongGestureSelected ? .72 : 1;
         LongPressOnlyButton.IsEnabled = longPressSupported;
         LongPressExpander.IsEnabled = longPressSupported;
         LongPressExpander.Opacity = longPressSupported ? 1 : .58;
-        LongPressExpander.Header = shortGestureSelected
+        LongPressExpander.Header = LocalizationService.Text(shortGestureSelected
             ? "＋ 長押し（ジェスチャーでは設定できません）"
             : shortModifierClickSelected
                 ? "＋ 長押し（短押しの修飾クリックとは併用できません）"
@@ -2667,7 +2675,7 @@ public partial class MainWindow : Window
                         ? "＋ 長押し（レイヤー使用中は設定できません）"
                 : IsNormalLayerAlphabetKey(selected)
                 ? "＋ 長押し（通常レイヤーの英字では設定できません）"
-                : "＋ 長押しを追加（任意）";
+                : "＋ 長押しを追加（任意）");
         if (!longPressSupported)
             LongPressExpander.IsExpanded = false;
         UpdateAssignmentSummary();
@@ -2839,7 +2847,7 @@ public partial class MainWindow : Window
                     : IsTaskbarMappedInput(Input) ? taskbarExecutor : executor;
                 bool result = selectedExecutor.Execute(Map, Input, out var value);
                 if (result)
-                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
+                    Dispatcher.BeginInvoke(() => { LastInput.Text = LocalizationService.Text($"実行: {Map.Input} → {value}"); LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }
             catch (Exception ex) { InputEngine.ReleaseAll(); Dispatcher.BeginInvoke(() => { LastInput.Text = "実行エラー: " + ex.Message; LastInput.Foreground = ThemeService.Brush("DangerBrush"); }); }
     }
@@ -2864,7 +2872,7 @@ public partial class MainWindow : Window
                     && Input.EndsWith(":PressStart", StringComparison.OrdinalIgnoreCase))
                     engine.NotifyNativeMouseDragStarted(Input);
                 if (result)
-                    Dispatcher.BeginInvoke(() => { LastInput.Text = $"実行: {Map.Input} → {value}"; LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
+                    Dispatcher.BeginInvoke(() => { LastInput.Text = LocalizationService.Text($"実行: {Map.Input} → {value}"); LastInput.Foreground = value.StartsWith("エラー:", StringComparison.Ordinal) ? ThemeService.Brush("DangerBrush") : ThemeService.Brush("AccentTextBrush"); });
             }
             catch (Exception ex) { InputEngine.ReleaseAll(); Dispatcher.BeginInvoke(() => { LastInput.Text = "ドラッグ実行エラー: " + ex.Message; LastInput.Foreground = ThemeService.Brush("DangerBrush"); }); }
         }
@@ -3129,7 +3137,7 @@ public partial class MainWindow : Window
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 Child = new TextBlock
                 {
-                    Text = "＋  新しいプロファイル",
+                    Text = LocalizationService.Text("＋  新しいプロファイル"),
                     FontWeight = FontWeights.SemiBold,
                     VerticalAlignment = VerticalAlignment.Center
                 }
@@ -3141,7 +3149,7 @@ public partial class MainWindow : Window
             if (createProfileBorder.Child is TextBlock createProfileLabel)
                 createProfileLabel.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextBrush");
         }
-        System.Windows.Automation.AutomationProperties.SetName(createProfileItem, "新しいプロファイルを作成");
+        System.Windows.Automation.AutomationProperties.SetName(createProfileItem, LocalizationService.Text("新しいプロファイルを作成"));
         profileItems.Add(createProfileItem);
         ProfileBox.ItemsSource = profileItems;
         ProfileBox.SelectedItem = config.ActiveProfile;
@@ -3500,7 +3508,7 @@ public partial class MainWindow : Window
             compact = compact[..72] + "…";
         return quote ? $"「{compact}」" : compact;
     }
-    internal static string ActionKindDisplayName(ActionKind kind) => kind switch
+    internal static string ActionKindDisplayName(ActionKind kind) => LocalizationService.Text(kind switch
     {
         ActionKind.Disabled => "無効化",
         ActionKind.Key => "別のキー",
@@ -3512,7 +3520,7 @@ public partial class MainWindow : Window
         ActionKind.Profile => "プロファイル切替",
         ActionKind.Gesture => "ジェスチャー",
         _ => "未設定"
-    };
+    });
     internal static string FriendlyActionValue(ActionKind kind, string value)
     {
         if (kind == ActionKind.Disabled)
@@ -3528,7 +3536,9 @@ public partial class MainWindow : Window
         if (kind == ActionKind.Shortcut && value.Equals(ActionCatalog.ShowRelyrMainWindowAction, StringComparison.OrdinalIgnoreCase))
             return "RELYRを表示";
         var catalog = ActionCatalog.Items.FirstOrDefault(x => x.Kind == kind && x.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
-        string display = catalog?.Name ?? (kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse ? DisplayInputName(value) : value);
+        string display = catalog != null
+            ? LocalizationService.Text(catalog.Name)
+            : kind is ActionKind.Key or ActionKind.Shortcut or ActionKind.Mouse ? DisplayInputName(value) : value;
         if (string.IsNullOrWhiteSpace(display))
             display = "未設定";
         return display.Length <= 180 ? display : display[..180] + "…";
@@ -3582,7 +3592,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(action, 1);
         var name = new TextBlock
         {
-            Text = row.Name,
+            Text = LocalizationService.Text(row.Name),
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             TextWrapping = TextWrapping.Wrap
@@ -3613,7 +3623,7 @@ public partial class MainWindow : Window
         }
         else if (!string.IsNullOrWhiteSpace(row.Detail))
         {
-            var detail = new TextBlock { Text = row.Detail, FontSize = 10.5, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
+            var detail = new TextBlock { Text = LocalizationService.Text(row.Detail), FontSize = 10.5, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap };
             detail.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
             action.Children.Add(detail);
         }
@@ -3649,7 +3659,11 @@ public partial class MainWindow : Window
                 yield return b2;
         }
     }
-    static string LayerDisplayName(string layer) => layer switch { "通常" => "デフォルト", "Space" => "Space", "CapsLock" => "CapsLock", "MouseRight" => "右クリック", "MouseForward" => "進む", "MouseBack" => "戻る", "Taskbar" => "タスクバー", DeckPanelLayout.Layer => "Deckパネル", _ => layer };
+    static string LayerDisplayName(string layer)
+    {
+        string display = layer switch { "通常" => "デフォルト", "Space" => "Space", "CapsLock" => "CapsLock", "MouseRight" => "右クリック", "MouseForward" => "進む", "MouseBack" => "戻る", "Taskbar" => "タスクバー", DeckPanelLayout.Layer => "Deckパネル", _ => layer };
+        return display == layer ? layer : LocalizationService.Text(display);
+    }
     void MarkDirty(bool refreshDeckPanel = true)
     {
         if (config == null)
@@ -3689,12 +3703,12 @@ public partial class MainWindow : Window
     }
     void ShowInlineNotice(string message)
     {
-        LastInput.Text = "ⓘ " + message;
+        LastInput.Text = "ⓘ " + LocalizationService.Text(message);
         LastInput.Foreground = ThemeService.Brush("WarningBrush");
     }
     void ShowInlineError(string message)
     {
-        LastInput.Text = "⚠ " + message;
+        LastInput.Text = "⚠ " + LocalizationService.Text(message);
         LastInput.Foreground = ThemeService.Brush("DangerBrush");
     }
     void UpdateLayerButtons()

@@ -190,7 +190,7 @@ public partial class MacroInputPickerWindow : Window
         Canvas.SetLeft(frame, x);
         Canvas.SetTop(frame, y);
         InputCanvas.Children.Add(frame);
-        var heading = new TextBlock { Text = title, Foreground = ThemeService.Brush("MutedText"), FontSize = 11, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
+        var heading = new TextBlock { Text = LocalizationService.Text(title), Foreground = ThemeService.Brush("MutedText"), FontSize = 11, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false };
         Canvas.SetLeft(heading, x + 10);
         Canvas.SetTop(heading, y + 4);
         InputCanvas.Children.Add(heading);

@@ -35,6 +35,7 @@ public partial class MainWindow
         {
             KindBox.Items.Refresh();
             LongKindBox.Items.Refresh();
+            RefreshProfiles();
             RefreshActionPalette();
             UpdateAutoSaveToggleText();
             UpdateStatus();

@@ -48,7 +48,7 @@ public partial class SetupWindow : Window
         PageFour.Visibility = pageIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
         PageFive.Visibility = pageIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         BackButton.Visibility = pageIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
-        NextButton.Content = pageIndex == 4 ? (openedFromSettings ? "閉じる" : "RELYRを使い始める") : "次へ";
+        NextButton.Content = LocalizationService.Text(pageIndex == 4 ? (openedFromSettings ? "閉じる" : "RELYRを使い始める") : "次へ");
         PageCounterText.Text = $"{pageIndex + 1} / 5";
         UpdateDots();
     }

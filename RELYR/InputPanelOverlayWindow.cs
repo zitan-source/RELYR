@@ -254,7 +254,7 @@ internal sealed class InputPanelOverlayWindow : Window
 
     static TextBlock SectionLabel(string text, Thickness? margin = null)
     {
-        var label = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = margin ?? new Thickness(0, 0, 0, 6) };
+        var label = new TextBlock { Text = LocalizationService.Text(text), FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = margin ?? new Thickness(0, 0, 0, 6) };
         label.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
         return label;
     }

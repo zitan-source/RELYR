@@ -224,7 +224,9 @@ public partial class MainWindow
     {
         if (AutoSaveStatus != null)
         {
-            AutoSaveStatus.Text = AutoSaveToggle.IsChecked == true ? "● 自動保存 オン" : "○ 自動保存 オフ";
+            AutoSaveStatus.Text = AutoSaveToggle.IsChecked == true
+                ? "● " + LocalizationService.Text("自動保存 オン")
+                : "○ " + LocalizationService.Text("自動保存 オフ");
             AutoSaveStatus.Foreground = ThemeService.Brush(AutoSaveToggle.IsChecked == true ? "AccentTextBrush" : "SecondaryText");
         }
         UpdateUnsavedChangesIndicator();
