@@ -278,6 +278,18 @@ public partial class MainWindow
     internal void ApplyDeckSizeForTest(int columns, int rows) => ApplyDeckSize(columns, rows);
     internal void ApplyDeckSliderSizeForTest(int columns, int rows)
         => ApplyDeckSize(columns, rows, synchronizeSliders: false, deferDeckRefresh: true);
+    internal void SelectDeckListViewForTest()
+    {
+        selectedDeckEditorViewMode = DeckEditorViewMode.List;
+        ApplyDeckEditorViewMode();
+    }
+    internal void SelectDeckGridViewForTest()
+    {
+        selectedDeckEditorViewMode = DeckEditorViewMode.Grid;
+        ApplyDeckEditorViewMode();
+    }
+    internal bool DeckListActionLibraryPinnedForTest => DeckListActionLibraryPinned;
+    internal IReadOnlyList<System.Windows.Controls.Border> DeckListActionTargetsForTest => [.. deckListActionTargets.Keys];
     internal void FlushDeckCustomizationRefreshForTest() => FlushDeckCustomizationRefresh();
     internal void ShowDeckLayoutListForTest() => ShowDeckLayoutList();
     internal void ShowNewDeckDialogForTest() => PromptNewDeckLayout();

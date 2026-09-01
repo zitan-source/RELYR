@@ -1286,14 +1286,28 @@ internal static class UiIntegrationTest
             Check(closeSettings.FindName("GestureThresholdBox") == null && closeSettings.FindName("LockGestureCursorBox") == null
                 && !Descendants<TextBlock>(closeSettings).Any(text => text.Text is "ジェスチャー感度" or "方向を確定する移動量" or "ジェスチャー中にカーソルを固定する"),
                 "layer settings no longer duplicate sensitivity or cursor behavior now owned by each gesture");
+            double generalHeadingLeft = closeSettings.GeneralHeading.TranslatePoint(new System.Windows.Point(), closeSettings).X;
+            Check(ReferenceEquals(closeSettings.LanguageBox.Style, closeSettings.FindResource("ThemedComboBox"))
+                && Grid.GetRow(closeSettings.TutorialButton) == 2
+                && !Descendants<System.Windows.Controls.Button>(closeSettings.GeneralPanel).Contains(closeSettings.TutorialButton),
+                "the language selector uses the app theme and the tutorial stays in the fixed lower-left navigation area");
             var settingsCategories = closeSettings.CategoryList.Items.Cast<ListBoxItem>().ToArray();
             int updateCategoryIndex = Array.FindIndex(settingsCategories, item => item.Tag?.ToString() == "Update");
             Check(updateCategoryIndex >= 0 && settingsCategories[updateCategoryIndex + 1].Tag?.ToString() == "Disabled" && settingsCategories.Last().Tag?.ToString() == "Support" && settingsCategories.Any(x => x.Tag?.ToString() == "Overlay") && Descendants<System.Windows.Controls.CheckBox>(closeSettings.AppearancePanel).Contains(closeSettings.ProfileOverlayBox) && Descendants<Separator>(closeSettings.AppearancePanel).Any() && !Descendants<TextBlock>(closeSettings).Any(x => x.Text.Contains("仮想デスクトップ番号のすぐ上", StringComparison.Ordinal)), "appearance uses a divider between color mode and profile switching while keeping overlay, disabled-app, and support options discoverable");
+            CaptureForReview(closeSettings, "general-settings.png");
             closeSettings.SelectCategory("Appearance");
             closeSettings.UpdateLayout();
+            double appearanceHeadingLeft = closeSettings.AppearanceHeading.TranslatePoint(new System.Windows.Point(), closeSettings).X;
+            Check(Math.Abs(generalHeadingLeft - appearanceHeadingLeft) < .1
+                && Math.Abs(closeSettings.GeneralHeading.FontSize - closeSettings.AppearanceHeading.FontSize) < .1,
+                "General and Appearance use the same heading size and left alignment");
             CaptureForReview(closeSettings, "appearance-settings.png");
             closeSettings.SelectCategory("Layers");
             closeSettings.UpdateLayout();
+            Check(closeSettings.SpaceRepeatBox.Content == null
+                && Math.Abs(closeSettings.SpaceRepeatBox.Width - 42) < .1
+                && closeSettings.SpaceRepeatDelayBox.MinHeight >= 40,
+                "Space repeat separates its title, description, switch, and delay field into a readable layout");
             CaptureForReview(closeSettings, "layer-settings.png");
             Check(closeSettings.SelectedClockBackgroundMode == ClockBackgroundMode.Solid && closeSettings.SelectedClockDisplayMode == ClockDisplayMode.FullDateAndTime && closeSettings.ClockBackgroundImage == @"C:\Images\clock.png" && closeSettings.ClockSolidColor == "#123456" && !closeSettings.ClockShowOnAllMonitors && closeSettings.InputPanelOpacityPercent == 67, "overlay settings restore keypad opacity, solid color, clock image, date format, and monitor scope");
             Check(closeSettings.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && closeSettings.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.CollapseToEdge, "saving general settings preserves Deck display behaviors now owned by the Deck workspace");
@@ -1832,12 +1846,52 @@ internal static class UiIntegrationTest
                 && standardDeck.Mappings.Any(x => x.Input == "Deck+01" && x.Value == "Ctrl+C" && x.Description == "コピー")
                 && standardDeck.Mappings.Any(x => x.Input == "Deck+45" && x.Value == "Z" && x.Description == "保持"),
                 "changing a Deck grid resets only its obsolete zoom while preserving hidden assignments and editable button names");
+            OverlayService.ResetDeckRefreshRequestCountForTest();
             window.DeckOpacitySlider.Value = 67;
             Pump(window);
             var deckCenter = window.DeckGridViewbox.TranslatePoint(new System.Windows.Point(window.DeckGridViewbox.ActualWidth / 2, 0), window.DeckGridScrollViewer).X;
             bool centeredOrScrollablePreview = window.DeckGridScrollViewer.ScrollableWidth > .1 || Math.Abs(deckCenter - window.DeckGridScrollViewer.ViewportWidth / 2) < 2;
-            Check(window.DeckOpacityValueText.Text == "67%" && window.ConfigForTest.InputPanelOpacityPercent == 67 && centeredOrScrollablePreview,
+            Check(window.DeckOpacityValueText.Text == "67%" && window.ConfigForTest.InputPanelOpacityPercent == 67
+                && !window.DeckOpacitySlider.IsSnapToTickEnabled
+                && OverlayService.DeckRefreshRequestCountForTest == 0
+                && OverlayService.DeckLayoutPreviewRequestCountForTest >= 1
+                && centeredOrScrollablePreview,
                 $"Deck opacity is editable in place and the dedicated preview is centered when it fits or scrollable when readability requires it (center={deckCenter:F1}, viewport={window.DeckGridScrollViewer.ViewportWidth:F1}, scroll={window.DeckGridScrollViewer.ScrollableWidth:F1})");
+            var actionOnlySwapLayout = new DeckLayoutDefinition
+            {
+                Name = "action-only-swap",
+                Columns = 2,
+                Rows = 1,
+                Mappings =
+                [
+                    new Mapping { Input = "Deck+01", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Ctrl+1", Description = "左の見た目", DeckColor = "#123456", DeckIcon = "copy", DeckFilePath = @"C:\Faces\left.png" },
+                    new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "右のAction", Description = "右の見た目", DeckColor = "#654321", DeckIcon = "home", DeckFilePath = @"C:\Faces\right.png" }
+                ]
+            };
+            bool actionOnlySwapped = MainWindow.SwapDeckActionsPreservingButtonAppearance(actionOnlySwapLayout, "Deck+01", "Deck+02");
+            var swappedLeft = DeckPanelLayout.FindMapping(actionOnlySwapLayout, 1)!;
+            var swappedRight = DeckPanelLayout.FindMapping(actionOnlySwapLayout, 2)!;
+            Check(actionOnlySwapped
+                && swappedLeft.Kind == ActionKind.Text && swappedLeft.Value == "右のAction"
+                && swappedLeft.Description == "左の見た目" && swappedLeft.DeckColor == "#123456" && swappedLeft.DeckIcon == "copy" && swappedLeft.DeckFilePath.EndsWith("left.png", StringComparison.OrdinalIgnoreCase)
+                && swappedRight.Kind == ActionKind.Shortcut && swappedRight.Value == "Ctrl+1"
+                && swappedRight.Description == "右の見た目" && swappedRight.DeckColor == "#654321" && swappedRight.DeckIcon == "home" && swappedRight.DeckFilePath.EndsWith("right.png", StringComparison.OrdinalIgnoreCase),
+                "dragging the right-side Deck Action swaps only executable content while each button keeps its icon, color, name, and file face");
+            window.SelectDeckListViewForTest();
+            Pump(window);
+            Check(window.DeckListActionLibraryPinnedForTest
+                && window.ActionPalettePane.Visibility == Visibility.Visible
+                && window.ActionPaletteCloseButton.Visibility == Visibility.Collapsed
+                && window.DeckListActionTargetsForTest.Count == DeckPanelLayout.VisibleSlotCount(standardDeck)
+                && window.DeckListActionTargetsForTest.All(target => target.AllowDrop && target.ActualWidth > DeckPanelLayout.KeyWidth),
+                "Deck list view keeps the draggable Action library open and makes the complete right side of every row a drop target");
+            CaptureForReview(window, "deck-list-action-library.png");
+            window.SelectDeckGridViewForTest();
+            Pump(window);
+            Check(!window.DeckListActionLibraryPinnedForTest
+                && window.ActionPalettePane.Visibility == Visibility.Collapsed
+                && window.ActionPaletteCloseButton.Visibility == Visibility.Visible,
+                "returning to the Deck grid restores the ordinary closable inspector without retaining the pinned list library");
             Check(window.DeckWindowActionTargetForTest == WindowActionTarget.ActiveWindow, "Deck actions always target the previously active window instead of the overlay under the cursor");
             Check(window.TaskbarWindowActionTargetForTest == WindowActionTarget.ActiveWindow
                   && MainWindow.IsTaskbarMappedInput("Taskbar+MouseMiddle")

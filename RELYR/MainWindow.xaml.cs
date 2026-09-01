@@ -1737,6 +1737,7 @@ public partial class MainWindow : Window
         if (deckCustomizeBlankClick)
             CloseDeckCustomization();
         bool actionPaletteBlankClick = actionPaletteOpen
+            && !DeckListActionLibraryPinned
             && !IsDescendantOf(source, ActionPalettePane)
             && !IsDescendantOf(source, KeyboardPanel)
             && !IsDescendantOf(source, SecondaryKeyboardPanel)

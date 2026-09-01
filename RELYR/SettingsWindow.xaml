@@ -43,6 +43,40 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+    <Style x:Key="SideLinkButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="12,9"/>
+      <Setter Property="Margin" Value="0,12,0,0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="LinkBackground" Background="{TemplateBinding Background}"
+                    CornerRadius="{StaticResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="LinkBackground" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="LinkBackground" Property="Opacity" Value="0.72"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="LinkBackground" Property="Background" Value="{DynamicResource ControlHoverBackground}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="Transparent"/><Setter Property="CornerRadius" Value="0"/>
       <Setter Property="Padding" Value="4,4,4,4"/><Setter Property="BorderBrush" Value="Transparent"/>
@@ -124,7 +158,7 @@
 
     <Border Background="{DynamicResource PaneBackground}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
       <Grid Margin="16,22">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel Margin="10,0,8,18">
           <TextBlock Text="設定" FontSize="20" FontWeight="SemiBold"/>
         </StackPanel>
@@ -141,6 +175,9 @@
           <ListBoxItem Content="プライバシー" Tag="Privacy"/>
           <ListBoxItem Content="開発を支援" Tag="Support"/>
         </ListBox>
+        <Button x:Name="TutorialButton" Grid.Row="2" Style="{StaticResource SideLinkButton}"
+                Content="チュートリアルを見る" Click="ShowTutorial_Click"
+                AutomationProperties.Name="チュートリアルを見る"/>
       </Grid>
     </Border>
 
@@ -150,9 +187,9 @@
       <Grid>
         <ScrollViewer x:Name="GeneralScrollPanel" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel x:Name="GeneralPanel" Margin="0,0,10,0">
-          <TextBlock Text="一般" FontSize="24" FontWeight="SemiBold"/>
-          <TextBlock Text="Windowsと保存" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,18"/>
-          <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,8">
+          <TextBlock x:Name="GeneralHeading" Text="一般" FontSize="27" FontWeight="Bold"/>
+          <TextBlock Text="Windowsと保存" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
+          <Border Style="{StaticResource Card}" Padding="4" Margin="0,0,0,8">
             <StackPanel>
               <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
@@ -160,7 +197,8 @@
                   <TextBlock Text="表示言語" FontSize="18" FontWeight="SemiBold"/>
                   <TextBlock Text="アプリ全体の表示言語を選びます。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
-                <ComboBox x:Name="LanguageBox" Grid.Column="1" VerticalAlignment="Center" SelectionChanged="Language_SelectionChanged">
+                <ComboBox x:Name="LanguageBox" Grid.Column="1" MinHeight="40" VerticalAlignment="Center"
+                          Style="{StaticResource ThemedComboBox}" SelectionChanged="Language_SelectionChanged">
                   <ComboBoxItem Content="日本語" Tag="ja-JP"/>
                   <ComboBoxItem Content="English" Tag="en-US"/>
                   <ComboBoxItem Content="简体中文" Tag="zh-CN"/>
@@ -183,18 +221,13 @@
               <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
               <TextBlock Text="保存" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,5"/>
               <CheckBox x:Name="AutoSaveBox" Content="変更をすぐに保存して反映する"/>
-              <Separator Margin="0,8" Background="{DynamicResource SubtleBorderBrush}"/>
-              <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center"><TextBlock Text="使い方" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="画像中心のクイックガイドです。" Foreground="{DynamicResource SecondaryText}" Margin="0,4,10,0"/></StackPanel>
-                <Button x:Name="TutorialButton" Grid.Column="1" Content="チュートリアルを見る" Click="ShowTutorial_Click" VerticalAlignment="Center"/>
-              </Grid>
             </StackPanel>
           </Border>
         </StackPanel>
         </ScrollViewer>
 
         <StackPanel x:Name="AppearancePanel" Visibility="Collapsed">
-          <TextBlock Text="外観" FontSize="27" FontWeight="Bold"/>
+          <TextBlock x:Name="AppearanceHeading" Text="外観" FontSize="27" FontWeight="Bold"/>
           <TextBlock Text="RELYR全体の表示テーマを選びます。" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,22"/>
           <Border Style="{StaticResource Card}">
             <StackPanel>
@@ -432,20 +465,33 @@
               </StackPanel>
             </StackPanel>
           </Border>
-          <Border Style="{StaticResource Card}" Padding="4">
-            <StackPanel>
-              <StackPanel>
-                <TextBlock Text="Spaceキーのリピート" FontSize="18" FontWeight="SemiBold"/>
-                <CheckBox x:Name="SpaceRepeatBox">
-                  <TextBlock Text="1回押した後、もう一度長押しして連続入力" TextWrapping="Wrap"/>
-                </CheckBox>
-                <TextBlock Text="リピート開始までの時間" Foreground="{DynamicResource PrimaryText}"/>
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                  <TextBox x:Name="SpaceRepeatDelayBox" Width="82" FontSize="15"/>
-                  <TextBlock Text="ms（100～2000）" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" Margin="8,0,0,0"/>
+          <Border Style="{StaticResource Card}" Padding="4" Margin="0,12,0,0">
+            <Grid x:Name="SpaceRepeatSection">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="Spaceキーのリピート" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <CheckBox x:Name="SpaceRepeatBox" Grid.Column="1" Width="42" Margin="18,0,0,0"
+                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                          AutomationProperties.Name="Spaceキーのリピート"/>
+              </Grid>
+              <TextBlock Grid.Row="1" Text="1回押した後、もう一度長押しして連続入力"
+                         Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,8,64,0"/>
+              <StackPanel Grid.Row="2" Margin="0,22,0,0">
+                <TextBlock Text="リピート開始までの時間" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PrimaryText}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                  <TextBox x:Name="SpaceRepeatDelayBox" Width="96" MinHeight="40" FontSize="15"
+                           TextAlignment="Center" VerticalContentAlignment="Center"/>
+                  <TextBlock Text="ms（100～2000）" VerticalAlignment="Center"
+                             Foreground="{DynamicResource SecondaryText}" Margin="12,0,0,0"/>
                 </StackPanel>
               </StackPanel>
-            </StackPanel>
+            </Grid>
           </Border>
         </StackPanel>
         </ScrollViewer>

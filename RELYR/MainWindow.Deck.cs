@@ -31,6 +31,11 @@ public partial class MainWindow
     readonly List<System.Windows.Controls.Button> deckGridButtons = [];
     readonly List<System.Windows.Controls.Button> deckListButtons = [];
     readonly Dictionary<System.Windows.Controls.Button, (TextBlock Type, TextBlock Value)> deckListActionLabels = [];
+    readonly Dictionary<Border, System.Windows.Controls.Button> deckListActionTargets = [];
+    const string DeckActionDragFormat = "RELYR.DeckAction.v1";
+    Border? deckListActionDragSource;
+    Border? deckListActionDropTarget;
+    System.Windows.Point deckListActionDragStart;
     readonly System.Windows.Threading.DispatcherTimer deckCustomizationRefreshTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(280)
@@ -590,9 +595,29 @@ public partial class MainWindow
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             actionValue.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
-            var actionPanel = new StackPanel { Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            actionPanel.Children.Add(actionType);
-            actionPanel.Children.Add(actionValue);
+            var actionText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            actionText.Children.Add(actionType);
+            actionText.Children.Add(actionValue);
+            var actionPanel = new Border
+            {
+                Tag = input,
+                AllowDrop = true,
+                Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(8, 5, 8, 5),
+                CornerRadius = new CornerRadius(8),
+                Background = WpfBrushes.Transparent,
+                BorderBrush = WpfBrushes.Transparent,
+                BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Child = actionText
+            };
+            actionPanel.PreviewMouseLeftButtonDown += DeckListActionDragStarted;
+            actionPanel.PreviewMouseMove += DeckListActionDragMoved;
+            actionPanel.PreviewMouseLeftButtonUp += DeckListActionDragEnded;
+            actionPanel.PreviewDragEnter += DeckListActionDragOver;
+            actionPanel.PreviewDragOver += DeckListActionDragOver;
+            actionPanel.PreviewDragLeave += DeckListActionDragLeave;
+            actionPanel.PreviewDrop += DeckListActionDropped;
             var row = new Grid { Height = 68, Margin = new Thickness(0, 0, 0, 6) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -603,6 +628,7 @@ public partial class MainWindow
             deckListButtons.Add(button);
             deckManagementButtons.Add(button);
             deckListActionLabels[button] = (actionType, actionValue);
+            deckListActionTargets[actionPanel] = button;
         }
         ColorDeckManagementButtons();
     }
@@ -616,7 +642,202 @@ public partial class MainWindow
             deckListActionLabels.Remove(oldButton);
         }
         deckListButtons.Clear();
+        deckListActionTargets.Clear();
+        deckListActionDragSource = null;
+        ClearDeckListActionDropTarget();
         DeckListPanel.Children.Clear();
+    }
+
+    readonly record struct DeckActionState(
+        ActionKind Kind,
+        string Value,
+        ActionKind LongPressKind,
+        string LongPressValue,
+        int LongPressMs,
+        string DragValue,
+        string DragEndValue,
+        string Application,
+        string DeckMonitor)
+    {
+        internal static DeckActionState From(Mapping? mapping) => mapping == null
+            ? new(ActionKind.None, "", ActionKind.None, "", 500, "", "", "", "")
+            : new(mapping.Kind, mapping.Value, mapping.LongPressKind, mapping.LongPressValue,
+                mapping.LongPressMs, mapping.DragValue, mapping.DragEndValue, mapping.Application, mapping.DeckMonitor);
+
+        internal bool HasContent => Kind != ActionKind.None || LongPressKind != ActionKind.None
+            || !string.IsNullOrWhiteSpace(Value) || !string.IsNullOrWhiteSpace(LongPressValue)
+            || !string.IsNullOrWhiteSpace(DragValue) || !string.IsNullOrWhiteSpace(DragEndValue)
+            || !string.IsNullOrWhiteSpace(Application) || DeckMonitorCatalog.IsMonitor(DeckMonitor);
+    }
+
+    internal static bool SwapDeckActionsPreservingButtonAppearance(DeckLayoutDefinition layout, string firstInput, string secondInput)
+    {
+        if (!DeckPanelLayout.IsInputName(firstInput) || !DeckPanelLayout.IsInputName(secondInput)
+            || firstInput.Equals(secondInput, StringComparison.OrdinalIgnoreCase))
+            return false;
+        Mapping? first = layout.Mappings.LastOrDefault(mapping => mapping.Input.Equals(firstInput, StringComparison.OrdinalIgnoreCase));
+        Mapping? second = layout.Mappings.LastOrDefault(mapping => mapping.Input.Equals(secondInput, StringComparison.OrdinalIgnoreCase));
+        DeckActionState firstAction = DeckActionState.From(first);
+        DeckActionState secondAction = DeckActionState.From(second);
+        if (!firstAction.HasContent && !secondAction.HasContent)
+            return false;
+        ApplyDeckActionState(layout.Mappings, firstInput, secondAction);
+        ApplyDeckActionState(layout.Mappings, secondInput, firstAction);
+        return true;
+    }
+
+    static void ApplyDeckActionState(List<Mapping> mappings, string input, DeckActionState action)
+    {
+        Mapping? mapping = mappings.LastOrDefault(candidate => candidate.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        if (mapping == null && action.HasContent)
+        {
+            mapping = new Mapping { Input = input, Layer = DeckPanelLayout.Layer };
+            mappings.Add(mapping);
+        }
+        if (mapping == null)
+            return;
+        mapping.Kind = action.Kind;
+        mapping.Value = action.Value;
+        mapping.LongPressKind = action.LongPressKind;
+        mapping.LongPressValue = action.LongPressValue;
+        mapping.LongPressMs = action.LongPressMs;
+        mapping.DragValue = action.DragValue;
+        mapping.DragEndValue = action.DragEndValue;
+        mapping.Application = action.Application;
+        mapping.DeckMonitor = action.DeckMonitor;
+        NormalizeLongOnlyMapping(mapping);
+        if (!HasDeckButtonContent(mapping))
+            mappings.Remove(mapping);
+    }
+
+    void DeckListActionDragStarted(object sender, MouseButtonEventArgs e)
+    {
+        if (MultiSelectToggle.IsChecked == true || sender is not Border { Tag: string input } target)
+            return;
+        var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
+        var mapping = DeckPanelLayout.FindMapping(layout, DeckPanelLayout.SlotNumber(input));
+        if (!MappingHasConfiguredAction(mapping) && !DeckMonitorCatalog.IsMonitor(mapping?.DeckMonitor))
+            return;
+        deckListActionDragSource = target;
+        deckListActionDragStart = e.GetPosition(target);
+    }
+
+    void DeckListActionDragMoved(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is not Border { Tag: string input } source || !ReferenceEquals(source, deckListActionDragSource)
+            || e.LeftButton != MouseButtonState.Pressed)
+            return;
+        System.Windows.Point current = e.GetPosition(source);
+        if (Math.Abs(current.X - deckListActionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(current.Y - deckListActionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+        deckListActionDragSource = null;
+        var data = new System.Windows.DataObject();
+        data.SetData(DeckActionDragFormat, input);
+        try { System.Windows.DragDrop.DoDragDrop(source, data, System.Windows.DragDropEffects.Move); }
+        finally { ClearDeckListActionDropTarget(); }
+        e.Handled = true;
+    }
+
+    void DeckListActionDragEnded(object sender, MouseButtonEventArgs e)
+    {
+        deckListActionDragSource = null;
+        ClearDeckListActionDropTarget();
+    }
+
+    void DeckListActionDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (sender is not Border { Tag: string target } actionTarget || !DeckPanelLayout.IsInputName(target))
+            return;
+        bool valid;
+        if (e.Data.GetDataPresent(DeckActionDragFormat) && e.Data.GetData(DeckActionDragFormat) is string source)
+        {
+            valid = DeckPanelLayout.IsInputName(source) && !source.Equals(target, StringComparison.OrdinalIgnoreCase);
+            e.Effects = valid ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None;
+        }
+        else if (TryGetPaletteMonitor(e.Data, out _))
+        {
+            valid = selectedDeckLayout != null;
+            e.Effects = valid ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        }
+        else if (TryGetPaletteAction(e.Data, out CatalogAction action))
+        {
+            valid = CanAssignPaletteAction(target, action);
+            e.Effects = valid ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        }
+        else
+        {
+            valid = false;
+            e.Effects = System.Windows.DragDropEffects.None;
+        }
+        SetDeckListActionDropTarget(valid ? actionTarget : null);
+        e.Handled = true;
+    }
+
+    void DeckListActionDragLeave(object sender, System.Windows.DragEventArgs e)
+    {
+        if (ReferenceEquals(sender, deckListActionDropTarget))
+            ClearDeckListActionDropTarget();
+    }
+
+    void SetDeckListActionDropTarget(Border? target)
+    {
+        if (ReferenceEquals(target, deckListActionDropTarget))
+            return;
+        ClearDeckListActionDropTarget();
+        if (target == null)
+            return;
+        deckListActionDropTarget = target;
+        target.Background = ThemeService.Brush("AccentSoftBrush");
+        target.BorderBrush = ThemeService.Brush("AccentBrush");
+    }
+
+    void ClearDeckListActionDropTarget()
+    {
+        if (deckListActionDropTarget == null)
+            return;
+        deckListActionDropTarget.Background = WpfBrushes.Transparent;
+        deckListActionDropTarget.BorderBrush = WpfBrushes.Transparent;
+        deckListActionDropTarget = null;
+    }
+
+    void DeckListActionDropped(object sender, System.Windows.DragEventArgs e)
+    {
+        if (sender is not Border { Tag: string target } || !DeckPanelLayout.IsInputName(target))
+            return;
+        ClearDeckListActionDropTarget();
+        if (e.Data.GetDataPresent(DeckActionDragFormat) && e.Data.GetData(DeckActionDragFormat) is string source)
+        {
+            var layout = selectedDeckLayout;
+            bool swapped = layout != null && SwapDeckActionsPreservingButtonAppearance(layout, source, target);
+            if (swapped)
+            {
+                RefreshSelectedInputVisual(source);
+                RefreshSelectedInputVisual(target);
+                MarkDirty(refreshDeckPanel: false);
+                OverlayService.RefreshDeckPanelSlots(layout!.Id,
+                    [DeckPanelLayout.SlotNumber(source), DeckPanelLayout.SlotNumber(target)]);
+                deckOverlayVisualSynchronized = true;
+                SelectInput(target, false);
+                ShowInlineNotice($"{DisplayInputName(source)} と {DisplayInputName(target)} のActionだけを入れ替えました");
+            }
+            e.Effects = swapped ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        if (TryGetPaletteMonitor(e.Data, out DeckMonitorDefinition monitor))
+        {
+            bool applied = ApplyPaletteMonitorDrop(monitor, target);
+            e.Effects = applied ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        if (TryGetPaletteAction(e.Data, out CatalogAction action))
+        {
+            bool applied = CanAssignPaletteAction(target, action) && ApplyPaletteActionDrop(action, target, target);
+            e.Effects = applied ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+        }
     }
 
     static (string Type, string Value) DeckListActionSummary(Mapping? mapping)
@@ -804,14 +1025,25 @@ public partial class MainWindow
         DeckListViewToggle.IsChecked = list;
         DeckGridScrollViewer.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
         DeckListScrollViewer.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+        ActionPaletteCloseButton.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
         if (list)
+        {
             BuildDeckManagementList();
+            if (!actionPaletteOpen)
+                OpenActionPalette_Click(DeckListViewToggle, new RoutedEventArgs());
+        }
         else
         {
+            if (actionPaletteOpen)
+                CloseActionPalette(animated: false);
             ClearDeckManagementList();
             UpdateDeckManagementViewport();
         }
     }
+
+    bool DeckListActionLibraryPinned => deckManagementMode
+        && selectedDeckEditorViewMode == DeckEditorViewMode.List
+        && DeckEditorWorkspace?.Visibility == Visibility.Visible;
 
     void UpdateDeckManagementViewport()
     {
@@ -898,7 +1130,7 @@ public partial class MainWindow
         // its editor without forcing the execution field into edit mode. This
         // lets one background click clear the selection instead of spending a
         // first click only completing an implicit edit session.
-        if (actionPaletteOpen)
+        if (actionPaletteOpen && !DeckListActionLibraryPinned)
             CloseActionPalette(animated: false);
         multiSelectionAnchorInput = input;
         SelectInput(input, false);
@@ -1213,10 +1445,14 @@ public partial class MainWindow
         CloseDeckEditorMediaPreview();
         deckManagementMode = false;
         selectedDeckLayout = null;
+        selectedDeckEditorViewMode = DeckEditorViewMode.Grid;
+        ActionPaletteCloseButton.Visibility = Visibility.Visible;
         KeyboardWorkspace.Visibility = Visibility.Visible;
         DeckWorkspace.Visibility = Visibility.Collapsed;
         DeckLayoutListWorkspace.Visibility = Visibility.Visible;
         DeckEditorWorkspace.Visibility = Visibility.Collapsed;
+        if (actionPaletteOpen)
+            CloseActionPalette(animated: false);
         ToolbarSaveButton.Visibility = Visibility.Visible;
         LongPressExpander.Visibility = Visibility.Visible;
         LongPressOnlyButton.Visibility = Visibility.Visible;
@@ -1237,8 +1473,12 @@ public partial class MainWindow
     {
         CloseDeckEditorMediaPreview();
         selectedDeckLayout = null;
+        selectedDeckEditorViewMode = DeckEditorViewMode.Grid;
+        ActionPaletteCloseButton.Visibility = Visibility.Visible;
         DeckLayoutListWorkspace.Visibility = Visibility.Visible;
         DeckEditorWorkspace.Visibility = Visibility.Collapsed;
+        if (actionPaletteOpen)
+            CloseActionPalette(animated: false);
         ToolbarSaveButton.Visibility = Visibility.Visible;
         WorkspaceSubtitle.Text = $"{DeckPanelLayout.LayoutsForActiveProfile(config).Count()}個のレイアウト";
         RefreshDeckLayoutCards();
@@ -1922,8 +2162,14 @@ public partial class MainWindow
         DeckOpacityValueText.Text = value + "%";
         if (updatingDeckEditor || config == null)
             return;
+        if (config.InputPanelOpacityPercent == value)
+            return;
         config.InputPanelOpacityPercent = value;
-        MarkDirty();
+        // Opacity is a presentation-only change. A full Deck refresh rebuilds
+        // every button and makes the Thumb visibly stall while it is dragged.
+        // Reuse the frame-coalesced lightweight appearance path instead.
+        MarkDirty(refreshDeckPanel: false);
+        QueueDeckCustomizationRefresh();
     }
     void DeckPanelColorChoose_Click(object sender, RoutedEventArgs e)
     {

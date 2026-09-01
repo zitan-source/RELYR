@@ -1190,7 +1190,7 @@
                           </StackPanel>
                           <TextBlock Grid.Row="2" Text="透明度" Style="{StaticResource DeckEditorFieldLabel}" Margin="0,16,0,6"/>
                           <TextBlock x:Name="DeckOpacityValueText" Grid.Row="2" Grid.Column="1" Width="42" Text="96%" TextAlignment="Right" VerticalAlignment="Bottom" Margin="0,16,0,6"/>
-                          <Slider x:Name="DeckOpacitySlider" Grid.Row="3" Grid.ColumnSpan="2" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" PreviewMouseLeftButtonDown="DeckCustomizationSliderPressed" PreviewMouseLeftButtonUp="DeckCustomizationSliderReleased" LostMouseCapture="DeckCustomizationSliderLostMouseCapture" ToolTip="Deckの透明度"/>
+                          <Slider x:Name="DeckOpacitySlider" Grid.Row="3" Grid.ColumnSpan="2" Minimum="40" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="False" VerticalAlignment="Center" ValueChanged="DeckOpacityChanged" PreviewMouseLeftButtonDown="DeckCustomizationSliderPressed" PreviewMouseLeftButtonUp="DeckCustomizationSliderReleased" LostMouseCapture="DeckCustomizationSliderLostMouseCapture" ToolTip="Deckの透明度"/>
                         </Grid>
                         <CheckBox x:Name="DeckHoverAnimationBox" Content="ホバー時アニメーション" Margin="0,18,0,0" Checked="DeckHoverAnimationChanged" Unchecked="DeckHoverAnimationChanged" ToolTip="ポインターを重ねたときの変化をなめらかにします"/>
                         <CheckBox x:Name="DeckHoverPreviewBox" Content="ファイルをホバー再生" Margin="0,12,0,0" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="OFFでもクリックすると音声・動画をプレビューできます"/>
@@ -1233,7 +1233,7 @@
                       </Grid>
                   </ScrollViewer>
                 </Border>
-                <ScrollViewer x:Name="DeckListScrollViewer" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly" Padding="8,4">
+                <ScrollViewer x:Name="DeckListScrollViewer" Style="{StaticResource ActionPaletteOverlayScrollViewerStyle}" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly" Padding="8,4">
                   <StackPanel x:Name="DeckListPanel" MaxWidth="760" HorizontalAlignment="Stretch"/>
                 </ScrollViewer>
               </Grid>
