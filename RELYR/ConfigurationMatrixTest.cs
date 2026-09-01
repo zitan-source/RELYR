@@ -257,6 +257,7 @@ internal static class ConfigurationMatrixTest
         config.GestureThresholdPixels = int.MaxValue;
         config.Gestures[0].GestureThresholdPixels = int.MaxValue;
         config.InputPanelOpacityPercent = -50;
+        config.DeckChromeOpacityPercent = -50;
         config.WindowActionTarget = (WindowActionTarget)99;
         config.ThemeMode = (AppThemeMode)99;
         config.ClockBackgroundMode = (ClockBackgroundMode)99;
@@ -289,6 +290,7 @@ internal static class ConfigurationMatrixTest
             && repaired.GestureThresholdPixels == 100
             && repaired.Gestures[0].GestureThresholdPixels == 100
             && repaired.InputPanelOpacityPercent == 40
+            && repaired.DeckChromeOpacityPercent == 0
             && repaired.WindowActionTarget == WindowActionTarget.ActiveWindow
             && repaired.ThemeMode == AppThemeMode.System
             && repaired.ClockBackgroundMode == ClockBackgroundMode.FrostedScreen

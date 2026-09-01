@@ -33,9 +33,12 @@ public partial class MainWindow
     readonly Dictionary<System.Windows.Controls.Button, (TextBlock Type, TextBlock Value)> deckListActionLabels = [];
     readonly Dictionary<Border, System.Windows.Controls.Button> deckListActionTargets = [];
     const string DeckActionDragFormat = "RELYR.DeckAction.v1";
+    const string DeckSlotGroupDragFormat = "RELYR.DeckSlotGroup.v1";
     Border? deckListActionDragSource;
     Border? deckListActionDropTarget;
     System.Windows.Point deckListActionDragStart;
+    System.Windows.Controls.Button? deckClickModifierSource;
+    ModifierKeys deckClickModifiersAtMouseDown;
     readonly System.Windows.Threading.DispatcherTimer deckCustomizationRefreshTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(280)
@@ -1087,7 +1090,26 @@ public partial class MainWindow
             UpdateDeckManagementButtonVisual(button);
     }
     void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input)
-        => DeckManagementButtonClicked(source, input, Keyboard.Modifiers);
+        => DeckManagementButtonClicked(source, input, ConsumeDeckClickModifiers(source, Keyboard.Modifiers));
+
+    void CaptureDeckClickModifiers(System.Windows.Controls.Button source, ModifierKeys modifiers)
+    {
+        deckClickModifierSource = source;
+        deckClickModifiersAtMouseDown = modifiers & (ModifierKeys.Control | ModifierKeys.Shift);
+    }
+
+    ModifierKeys ConsumeDeckClickModifiers(System.Windows.Controls.Button source, ModifierKeys current)
+    {
+        // WPF raises Button.Click after the synthetic mouse-up has been queued.
+        // A generated Shift/Ctrl click may therefore have released its modifier
+        // before Click samples Keyboard.Modifiers. Mouse-down is the authoritative
+        // state for Windows-style selection, for both physical and mapped clicks.
+        bool matches = ReferenceEquals(deckClickModifierSource, source);
+        ModifierKeys captured = matches ? deckClickModifiersAtMouseDown : ModifierKeys.None;
+        deckClickModifierSource = null;
+        deckClickModifiersAtMouseDown = ModifierKeys.None;
+        return current | captured;
+    }
 
     void DeckManagementButtonClicked(System.Windows.Controls.Button source, string input, ModifierKeys modifiers)
     {
@@ -1253,11 +1275,12 @@ public partial class MainWindow
     }
     void DeckButtonReorderStarted(object sender, MouseButtonEventArgs e)
     {
-        if (MultiSelectToggle.IsChecked == true)
+        if (sender is not System.Windows.Controls.Button { Tag: string input } button || !DeckPanelLayout.IsInputName(input))
             return;
-        if (sender is not System.Windows.Controls.Button { Tag: string input } || !DeckPanelLayout.IsInputName(input))
+        CaptureDeckClickModifiers(button, Keyboard.Modifiers);
+        if (MultiSelectToggle.IsChecked == true && !multiSelectedInputs.Contains(input))
             return;
-        deckReorderSource = (System.Windows.Controls.Button)sender;
+        deckReorderSource = button;
         deckReorderStart = e.GetPosition(deckReorderSource);
     }
     void DeckButtonReorderMoved(object sender, System.Windows.Input.MouseEventArgs e)
@@ -1269,12 +1292,29 @@ public partial class MainWindow
             return;
         deckReorderSource = null;
         var data = new System.Windows.DataObject();
-        data.SetData(DeckPanelLayout.SlotDragFormat, input);
+        string[] group = MultiSelectToggle.IsChecked == true && multiSelectedInputs.Contains(input)
+            ? multiSelectedInputs
+                .Where(DeckPanelLayout.IsInputName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(DeckPanelLayout.SlotNumber)
+                .ToArray()
+            : [];
+        if (group.Length > 1)
+            data.SetData(DeckSlotGroupDragFormat, group);
+        else
+            data.SetData(DeckPanelLayout.SlotDragFormat, input);
         var mapping = DeckPanelLayout.FindMapping(selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config), DeckPanelLayout.SlotNumber(input));
-        if (DeckPanelLayout.IsAvailableFile(mapping))
-            data.SetData(System.Windows.DataFormats.FileDrop, new[] { mapping!.DeckFilePath });
+        string[] registeredFiles = (group.Length > 1 ? group : [input])
+            .Select(candidate => DeckPanelLayout.FindMapping(selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config), DeckPanelLayout.SlotNumber(candidate)))
+            .Where(DeckPanelLayout.IsAvailableFile)
+            .Select(candidate => candidate!.DeckFilePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (registeredFiles.Length > 0)
+            data.SetData(System.Windows.DataFormats.FileDrop, registeredFiles);
         try
         {
+            deckClickModifierSource = null;
             RunDeckEditorDrag(button, mapping, data);
         }
         finally { ClearDeckReorderTarget(); }
@@ -1348,6 +1388,15 @@ public partial class MainWindow
             e.Handled = true;
             return;
         }
+        if (TryGetDeckSlotGroup(e.Data, out string[] group))
+        {
+            var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
+            bool validGroup = layout != null && CanMoveDeckSlotsAsBlock(group, input, DeckPanelLayout.VisibleSlotCount(layout));
+            SetDeckReorderTarget(validGroup ? (System.Windows.Controls.Button)sender : null);
+            e.Effects = validGroup ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         bool slot = e.Data.GetDataPresent(DeckPanelLayout.SlotDragFormat);
         bool file = !DeckPanelLayout.IsInternalFileDrag(e.Data) && DeckPanelLayout.GetDroppedFile(e.Data) != null;
         bool validSlot = slot && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && !source.Equals(input, StringComparison.OrdinalIgnoreCase);
@@ -1399,6 +1448,26 @@ public partial class MainWindow
             e.Handled = true;
             return;
         }
+        if (TryGetDeckSlotGroup(e.Data, out string[] group))
+        {
+            var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
+            string[] movedInputs = [];
+            bool moved = layout != null && MoveDeckSlotsAsBlock(layout, group, target, DeckPanelLayout.VisibleSlotCount(layout), out movedInputs);
+            if (moved)
+            {
+                multiSelectedInputs.Clear();
+                foreach (string movedInput in movedInputs)
+                    multiSelectedInputs.Add(movedInput);
+                multiSelectionAnchorInput = movedInputs.FirstOrDefault();
+                modifierActivatedMultiSelect = false;
+                BuildDeckManagementPanel();
+                UpdateMultiSelectControls();
+                MarkDirty();
+            }
+            e.Effects = moved ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (e.Data.GetDataPresent(DeckPanelLayout.SlotDragFormat) && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && DeckPanelLayout.IsInputName(source))
         {
             var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
@@ -1423,6 +1492,85 @@ public partial class MainWindow
             SelectInput(target, false);
         }
         e.Handled = true;
+    }
+
+    static bool TryGetDeckSlotGroup(System.Windows.IDataObject data, out string[] inputs)
+    {
+        inputs = [];
+        try
+        {
+            if (!data.GetDataPresent(DeckSlotGroupDragFormat) || data.GetData(DeckSlotGroupDragFormat) is not string[] value)
+                return false;
+            inputs = value;
+            return inputs.Length > 1;
+        }
+        catch { return false; }
+    }
+
+    internal static bool CanMoveDeckSlotsAsBlock(IReadOnlyCollection<string> sourceInputs, string targetInput, int visibleSlotCount)
+    {
+        int[] sourceSlots = sourceInputs
+            .Where(DeckPanelLayout.IsInputName)
+            .Select(DeckPanelLayout.SlotNumber)
+            .Where(slot => slot >= 1 && slot <= visibleSlotCount)
+            .Distinct()
+            .Order()
+            .ToArray();
+        int targetSlot = DeckPanelLayout.SlotNumber(targetInput);
+        if (sourceSlots.Length < 2 || targetSlot < 1 || targetSlot + sourceSlots.Length - 1 > visibleSlotCount)
+            return false;
+        return !sourceSlots.SequenceEqual(Enumerable.Range(targetSlot, sourceSlots.Length));
+    }
+
+    internal static bool MoveDeckSlotsAsBlock(
+        DeckLayoutDefinition layout,
+        IReadOnlyCollection<string> sourceInputs,
+        string targetInput,
+        int visibleSlotCount,
+        out string[] movedInputs)
+    {
+        movedInputs = [];
+        if (!CanMoveDeckSlotsAsBlock(sourceInputs, targetInput, visibleSlotCount))
+            return false;
+
+        int[] sourceSlots = sourceInputs
+            .Where(DeckPanelLayout.IsInputName)
+            .Select(DeckPanelLayout.SlotNumber)
+            .Where(slot => slot >= 1 && slot <= visibleSlotCount)
+            .Distinct()
+            .Order()
+            .ToArray();
+        int targetSlot = DeckPanelLayout.SlotNumber(targetInput);
+        int[] targetSlots = Enumerable.Range(targetSlot, sourceSlots.Length).ToArray();
+        var sourceSet = sourceSlots.ToHashSet();
+        var targetSet = targetSlots.ToHashSet();
+        int[] sourceOnly = sourceSlots.Where(slot => !targetSet.Contains(slot)).ToArray();
+        int[] targetOnly = targetSlots.Where(slot => !sourceSet.Contains(slot)).ToArray();
+
+        var sourceMappings = sourceSlots.ToDictionary(
+            slot => slot,
+            slot => layout.Mappings.Where(mapping => mapping.Input.Equals(DeckPanelLayout.InputName(slot), StringComparison.OrdinalIgnoreCase)).ToArray());
+        var displacedMappings = targetOnly.ToDictionary(
+            slot => slot,
+            slot => layout.Mappings.Where(mapping => mapping.Input.Equals(DeckPanelLayout.InputName(slot), StringComparison.OrdinalIgnoreCase)).ToArray());
+
+        for (int index = 0; index < sourceSlots.Length; index++)
+            MoveDeckMappingGroup(sourceMappings[sourceSlots[index]], targetSlots[index]);
+        for (int index = 0; index < targetOnly.Length; index++)
+            MoveDeckMappingGroup(displacedMappings[targetOnly[index]], sourceOnly[index]);
+
+        movedInputs = targetSlots.Select(DeckPanelLayout.InputName).ToArray();
+        return true;
+    }
+
+    static void MoveDeckMappingGroup(IEnumerable<Mapping> mappings, int targetSlot)
+    {
+        string targetInput = DeckPanelLayout.InputName(targetSlot);
+        foreach (Mapping mapping in mappings)
+        {
+            mapping.Input = targetInput;
+            mapping.Layer = DeckPanelLayout.Layer;
+        }
     }
     void OpenDeckPanelManager_Click(object sender, RoutedEventArgs e)
     {
@@ -1709,8 +1857,8 @@ public partial class MainWindow
         DeckPanelCornerRadiusSlider.Value = layout.PanelCornerRadius;
         DeckPanelPaddingValueText.Text = $"{Math.Round(layout.PanelPadding):0} px";
         DeckPanelCornerRadiusValueText.Text = $"{Math.Round(layout.PanelCornerRadius):0} px";
-        DeckOpacitySlider.Value = config.InputPanelOpacityPercent;
-        DeckOpacityValueText.Text = config.InputPanelOpacityPercent + "%";
+        DeckOpacitySlider.Value = config.DeckChromeOpacityPercent;
+        DeckOpacityValueText.Text = config.DeckChromeOpacityPercent + "%";
         DeckHoverAnimationBox.IsChecked = layout.HoverAnimationEnabled;
         DeckHoverPreviewBox.IsChecked = config.DeckHoverPreviewsEnabled;
         SelectDeckAutoDismissBehavior(DeckAfterActionBehaviorBox, config.DeckAfterActionBehavior);
@@ -2144,7 +2292,7 @@ public partial class MainWindow
         selectedDeckLayout.HoverAnimationEnabled = true;
         selectedDeckLayout.PanelWidth = null;
         selectedDeckLayout.PanelHeight = null;
-        config.InputPanelOpacityPercent = 100;
+        config.DeckChromeOpacityPercent = 100;
         DeckPanelPaddingSlider.Value = 12;
         DeckPanelCornerRadiusSlider.Value = 14;
         DeckPanelPaddingValueText.Text = "12 px";
@@ -2164,9 +2312,9 @@ public partial class MainWindow
         DeckOpacityValueText.Text = value + "%";
         if (updatingDeckEditor || config == null)
             return;
-        if (config.InputPanelOpacityPercent == value)
+        if (config.DeckChromeOpacityPercent == value)
             return;
-        config.InputPanelOpacityPercent = value;
+        config.DeckChromeOpacityPercent = value;
         // Opacity is a presentation-only change. A full Deck refresh rebuilds
         // every button and makes the Thumb visibly stall while it is dragged.
         // Reuse the frame-coalesced lightweight appearance path instead.

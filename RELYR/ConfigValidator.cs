@@ -35,7 +35,8 @@ public static class ConfigValidator
             || config.Profiles.Select(profile => profile.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != config.Profiles.Count)
             errors.Add("プロファイルの識別子が空か重複しています。");
         if (config.SpaceHoldRepeatDelayMs is < 100 or > 2000 || config.MouseDragPixels is < 1 or > 100
-            || config.GestureThresholdPixels is < 3 or > 100 || config.InputPanelOpacityPercent is < 40 or > 100)
+            || config.GestureThresholdPixels is < 3 or > 100 || config.InputPanelOpacityPercent is < 40 or > 100
+            || config.DeckChromeOpacityPercent is < 0 or > 100)
             errors.Add("入力のタイミング・距離・不透明度設定が範囲外です。");
         foreach (var layout in config.DeckLayouts)
         {

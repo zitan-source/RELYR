@@ -464,7 +464,7 @@ internal static class DeckPanelLayout
                 root.Children.Add(badge);
                 return root;
             }
-            return CreateFileIcon(mapping.DeckFilePath, IsAudioFile(mapping.DeckFilePath) ? 20 : 18);
+            return CreateFileIcon(mapping.DeckFilePath, IsShellLaunchFile(mapping.DeckFilePath) ? 32 : IsAudioFile(mapping.DeckFilePath) ? 20 : 18);
         }
         return new TextBlock
         {

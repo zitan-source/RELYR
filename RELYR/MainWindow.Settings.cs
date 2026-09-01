@@ -194,6 +194,7 @@ public partial class MainWindow
         destination.ClockSolidColor = source.ClockSolidColor;
         destination.ClockShowOnAllMonitors = source.ClockShowOnAllMonitors;
         destination.InputPanelOpacityPercent = source.InputPanelOpacityPercent;
+        destination.DeckChromeOpacityPercent = source.DeckChromeOpacityPercent;
         destination.DeckAfterActionBehavior = source.DeckAfterActionBehavior;
         destination.DeckPointerLeaveBehavior = source.DeckPointerLeaveBehavior;
     }

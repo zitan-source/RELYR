@@ -185,7 +185,13 @@ internal static class ApplicationIconService
             expanded = expanded[..comma];
         }
         string iconPath = expanded.Trim().Trim('"');
-        if (!File.Exists(iconPath))
+        // Some shortcuts point IconLocation back to the .lnk. Asking Windows
+        // for that shell presentation returns the shortcut overlay arrow.
+        // Only extract a raw icon resource; otherwise fall back to the target.
+        if (!File.Exists(iconPath) || Path.GetExtension(iconPath) is string extension
+            && (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".url", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase)))
             return null;
 
         IntPtr[] large = [IntPtr.Zero];

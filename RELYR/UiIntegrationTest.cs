@@ -60,6 +60,7 @@ internal static class UiIntegrationTest
             };
             DeckPanelLayout.ApplyRegisteredFile(executableDeckMapping, executableForDeckDrop);
             FrameworkElement executableDeckIcon = DeckPanelLayout.CreateFileIcon(executableForDeckDrop, 24);
+            FrameworkElement executableDeckFace = DeckPanelLayout.CreateButtonContent(executableDeckMapping.Input, executableDeckMapping);
             Check(DeckPanelLayout.ExternalFileDragEffects == System.Windows.DragDropEffects.Copy
                 && executableDeckMapping is
                 {
@@ -72,8 +73,9 @@ internal static class UiIntegrationTest
                 }
                 && executableDeckMapping.Value == executableForDeckDrop
                 && executableDeckMapping.DeckFilePath == executableForDeckDrop
-                && executableDeckIcon is System.Windows.Controls.Image,
-                "dropping an executable creates a launch Action with its associated icon while external Deck file drags remain copy-only");
+                && executableDeckIcon is System.Windows.Controls.Image
+                && executableDeckFace is System.Windows.Controls.Image { Width: 32, Height: 32 },
+                "dropping an executable creates a launch Action with a readable app-sized associated icon while external Deck file drags remain copy-only");
             var ordinary = mouseButtons.Where(x => !Equals(x.Tag, "MouseLeft") && !Equals(x.Tag, "MouseRight")).ToList();
             var wheelDown = mouseButtons.First(x => Equals(x.Tag, "WheelDown"));
             var tiltLeft = mouseButtons.First(x => Equals(x.Tag, "TiltLeft"));
@@ -1891,11 +1893,13 @@ internal static class UiIntegrationTest
                 && standardDeck.Mappings.Any(x => x.Input == "Deck+45" && x.Value == "Z" && x.Description == "保持"),
                 "changing a Deck grid resets only its obsolete zoom while preserving hidden assignments and editable button names");
             OverlayService.ResetDeckRefreshRequestCountForTest();
-            window.DeckOpacitySlider.Value = 67;
+            window.DeckOpacitySlider.Value = 23;
             Pump(window);
             var deckCenter = window.DeckGridViewbox.TranslatePoint(new System.Windows.Point(window.DeckGridViewbox.ActualWidth / 2, 0), window.DeckGridScrollViewer).X;
             bool centeredOrScrollablePreview = window.DeckGridScrollViewer.ScrollableWidth > .1 || Math.Abs(deckCenter - window.DeckGridScrollViewer.ViewportWidth / 2) < 2;
-            Check(window.DeckOpacityValueText.Text == "67%" && window.ConfigForTest.InputPanelOpacityPercent == 67
+            Check(window.DeckOpacityValueText.Text == "23%" && window.ConfigForTest.DeckChromeOpacityPercent == 23
+                && window.ConfigForTest.InputPanelOpacityPercent == 96
+                && window.DeckOpacitySlider.Minimum == 0
                 && !window.DeckOpacitySlider.IsSnapToTickEnabled
                 && OverlayService.DeckRefreshRequestCountForTest == 0
                 && OverlayService.DeckLayoutPreviewRequestCountForTest >= 1
@@ -2172,7 +2176,7 @@ internal static class UiIntegrationTest
             (double Width, double Height)? savedDeckSize = null;
             string? savedDeckSizeLayoutId = null;
             var overlayLayout = new DeckLayoutDefinition { Name = "標準Deck", Columns = 9, Rows = 5, Mappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Shortcut, Value = "Ctrl+C", Description = "コピー" }] };
-            var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 67, DeckAfterActionBehavior = DeckAutoDismissBehavior.StayVisible, DeckPointerLeaveBehavior = DeckAutoDismissBehavior.StayVisible, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
+            var deckOverlayConfig = new AppConfig { InputPanelOpacityPercent = 44, DeckChromeOpacityPercent = 67, DeckAfterActionBehavior = DeckAutoDismissBehavior.StayVisible, DeckPointerLeaveBehavior = DeckAutoDismissBehavior.StayVisible, DeckPanelLeft = 120, DeckPanelTop = 140, DeckLayouts = [overlayLayout], Profiles = [new Profile { Name = "標準", DefaultDeckLayoutId = overlayLayout.Id }], SharedDefaultDeckLayoutId = overlayLayout.Id };
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+02", Layer = "Deck", DeckFilePath = deckPreviewImage });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewVideo });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+04", Layer = "Deck", DeckFilePath = deckPreviewImage, DeckIcon = "search" });
@@ -3064,6 +3068,15 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03" }),
                 "Deck Ctrl+click toggles one slot and Shift+click selects its contiguous anchor range");
+            window.ClickDeckInputForTest(1, ModifierKeys.None);
+            window.ClickDeckInputFromMouseDownForTest(6, ModifierKeys.Shift);
+            Pump(window);
+            Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03", "Deck+04", "Deck+05", "Deck+06" }),
+                "Deck range selection retains Shift captured at mouse-down when a mapped modifier-click releases Shift before Button.Click");
+            window.ClickDeckInputFromMouseDownForTest(8, ModifierKeys.Control);
+            Pump(window);
+            Check(window.MultiSelectedInputsForTest.Order().SequenceEqual(new[] { "Deck+01", "Deck+02", "Deck+03", "Deck+04", "Deck+05", "Deck+06", "Deck+08" }),
+                "Deck non-contiguous selection retains Ctrl captured at mouse-down without depending on Button.Click timing");
             window.ClickDeckInputForTest(4, ModifierKeys.None);
             Pump(window);
             Check(window.MultiSelectToggle.IsChecked == false && window.MultiSelectedInputsForTest.Length == 0
@@ -3094,6 +3107,29 @@ internal static class UiIntegrationTest
             }
             else
                 Check(true, "Deck multi-selection profile-switch regression is not applicable with a single configured profile");
+            var blockMoveDeck = new DeckLayoutDefinition { Columns = 4, Rows = 3 };
+            blockMoveDeck.Mappings.AddRange([
+                new Mapping { Input = "Deck+01", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "selected-1", Description = "name-1", DeckIcon = "icon-1" },
+                new Mapping { Input = "Deck+03", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "selected-3", Description = "name-3", DeckColor = "#FF123456" },
+                new Mapping { Input = "Deck+05", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "selected-5", DeckFilePath = deckPreviewImage },
+                new Mapping { Input = "Deck+06", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "displaced-6" },
+                new Mapping { Input = "Deck+07", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "displaced-7" },
+                new Mapping { Input = "Deck+08", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "displaced-8" }
+            ]);
+            bool blockMoved = MainWindow.MoveDeckSlotsAsBlock(blockMoveDeck, ["Deck+01", "Deck+03", "Deck+05"], "Deck+06", 12, out string[] movedDeckInputs);
+            Check(blockMoved && movedDeckInputs.SequenceEqual(["Deck+06", "Deck+07", "Deck+08"])
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+06").Value == "selected-1"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+06").Description == "name-1"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+06").DeckIcon == "icon-1"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+07").Value == "selected-3"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+07").DeckColor == "#FF123456"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+08").Value == "selected-5"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+08").DeckFilePath == deckPreviewImage
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+01").Value == "displaced-6"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+03").Value == "displaced-7"
+                && blockMoveDeck.Mappings.Single(mapping => mapping.Input == "Deck+05").Value == "displaced-8"
+                && !MainWindow.CanMoveDeckSlotsAsBlock(["Deck+01", "Deck+03", "Deck+05"], "Deck+11", 12),
+                "dragging a non-contiguous Deck multi-selection moves every complete button in order, preserves displaced buttons, and rejects overflow");
             var bulkDeck = window.SelectedDeckLayoutForTest!;
             var bulkDeckOriginalMappings = bulkDeck.Mappings.Where(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4).ToList();
             bulkDeck.Mappings.RemoveAll(mapping => DeckPanelLayout.SlotNumber(mapping.Input) is >= 1 and <= 4);

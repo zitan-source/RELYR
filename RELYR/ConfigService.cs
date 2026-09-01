@@ -6,7 +6,7 @@ namespace RELYR;
 
 public sealed class ConfigService
 {
-    internal const int CurrentVersion = 37;
+    internal const int CurrentVersion = 38;
     const int MappingApplicationLossVersion = 29;
     const int PerGestureCursorLockMigrationVersion = 36;
     const int PerGestureThresholdMigrationVersion = 37;
@@ -234,6 +234,8 @@ public sealed class ConfigService
         if (parsed is not JsonObject root)
             return new AppConfig();
         int storedVersion = root["Version"]?.GetValue<int>() ?? 0;
+        if (!root.ContainsKey(nameof(AppConfig.DeckChromeOpacityPercent)))
+            root[nameof(AppConfig.DeckChromeOpacityPercent)] = root[nameof(AppConfig.InputPanelOpacityPercent)]?.DeepClone() ?? JsonValue.Create(96);
         if (storedVersion < DisabledMappingMigrationVersion && root["Profiles"] is JsonArray profiles)
         {
             foreach (JsonObject profile in profiles.OfType<JsonObject>())
@@ -351,6 +353,7 @@ public sealed class ConfigService
         value.DoubleClickMs = Math.Clamp(value.DoubleClickMs, 100, 2000);
         value.MouseDragPixels = Math.Clamp(value.MouseDragPixels, 1, 100);
         value.InputPanelOpacityPercent = Math.Clamp(value.InputPanelOpacityPercent, 40, 100);
+        value.DeckChromeOpacityPercent = Math.Clamp(value.DeckChromeOpacityPercent, 0, 100);
         value.LastUpdateCheckUtcTicks = Math.Max(0, value.LastUpdateCheckUtcTicks);
         if (!Enum.IsDefined(value.WindowActionTarget))
             value.WindowActionTarget = WindowActionTarget.ActiveWindow;

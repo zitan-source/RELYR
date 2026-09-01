@@ -66,6 +66,13 @@ public partial class MainWindow
         var button = deckManagementButtons.Single(candidate => string.Equals(candidate.Tag as string, input, StringComparison.OrdinalIgnoreCase));
         DeckManagementButtonClicked(button, input, modifiers);
     }
+    internal void ClickDeckInputFromMouseDownForTest(int slot, ModifierKeys mouseDownModifiers, ModifierKeys clickModifiers = ModifierKeys.None)
+    {
+        string input = DeckPanelLayout.InputName(slot);
+        var button = deckManagementButtons.Single(candidate => string.Equals(candidate.Tag as string, input, StringComparison.OrdinalIgnoreCase));
+        CaptureDeckClickModifiers(button, mouseDownModifiers);
+        DeckManagementButtonClicked(button, input, ConsumeDeckClickModifiers(button, clickModifiers));
+    }
     internal bool HandleEditorHistoryShortcutForTest(Key key, ModifierKeys modifiers, bool textEditing = false)
         => TryHandleEditorHistoryShortcut(key, modifiers, textEditing);
     internal void SetActionPaletteApplicationsForTest(params InstalledApplicationInfo[] applications)

@@ -456,6 +456,7 @@ public static class SelfTest
             config.ClockSolidColor = "#123456";
             config.ClockShowOnAllMonitors = false;
             config.InputPanelOpacityPercent = 67;
+            config.DeckChromeOpacityPercent = 23;
             config.UseSharedDeckPanel = true;
             config.SharedDeckMappings = [new Mapping { Input = "Deck+01", Layer = "Deck", Kind = ActionKind.Key, Value = "A", Description = "共通", DeckIcon = "home", DeckIconPath = @"C:\Icons\home.png" }];
             config.DeckPanelLeft = 123.5;
@@ -606,7 +607,15 @@ public static class SelfTest
                 "foreground application input-disable list roundtrip and exact process matching");
             Check(loaded.Gestures.Any(x => x.Name == "ウィンドウ操作" && x.GestureThresholdPixels == 18 && !x.LockCursorDuringGesture && x.UpValue == "Win+Up" && x.CenterValue == "Enter") && loaded.Profiles[0].Mappings.Any(x => x.Kind == ActionKind.Gesture && x.Value == "ウィンドウ操作"), "gesture definitions, references, center action, sensitivity, and per-gesture cursor behavior roundtrip");
             Check(loaded.ClockBackgroundMode == ClockBackgroundMode.Image && loaded.ClockDisplayMode == ClockDisplayMode.FullDateAndTime && loaded.ClockBackgroundImage == @"C:\Wallpapers\clock.jpg" && loaded.ClockSolidColor == "#123456" && !loaded.ClockShowOnAllMonitors, "clock overlay background, solid color, date format, image, and monitor scope roundtrip");
-            Check(loaded.InputPanelOpacityPercent == 67, "input-panel opacity setting roundtrip");
+            Check(loaded.InputPanelOpacityPercent == 67 && loaded.DeckChromeOpacityPercent == 23, "input-panel and Deck chrome opacity settings roundtrip independently");
+            var legacyDeckOpacityService = new ConfigService(Path.Combine(dir, "deck-opacity-migration"));
+            Directory.CreateDirectory(legacyDeckOpacityService.DirectoryPath);
+            File.WriteAllText(legacyDeckOpacityService.FilePath, """{"Version":37,"InputPanelOpacityPercent":17}""");
+            var migratedDeckOpacity = legacyDeckOpacityService.Load();
+            Check(migratedDeckOpacity.Version == ConfigService.CurrentVersion
+                && migratedDeckOpacity.InputPanelOpacityPercent == 40
+                && migratedDeckOpacity.DeckChromeOpacityPercent == 17,
+                "the former shared opacity migrates its exact pre-clamp value to Deck chrome while the keypad keeps its independent 40-percent minimum");
             Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && loaded.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && loaded.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.StayVisible && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5, PanelPadding: 18, PanelCornerRadius: 9, HoverAnimationEnabled: false }, "global fallback and per-Deck expanded/collapsed positions, size, pin, appearance, display behavior, and keypad positions roundtrip independently");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));

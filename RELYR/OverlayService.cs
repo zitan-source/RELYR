@@ -174,7 +174,7 @@ internal static class OverlayService
         var panel = new DeckPanelOverlayWindow(
             config,
             deckActionRequested,
-            config.InputPanelOpacityPercent,
+            config.DeckChromeOpacityPercent,
             (left, top) => deckPositionChanged?.Invoke(layout.Id, left, top),
             layout,
             deckSizeChanged,
@@ -337,7 +337,7 @@ internal static class OverlayService
                     return;
                 foreach (var entry in deckPanels.Values.ToArray())
                     entry.Window.RefreshLayoutPreview(
-                        config.InputPanelOpacityPercent,
+                        config.DeckChromeOpacityPercent,
                         config.DeckHoverPreviewsEnabled,
                         config.DeckAfterActionBehavior,
                         config.DeckPointerLeaveBehavior);
@@ -382,7 +382,7 @@ internal static class OverlayService
                         continue;
                     }
                     if (refreshContent)
-                        panel.Refresh(config.InputPanelOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAfterActionBehavior, config.DeckPointerLeaveBehavior);
+                        panel.Refresh(config.DeckChromeOpacityPercent, config.DeckHoverPreviewsEnabled, config.DeckAfterActionBehavior, config.DeckPointerLeaveBehavior);
                 }
             }, "refresh Deck panel");
         }));
@@ -490,7 +490,7 @@ internal static class OverlayService
                         existing.RequestHideForReuse();
                         return;
                     }
-                    existing.RefreshAppearance(deckConfig.InputPanelOpacityPercent, deckConfig.DeckHoverPreviewsEnabled, deckConfig.DeckAfterActionBehavior, deckConfig.DeckPointerLeaveBehavior);
+                    existing.RefreshAppearance(deckConfig.DeckChromeOpacityPercent, deckConfig.DeckHoverPreviewsEnabled, deckConfig.DeckAfterActionBehavior, deckConfig.DeckPointerLeaveBehavior);
                     // An explicitly requested show must reveal the complete
                     // Deck even if this cached window was hidden while it was
                     // still in its edge-tab state.

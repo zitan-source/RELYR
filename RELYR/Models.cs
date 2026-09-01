@@ -207,6 +207,7 @@ public sealed class AppConfig
     public string ClockSolidColor { get; set; } = "#101F2E";
     public bool ClockShowOnAllMonitors { get; set; } = true;
     public int InputPanelOpacityPercent { get; set; } = 96;
+    public int DeckChromeOpacityPercent { get; set; } = 96;
     public bool DeckHoverPreviewsEnabled { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public DeckAutoDismissBehavior DeckAfterActionBehavior { get; set; } = DeckAutoDismissBehavior.CollapseToEdge;
