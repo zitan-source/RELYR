@@ -1,0 +1,23 @@
+TÉRMINOS DE USO DE RELYR
+Última actualización: 2 de septiembre de 2026
+
+Estos son unos puntos breves para ayudarte a usar RELYR con confianza.
+
+1. Aceptación
+Al instalar o usar una distribución oficial de RELYR, aceptas estos Términos. Si no los aceptas, no instales ni uses RELYR.
+
+2. Uso seguro
+RELYR puede actuar sobre la entrada del teclado y el ratón, la configuración de Windows, aplicaciones, archivos, URL y macros según tu configuración. Mantén copias de seguridad de los datos importantes y revisa cada nueva asignación o macro al configurarla. Evita asignar la misma entrada física en varios programas de reasignación. El atajo de parada de emergencia es Ctrl + Alt + Shift + F12.
+
+Eres responsable de supervisar las configuraciones, macros, destinos y acciones que crees o importes.
+
+3. Sin garantía
+En la medida máxima permitida por la ley aplicable, RELYR se proporciona tal cual. No se garantiza que funcione siempre sin interrupciones o errores en un entorno concreto, que sea compatible con todos los dispositivos o aplicaciones ni que sea adecuado para un fin determinado.
+
+4. Limitación de responsabilidad
+En la medida máxima permitida por la ley aplicable, los autores, titulares de derechos, colaboradores y distribuidores de RELYR no serán responsables por pérdida de datos, fallos del sistema o dispositivo, entradas o acciones no intencionadas, lucro cesante ni otros daños indirectos, especiales, incidentales o consecuentes derivados de instalar, usar o no poder usar RELYR.
+
+Si no puede excluirse la responsabilidad por daños directos y ordinarios causados por negligencia ordinaria, la responsabilidad total se limita al mayor importe entre lo pagado por RELYR y el equivalente a 10 USD. Este límite no se aplica a conducta intencionada o negligencia grave, muerte o lesiones personales, ni a responsabilidades que la ley no permita limitar. Estos Términos no restringen los derechos imperativos de la legislación de tu lugar de residencia.
+
+5. Código abierto y legislación
+El código fuente se rige por la MIT License y estos Términos no reducen los derechos que concede. En la medida permitida por la ley, estos Términos se rigen por la legislación japonesa. La legislación local imperativa, incluida la de protección del consumidor, sigue siendo aplicable.
