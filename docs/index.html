@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja-JP">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121514">
+  <meta name="description" content="Spaceを押している間、すべてのキーがショートカットに変わる。RELYRはキー、マウス、DeckからWindowsを動かす入力システムです。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="RELYR">
+  <meta property="og:url" content="https://zitan-source.github.io/RELYR/">
+  <meta property="og:title" content="RELYR — キーボードを、拡張する。">
+  <meta property="og:description" content="Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、DeckからWindowsを動かします。">
+  <meta property="og:image" content="https://zitan-source.github.io/RELYR/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="RELYRの入力レイヤー、Deck、ジェスチャー画面を重ねた製品ビジュアル">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://zitan-source.github.io/RELYR/">
+  <link rel="icon" href="assets/relyr.ico" type="image/x-icon">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add('js')</script>
+  <title>RELYR — キーボードを、拡張する。</title>
+</head>
+<body>
+  <a class="skip-link" href="#content">本文へ移動</a>
+  <div class="scroll-meter" aria-hidden="true"><i></i></div>
+
+  <header class="site-header" data-header>
+    <a class="wordmark" href="#top" aria-label="RELYR ホーム">
+      <img src="assets/relyr.ico" width="32" height="32" alt="">
+      <span>RELYR</span>
+    </a>
+    <nav aria-label="メインナビゲーション">
+      <a href="#layers">Layers</a>
+      <a href="#deck">Deck</a>
+      <a href="#workflows">Workflows</a>
+      <a href="#download">Download</a>
+    </nav>
+    <details class="language-switcher">
+      <summary aria-label="表示言語"><span data-language-label>日本語</span><i aria-hidden="true">⌄</i></summary>
+      <div class="language-menu" role="menu" aria-label="表示言語">
+        <button type="button" role="menuitem" data-language="ja-JP">日本語</button>
+        <button type="button" role="menuitem" data-language="en-US">English</button>
+        <button type="button" role="menuitem" data-language="zh-CN">简体中文</button>
+        <button type="button" role="menuitem" data-language="zh-TW">繁體中文</button>
+        <button type="button" role="menuitem" data-language="ko-KR">한국어</button>
+        <button type="button" role="menuitem" data-language="fr-FR">Français</button>
+        <button type="button" role="menuitem" data-language="de-DE">Deutsch</button>
+        <button type="button" role="menuitem" data-language="es-ES">Español</button>
+      </div>
+    </details>
+    <a class="header-download" data-download-link aria-label="RELYR Windows版をダウンロード" href="https://github.com/zitan-source/RELYR/releases/download/v0.1.385/RELYR-Setup-0.1.385.exe">
+      <span>Download</span><b data-release-version>v0.1.385</b>
+    </a>
+  </header>
+
+  <main id="content">
+    <section class="hero" id="top" data-motion-section>
+      <div class="hero-copy reveal">
+        <p class="overline">RELYR <span>／</span> Windows input system</p>
+        <h1>
+          <span class="hero-line"><span>キーボードを、</span></span>
+          <em class="hero-line"><span>拡張する。</span></em>
+        </h1>
+        <p class="hero-lead">Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、Deckから、アプリ起動、ウィンドウ操作、マクロを実行。</p>
+        <div class="hero-actions">
+          <a class="download-button" data-download-link href="https://github.com/zitan-source/RELYR/releases/download/v0.1.385/RELYR-Setup-0.1.385.exe">
+            <span>Download for Windows</span>
+            <small><b data-release-version>v0.1.385</b> · Setup x64</small>
+            <i aria-hidden="true">↓</i>
+          </a>
+          <a class="text-link" href="#layers">Explore the system <span aria-hidden="true">↘</span></a>
+        </div>
+        <div class="hero-facts"><p class="hero-note">FREE / OPEN SOURCE / WINDOWS 10—11 / NO ACCOUNT</p></div>
+      </div>
+
+      <div class="hero-product reveal">
+        <div class="hero-stage">
+          <div class="hero-stage-header" aria-hidden="true">
+            <span><img src="assets/relyr.ico" width="52" height="52" alt=""><b>RELYR</b></span>
+            <p><i></i> LIVE INPUT</p>
+          </div>
+          <div class="hero-key-demo media-spot" data-video-frame>
+            <video class="product-video" muted loop playsinline preload="metadata" poster="assets/product-layers.png" data-product-video aria-hidden="true">
+              <source src="assets/action-assignment.mp4" type="video/mp4">
+            </video>
+            <i class="video-progress" aria-hidden="true"><span></span></i>
+          </div>
+          <div class="hero-deck-demo media-spot" data-video-frame>
+            <video class="product-video" muted loop playsinline preload="metadata" poster="assets/product-deck.png" data-product-video aria-hidden="true">
+              <source src="assets/deck-live.mp4" type="video/mp4">
+            </video>
+            <i class="video-progress" aria-hidden="true"><span></span></i>
+          </div>
+          <div class="hero-layer-state" aria-hidden="true"><kbd>SPACE</kbd><span>HOLD</span><b>KEY LAYER ACTIVE</b></div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="section layers-section" id="layers" data-motion-section>
+      <header class="section-heading reveal">
+        <h2>Spaceを押す。<br>キーボード全体が、ショートカットになる。</h2>
+        <p>普段のキー入力を残したまま、押している間だけ役割を切り替えます。レイヤーごとに色が見えるので、どこに何を置いたかを画面上で確認できます。</p>
+      </header>
+
+      <div class="layer-layout">
+        <aside class="layer-index reveal" aria-label="利用できるレイヤー">
+          <p><span>01</span>Default</p>
+          <p class="active"><span>02</span>Space</p>
+          <p><span>03</span>CapsLock</p>
+          <p><span>04</span>Right Click</p>
+          <p><span>05</span>Forward / Back</p>
+          <p><span>06</span>Taskbar</p>
+        </aside>
+        <figure class="layer-figure reveal">
+          <div class="media-spot" data-video-frame>
+            <button class="shot-button" type="button" data-shot="assets/product-layers.png" data-caption="Spaceレイヤー — 割り当て済みのキーを色で一覧">
+              <video class="product-video" muted loop playsinline preload="metadata" poster="assets/product-layers.png" data-product-video aria-hidden="true">
+                <source src="assets/action-assignment.mp4" type="video/mp4">
+              </video>
+              <span>拡大して見る</span>
+            </button>
+            <i class="video-progress" aria-hidden="true"><span></span></i>
+          </div>
+          <figcaption><b>Space layer / assigned keys</b><span>選択、複数移動、色分け、TAP / HOLDをひとつの面で編集</span></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="action-ledger section" id="actions" data-motion-section aria-labelledby="actions-title">
+      <div class="ledger-intro reveal">
+        <h2 id="actions-title">ひとつのActionを、<br>キーにも、マウスにも、Deckにも。</h2>
+      </div>
+      <div class="action-index reveal">
+        <article><span>01 / INPUT</span><h3>KEYS + MOUSE</h3><b>押す、長押し、修飾クリック</b></article>
+        <article><span>02 / LAUNCH</span><h3>APPS + FILES</h3><b>EXE、ショートカット、URLを開く</b></article>
+        <article><span>03 / WINDOWS</span><h3>WINDOW CONTROL</h3><b>整列、モニター移動、仮想デスクトップ</b></article>
+        <article><span>04 / AUTOMATE</span><h3>MACROS + GESTURES</h3><b>マクロとマウスジェスチャーを実行</b></article>
+        <article><span>05 / DISPLAY</span><h3>DECK + MONITORS</h3><b>ランチャーとPC状態を画面に常設</b></article>
+      </div>
+    </section>
+
+    <section class="deck-section" id="deck" data-motion-section>
+      <div class="deck-title section reveal">
+        <h2>画面の端を、<br>自分専用の操作列に。</h2>
+        <p>アプリやファイルを置くだけで起動ボタンに。Windows操作とPCの状態表示も、同じDeckへ並べられます。</p>
+      </div>
+
+      <div class="deck-runway" data-motion-section>
+        <figure class="deck-strip reveal">
+          <div class="media-spot" data-video-frame>
+            <button class="shot-button" type="button" data-shot="assets/product-deck.png" data-caption="Deckオーバーレイ — アプリ、デスクトップ、システムモニター">
+              <video class="product-video" muted loop playsinline preload="metadata" poster="assets/product-deck.png" data-product-video aria-hidden="true">
+                <source src="assets/deck-live.mp4" type="video/mp4">
+              </video>
+              <span>拡大して見る</span>
+            </button>
+            <i class="video-progress" aria-hidden="true"><span></span></i>
+          </div>
+          <figcaption><span>LIVE DECK / DEFAULT</span><b>スクロールに沿って、Deck全体を見る。</b></figcaption>
+        </figure>
+      </div>
+
+      <div class="deck-editor section">
+        <div class="editor-copy reveal">
+          <p class="editor-mark">18 × 18</p>
+          <h3>空いている場所へ、<br>Actionをドラッグ。</h3>
+          <p>グリッドと一覧表示は同じDeckを編集します。ボタンの並び、色、アイコン、透明度、表示動作まで一か所で調整できます。</p>
+          <ul>
+            <li><span>01</span>複数ボタンをまとめて移動・着色</li>
+            <li><span>02</span>EXEとショートカットを直接登録</li>
+            <li><span>03</span>複数Deckを同時に表示</li>
+          </ul>
+        </div>
+        <figure class="editor-figure reveal">
+          <div class="media-spot" data-video-frame>
+            <button class="shot-button" type="button" data-shot="assets/product-deck-editor.png" data-caption="Deckエディター — モニターActionをボタンへドラッグ">
+              <video class="product-video" muted loop playsinline preload="metadata" poster="assets/product-deck-editor.png" data-product-video aria-hidden="true">
+                <source src="assets/deck-monitor-assignment.mp4" type="video/mp4">
+              </video>
+              <span>拡大して見る</span>
+            </button>
+            <i class="video-progress" aria-hidden="true"><span></span></i>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="workflow-section section" id="workflows" data-motion-section>
+      <header class="workflow-heading reveal">
+        <h2>マクロも、マウスジェスチャーも。<br>キーやDeckから、すぐ呼び出せる。</h2>
+        <p>記録した手順とジェスチャーは、キーやDeckへ同じActionとして割り当てられます。</p>
+      </header>
+
+      <div class="workflow-grid">
+        <article class="workflow-macro reveal">
+          <div class="workflow-label"><span>MACRO RECORDER / 27 STEPS</span><b>記録後も、順番と待機時間を編集。</b></div>
+          <button class="shot-button" type="button" data-shot="assets/product-macros.png" data-caption="マクロエディター — 記録した手順、座標、待機時間を編集">
+            <img src="assets/product-macros.png" width="2019" height="1231" loading="lazy" alt="RELYRのマクロ画面。中央に記録されたマウス移動の手順、右に追加操作が並ぶ。">
+            <span>拡大して見る</span>
+          </button>
+        </article>
+        <article class="workflow-gesture reveal">
+          <div class="workflow-label"><span>MOUSE GESTURES / 5 DIRECTIONS</span><b>移動方向と短押しを別々のActionへ。</b></div>
+          <button class="shot-button" type="button" data-shot="assets/product-gestures.png" data-caption="ジェスチャーエディター — 上下左右と短押しへActionを設定">
+            <img src="assets/product-gestures.png" width="1523" height="1050" loading="lazy" alt="RELYRのジェスチャー画面。上下左右と短押しにWindows操作が割り当てられている。">
+            <span>拡大して見る</span>
+          </button>
+        </article>
+      </div>
+    </section>
+
+    <section class="principles section" id="privacy" data-motion-section>
+      <div class="principles-copy reveal">
+        <h2>入力環境は、<br>PCの中で完結する。</h2>
+        <p>RELYRは入力内容を外部へ送信しません。設定とマクロはローカルに保存。アカウント作成も必要ありません。</p>
+      </div>
+      <dl class="principle-list reveal">
+        <div><dt>Network</dt><dd>入力内容の外部送信なし</dd></div>
+        <div><dt>Storage</dt><dd>設定はAppDataに保存</dd></div>
+        <div><dt>Emergency</dt><dd>Ctrl + Alt + Shift + F12</dd></div>
+        <div><dt>Source</dt><dd>MIT Licenseで公開</dd></div>
+        <div><dt>Release</dt><dd>SHA-256を同時配布</dd></div>
+      </dl>
+    </section>
+
+    <section class="download-section" id="download" data-motion-section>
+      <div class="download-copy reveal">
+        <p class="overline">Available now for Windows 10 / 11</p>
+        <h2>まず、ひとつのキーから。</h2>
+        <p>Setup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しています。インストール後の更新は、アプリ内から軽量版を取得できます。</p>
+        <div class="download-actions">
+          <a class="download-button download-button-light" data-download-link href="https://github.com/zitan-source/RELYR/releases/download/v0.1.385/RELYR-Setup-0.1.385.exe">
+            <span>RELYRをダウンロード</span>
+            <small><b data-release-version>v0.1.385</b> · Windows x64</small>
+            <i aria-hidden="true">↓</i>
+          </a>
+          <a class="checksum-link" data-checksum-link href="https://github.com/zitan-source/RELYR/releases/download/v0.1.385/RELYR-Setup-0.1.385.exe.sha256">SHA-256を確認</a>
+        </div>
+        <p class="signing-note">現在の配布版はコード署名前のため、Windows SmartScreenが「不明な発行元」と表示する場合があります。</p>
+      </div>
+      <aside class="download-spec reveal" aria-label="ダウンロード仕様">
+        <p><span>OS</span><b>Windows 10 / 11</b></p>
+        <p><span>ARCH</span><b>x64</b></p>
+        <p><span>PRICE</span><b>Free</b></p>
+        <p><span>LICENSE</span><b>MIT</b></p>
+        <p><span>ACCOUNT</span><b>Not required</b></p>
+      </aside>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-brand">
+      <a class="wordmark" href="#top"><img src="assets/relyr.ico" width="32" height="32" alt=""><span>RELYR</span></a>
+      <p>Key Layers &amp; Actions for Windows.</p>
+    </div>
+    <nav aria-label="フッターナビゲーション">
+      <a href="https://github.com/zitan-source/RELYR/releases/latest">Releases</a>
+      <a href="https://github.com/zitan-source/RELYR">Source</a>
+      <a href="https://ko-fi.com/relyr">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/zitan-source/RELYR/blob/main/LICENSE">License</a>
+    </nav>
+    <p class="copyright">© 2026 RELYR / ZITAN</p>
+  </footer>
+
+  <dialog class="shot-dialog" data-shot-dialog aria-label="製品画面の拡大表示">
+    <div class="shot-dialog-bar"><p data-shot-caption></p><button type="button" data-shot-close aria-label="閉じる">×</button></div>
+    <div class="shot-dialog-body"><img data-shot-image alt=""></div>
+  </dialog>
+
+  <script defer src="i18n.js"></script>
+  <script defer src="script.js"></script>
+</body>
+</html>
