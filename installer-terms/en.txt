@@ -1,0 +1,23 @@
+RELYR TERMS OF USE
+Last updated: September 2, 2026
+
+This is a short set of points to help you use RELYR with confidence.
+
+1. Acceptance
+By installing or using an official distribution of RELYR, you agree to these Terms. If you do not agree, do not install or use RELYR.
+
+2. Using RELYR safely
+RELYR can act on keyboard and mouse input, Windows settings, apps, files, URLs, and macros according to your configuration. Keep backups of important data and review new mappings and macros as you configure them. Avoid assigning the same physical input in multiple remapping applications. The emergency stop shortcut is Ctrl + Alt + Shift + F12.
+
+You are responsible for supervising configurations, macros, targets, and actions that you create or import.
+
+3. No warranty
+To the maximum extent permitted by applicable law, RELYR is provided as is. There is no warranty that it will always operate without interruption or error in a particular environment, work with every device or application, or meet a particular purpose.
+
+4. Limitation of liability
+To the maximum extent permitted by applicable law, the authors, copyright holders, contributors, and distributors of RELYR will not be liable for loss of data, system or device malfunction, unintended input or actions, lost profits, or other indirect, special, incidental, or consequential loss arising from installing, using, or being unable to use RELYR.
+
+If liability for direct and ordinary loss caused by ordinary negligence cannot be excluded, total liability is limited to the greater of the amount you paid for RELYR or the equivalent of USD 10. This limit does not apply to intentional misconduct or gross negligence, death or personal injury, or liability that cannot legally be limited. These Terms do not restrict mandatory rights under the laws of your place of residence.
+
+5. Open source and law
+The MIT License applies to the source code, and these Terms do not reduce rights granted by that license. To the extent legally permitted, these Terms are governed by the laws of Japan. Mandatory local law, including applicable consumer-protection law, continues to apply.
