@@ -66,6 +66,7 @@ dotnet clean $project -c $Configuration @buildProperties
 if($LASTEXITCODE -ne 0){throw "Clean failed"}
 dotnet restore $project --configfile $nugetConfig @buildProperties
 if($LASTEXITCODE -ne 0){throw "Restore after clean failed"}
+& (Join-Path $root "verify-third-party-notices.ps1") -AssetsFile $assetsFile
 dotnet build $project -c $Configuration -warnaserror --no-restore @buildProperties
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 
@@ -102,7 +103,7 @@ dotnet publish $project -c $Configuration --no-restore --no-self-contained `
   -p:DebugType=None -p:DebugSymbols=false @buildProperties -o $output
 if($LASTEXITCODE -ne 0){throw "Publish failed"}
 
-foreach($requiredFile in @("RELYR.exe","RELYR.dll","RELYR.runtimeconfig.json","LICENSE.txt","THIRD-PARTY-NOTICES.md","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
+foreach($requiredFile in @("RELYR.exe","RELYR.dll","RELYR.runtimeconfig.json","LICENSE.txt","THIRD-PARTY-NOTICES.md","licenses\HidSharp-LICENSE.txt","VirtualDesktopAccessor.dll","RELYR-Macro.ico")){
     $requiredPath=Join-Path $output $requiredFile
     if(-not (Test-Path -LiteralPath $requiredPath)){
         throw "Required distribution file was not published: $requiredFile"

@@ -37,7 +37,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## SharpCompress 0.49.1
+The published Windows payload also resolves the following Microsoft .NET
+packages under the same MIT license:
+
+- `System.IO.Pipes.AccessControl` 6.0.0-preview.5.21301.5
+- `System.Security.Principal.Windows` 6.0.0-preview.5.21301.5
+- `System.IO.FileSystem.AccessControl` 5.0.0
+- `System.Management` 10.0.11
+- `System.IO.Ports` 10.0.3 and its platform runtime packages, represented in
+  the dependency audit as `runtime.*.runtime.native.System.IO.Ports`
+
+## `SharpCompress` 0.49.1
 
 - Project: https://github.com/adamhathcock/sharpcompress
 - Package: https://www.nuget.org/packages/SharpCompress/0.49.1
@@ -102,16 +112,56 @@ sensor process to read hardware telemetry exposed by supported devices.
 Libre Hardware Monitor is copyright (c) 2010-2026 Michael Möller and
 LibreHardwareMonitor contributors. The distributed library remains subject to
 the Mozilla Public License 2.0 and its upstream third-party notices. RELYR does
-not modify or relink the library.
+not modify the library.
 
-## Microsoft.Windows.SDK.Contracts 10.0.26100.1742
+The LibreHardwareMonitor package brings the following libraries into the
+Windows distribution. The listed links identify the exact corresponding source
+revisions. Each MPL-covered library is distributed unmodified; its source form
+remains available under MPL-2.0 at the linked revision.
 
-RELYR uses the official Microsoft Windows SDK contracts package to read the
-effective Bluetooth radio state exposed by Windows.
+- `LibreHardwareMonitorLib` 0.9.6 — MPL-2.0 —
+  [source revision 3d331e3](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/tree/3d331e3370efb858411f19511373eff65a218701)
+- `BlackSharp.Core` 1.0.7 — MPL-2.0 —
+  [source revision c70b735](https://github.com/Blacktempel/BlackSharp/tree/c70b735c6cec123ee8a046ac4a0bc6c606f52cf0)
+- `DiskInfoToolkit` 1.1.2 — MPL-2.0 —
+  [source revision 25319ea](https://github.com/Blacktempel/DiskInfoToolkit/tree/25319eae5781e75bcf141e844ceab2afe94d40ea)
+- `RAMSPDToolkit-NDD` 1.4.2 — MPL-2.0 —
+  [source revision 3b47b96](https://github.com/Blacktempel/RAMSPDToolkit/tree/3b47b960e0830fef344624ad5e389675d5f0a1ce)
 
-- Package: https://www.nuget.org/packages/Microsoft.Windows.SDK.Contracts/10.0.26100.1742
+MPL-2.0 license text: https://www.mozilla.org/MPL/2.0/
+
+## HidSharp 2.6.4
+
+`HidSharp` is an unmodified transitive dependency of LibreHardwareMonitorLib.
+
+- Project: https://software.seekye.com/hidsharp
+- Package: https://www.nuget.org/packages/HidSharp/2.6.4
+- License: Apache License 2.0
+- Distributed license copy: `licenses/HidSharp-LICENSE.txt`
+
+Copyright 2010-2025 James F. Bellinger.
+
+## Mono.Posix.NETStandard 1.0.0
+
+`Mono.Posix.NETStandard` and its native helper are unmodified transitive
+dependencies of LibreHardwareMonitorLib.
+
+- Package: https://www.nuget.org/packages/Mono.Posix.NETStandard/1.0.0
+- Source: https://github.com/mono/mono/tree/main/mcs/class/Mono.Posix
+- License: MIT (publisher package license link and Mono project license)
+- License: https://github.com/mono/mono/blob/main/LICENSE
+- Copyright: Microsoft Corporation and Mono contributors
+
+## Microsoft Windows SDK .NET projections
+
+RELYR uses the official Microsoft Windows SDK .NET projections to read Windows
+APIs. The framework-dependent Windows payload includes
+`Microsoft.Windows.SDK.NET.dll` and `WinRT.Runtime.dll` supplied through the
+.NET SDK targeting pack.
+
+- Project: https://github.com/microsoft/CsWinRT
+- License: MIT / Microsoft SDK redistribution terms as supplied with the .NET SDK
 - Publisher: Microsoft Corporation
-- License: included with the package distribution
 
 ## Inno Setup
 

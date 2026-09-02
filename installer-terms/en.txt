@@ -1,5 +1,5 @@
 RELYR TERMS OF USE
-Last updated: September 2, 2026
+Last updated: September 3, 2026
 
 This is a short set of points to help you use RELYR with confidence.
 
@@ -20,4 +20,4 @@ To the maximum extent permitted by applicable law, the authors, copyright holder
 If liability for direct and ordinary loss caused by ordinary negligence cannot be excluded, total liability is limited to the greater of the amount you paid for RELYR or the equivalent of USD 10. This limit does not apply to intentional misconduct or gross negligence, death or personal injury, or liability that cannot legally be limited. These Terms do not restrict mandatory rights under the laws of your place of residence.
 
 5. Open source and law
-The MIT License applies to the source code, and these Terms do not reduce rights granted by that license. To the extent legally permitted, these Terms are governed by the laws of Japan. Mandatory local law, including applicable consumer-protection law, continues to apply.
+The MIT License applies to the source code, and these Terms do not reduce rights granted by that license. To the extent legally permitted, these Terms are governed by the laws of Japan. Mandatory local law, including applicable consumer-protection law, continues to apply. RELYR is made available only in locations and to the extent permitted by applicable law, including export-control and sanctions laws.

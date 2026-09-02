@@ -1,5 +1,5 @@
 RELYR-NUTZUNGSBEDINGUNGEN
-Letzte Aktualisierung: 2. September 2026
+Letzte Aktualisierung: 3. September 2026
 
 Diese kurzen Hinweise helfen dir, RELYR sicher und mit gutem Gefühl zu verwenden.
 
@@ -20,4 +20,4 @@ Soweit gesetzlich zulässig, haften Autoren, Rechteinhaber, Mitwirkende und Vert
 Kann die Haftung für direkte und gewöhnliche Schäden aus einfacher Fahrlässigkeit nicht ausgeschlossen werden, ist die Gesamthaftung auf den höheren Betrag aus dem für RELYR gezahlten Preis und dem Gegenwert von 10 USD begrenzt. Diese Grenze gilt nicht bei Vorsatz oder grober Fahrlässigkeit, Tod oder Körperverletzung sowie für gesetzlich nicht beschränkbare Haftung. Zwingende Rechte nach dem Recht deines Wohnorts bleiben unberührt.
 
 5. Open Source und Recht
-Für den Quellcode gilt die MIT License; diese Bedingungen schränken deren Rechte nicht ein. Soweit gesetzlich zulässig, gilt japanisches Recht. Zwingendes örtliches Recht, insbesondere Verbraucherschutzrecht, bleibt anwendbar.
+Für den Quellcode gilt die MIT License; diese Bedingungen schränken deren Rechte nicht ein. Soweit gesetzlich zulässig, gilt japanisches Recht. Zwingendes örtliches Recht, insbesondere Verbraucherschutzrecht, bleibt anwendbar. RELYR wird nur an Orten und in dem Umfang angeboten, die nach anwendbarem Recht einschließlich Exportkontroll- und Sanktionsrecht zulässig sind.

@@ -1,5 +1,5 @@
 TÉRMINOS DE USO DE RELYR
-Última actualización: 2 de septiembre de 2026
+Última actualización: 3 de septiembre de 2026
 
 Estos son unos puntos breves para ayudarte a usar RELYR con confianza.
 
@@ -20,4 +20,4 @@ En la medida máxima permitida por la ley aplicable, los autores, titulares de d
 Si no puede excluirse la responsabilidad por daños directos y ordinarios causados por negligencia ordinaria, la responsabilidad total se limita al mayor importe entre lo pagado por RELYR y el equivalente a 10 USD. Este límite no se aplica a conducta intencionada o negligencia grave, muerte o lesiones personales, ni a responsabilidades que la ley no permita limitar. Estos Términos no restringen los derechos imperativos de la legislación de tu lugar de residencia.
 
 5. Código abierto y legislación
-El código fuente se rige por la MIT License y estos Términos no reducen los derechos que concede. En la medida permitida por la ley, estos Términos se rigen por la legislación japonesa. La legislación local imperativa, incluida la de protección del consumidor, sigue siendo aplicable.
+El código fuente se rige por la MIT License y estos Términos no reducen los derechos que concede. En la medida permitida por la ley, estos Términos se rigen por la legislación japonesa. La legislación local imperativa, incluida la de protección del consumidor, sigue siendo aplicable. RELYR solo se ofrece en los lugares y en la medida permitidos por la legislación aplicable, incluidas las normas de control de exportaciones y sanciones.

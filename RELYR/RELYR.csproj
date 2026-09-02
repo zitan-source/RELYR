@@ -31,6 +31,7 @@
     <None Include="VirtualDesktopAccessor.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Include="..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
+    <None Include="..\licenses\HidSharp-LICENSE.txt" Link="licenses\HidSharp-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <PackageReference Include="SharpCompress" Version="0.49.1" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.IO.Pipes.AccessControl" Version="6.0.0-preview.5.21301.5" />

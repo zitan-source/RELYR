@@ -1,6 +1,6 @@
 # RELYR ご利用条件 / Terms of Use
 
-最終更新日 / Last updated: 2026-09-02
+最終更新日 / Last updated: 2026-09-03
 
 RELYRを安心してお使いいただくための、短い確認事項です。通常の利用を妨げるものではなく、RELYRの入力変更・マクロ機能という性質上、知っておいていただきたい内容をまとめています。
 
@@ -32,7 +32,7 @@ RELYRのソースコードに関する利用、複製、変更および再配布
 
 ### 6. 法律
 
-法律上許される範囲で、本条件は日本法に準拠します。消費者保護法など、利用者の居住地域で優先して適用される法律がある場合は、その法律が適用されます。
+法律上許される範囲で、本条件は日本法に準拠します。消費者保護法など、利用者の居住地域で優先して適用される法律がある場合は、その法律が適用されます。RELYRは、輸出管理・制裁を含む適用法令で認められる地域および範囲で提供されます。
 
 ---
 
@@ -66,4 +66,4 @@ The [MIT License](LICENSE) governs permission to use, copy, modify, and redistri
 
 ### 6. Governing law
 
-To the extent legally permitted, these Terms are governed by the laws of Japan. Mandatory local law, including applicable consumer-protection law, continues to apply.
+To the extent legally permitted, these Terms are governed by the laws of Japan. Mandatory local law, including applicable consumer-protection law, continues to apply. RELYR is made available only in locations and to the extent permitted by applicable law, including export-control and sanctions laws.

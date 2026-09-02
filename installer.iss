@@ -15,7 +15,7 @@
 #else
 #define DistributionName "Update"
 #endif
-#define TermsVersion "2026-09-02"
+#define TermsVersion "2026-09-03"
 
 [Setup]
 AppId={{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}

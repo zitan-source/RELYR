@@ -1,5 +1,5 @@
 CONDITIONS D’UTILISATION DE RELYR
-Dernière mise à jour : 2 septembre 2026
+Dernière mise à jour : 3 septembre 2026
 
 Voici quelques points simples pour utiliser RELYR en toute confiance.
 
@@ -20,4 +20,4 @@ Dans toute la mesure permise par la loi applicable, les auteurs, titulaires de d
 Si la responsabilité pour un dommage direct et ordinaire causé par une négligence ordinaire ne peut être exclue, son montant total est limité au plus élevé des montants suivants : le prix payé pour RELYR ou l’équivalent de 10 USD. Cette limite ne s’applique pas en cas de faute intentionnelle ou lourde, de décès ou dommage corporel, ni aux responsabilités que la loi interdit de limiter. Ces Conditions ne limitent pas les droits impératifs prévus par la loi de votre lieu de résidence.
 
 5. Open source et droit applicable
-Le code source est soumis à la licence MIT et ces Conditions ne réduisent pas les droits qu’elle accorde. Dans la mesure permise par la loi, ces Conditions sont régies par le droit japonais. Les lois locales impératives, notamment celles relatives à la protection des consommateurs, restent applicables.
+Le code source est soumis à la licence MIT et ces Conditions ne réduisent pas les droits qu’elle accorde. Dans la mesure permise par la loi, ces Conditions sont régies par le droit japonais. Les lois locales impératives, notamment celles relatives à la protection des consommateurs, restent applicables. RELYR est proposé uniquement dans les lieux et dans la mesure autorisés par les lois applicables, notamment celles relatives au contrôle des exportations et aux sanctions.
