@@ -6,6 +6,7 @@
 #define LegacyAppExe "InputCustomizer.exe"
 #define DotNetRuntimeExe "windowsdesktop-runtime-10-win-x64.exe"
 #define DotNetRuntimeUrl "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe"
+#define TermsVersion "2026-09-02"
 
 [Setup]
 AppId={{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}
@@ -80,6 +81,7 @@ Type: filesandordirs; Name: "{commonprograms}\Input Customizer"
 Type: files; Name: "{autodesktop}\Input Customizer.lnk"
 
 [Registry]
+Root: HKLM64; Subkey: "SOFTWARE\RELYR"; ValueType: string; ValueName: "TermsAcceptedVersion"; ValueData: "{#TermsVersion}"; Flags: uninsdeletekey; Check: ShouldRecordTermsAcceptance
 Root: HKCR; Subkey: ".relyr"; ValueType: string; ValueName: ""; ValueData: "RELYR.SettingsFile"; Flags: uninsdeletevalue
 Root: HKCR; Subkey: "RELYR.SettingsFile"; ValueType: string; ValueName: ""; ValueData: "RELYR 設定ファイル"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "RELYR.SettingsFile\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"
@@ -117,6 +119,8 @@ var
   DeleteUserSettings: Boolean;
   UpgradeInstall: Boolean;
   PreviousVersion: String;
+  TermsAcceptanceRequired: Boolean;
+  AcceptedTermsVersion: String;
 
 function IsUpgradeInstall(): Boolean;
 begin
@@ -128,6 +132,11 @@ begin
   Result := CompareText(ExpandConstant('{param:RELYRUPDATE|0}'), '1') = 0;
 end;
 
+function ShouldRecordTermsAcceptance(): Boolean;
+begin
+  Result := TermsAcceptanceRequired;
+end;
+
 function InitializeSetup(): Boolean;
 begin
   UpgradeInstall := RegQueryStringValue(HKLM64,
@@ -137,6 +146,10 @@ begin
     UpgradeInstall := RegQueryStringValue(HKLM,
       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{68EDBC8F-BBC3-4AF7-97E5-7C32CC1A4065}_is1',
       'DisplayVersion', PreviousVersion);
+  TermsAcceptanceRequired :=
+    (not RegQueryStringValue(HKLM64, 'SOFTWARE\RELYR',
+      'TermsAcceptedVersion', AcceptedTermsVersion)) or
+    (CompareText(AcceptedTermsVersion, '{#TermsVersion}') <> 0);
   Result := True;
 end;
 
@@ -155,9 +168,10 @@ end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := UpgradeInstall and
-    ((PageID = wpLicense) or (PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or
-     (PageID = wpSelectTasks) or (PageID = wpReady));
+  Result := ((PageID = wpLicense) and (not TermsAcceptanceRequired)) or
+    (UpgradeInstall and
+    ((PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or
+     (PageID = wpSelectTasks) or (PageID = wpReady)));
 end;
 
 function ShouldDeleteUserSettings(): Boolean;
