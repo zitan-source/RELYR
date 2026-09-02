@@ -63,6 +63,10 @@ When multiple applications process the same key or mouse input, actions may run 
 - The emergency stop shortcut is `Ctrl + Alt + Shift + F12`.
 - The installed version uses an elevated startup task so it can interact with administrator-level windows without showing a UAC prompt at every launch.
 
+## Terms of use
+
+RELYR is provided under the MIT License. The installer shows a short, localized set of [Terms of Use](TERMS.md) covering safe configuration, warranty, and liability before installation continues.
+
 ## Release packages
 
 Public releases contain:
