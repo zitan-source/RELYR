@@ -3,32 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121514">
   <meta name="description" content="RELYR公式サイトのプライバシーについて">
-  <link rel="icon" href="assets/relyr-mark.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/relyr.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650;700&amp;family=Noto+Sans+JP:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;family=Noto+Sans+TC:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="styles.css">
   <title>プライバシー — RELYR</title>
-  <style>
-    .legal { max-width: 760px; min-height: 70dvh; margin: 0 auto; padding: 110px 28px 150px; }
-    .legal h1 { font-size: clamp(42px, 7vw, 72px); }
-    .legal h2 { margin-top: 54px; font-size: 22px; }
-    .legal p { color: var(--muted); }
-    .legal a { color: var(--accent); text-underline-offset: 4px; }
-  </style>
 </head>
-<body>
-  <header class="site-header">
-    <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 8.5 16 3l10 5.5L16 14 6 8.5Zm0 7L16 21l10-5.5M6 22.5 16 28l10-5.5"/></svg></span><span>RELYR</span></a>
+<body class="legal-page">
+  <header class="site-header legal-header is-scrolled">
+    <a class="wordmark" href="index.html" aria-label="RELYR ホーム">
+      <img src="assets/relyr.ico" width="32" height="32" alt=""><span>RELYR</span>
+    </a>
+    <details class="language-switcher">
+      <summary aria-label="表示言語"><span data-language-label>日本語</span><i aria-hidden="true">⌄</i></summary>
+      <div class="language-menu" role="menu" aria-label="表示言語">
+        <button type="button" role="menuitem" data-language="ja-JP">日本語</button>
+        <button type="button" role="menuitem" data-language="en-US">English</button>
+        <button type="button" role="menuitem" data-language="zh-CN">简体中文</button>
+        <button type="button" role="menuitem" data-language="zh-TW">繁體中文</button>
+        <button type="button" role="menuitem" data-language="ko-KR">한국어</button>
+        <button type="button" role="menuitem" data-language="fr-FR">Français</button>
+        <button type="button" role="menuitem" data-language="de-DE">Deutsch</button>
+        <button type="button" role="menuitem" data-language="es-ES">Español</button>
+      </div>
+    </details>
+    <a class="header-download" href="index.html#download"><span>Download</span><b>Windows</b></a>
   </header>
-  <main class="legal">
-    <p class="eyebrow"><span></span> PRIVACY</p>
+  <main class="legal-shell">
     <h1>プライバシー</h1>
+
     <h2>このWebサイトについて</h2>
-    <p>このサイトはRELYRを紹介する静的なWebサイトです。このサイト自体にはアクセス解析、広告、Cookie、入力フォームを設置していません。</p>
+    <p>このサイトはRELYRを紹介する静的なWebサイトです。サイト自体にはアクセス解析、広告、Cookie、入力フォームを設置していません。</p>
+
     <h2>外部サイトへのリンク</h2>
     <p>ダウンロード、ソースコード、支援ページなどのリンク先では、それぞれGitHubまたはKo-fiのプライバシーポリシーが適用されます。</p>
+
     <h2>RELYRアプリについて</h2>
     <p>RELYRは入力内容を外部サーバーへ送信しません。設定とマクロは利用者のPC内へ保存します。詳細は<a href="https://github.com/zitan-source/RELYR">GitHubリポジトリ</a>をご確認ください。</p>
-    <p><a href="index.html">← ホームへ戻る</a></p>
+
+    <p><a class="text-link" href="index.html">← RELYRのホームへ戻る</a></p>
   </main>
+  <script defer src="i18n.js"></script>
 </body>
 </html>
