@@ -163,6 +163,31 @@
     });
   };
 
+  const latestReleasePage = 'https://github.com/zitan-source/RELYR/releases/latest';
+  const latestReleaseApi = 'https://api.github.com/repos/zitan-source/RELYR/releases/latest';
+  const applyLatestReleaseLinks = async () => {
+    try {
+      const response = await fetch(latestReleaseApi, {
+        headers: { Accept: 'application/vnd.github+json' },
+        referrerPolicy: 'no-referrer'
+      });
+      if (!response.ok) return;
+      const release = await response.json();
+      const assets = Array.isArray(release.assets) ? release.assets : [];
+      const setup = assets.find((asset) => /^RELYR-Setup-[0-9]+(?:\.[0-9]+)+\.exe$/.test(asset.name));
+      if (!setup?.browser_download_url) return;
+      const checksum = assets.find((asset) => asset.name === `${setup.name}.sha256`);
+      all('[data-download-link]').forEach((link) => { link.href = setup.browser_download_url; });
+      one('[data-checksum-link]')?.setAttribute('href', checksum?.browser_download_url || latestReleasePage);
+      const version = typeof release.tag_name === 'string' && release.tag_name.trim()
+        ? release.tag_name.trim()
+        : setup.name.replace(/^RELYR-Setup-/, '').replace(/\.exe$/, '');
+      all('[data-release-version]').forEach((node) => { node.textContent = version; });
+    } catch {
+      // The HTML fallback always opens GitHub's latest Release page.
+    }
+  };
+
   const applyLanguage = (code) => {
     const language = translations[code] || translations['en-US'];
     document.documentElement.lang = code;
@@ -279,4 +304,5 @@
     if (switcher?.open && !switcher.contains(event.target)) switcher.removeAttribute('open');
   });
   applyLanguage(findInitialLanguage());
+  applyLatestReleaseLinks();
 })();
