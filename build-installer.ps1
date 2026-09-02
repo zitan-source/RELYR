@@ -65,10 +65,14 @@ if($installerText -notmatch '(?im)^AlwaysRestart=no\s*$' -or $installerText -not
   throw "Normal installs and upgrades must not request a Windows restart"
 }
 $usesPreviousTasks=$installerText -match '(?im)^UsePreviousTasks=yes\s*$'
-$hasUpgradeFlow=$installerText -match '(?is)function\s+IsUpgradeInstall.*function\s+ShouldSkipPage.*wpLicense.*wpSelectTasks'
+$hasUpgradeFlow=$installerText -match '(?is)function\s+IsUpgradeInstall.*function\s+ShouldSkipPage.*TermsAcceptanceRequired.*wpSelectTasks'
 $explainsPreservedSettings=$installerText -match '(?is)RELYRをアップデートします.*自動起動設定はそのまま引き継がれます'
 if(-not ($usesPreviousTasks -and $hasUpgradeFlow -and $explainsPreservedSettings)){
   throw "Upgrade installs must use the dedicated update flow and preserve existing choices"
+}
+$remembersTermsAcceptance=$installerText -match '(?is)TermsAcceptedVersion.*TermsAcceptanceRequired.*ShouldRecordTermsAcceptance'
+if(-not $remembersTermsAcceptance){
+  throw "Installer must remember terms acceptance and skip repeated consent"
 }
 $startupRuns=[regex]::Matches($installerText,'(?im)^Filename:.*--configure-startup (?:on|off).*$')
 if($startupRuns.Count -ne 2 -or @($startupRuns|Where-Object{$_.Value -notmatch '(?i)Check:\s*not IsUpgradeInstall'}).Count -ne 0){
