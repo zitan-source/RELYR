@@ -41,9 +41,17 @@ VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}
 SetupLogging=yes
 ChangesAssociations=yes
+ShowLanguageDialog=yes
 
 [Languages]
-Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"; LicenseFile: "installer-terms\en.txt"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "installer-terms\ja.txt"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "installer-terms\zh-CN.txt"
+Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"; LicenseFile: "installer-terms\zh-TW.txt"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"; LicenseFile: "installer-terms\ko.txt"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"; LicenseFile: "installer-terms\fr.txt"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"; LicenseFile: "installer-terms\de.txt"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"; LicenseFile: "installer-terms\es.txt"
 
 [Messages]
 UninstalledAndNeedsRestart=CapsLockを標準の動作に戻す変更を反映するには、Windowsの再起動が必要です。%n%n今すぐ再起動しますか？
@@ -56,6 +64,14 @@ Source: "artifacts\production\RELYR-Macro.ico"; DestDir: "{app}"; Flags: ignorev
 Source: "artifacts\production\VirtualDesktopAccessor.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "artifacts\production\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "artifacts\production\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "installer-terms\en.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: english
+Source: "installer-terms\ja.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: japanese
+Source: "installer-terms\zh-CN.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesesimplified
+Source: "installer-terms\zh-TW.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesetraditional
+Source: "installer-terms\ko.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: korean
+Source: "installer-terms\fr.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: french
+Source: "installer-terms\de.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: german
+Source: "installer-terms\es.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: spanish
 Source: "{#DotNetRuntimeUrl}"; DestDir: "{tmp}"; DestName: "{#DotNetRuntimeExe}"; ExternalSize: 60053808; Flags: external download ignoreversion deleteafterinstall; Check: not IsDotNetDesktopRuntimeInstalled
 
 [InstallDelete]
