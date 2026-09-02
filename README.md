@@ -54,6 +54,10 @@ Disable other remapping software such as AutoHotkey, PowerToys Keyboard Manager,
 
 When multiple applications process the same key or mouse input, actions may run twice, unexpected shortcuts may fire, or a key or mouse button may appear to remain pressed. If you need to use these tools together, do not assign the same physical input in more than one application.
 
+## Terms of use
+
+RELYR is distributed under the MIT License. Before a first installation continues, the installer displays localized [Terms of Use](TERMS.md) covering safe configuration, warranty disclaimers, and limits of liability. An ordinary update does not ask the user to accept the same version of the Terms again.
+
 ## Safety and privacy
 
 - RELYR uses Windows global input hooks to implement keyboard and mouse assignments.
