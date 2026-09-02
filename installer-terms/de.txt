@@ -1,0 +1,23 @@
+RELYR-NUTZUNGSBEDINGUNGEN
+Letzte Aktualisierung: 2. September 2026
+
+Diese kurzen Hinweise helfen dir, RELYR sicher und mit gutem Gefühl zu verwenden.
+
+1. Zustimmung
+Durch die Installation oder Nutzung einer offiziellen RELYR-Version stimmst du diesen Bedingungen zu. Wenn du nicht zustimmst, installiere oder verwende RELYR bitte nicht.
+
+2. Sichere Verwendung
+RELYR kann gemäß deiner Konfiguration Tastatur- und Mauseingaben, Windows-Einstellungen, Apps, Dateien, URLs und Makros ausführen. Sichere wichtige Daten regelmäßig und prüfe neue Belegungen und Makros beim Einrichten. Vermeide es, dieselbe physische Eingabe in mehreren Programmen zur Tastenbelegung doppelt zuzuweisen. Der Notstopp ist Ctrl + Alt + Shift + F12.
+
+Du bist dafür verantwortlich, selbst erstellte oder importierte Konfigurationen, Makros, Ziele und Aktionen zu kontrollieren.
+
+3. Keine Gewährleistung
+Soweit gesetzlich zulässig, wird RELYR im vorhandenen Zustand bereitgestellt. Es wird nicht gewährleistet, dass RELYR in einer bestimmten Umgebung jederzeit unterbrechungs- oder fehlerfrei arbeitet, mit jedem Gerät oder jeder Anwendung kompatibel ist oder sich für einen bestimmten Zweck eignet.
+
+4. Haftungsbeschränkung
+Soweit gesetzlich zulässig, haften Autoren, Rechteinhaber, Mitwirkende und Vertreiber von RELYR nicht für Datenverlust, Fehlfunktionen von Systemen oder Geräten, unbeabsichtigte Eingaben oder Aktionen, entgangenen Gewinn oder sonstige mittelbare, besondere, beiläufige oder Folgeschäden aus der Installation, Nutzung oder Nichtverwendbarkeit von RELYR.
+
+Kann die Haftung für direkte und gewöhnliche Schäden aus einfacher Fahrlässigkeit nicht ausgeschlossen werden, ist die Gesamthaftung auf den höheren Betrag aus dem für RELYR gezahlten Preis und dem Gegenwert von 10 USD begrenzt. Diese Grenze gilt nicht bei Vorsatz oder grober Fahrlässigkeit, Tod oder Körperverletzung sowie für gesetzlich nicht beschränkbare Haftung. Zwingende Rechte nach dem Recht deines Wohnorts bleiben unberührt.
+
+5. Open Source und Recht
+Für den Quellcode gilt die MIT License; diese Bedingungen schränken deren Rechte nicht ein. Soweit gesetzlich zulässig, gilt japanisches Recht. Zwingendes örtliches Recht, insbesondere Verbraucherschutzrecht, bleibt anwendbar.
