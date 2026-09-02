@@ -45,13 +45,13 @@ ShowLanguageDialog=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"; LicenseFile: "installer-terms\en.txt"
-Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "installer-terms\ja.txt"
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "installer-terms\zh-CN.txt"
-Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"; LicenseFile: "installer-terms\zh-TW.txt"
-Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"; LicenseFile: "installer-terms\ko.txt"
-Name: "french"; MessagesFile: "compiler:Languages\French.isl"; LicenseFile: "installer-terms\fr.txt"
-Name: "german"; MessagesFile: "compiler:Languages\German.isl"; LicenseFile: "installer-terms\de.txt"
-Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"; LicenseFile: "installer-terms\es.txt"
+Name: "japanese"; MessagesFile: "installer-languages\Japanese.isl"; LicenseFile: "installer-terms\ja.txt"
+Name: "chinesesimplified"; MessagesFile: "installer-languages\ChineseSimplified.isl"; LicenseFile: "installer-terms\zh-CN.txt"
+Name: "chinesetraditional"; MessagesFile: "installer-languages\ChineseTraditional.isl"; LicenseFile: "installer-terms\zh-TW.txt"
+Name: "korean"; MessagesFile: "installer-languages\Korean.isl"; LicenseFile: "installer-terms\ko.txt"
+Name: "french"; MessagesFile: "installer-languages\French.isl"; LicenseFile: "installer-terms\fr.txt"
+Name: "german"; MessagesFile: "installer-languages\German.isl"; LicenseFile: "installer-terms\de.txt"
+Name: "spanish"; MessagesFile: "installer-languages\Spanish.isl"; LicenseFile: "installer-terms\es.txt"
 
 [Messages]
 UninstalledAndNeedsRestart=CapsLockを標準の動作に戻す変更を反映するには、Windowsの再起動が必要です。%n%n今すぐ再起動しますか？
@@ -156,7 +156,7 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := UpgradeInstall and
-    ((PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or
+    ((PageID = wpLicense) or (PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or
      (PageID = wpSelectTasks) or (PageID = wpReady));
 end;
 
