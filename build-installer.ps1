@@ -14,8 +14,8 @@ New-Item -ItemType Directory -Force -Path $installerOutputDirectory|Out-Null
 
 $installerScript=Join-Path $root "installer.iss"
 $installerText=Get-Content $installerScript -Raw -Encoding UTF8
-if($installerText -notmatch '(?im)^ShowLanguageDialog=yes\s*$'){
-  throw "Installer must let the user choose a language"
+if($installerText -notmatch '(?im)^ShowLanguageDialog=no\s*$' -or $installerText -notmatch '(?is)TermsLanguageCombo.*Language / 言語.*TermsLanguageChanged'){
+  throw "Installer must offer language selection on the conditional terms page without a separate repeated language dialog"
 }
 $termsByLanguage=[ordered]@{
   english='installer-terms\en.txt'
@@ -54,7 +54,7 @@ foreach($language in $termsByLanguage.Keys){
   if($installerText -notmatch ('(?im)^Name:\s*"'+[regex]::Escape($language)+'";.*LicenseFile:\s*"'+$escapedPath+'"')){
     throw "Installer language $language must show its localized terms"
   }
-  if($installerText -notmatch ('(?im)^Source:\s*"'+$escapedPath+'";.*DestName:\s*"TERMS\.txt".*Languages:\s*'+[regex]::Escape($language)+'\s*$')){
+  if($installerText -notmatch ('(?im)^Source:\s*"'+$escapedPath+'";.*DestName:\s*"TERMS\.txt".*Languages:\s*'+[regex]::Escape($language)+'.*$')){
     throw "Installer must retain the selected $language terms"
   }
 }
@@ -94,9 +94,9 @@ if($startupRuns.Count -ne 2 -or @($startupRuns|Where-Object{$_.Value -notmatch '
   throw "Upgrade installs must not overwrite the existing Windows startup setting"
 }
 $languageRuns=[regex]::Matches($installerText,'(?im)^Filename:.*--configure-language.*$')
-$hasFreshSetupLanguagePage=$installerText -match '(?is)procedure\s+InitializeWizard.*?#ifdef\s+IncludeRuntime.*?if\s+not\s+UpgradeInstall.*?CreateInputOptionPage\(.*?Display language'
-if($languageRuns.Count -ne 1 -or $languageRuns[0].Value -notmatch '(?i)Check:\s*not IsUpgradeInstall' -or -not $hasFreshSetupLanguagePage){
-  throw "Only a fresh full setup may select and initialize the app display language"
+$hasConditionalTermsLanguagePage=$installerText -match '(?is)procedure\s+InitializeWizard.*?if\s+TermsAcceptanceRequired.*?TermsLanguageCombo.*?TermsLanguageChanged'
+if($languageRuns.Count -ne 1 -or $languageRuns[0].Value -notmatch '(?i)Check:\s*not IsUpgradeInstall' -or -not $hasConditionalTermsLanguagePage){
+  throw "Fresh setup must initialize the app language from the conditional terms-page selector"
 }
 $supportedLanguageCodes=@('ja-JP','en-US','zh-CN','zh-TW','ko-KR','fr-FR','de-DE','es-ES')
 foreach($languageCode in $supportedLanguageCodes){
@@ -104,8 +104,8 @@ foreach($languageCode in $supportedLanguageCodes){
     throw "Fresh setup language selection is missing $languageCode"
   }
 }
-if($installerText -match '(?im)^\s*Name:\s*"english";\s*MessagesFile:'){
-  throw "The update installer must not show Inno Setup's built-in language dialog"
+if($installerText -notmatch '(?im)^ShowLanguageDialog=no\s*$'){
+  throw "Updates must not show Inno Setup's language dialog"
 }
 if($installerText -match '(?im)^\s*Flags:\s*.*\b(?:restart|restartreplace)\b'){
   throw "An installer entry unexpectedly forces a Windows restart"

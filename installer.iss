@@ -55,7 +55,8 @@ VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}
 SetupLogging=yes
 ChangesAssociations=yes
-ShowLanguageDialog=yes
+ShowLanguageDialog=no
+LanguageDetectionMethod=uilanguage
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"; LicenseFile: "installer-terms\en.txt"
@@ -76,14 +77,22 @@ NoRadio=後で再起動する(&N)
 
 [Files]
 Source: "{#DistributionSourceDir}\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "installer-terms\en.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: english
-Source: "installer-terms\ja.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: japanese
-Source: "installer-terms\zh-CN.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesesimplified
-Source: "installer-terms\zh-TW.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesetraditional
-Source: "installer-terms\ko.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: korean
-Source: "installer-terms\fr.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: french
-Source: "installer-terms\de.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: german
-Source: "installer-terms\es.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: spanish
+Source: "installer-terms\en.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: english; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\ja.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: japanese; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\zh-CN.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesesimplified; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\zh-TW.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesetraditional; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\ko.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: korean; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\fr.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: french; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\de.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: german; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\es.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: spanish; Check: ShouldRecordTermsAcceptance
+Source: "installer-terms\en.txt"; Flags: dontcopy
+Source: "installer-terms\ja.txt"; Flags: dontcopy
+Source: "installer-terms\zh-CN.txt"; Flags: dontcopy
+Source: "installer-terms\zh-TW.txt"; Flags: dontcopy
+Source: "installer-terms\ko.txt"; Flags: dontcopy
+Source: "installer-terms\fr.txt"; Flags: dontcopy
+Source: "installer-terms\de.txt"; Flags: dontcopy
+Source: "installer-terms\es.txt"; Flags: dontcopy
 #ifdef IncludeRuntime
 Source: "{#RuntimeInstallerPath}"; Flags: dontcopy
 #endif
@@ -135,9 +144,8 @@ var
   PreviousVersion: String;
   TermsAcceptanceRequired: Boolean;
   AcceptedTermsVersion: String;
-#ifdef IncludeRuntime
-  AppLanguagePage: TInputOptionWizardPage;
-#endif
+  TermsLanguageLabel: TNewStaticText;
+  TermsLanguageCombo: TNewComboBox;
 
 function IsUpgradeInstall(): Boolean;
 begin
@@ -149,23 +157,60 @@ begin
   Result := CompareText(ExpandConstant('{param:RELYRUPDATE|0}'), '1') = 0;
 end;
 
+function TermsLanguageIndex(): Integer;
+begin
+  if TermsLanguageCombo <> nil then
+    Result := TermsLanguageCombo.ItemIndex
+  else if CompareText(ActiveLanguage, 'japanese') = 0 then Result := 0
+  else if CompareText(ActiveLanguage, 'english') = 0 then Result := 1
+  else if CompareText(ActiveLanguage, 'chinesesimplified') = 0 then Result := 2
+  else if CompareText(ActiveLanguage, 'chinesetraditional') = 0 then Result := 3
+  else if CompareText(ActiveLanguage, 'korean') = 0 then Result := 4
+  else if CompareText(ActiveLanguage, 'french') = 0 then Result := 5
+  else if CompareText(ActiveLanguage, 'german') = 0 then Result := 6
+  else if CompareText(ActiveLanguage, 'spanish') = 0 then Result := 7
+  else Result := 1;
+end;
+
+function TermsFileName(): String;
+begin
+  case TermsLanguageIndex of
+    0: Result := 'ja.txt';
+    2: Result := 'zh-CN.txt';
+    3: Result := 'zh-TW.txt';
+    4: Result := 'ko.txt';
+    5: Result := 'fr.txt';
+    6: Result := 'de.txt';
+    7: Result := 'es.txt';
+  else
+    Result := 'en.txt';
+  end;
+end;
+
+procedure TermsLanguageChanged(Sender: TObject);
+var
+  FileName: String;
+begin
+  FileName := TermsFileName;
+  ExtractTemporaryFile(FileName);
+  WizardForm.LicenseMemo.Lines.LoadFromFile(ExpandConstant('{tmp}\') + FileName);
+  WizardForm.LicenseMemo.SelStart := 0;
+end;
+
 #ifdef IncludeRuntime
 function SelectedAppLanguage(Param: String): String;
 begin
-  if AppLanguagePage = nil then
-    Result := 'ja-JP'
+  case TermsLanguageIndex of
+    1: Result := 'en-US';
+    2: Result := 'zh-CN';
+    3: Result := 'zh-TW';
+    4: Result := 'ko-KR';
+    5: Result := 'fr-FR';
+    6: Result := 'de-DE';
+    7: Result := 'es-ES';
   else
-    case AppLanguagePage.SelectedValueIndex of
-      1: Result := 'en-US';
-      2: Result := 'zh-CN';
-      3: Result := 'zh-TW';
-      4: Result := 'ko-KR';
-      5: Result := 'fr-FR';
-      6: Result := 'de-DE';
-      7: Result := 'es-ES';
-    else
-      Result := 'ja-JP';
-    end;
+    Result := 'ja-JP';
+  end;
 end;
 #endif
 
@@ -254,42 +299,36 @@ begin
       'プロファイル、割り当て、マクロ、Windowsへのサインイン時の自動起動設定はそのまま引き継がれます。';
     WizardForm.NextButton.Caption := 'アップデート(&U)';
   end;
-#ifdef IncludeRuntime
-  if not UpgradeInstall then
+  if TermsAcceptanceRequired then
   begin
-    AppLanguagePage := CreateInputOptionPage(
-      wpWelcome,
-      '表示言語 / Display language',
-      'RELYRで使用する言語を選択 / Choose the language used in RELYR',
-      'この設定は、インストール後にRELYRの設定画面から変更できます。' + #13#10 +
-      'You can change this later in RELYR Settings.',
-      True, False);
-    AppLanguagePage.Add('日本語');
-    AppLanguagePage.Add('English');
-    AppLanguagePage.Add('简体中文');
-    AppLanguagePage.Add('繁體中文');
-    AppLanguagePage.Add('한국어');
-    AppLanguagePage.Add('Français');
-    AppLanguagePage.Add('Deutsch');
-    AppLanguagePage.Add('Español');
-    if GetUILanguage = $0411 then
-      AppLanguagePage.SelectedValueIndex := 0
-    else if (GetUILanguage = $0404) or (GetUILanguage = $0C04) or (GetUILanguage = $1404) then
-      AppLanguagePage.SelectedValueIndex := 3
-    else if (GetUILanguage and $03FF) = $0004 then
-      AppLanguagePage.SelectedValueIndex := 2
-    else if (GetUILanguage and $03FF) = $0012 then
-      AppLanguagePage.SelectedValueIndex := 4
-    else if (GetUILanguage and $03FF) = $000C then
-      AppLanguagePage.SelectedValueIndex := 5
-    else if (GetUILanguage and $03FF) = $0007 then
-      AppLanguagePage.SelectedValueIndex := 6
-    else if (GetUILanguage and $03FF) = $000A then
-      AppLanguagePage.SelectedValueIndex := 7
-    else
-      AppLanguagePage.SelectedValueIndex := 1;
+    TermsLanguageLabel := TNewStaticText.Create(WizardForm.LicenseMemo.Parent);
+    TermsLanguageLabel.Parent := WizardForm.LicenseMemo.Parent;
+    TermsLanguageLabel.Caption := 'Language / 言語';
+    TermsLanguageLabel.Left := WizardForm.LicenseMemo.Left;
+    TermsLanguageLabel.Top := WizardForm.LicenseMemo.Top + ScaleY(4);
+    TermsLanguageLabel.AutoSize := True;
+
+    TermsLanguageCombo := TNewComboBox.Create(WizardForm.LicenseMemo.Parent);
+    TermsLanguageCombo.Parent := WizardForm.LicenseMemo.Parent;
+    TermsLanguageCombo.Left := TermsLanguageLabel.Left + ScaleX(105);
+    TermsLanguageCombo.Top := WizardForm.LicenseMemo.Top;
+    TermsLanguageCombo.Width := ScaleX(170);
+    TermsLanguageCombo.Style := csDropDownList;
+    TermsLanguageCombo.Items.Add('日本語');
+    TermsLanguageCombo.Items.Add('English');
+    TermsLanguageCombo.Items.Add('简体中文');
+    TermsLanguageCombo.Items.Add('繁體中文');
+    TermsLanguageCombo.Items.Add('한국어');
+    TermsLanguageCombo.Items.Add('Français');
+    TermsLanguageCombo.Items.Add('Deutsch');
+    TermsLanguageCombo.Items.Add('Español');
+    TermsLanguageCombo.ItemIndex := TermsLanguageIndex;
+    TermsLanguageCombo.OnChange := @TermsLanguageChanged;
+
+    WizardForm.LicenseMemo.Top := WizardForm.LicenseMemo.Top + ScaleY(32);
+    WizardForm.LicenseMemo.Height := WizardForm.LicenseMemo.Height - ScaleY(32);
+    TermsLanguageChanged(nil);
   end;
-#endif
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -381,6 +420,11 @@ begin
   if CurStep = ssInstall then
   begin
     RemoveLegacyStartupTask;
+  end
+  else if (CurStep = ssPostInstall) and TermsAcceptanceRequired then
+  begin
+    CopyFile(ExpandConstant('{tmp}\') + TermsFileName,
+      ExpandConstant('{app}\TERMS.txt'), False);
   end;
 end;
 
