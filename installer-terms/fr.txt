@@ -1,0 +1,23 @@
+CONDITIONS D’UTILISATION DE RELYR
+Dernière mise à jour : 2 septembre 2026
+
+Voici quelques points simples pour utiliser RELYR en toute confiance.
+
+1. Acceptation
+En installant ou en utilisant une version officielle de RELYR, vous acceptez ces Conditions. Si vous ne les acceptez pas, n’installez pas et n’utilisez pas RELYR.
+
+2. Utilisation sûre
+Selon votre configuration, RELYR peut agir sur le clavier et la souris, les réglages Windows, les applications, fichiers, URL et macros. Sauvegardez régulièrement vos données importantes et vérifiez l’effet de toute nouvelle affectation ou macro. Évitez d’affecter la même entrée physique dans plusieurs logiciels de remappage. Le raccourci d’arrêt d’urgence est Ctrl + Alt + Shift + F12.
+
+Vous êtes responsable de la supervision des configurations, macros, destinations et actions que vous créez ou importez.
+
+3. Absence de garantie
+Dans toute la mesure permise par la loi applicable, RELYR est fourni en l’état. Son fonctionnement permanent, sans interruption ni erreur dans un environnement donné, sa compatibilité avec tout appareil ou application et son adaptation à un usage particulier ne sont pas garantis.
+
+4. Limitation de responsabilité
+Dans toute la mesure permise par la loi applicable, les auteurs, titulaires de droits, contributeurs et distributeurs de RELYR ne sont pas responsables des pertes de données, dysfonctionnements du système ou d’un appareil, saisies ou actions involontaires, pertes de bénéfices ni de tout autre dommage indirect, spécial, accessoire ou consécutif résultant de l’installation, de l’utilisation ou de l’impossibilité d’utiliser RELYR.
+
+Si la responsabilité pour un dommage direct et ordinaire causé par une négligence ordinaire ne peut être exclue, son montant total est limité au plus élevé des montants suivants : le prix payé pour RELYR ou l’équivalent de 10 USD. Cette limite ne s’applique pas en cas de faute intentionnelle ou lourde, de décès ou dommage corporel, ni aux responsabilités que la loi interdit de limiter. Ces Conditions ne limitent pas les droits impératifs prévus par la loi de votre lieu de résidence.
+
+5. Open source et droit applicable
+Le code source est soumis à la licence MIT et ces Conditions ne réduisent pas les droits qu’elle accorde. Dans la mesure permise par la loi, ces Conditions sont régies par le droit japonais. Les lois locales impératives, notamment celles relatives à la protection des consommateurs, restent applicables.
