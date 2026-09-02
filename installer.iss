@@ -54,12 +54,17 @@ VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}
 SetupLogging=yes
 ChangesAssociations=yes
+ShowLanguageDialog=yes
 
 [Languages]
-; Keep a single installer UI language so Inno Setup never opens its built-in
-; language dialog during an update. The full setup has a separate app-language
-; page that is compiled out of the lightweight update installer below.
-Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"; LicenseFile: "installer-terms\en.txt"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "installer-terms\ja.txt"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "installer-terms\zh-CN.txt"
+Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"; LicenseFile: "installer-terms\zh-TW.txt"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"; LicenseFile: "installer-terms\ko.txt"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"; LicenseFile: "installer-terms\fr.txt"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"; LicenseFile: "installer-terms\de.txt"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"; LicenseFile: "installer-terms\es.txt"
 
 [Messages]
 ApplicationsFound=RELYRを更新するため、実行中のRELYRを自動終了します。編集中の設定がある場合は、先にRELYRで保存してください。
@@ -70,6 +75,14 @@ NoRadio=後で再起動する(&N)
 
 [Files]
 Source: "{#DistributionSourceDir}\*"; DestDir: "{app}"; Excludes: "RELYR-Setup-*.exe,RELYR-Setup-*.sha256,RELYR-Update-*.exe,RELYR-Update-*.sha256"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "installer-terms\en.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: english
+Source: "installer-terms\ja.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: japanese
+Source: "installer-terms\zh-CN.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesesimplified
+Source: "installer-terms\zh-TW.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: chinesetraditional
+Source: "installer-terms\ko.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: korean
+Source: "installer-terms\fr.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: french
+Source: "installer-terms\de.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: german
+Source: "installer-terms\es.txt"; DestDir: "{app}"; DestName: "TERMS.txt"; Flags: ignoreversion; Languages: spanish
 #ifdef IncludeRuntime
 Source: "{#RuntimeInstallerPath}"; Flags: dontcopy
 #endif
