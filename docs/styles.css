@@ -230,8 +230,9 @@ html:lang(ja-JP) .download-copy h2 { font-size: clamp(38px,4vw,56px); line-heigh
 .checksum-link { color: var(--muted); font-size: 12px; font-weight: 650; text-underline-offset: 5px; }
 .checksum-link:hover { color: var(--paper); }
 .signing-note { max-width: 650px; margin: 18px 0 0; color: var(--quiet); font-size: 11px; }
-.feedback-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
-.feedback-link:hover { color: var(--accent); }
+.support-links { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 16px; }
+.guide-link, .feedback-link { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
+.guide-link:hover, .feedback-link:hover { color: var(--accent); }
 .download-spec { border-top: 1px solid var(--line-strong); }
 .download-spec p { margin: 0; padding: 16px 0; display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .download-spec span { color: var(--quiet); font: 600 9px/1.5 var(--mono); }

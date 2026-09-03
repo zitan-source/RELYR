@@ -1,7 +1,7 @@
 (() => {
   const translations = {
     'ja-JP': {
-      native: '日本語', beta: '公開ベータ', feedback: '不具合を報告', title: 'RELYR — キーボードを、拡張する。',
+      native: '日本語', beta: '公開ベータ', feedback: '不具合を報告', guide: '3分で始める', title: 'RELYR — キーボードを、拡張する。',
       description: 'Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、DeckからWindowsを動かします。',
       skip: '本文へ移動', nav: ['レイヤー', 'Deck', 'ワークフロー', 'ダウンロード'], download: 'ダウンロード',
       hero: ['RELYR ／ Windows入力システム', 'キーボードを、', '拡張する。', 'Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、Deckから、アプリ起動、ウィンドウ操作、マクロを実行。', 'Windows版をダウンロード', 'システムを見る', '無料　／　オープンソース　／　WINDOWS 10—11　／　アカウント不要'],
@@ -14,7 +14,7 @@
       final: ['Windows 10 / 11で今すぐ利用可能', 'まず、ひとつのキーから。', 'Setup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しています。インストール後の更新は、アプリ内から軽量版を取得できます。', 'RELYRをダウンロード', 'SHA-256を確認', '現在の公開ベータ版はコード署名前のため、Windows SmartScreenが「不明な発行元」と表示する場合があります。必ず公式GitHub Releasesから取得し、SHA-256を確認してください。', '無料', '不要'], close: '閉じる', screens: ['RELYRメイン画面', 'Spaceレイヤー画面', 'Deckオーバーレイ', 'Deckエディター', 'マクロエディター', 'ジェスチャーエディター']
     },
     'en-US': {
-      native: 'English', beta: 'Public Beta', feedback: 'Report a problem', title: 'RELYR — Extend your keyboard.',
+      native: 'English', beta: 'Public Beta', feedback: 'Report a problem', guide: 'Three-minute guide', title: 'RELYR — Extend your keyboard.',
       description: 'Hold Space and every key becomes a shortcut. Control Windows from keys, mouse, and Deck.',
       skip: 'Skip to content', nav: ['Layers', 'Deck', 'Workflows', 'Download'], download: 'Download',
       hero: ['RELYR ／ Windows input system', 'Extend your', 'keyboard.', 'While you hold Space, every key becomes a shortcut. Launch apps, control windows, and run macros from keys, mouse, or Deck.', 'Download for Windows', 'Explore the system', 'FREE　／　OPEN SOURCE　／　WINDOWS 10—11　／　NO ACCOUNT'],
@@ -27,7 +27,7 @@
       final: ['Available now for Windows 10 / 11', 'Start with one key.', 'The Setup package includes Microsoft’s official .NET Desktop Runtime. Later updates use the lightweight installer from inside the app.', 'Download RELYR', 'Verify SHA-256', 'This public beta is not code-signed yet, so Windows SmartScreen may identify it as an unknown publisher. Download only from the official GitHub Releases page and verify its SHA-256 file.', 'Free', 'Not required'], close: 'Close', screens: ['RELYR main workspace', 'Space layer workspace', 'Deck overlay', 'Deck editor', 'Macro editor', 'Gesture editor']
     },
     'zh-CN': {
-      native: '简体中文', beta: '公开测试版', feedback: '报告问题', title: 'RELYR — 扩展你的键盘。',
+      native: '简体中文', beta: '公开测试版', feedback: '报告问题', guide: '三分钟入门', title: 'RELYR — 扩展你的键盘。',
       description: '按住 Space，每个按键都会变成快捷键。通过按键、鼠标和 Deck 控制 Windows。',
       skip: '跳到正文', nav: ['按键层', 'Deck', '工作流', '下载'], download: '下载',
       hero: ['RELYR ／ Windows 输入系统', '扩展你的', '键盘。', '按住 Space，每个按键都会变成快捷键。通过按键、鼠标或 Deck 启动应用、控制窗口并运行宏。', '下载 Windows 版', '查看系统', '免费　／　开源　／　WINDOWS 10—11　／　无需账户'],
@@ -40,7 +40,7 @@
       final: ['现已支持 Windows 10 / 11', '从一个按键开始。', '安装包包含 Microsoft 官方 .NET Desktop Runtime。安装后的更新可在应用内获取轻量版本。', '下载 RELYR', '验证 SHA-256', '当前公开测试版尚未进行代码签名，Windows SmartScreen 可能会显示“未知发布者”。请仅从官方 GitHub Releases 页面下载并验证 SHA-256。', '免费', '无需'], close: '关闭', screens: ['RELYR 主界面', 'Space 按键层界面', 'Deck 浮层', 'Deck 编辑器', '宏编辑器', '手势编辑器']
     },
     'zh-TW': {
-      native: '繁體中文', beta: '公開測試版', feedback: '回報問題', title: 'RELYR — 擴充你的鍵盤。',
+      native: '繁體中文', beta: '公開測試版', feedback: '回報問題', guide: '三分鐘入門', title: 'RELYR — 擴充你的鍵盤。',
       description: '按住 Space，每個按鍵都會變成快速鍵。透過按鍵、滑鼠和 Deck 控制 Windows。',
       skip: '跳到正文', nav: ['按鍵層', 'Deck', '工作流程', '下載'], download: '下載',
       hero: ['RELYR ／ Windows 輸入系統', '擴充你的', '鍵盤。', '按住 Space，每個按鍵都會變成快速鍵。透過按鍵、滑鼠或 Deck 啟動應用程式、控制視窗並執行巨集。', '下載 Windows 版', '查看系統', '免費　／　開放原始碼　／　WINDOWS 10—11　／　無需帳戶'],
@@ -53,7 +53,7 @@
       final: ['現已支援 Windows 10 / 11', '從一個按鍵開始。', '安裝程式包含 Microsoft 官方 .NET Desktop Runtime。安裝後的更新可在應用程式內取得輕量版本。', '下載 RELYR', '驗證 SHA-256', '目前公開測試版尚未進行程式碼簽署，Windows SmartScreen 可能顯示「未知的發行者」。請只從官方 GitHub Releases 頁面下載並驗證 SHA-256。', '免費', '不需要'], close: '關閉', screens: ['RELYR 主畫面', 'Space 按鍵層畫面', 'Deck 浮層', 'Deck 編輯器', '巨集編輯器', '手勢編輯器']
     },
     'ko-KR': {
-      native: '한국어', beta: '공개 베타', feedback: '문제 신고', title: 'RELYR — 키보드를 확장하세요.',
+      native: '한국어', beta: '공개 베타', feedback: '문제 신고', guide: '3분 시작 가이드', title: 'RELYR — 키보드를 확장하세요.',
       description: 'Space를 누르는 동안 모든 키가 단축키가 됩니다. 키, 마우스와 Deck에서 Windows를 제어하세요.',
       skip: '본문으로 이동', nav: ['레이어', 'Deck', '워크플로', '다운로드'], download: '다운로드',
       hero: ['RELYR ／ Windows 입력 시스템', '키보드를', '확장하세요.', 'Space를 누르는 동안 모든 키가 단축키가 됩니다. 키, 마우스 또는 Deck에서 앱 실행, 창 제어와 매크로를 실행하세요.', 'Windows용 다운로드', '시스템 살펴보기', '무료　／　오픈 소스　／　WINDOWS 10—11　／　계정 불필요'],
@@ -66,7 +66,7 @@
       final: ['Windows 10 / 11에서 지금 사용 가능', '키 하나부터 시작하세요.', '설치 패키지에는 Microsoft 공식 .NET Desktop Runtime이 포함됩니다. 이후 업데이트는 앱 안에서 경량 버전을 받습니다.', 'RELYR 다운로드', 'SHA-256 확인', '현재 공개 베타는 코드 서명 전이므로 Windows SmartScreen에 알 수 없는 게시자로 표시될 수 있습니다. 공식 GitHub Releases에서만 다운로드하고 SHA-256을 확인하세요.', '무료', '불필요'], close: '닫기', screens: ['RELYR 메인 화면', 'Space 레이어 화면', 'Deck 오버레이', 'Deck 편집기', '매크로 편집기', '제스처 편집기']
     },
     'fr-FR': {
-      native: 'Français', beta: 'Bêta publique', feedback: 'Signaler un problème', title: 'RELYR — Étendez votre clavier.',
+      native: 'Français', beta: 'Bêta publique', feedback: 'Signaler un problème', guide: 'Guide de démarrage', title: 'RELYR — Étendez votre clavier.',
       description: 'Maintenez Espace : chaque touche devient un raccourci. Contrôlez Windows depuis le clavier, la souris et le Deck.',
       skip: 'Aller au contenu', nav: ['Calques', 'Deck', 'Flux', 'Télécharger'], download: 'Télécharger',
       hero: ['RELYR ／ Système de saisie Windows', 'Étendez votre', 'clavier.', 'Maintenez Espace : chaque touche devient un raccourci. Lancez des apps, contrôlez les fenêtres et exécutez des macros depuis les touches, la souris ou le Deck.', 'Télécharger pour Windows', 'Explorer le système', 'GRATUIT　／　OPEN SOURCE　／　WINDOWS 10—11　／　SANS COMPTE'],
@@ -79,7 +79,7 @@
       final: ['Disponible pour Windows 10 / 11', 'Commencez par une touche.', 'Le programme d’installation inclut le .NET Desktop Runtime officiel de Microsoft. Les mises à jour suivantes utilisent la version légère intégrée.', 'Télécharger RELYR', 'Vérifier SHA-256', 'Cette bêta publique n’est pas encore signée ; Windows SmartScreen peut afficher un éditeur inconnu. Téléchargez-la uniquement depuis la page GitHub Releases officielle et vérifiez le SHA-256.', 'Gratuit', 'Non requis'], close: 'Fermer', screens: ['Espace principal RELYR', 'Calque Space', 'Overlay Deck', 'Éditeur de Deck', 'Éditeur de macros', 'Éditeur de gestes']
     },
     'de-DE': {
-      native: 'Deutsch', beta: 'Öffentliche Beta', feedback: 'Problem melden', title: 'RELYR — Erweitere deine Tastatur.',
+      native: 'Deutsch', beta: 'Öffentliche Beta', feedback: 'Problem melden', guide: 'Schnellstart', title: 'RELYR — Erweitere deine Tastatur.',
       description: 'Halte die Leertaste: Jede Taste wird zum Shortcut. Steuere Windows über Tasten, Maus und Deck.',
       skip: 'Zum Inhalt', nav: ['Ebenen', 'Deck', 'Abläufe', 'Download'], download: 'Download',
       hero: ['RELYR ／ Windows-Eingabesystem', 'Erweitere deine', 'Tastatur.', 'Halte die Leertaste: Jede Taste wird zum Shortcut. Starte Apps, steuere Fenster und führe Makros über Tasten, Maus oder Deck aus.', 'Für Windows herunterladen', 'System erkunden', 'KOSTENLOS　／　OPEN SOURCE　／　WINDOWS 10—11　／　KEIN KONTO'],
@@ -92,7 +92,7 @@
       final: ['Jetzt für Windows 10 / 11', 'Beginne mit einer Taste.', 'Das Setup enthält Microsofts offizielle .NET Desktop Runtime. Spätere Updates nutzen den schlanken Installer in der App.', 'RELYR herunterladen', 'SHA-256 prüfen', 'Diese öffentliche Beta ist noch nicht codesigniert; Windows SmartScreen kann einen unbekannten Herausgeber anzeigen. Lade sie nur von der offiziellen GitHub-Releases-Seite herunter und prüfe SHA-256.', 'Kostenlos', 'Nicht erforderlich'], close: 'Schließen', screens: ['RELYR-Hauptansicht', 'Space-Ebene', 'Deck-Overlay', 'Deck-Editor', 'Makro-Editor', 'Gesten-Editor']
     },
     'es-ES': {
-      native: 'Español', beta: 'Beta pública', feedback: 'Informar de un problema', title: 'RELYR — Amplía tu teclado.',
+      native: 'Español', beta: 'Beta pública', feedback: 'Informar de un problema', guide: 'Guía de inicio', title: 'RELYR — Amplía tu teclado.',
       description: 'Mantén Espacio y cada tecla se convierte en un atajo. Controla Windows desde el teclado, el ratón y el Deck.',
       skip: 'Ir al contenido', nav: ['Capas', 'Deck', 'Flujos', 'Descargar'], download: 'Descargar',
       hero: ['RELYR ／ Sistema de entrada para Windows', 'Amplía tu', 'teclado.', 'Mantén Espacio y cada tecla se convierte en un atajo. Abre apps, controla ventanas y ejecuta macros desde teclas, ratón o Deck.', 'Descargar para Windows', 'Explorar el sistema', 'GRATIS　／　CÓDIGO ABIERTO　／　WINDOWS 10—11　／　SIN CUENTA'],
@@ -185,6 +185,7 @@
     all('[data-language]').forEach((button) => button.classList.toggle('is-active', button.dataset.language === code));
     const interfaceCopy = interfaceTranslations[code];
     if (interfaceCopy) {
+      one('.support-links')?.setAttribute('aria-label', interfaceCopy.footer[2]);
       all('.layer-index p').forEach((node, index) => {
         const number = node.querySelector('span');
         const value = interfaceCopy.layers[index];
@@ -241,6 +242,13 @@
     text('.download-actions .download-button > span', language.final[3]);
     text('.checksum-link', language.final[4]);
     text('.signing-note', language.final[5]);
+    text('[data-guide-label]', language.guide);
+    const guideLink = document.querySelector('.guide-link');
+    if (guideLink) {
+      guideLink.href = code === 'ja-JP'
+        ? 'https://github.com/zitan-source/RELYR/blob/main/docs/getting-started.ja.md'
+        : 'https://github.com/zitan-source/RELYR/blob/main/docs/getting-started.md';
+    }
     text('[data-feedback-label]', language.feedback);
     const specValues = all('.download-spec b');
     if (specValues[2]) specValues[2].textContent = language.final[6];

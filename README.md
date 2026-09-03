@@ -6,6 +6,8 @@ RELYR is a free, open-source input system for Windows 10 and 11. Assign keyboard
 
 [English](README.md) | [日本語](README.ja.md) | [Website](https://zitan-source.github.io/RELYR/) | [Latest release](https://github.com/zitan-source/RELYR/releases/latest)
 
+[Three-minute guide](docs/getting-started.md) | [Support](SUPPORT.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md)
+
 > [!NOTE]
 > RELYR is currently a **public beta**. Download it only from the official GitHub Releases page, and [report reproducible problems](https://github.com/zitan-source/RELYR/issues/new/choose) so they can be investigated.
 
@@ -43,6 +45,8 @@ Each installer has a matching `.sha256` file in the same release. Use it to veri
 - Automatic extraction of archives placed in selected folders
 
 ## Getting started
+
+New users can follow the complete [three-minute getting-started guide](docs/getting-started.md), including download verification, the emergency stop shortcut, and the first safe Space-layer assignment.
 
 1. Select a layer such as Default, Space, CapsLock, or a mouse button from the left side.
 2. Select a key or mouse control in the center workspace.

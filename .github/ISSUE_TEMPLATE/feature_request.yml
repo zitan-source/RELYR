@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest a focused improvement for RELYR
+title: "[Idea] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement. Please describe the workflow problem before proposing a solution. Submission does not guarantee implementation.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and where the current workflow becomes difficult.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior
+      description: Explain the smallest change that would solve the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any current RELYR feature or other approach you tried.
+
+  - type: input
+    id: version
+    attributes:
+      label: RELYR version
+      placeholder: "0.1.387"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: I have not included passwords, private macro contents, or personal information.
+          required: true

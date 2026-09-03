@@ -6,6 +6,8 @@
 
 [English](README.md) | [日本語](README.ja.md) | [紹介サイト](https://zitan-source.github.io/RELYR/) | [最新版](https://github.com/zitan-source/RELYR/releases/latest)
 
+[3分で始める](docs/getting-started.ja.md) | [サポート](SUPPORT.ja.md) | [貢献方法](CONTRIBUTING.ja.md) | [セキュリティー](SECURITY.ja.md)
+
 > [!NOTE]
 > RELYRは現在**公開ベータ版**です。必ず公式GitHub Releasesからダウンロードし、再現できる問題は[不具合報告フォーム](https://github.com/zitan-source/RELYR/issues/new/choose)からお知らせください。
 
@@ -39,6 +41,8 @@ RELYRを使用するときは、AutoHotkey、PowerToys Keyboard Manager、メー
 - 指定フォルダーに置かれた圧縮ファイルの自動解凍
 
 ## 最初の使い方
+
+初めて利用する場合は、ダウンロード確認、緊急停止キー、最初の安全なSpaceレイヤー設定をまとめた[3分で始めるガイド](docs/getting-started.ja.md)を確認してください。
 
 1. 左側で通常、Space、CapsLock、マウスなどのレイヤーを選びます。
 2. 中央のキーボードまたはマウスから設定するボタンを選びます。
