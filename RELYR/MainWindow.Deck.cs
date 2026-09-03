@@ -449,11 +449,13 @@ public partial class MainWindow
         mapping.DeckIcon = picker.SelectedPresetId;
         mapping.DeckIconPath = picker.SelectedCustomPath;
         mapping.DeckIconAutoAssigned = false;
+        mapping.DeckIconHidden = string.IsNullOrWhiteSpace(mapping.DeckIcon) && string.IsNullOrWhiteSpace(mapping.DeckIconPath);
         if (selected?.Input.Equals(input, StringComparison.OrdinalIgnoreCase) == true)
         {
             selected.DeckIcon = mapping.DeckIcon;
             selected.DeckIconPath = mapping.DeckIconPath;
             selected.DeckIconAutoAssigned = false;
+            selected.DeckIconHidden = mapping.DeckIconHidden;
         }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);

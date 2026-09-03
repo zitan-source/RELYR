@@ -2119,6 +2119,7 @@ public partial class MainWindow : Window
         {
             target.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
             target.DeckIconAutoAssigned = true;
+            target.DeckIconHidden = false;
         }
         if (action.Kind == ActionKind.Profile)
         {
@@ -2414,6 +2415,7 @@ public partial class MainWindow : Window
 
         selected.DeckIcon = DeckIconCatalog.SuggestedPresetId(new CatalogAction("", "", "", ActionKind.Launch, path));
         selected.DeckIconAutoAssigned = true;
+        selected.DeckIconHidden = false;
         RefreshSelectedInputVisual(selected.Input);
     }
 

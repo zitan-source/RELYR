@@ -381,7 +381,7 @@ internal static class DeckPanelLayout
     static string DeckSignature(IEnumerable<Mapping> mappings) => string.Join("\n", mappings
         .Where(map => IsInputName(map.Input))
         .OrderBy(map => SlotNumber(map.Input))
-        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}\u001f{map.DeckIcon}\u001f{map.DeckIconPath}\u001f{map.DeckMonitor}"));
+        .Select(map => $"{map.Input}\u001f{map.Kind}\u001f{map.Value}\u001f{map.LongPressKind}\u001f{map.LongPressValue}\u001f{map.LongPressMs}\u001f{map.Application}\u001f{map.Description}\u001f{map.DeckColor}\u001f{map.DeckFilePath}\u001f{map.DeckIcon}\u001f{map.DeckIconPath}\u001f{map.DeckIconAutoAssigned}\u001f{map.DeckIconHidden}\u001f{map.DeckMonitor}"));
 
     internal static string ActionLabel(string input, Mapping? mapping)
     {
@@ -439,12 +439,26 @@ internal static class DeckPanelLayout
             && IsShellLaunchFile(mapping!.DeckFilePath)
             && string.IsNullOrWhiteSpace(mapping.DeckIcon)
             && string.IsNullOrWhiteSpace(mapping.DeckIconPath);
-        var configuredIcon = DeckIconCatalog.CreateVisual(mapping, registeredLaunchFace ? RegisteredLaunchIconSize : 22);
+        bool iconlessLegacyAction = mapping != null
+            && !mapping.DeckIconHidden
+            && !DeckIconCatalog.HasIcon(mapping)
+            && MainWindow.MappingInterceptsInput(mapping);
+        Mapping? visualMapping = mapping;
+        if (iconlessLegacyAction)
+        {
+            visualMapping = mapping!.Copy();
+            visualMapping.DeckIcon = DeckIconCatalog.SuggestedPresetId(new CatalogAction("", "", "", mapping.Kind, mapping.Value));
+            visualMapping.DeckIconAutoAssigned = true;
+        }
+        bool automaticApplicationFace = visualMapping is { DeckIconAutoAssigned: true }
+            && (visualMapping.Kind == ActionKind.Launch || visualMapping.LongPressKind == ActionKind.Launch)
+            && string.IsNullOrWhiteSpace(visualMapping.DeckIconPath);
+        double configuredIconSize = registeredLaunchFace || automaticApplicationFace ? RegisteredLaunchIconSize : 22;
+        var configuredIcon = mapping?.DeckIconHidden == true ? null : DeckIconCatalog.CreateVisual(visualMapping, configuredIconSize);
         // App actions from both Installed Apps and Windows Apps use an
         // automatically extracted Image face. Match direct EXE/shortcut drops
         // without enlarging manual glyphs, custom artwork, or monitor tiles.
-        if (mapping is { DeckIconAutoAssigned: true }
-            && string.IsNullOrWhiteSpace(mapping.DeckIconPath)
+        if (automaticApplicationFace
             && configuredIcon is System.Windows.Controls.Image automaticApplicationIcon)
         {
             automaticApplicationIcon.Width = RegisteredLaunchIconSize;

@@ -63,6 +63,7 @@ public sealed class Mapping
     public string DeckIcon { get; set; } = "";
     public string DeckIconPath { get; set; } = "";
     public bool DeckIconAutoAssigned { get; set; }
+    public bool DeckIconHidden { get; set; }
     public string DeckMonitor { get; set; } = "";
 
     public Mapping Copy() => new()
@@ -83,6 +84,7 @@ public sealed class Mapping
         DeckIcon = DeckIcon,
         DeckIconPath = DeckIconPath,
         DeckIconAutoAssigned = DeckIconAutoAssigned,
+        DeckIconHidden = DeckIconHidden,
         DeckMonitor = DeckMonitor
     };
 }

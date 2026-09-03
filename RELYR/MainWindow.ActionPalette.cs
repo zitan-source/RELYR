@@ -1256,6 +1256,7 @@ public partial class MainWindow
         mapping.DeckIcon = string.Empty;
         mapping.DeckIconPath = string.Empty;
         mapping.DeckIconAutoAssigned = false;
+        mapping.DeckIconHidden = false;
         mapping.DeckMonitor = monitor.Id;
     }
 
@@ -1475,6 +1476,7 @@ public partial class MainWindow
                 mapping.DeckIcon = DeckIconCatalog.SuggestedPresetId(action);
                 mapping.DeckIconPath = string.Empty;
                 mapping.DeckIconAutoAssigned = true;
+                mapping.DeckIconHidden = false;
             }
         }
         if (!deckInput)

@@ -336,6 +336,7 @@ internal sealed partial class DeckPanelOverlayWindow
         mapping.DeckIcon = picker.SelectedPresetId;
         mapping.DeckIconPath = picker.SelectedCustomPath;
         mapping.DeckIconAutoAssigned = false;
+        mapping.DeckIconHidden = string.IsNullOrWhiteSpace(mapping.DeckIcon) && string.IsNullOrWhiteSpace(mapping.DeckIconPath);
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
         CommitDeckSlotChange(slot);

@@ -476,6 +476,7 @@ public static class SelfTest
             config.DeckLayouts[0].PanelCornerRadius = 9;
             config.DeckLayouts[0].HoverAnimationEnabled = false;
             config.DeckLayouts[0].Mappings.Add(new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, DeckMonitor = "battery" });
+            config.DeckLayouts[0].Mappings.Add(new Mapping { Input = "Deck+03", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Desktop3", DeckIconHidden = true });
             config.NumpadPanelLeft = 345.5;
             config.NumpadPanelTop = 456.5;
             config.ExtendedKeypadPanelLeft = 567.5;
@@ -493,6 +494,7 @@ public static class SelfTest
             Check(loaded.DetailedDiagnosticsEnabled, "the explicit detailed-diagnostics consent setting roundtrips without being enabled by default");
             Check(loaded.SharedDeckMappings.Single().DeckIcon == "home" && loaded.SharedDeckMappings.Single().DeckIconPath == @"C:\Icons\home.png", "Deck preset and custom icon settings roundtrip");
             Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 2) is { DeckMonitor: "battery" }, "Deck monitor identity roundtrip");
+            Check(DeckPanelLayout.FindMapping(loaded.DeckLayouts[0], 3) is { DeckIconHidden: true }, "an explicitly hidden Deck icon remains hidden after restart");
             Check(DeckMonitorCatalog.Items.Count >= 27 && DeckMonitorCatalog.Items.Any(item => item.Id == "battery") && DeckMonitorCatalog.Items.Any(item => item.Id == "brightness") && DeckMonitorCatalog.Items.Any(item => item.Id == "virtual-desktop") && DeckMonitorCatalog.TryGet("auto-extract", out var autoExtractMonitor) && autoExtractMonitor.Interaction == DeckMonitorInteraction.AutoExtractToggle && DeckMonitorCatalog.TryGet("timer", out var timerMonitor) && timerMonitor.Interaction == DeckMonitorInteraction.Timer, "Deck monitor catalog includes status, desktop, direct-control, auto-extraction, and timer tiles");
             Check(DeckMonitorCatalog.Items.All(item => item.Glyph.Length == 1 && item.Glyph[0] is >= '\uE000' and <= '\uF8FF'), "every Deck monitor uses one supported private-use Fluent icon instead of text rendered through an icon font");
             Check(DeckMonitorCatalog.Items.All(item => item.Name.All(character => character <= 0x7f))

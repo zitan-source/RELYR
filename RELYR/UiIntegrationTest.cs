@@ -1980,13 +1980,21 @@ internal static class UiIntegrationTest
             var applicationIconMapping = DeckPanelLayout.FindMapping(standardDeck, 18);
             var existingApplicationWithoutFace = new Mapping { Kind = ActionKind.Launch, Value = applicationIconPath };
             var applicationWithManualFace = new Mapping { Kind = ActionKind.Launch, Value = applicationIconPath, DeckIcon = "home", DeckIconAutoAssigned = false };
+            var legacyDesktopWithoutFace = new Mapping { Input = "Deck+19", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Desktop3" };
+            var explicitlyHiddenDesktopFace = new Mapping { Input = "Deck+20", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Desktop3", DeckIconHidden = true };
             var actionPaletteApplicationFace = applicationIconMapping == null ? null : DeckPanelLayout.CreateButtonContent(applicationIconMapping.Input, applicationIconMapping);
+            var existingApplicationFace = DeckPanelLayout.CreateButtonContent("Deck+19", existingApplicationWithoutFace);
+            var legacyDesktopFace = DeckPanelLayout.CreateButtonContent(legacyDesktopWithoutFace.Input, legacyDesktopWithoutFace);
+            var hiddenDesktopFace = DeckPanelLayout.CreateButtonContent(explicitlyHiddenDesktopFace.Input, explicitlyHiddenDesktopFace);
             Check(applicationIconMapping is { Kind: ActionKind.Launch, DeckIconAutoAssigned: true }
                 && DeckIconCatalog.CreateVisual(applicationIconMapping, 22) is System.Windows.Controls.Image { Source: not null }
                 && actionPaletteApplicationFace is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize }
+                && existingApplicationFace is System.Windows.Controls.Image { Width: DeckPanelLayout.RegisteredLaunchIconSize, Height: DeckPanelLayout.RegisteredLaunchIconSize }
+                && legacyDesktopFace is TextBlock { Text: "3" }
+                && hiddenDesktopFace is TextBlock hiddenDesktopText && hiddenDesktopText.Text != "3"
                 && DeckIconCatalog.CreateVisual(existingApplicationWithoutFace, 22) is System.Windows.Controls.Image { Source: not null }
                 && DeckIconCatalog.CreateVisual(applicationWithManualFace, 22) is TextBlock,
-                "Installed Apps and Windows Apps assignments fill the Deck face with the executable icon while preserving a manually selected face");
+                "new and legacy app/desktop assignments fill the Deck face consistently while an explicitly hidden or manually selected face remains preserved");
             if (applicationIconMapping != null)
                 standardDeck.Mappings.Remove(applicationIconMapping);
             deckButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
