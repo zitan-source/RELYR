@@ -1,0 +1,111 @@
+name: Bug report
+description: Report a reproducible problem with RELYR
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve RELYR. If input control becomes difficult, use the emergency stop shortcut: **Ctrl+Alt+Shift+F12**.
+
+        Do not include passwords, private macro contents, license keys, or other sensitive information.
+
+  - type: input
+    id: version
+    attributes:
+      label: RELYR version
+      description: You can find this in RELYR's update or information screen.
+      placeholder: "0.1.387"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows-version
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: How was RELYR installed or updated?
+      options:
+        - Setup installer from the official GitHub Release
+        - Update installer downloaded by RELYR
+        - Portable or development build
+        - Other source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Installation or update
+        - Keyboard or layers
+        - Mouse or gestures
+        - Macros
+        - Deck
+        - Profiles or settings
+        - Language or text
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the shortest sequence that causes the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Press ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: other-tools
+    attributes:
+      label: Other input-remapping software
+      description: Include AutoHotkey, PowerToys Keyboard Manager, or device software if installed.
+      placeholder: "None"
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots, or additional context
+      description: Remove personal information and sensitive macro or keyboard content before attaching anything.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I used the official GitHub Release or RELYR's built-in updater.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed passwords, private macro contents, and other sensitive information.
+          required: true

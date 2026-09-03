@@ -6,6 +6,9 @@
 
 [English](README.md) | [日本語](README.ja.md) | [紹介サイト](https://zitan-source.github.io/RELYR/) | [最新版](https://github.com/zitan-source/RELYR/releases/latest)
 
+> [!NOTE]
+> RELYRは現在**公開ベータ版**です。必ず公式GitHub Releasesからダウンロードし、再現できる問題は[不具合報告フォーム](https://github.com/zitan-source/RELYR/issues/new/choose)からお知らせください。
+
 ![RELYRのキーボードレイヤーとDeck](https://zitan-source.github.io/RELYR/assets/og-image.png)
 
 ## 他のキーマッピングソフトとの併用
@@ -20,7 +23,7 @@ RELYRを使用するときは、AutoHotkey、PowerToys Keyboard Manager、メー
 
 初回用のSetup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しているため、利用者がランタイムを別途入手する必要はありません。インストール済みのRELYRは、アプリ内の更新機能から軽量な`RELYR-Update-<version>.exe`を自動取得して更新します。
 
-現在のインストーラーはコード署名を行っていないため、初回実行時にWindowsのSmartScreenが「不明な発行元」と表示する場合があります。ソースコードとビルド手順はこのリポジトリで公開しています。
+現在のインストーラーはコード署名を行っていないため、初回実行時にWindowsのSmartScreenが「不明な発行元」と表示する場合があります。公式Releasesから取得したことを確認し、対応するSHA-256ファイルで検証してください。ソースコードとビルド手順はこのリポジトリで公開しています。
 
 ## 主な機能
 

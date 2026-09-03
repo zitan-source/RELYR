@@ -1,7 +1,7 @@
 (() => {
   const translations = {
     'ja-JP': {
-      native: '日本語', title: 'RELYR — キーボードを、拡張する。',
+      native: '日本語', beta: '公開ベータ', feedback: '不具合を報告', title: 'RELYR — キーボードを、拡張する。',
       description: 'Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、DeckからWindowsを動かします。',
       skip: '本文へ移動', nav: ['レイヤー', 'Deck', 'ワークフロー', 'ダウンロード'], download: 'ダウンロード',
       hero: ['RELYR ／ Windows入力システム', 'キーボードを、', '拡張する。', 'Spaceを押している間、すべてのキーがショートカットに変わる。キー、マウス、Deckから、アプリ起動、ウィンドウ操作、マクロを実行。', 'Windows版をダウンロード', 'システムを見る', '無料　／　オープンソース　／　WINDOWS 10—11　／　アカウント不要'],
@@ -11,10 +11,10 @@
       deck: ['画面の端を、<br>自分専用の操作列に。', 'アプリやファイルを置くだけで起動ボタンに。Windows操作とPCの状態表示も、同じDeckへ並べられます。', 'スクロールに沿って、Deck全体を見る。', '空いている場所へ、<br>Actionをドラッグ。', 'グリッドと一覧表示は同じDeckを編集します。ボタンの並び、色、アイコン、透明度、表示動作まで一か所で調整できます。', '複数ボタンをまとめて移動・着色', 'EXEとショートカットを直接登録', '複数Deckを同時に表示'],
       workflows: ['マクロも、マウスジェスチャーも。<br>キーやDeckから、すぐ呼び出せる。', '記録した手順とマウスジェスチャーを、ほかのActionと同じように割り当てられます。', '記録後も、順番と待機時間を編集。', '移動方向と短押しを別々のActionへ。'],
       local: ['入力環境は、<br>PCの中で完結する。', 'RELYRは入力内容を外部へ送信しません。設定とマクロはローカルに保存。アカウント作成も必要ありません。', '入力内容の外部送信なし', '設定はAppDataに保存', 'MIT Licenseで公開', 'SHA-256を同時配布'],
-      final: ['Windows 10 / 11で今すぐ利用可能', 'まず、ひとつのキーから。', 'Setup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しています。インストール後の更新は、アプリ内から軽量版を取得できます。', 'RELYRをダウンロード', 'SHA-256を確認', '現在の配布版はコード署名前のため、Windows SmartScreenが「不明な発行元」と表示する場合があります。', '無料', '不要'], close: '閉じる', screens: ['RELYRメイン画面', 'Spaceレイヤー画面', 'Deckオーバーレイ', 'Deckエディター', 'マクロエディター', 'ジェスチャーエディター']
+      final: ['Windows 10 / 11で今すぐ利用可能', 'まず、ひとつのキーから。', 'Setup版にはMicrosoft公式の.NET Desktop Runtimeを同梱しています。インストール後の更新は、アプリ内から軽量版を取得できます。', 'RELYRをダウンロード', 'SHA-256を確認', '現在の公開ベータ版はコード署名前のため、Windows SmartScreenが「不明な発行元」と表示する場合があります。必ず公式GitHub Releasesから取得し、SHA-256を確認してください。', '無料', '不要'], close: '閉じる', screens: ['RELYRメイン画面', 'Spaceレイヤー画面', 'Deckオーバーレイ', 'Deckエディター', 'マクロエディター', 'ジェスチャーエディター']
     },
     'en-US': {
-      native: 'English', title: 'RELYR — Extend your keyboard.',
+      native: 'English', beta: 'Public Beta', feedback: 'Report a problem', title: 'RELYR — Extend your keyboard.',
       description: 'Hold Space and every key becomes a shortcut. Control Windows from keys, mouse, and Deck.',
       skip: 'Skip to content', nav: ['Layers', 'Deck', 'Workflows', 'Download'], download: 'Download',
       hero: ['RELYR ／ Windows input system', 'Extend your', 'keyboard.', 'While you hold Space, every key becomes a shortcut. Launch apps, control windows, and run macros from keys, mouse, or Deck.', 'Download for Windows', 'Explore the system', 'FREE　／　OPEN SOURCE　／　WINDOWS 10—11　／　NO ACCOUNT'],
@@ -24,10 +24,10 @@
       deck: ['Turn the edge of the screen<br>into your command line.', 'Drop in an app or file to create a launcher. Add Windows controls and live PC status to the same Deck.', 'Scroll to travel across the full Deck.', 'Drag an Action<br>into any open slot.', 'Grid and list views edit the same Deck. Arrange buttons, color, icons, opacity, and display behavior in one place.', 'Move and recolor multiple buttons together', 'Drop EXEs and shortcuts directly', 'Show multiple Decks at once'],
       workflows: ['Macros and mouse gestures.<br>Ready from any key or Deck.', 'Assign recorded sequences and mouse gestures just like any other Action.', 'Edit order and timing after recording.', 'Map directions and a tap to separate Actions.'],
       local: ['Your input environment<br>stays on your PC.', 'RELYR does not send input content outside your computer. Settings and macros stay local. No account required.', 'No external transmission of input content', 'Settings stored in AppData', 'Open under the MIT License', 'SHA-256 provided with every release'],
-      final: ['Available now for Windows 10 / 11', 'Start with one key.', 'The Setup package includes Microsoft’s official .NET Desktop Runtime. Later updates use the lightweight installer from inside the app.', 'Download RELYR', 'Verify SHA-256', 'The current build is not code-signed yet, so Windows SmartScreen may identify it as an unknown publisher.', 'Free', 'Not required'], close: 'Close', screens: ['RELYR main workspace', 'Space layer workspace', 'Deck overlay', 'Deck editor', 'Macro editor', 'Gesture editor']
+      final: ['Available now for Windows 10 / 11', 'Start with one key.', 'The Setup package includes Microsoft’s official .NET Desktop Runtime. Later updates use the lightweight installer from inside the app.', 'Download RELYR', 'Verify SHA-256', 'This public beta is not code-signed yet, so Windows SmartScreen may identify it as an unknown publisher. Download only from the official GitHub Releases page and verify its SHA-256 file.', 'Free', 'Not required'], close: 'Close', screens: ['RELYR main workspace', 'Space layer workspace', 'Deck overlay', 'Deck editor', 'Macro editor', 'Gesture editor']
     },
     'zh-CN': {
-      native: '简体中文', title: 'RELYR — 扩展你的键盘。',
+      native: '简体中文', beta: '公开测试版', feedback: '报告问题', title: 'RELYR — 扩展你的键盘。',
       description: '按住 Space，每个按键都会变成快捷键。通过按键、鼠标和 Deck 控制 Windows。',
       skip: '跳到正文', nav: ['按键层', 'Deck', '工作流', '下载'], download: '下载',
       hero: ['RELYR ／ Windows 输入系统', '扩展你的', '键盘。', '按住 Space，每个按键都会变成快捷键。通过按键、鼠标或 Deck 启动应用、控制窗口并运行宏。', '下载 Windows 版', '查看系统', '免费　／　开源　／　WINDOWS 10—11　／　无需账户'],
@@ -37,10 +37,10 @@
       deck: ['把屏幕边缘变成<br>专属操作列。', '拖入应用或文件即可创建启动按钮。Windows 操作与电脑状态也能放进同一个 Deck。', '随滚动浏览完整 Deck。', '将 Action 拖到<br>任意空位。', '网格和列表编辑同一个 Deck。按钮顺序、颜色、图标、透明度与显示方式均可集中调整。', '批量移动并更改多个按钮颜色', '直接拖入 EXE 与快捷方式', '同时显示多个 Deck'],
       workflows: ['宏与鼠标手势。<br>通过按键或 Deck，随时调用。', '录制的步骤与鼠标手势，可以像其他 Action 一样分配。', '录制后仍可编辑顺序与等待时间。', '为各方向和短按分别设置 Action。'],
       local: ['输入环境，<br>只留在你的电脑中。', 'RELYR 不会向外发送输入内容。设置和宏保存在本地，也无需创建账户。', '不向外部传输输入内容', '设置保存在 AppData', '采用 MIT 许可证开源', '随版本提供 SHA-256'],
-      final: ['现已支持 Windows 10 / 11', '从一个按键开始。', '安装包包含 Microsoft 官方 .NET Desktop Runtime。安装后的更新可在应用内获取轻量版本。', '下载 RELYR', '验证 SHA-256', '当前版本尚未进行代码签名，Windows SmartScreen 可能会显示“未知发布者”。', '免费', '无需'], close: '关闭', screens: ['RELYR 主界面', 'Space 按键层界面', 'Deck 浮层', 'Deck 编辑器', '宏编辑器', '手势编辑器']
+      final: ['现已支持 Windows 10 / 11', '从一个按键开始。', '安装包包含 Microsoft 官方 .NET Desktop Runtime。安装后的更新可在应用内获取轻量版本。', '下载 RELYR', '验证 SHA-256', '当前公开测试版尚未进行代码签名，Windows SmartScreen 可能会显示“未知发布者”。请仅从官方 GitHub Releases 页面下载并验证 SHA-256。', '免费', '无需'], close: '关闭', screens: ['RELYR 主界面', 'Space 按键层界面', 'Deck 浮层', 'Deck 编辑器', '宏编辑器', '手势编辑器']
     },
     'zh-TW': {
-      native: '繁體中文', title: 'RELYR — 擴充你的鍵盤。',
+      native: '繁體中文', beta: '公開測試版', feedback: '回報問題', title: 'RELYR — 擴充你的鍵盤。',
       description: '按住 Space，每個按鍵都會變成快速鍵。透過按鍵、滑鼠和 Deck 控制 Windows。',
       skip: '跳到正文', nav: ['按鍵層', 'Deck', '工作流程', '下載'], download: '下載',
       hero: ['RELYR ／ Windows 輸入系統', '擴充你的', '鍵盤。', '按住 Space，每個按鍵都會變成快速鍵。透過按鍵、滑鼠或 Deck 啟動應用程式、控制視窗並執行巨集。', '下載 Windows 版', '查看系統', '免費　／　開放原始碼　／　WINDOWS 10—11　／　無需帳戶'],
@@ -50,10 +50,10 @@
       deck: ['把螢幕邊緣變成<br>專屬操作列。', '拖入應用程式或檔案即可建立啟動按鈕。Windows 操作與電腦狀態也能放進同一個 Deck。', '隨捲動瀏覽完整 Deck。', '將 Action 拖到<br>任意空位。', '網格和清單編輯同一個 Deck。按鈕順序、色彩、圖示、透明度與顯示方式均可集中調整。', '批次移動並變更多個按鈕色彩', '直接拖入 EXE 與捷徑', '同時顯示多個 Deck'],
       workflows: ['巨集與滑鼠手勢。<br>透過按鍵或 Deck，隨時呼叫。', '錄製的步驟與滑鼠手勢，可以像其他 Action 一樣指派。', '錄製後仍可編輯順序與等待時間。', '為各方向和短按分別設定 Action。'],
       local: ['輸入環境，<br>只留在你的電腦中。', 'RELYR 不會向外傳送輸入內容。設定和巨集保存在本機，也無需建立帳戶。', '不向外部傳輸輸入內容', '設定保存在 AppData', '採用 MIT 授權開源', '隨版本提供 SHA-256'],
-      final: ['現已支援 Windows 10 / 11', '從一個按鍵開始。', '安裝程式包含 Microsoft 官方 .NET Desktop Runtime。安裝後的更新可在應用程式內取得輕量版本。', '下載 RELYR', '驗證 SHA-256', '目前版本尚未進行程式碼簽署，Windows SmartScreen 可能顯示「未知的發行者」。', '免費', '不需要'], close: '關閉', screens: ['RELYR 主畫面', 'Space 按鍵層畫面', 'Deck 浮層', 'Deck 編輯器', '巨集編輯器', '手勢編輯器']
+      final: ['現已支援 Windows 10 / 11', '從一個按鍵開始。', '安裝程式包含 Microsoft 官方 .NET Desktop Runtime。安裝後的更新可在應用程式內取得輕量版本。', '下載 RELYR', '驗證 SHA-256', '目前公開測試版尚未進行程式碼簽署，Windows SmartScreen 可能顯示「未知的發行者」。請只從官方 GitHub Releases 頁面下載並驗證 SHA-256。', '免費', '不需要'], close: '關閉', screens: ['RELYR 主畫面', 'Space 按鍵層畫面', 'Deck 浮層', 'Deck 編輯器', '巨集編輯器', '手勢編輯器']
     },
     'ko-KR': {
-      native: '한국어', title: 'RELYR — 키보드를 확장하세요.',
+      native: '한국어', beta: '공개 베타', feedback: '문제 신고', title: 'RELYR — 키보드를 확장하세요.',
       description: 'Space를 누르는 동안 모든 키가 단축키가 됩니다. 키, 마우스와 Deck에서 Windows를 제어하세요.',
       skip: '본문으로 이동', nav: ['레이어', 'Deck', '워크플로', '다운로드'], download: '다운로드',
       hero: ['RELYR ／ Windows 입력 시스템', '키보드를', '확장하세요.', 'Space를 누르는 동안 모든 키가 단축키가 됩니다. 키, 마우스 또는 Deck에서 앱 실행, 창 제어와 매크로를 실행하세요.', 'Windows용 다운로드', '시스템 살펴보기', '무료　／　오픈 소스　／　WINDOWS 10—11　／　계정 불필요'],
@@ -63,10 +63,10 @@
       deck: ['화면 가장자리를<br>나만의 명령줄로.', '앱이나 파일을 놓으면 실행 버튼이 됩니다. Windows 동작과 PC 상태도 같은 Deck에 배치할 수 있습니다.', '스크롤하며 전체 Deck을 확인하세요.', '빈 칸에 Action을<br>드래그하세요.', '그리드와 목록은 같은 Deck을 편집합니다. 버튼 순서, 색상, 아이콘, 투명도와 표시 동작을 한곳에서 조정합니다.', '여러 버튼을 함께 이동하고 색상 변경', 'EXE와 바로가기를 바로 등록', '여러 Deck을 동시에 표시'],
       workflows: ['매크로와 마우스 제스처.<br>키나 Deck에서 바로 실행하세요.', '기록한 순서와 마우스 제스처를 다른 Action과 같은 방식으로 할당합니다.', '기록 후에도 순서와 대기 시간을 편집.', '방향과 짧게 누르기를 각각 다른 Action으로.'],
       local: ['입력 환경은<br>PC 안에서 완결됩니다.', 'RELYR는 입력 내용을 외부로 보내지 않습니다. 설정과 매크로는 로컬에 저장되며 계정도 필요 없습니다.', '입력 내용 외부 전송 없음', '설정은 AppData에 저장', 'MIT License로 공개', '릴리스마다 SHA-256 제공'],
-      final: ['Windows 10 / 11에서 지금 사용 가능', '키 하나부터 시작하세요.', '설치 패키지에는 Microsoft 공식 .NET Desktop Runtime이 포함됩니다. 이후 업데이트는 앱 안에서 경량 버전을 받습니다.', 'RELYR 다운로드', 'SHA-256 확인', '현재 배포본은 코드 서명 전이므로 Windows SmartScreen에 알 수 없는 게시자로 표시될 수 있습니다.', '무료', '불필요'], close: '닫기', screens: ['RELYR 메인 화면', 'Space 레이어 화면', 'Deck 오버레이', 'Deck 편집기', '매크로 편집기', '제스처 편집기']
+      final: ['Windows 10 / 11에서 지금 사용 가능', '키 하나부터 시작하세요.', '설치 패키지에는 Microsoft 공식 .NET Desktop Runtime이 포함됩니다. 이후 업데이트는 앱 안에서 경량 버전을 받습니다.', 'RELYR 다운로드', 'SHA-256 확인', '현재 공개 베타는 코드 서명 전이므로 Windows SmartScreen에 알 수 없는 게시자로 표시될 수 있습니다. 공식 GitHub Releases에서만 다운로드하고 SHA-256을 확인하세요.', '무료', '불필요'], close: '닫기', screens: ['RELYR 메인 화면', 'Space 레이어 화면', 'Deck 오버레이', 'Deck 편집기', '매크로 편집기', '제스처 편집기']
     },
     'fr-FR': {
-      native: 'Français', title: 'RELYR — Étendez votre clavier.',
+      native: 'Français', beta: 'Bêta publique', feedback: 'Signaler un problème', title: 'RELYR — Étendez votre clavier.',
       description: 'Maintenez Espace : chaque touche devient un raccourci. Contrôlez Windows depuis le clavier, la souris et le Deck.',
       skip: 'Aller au contenu', nav: ['Calques', 'Deck', 'Flux', 'Télécharger'], download: 'Télécharger',
       hero: ['RELYR ／ Système de saisie Windows', 'Étendez votre', 'clavier.', 'Maintenez Espace : chaque touche devient un raccourci. Lancez des apps, contrôlez les fenêtres et exécutez des macros depuis les touches, la souris ou le Deck.', 'Télécharger pour Windows', 'Explorer le système', 'GRATUIT　／　OPEN SOURCE　／　WINDOWS 10—11　／　SANS COMPTE'],
@@ -76,10 +76,10 @@
       deck: ['Transformez le bord de l’écran<br>en ligne de commande.', 'Déposez une app ou un fichier pour créer un lanceur. Ajoutez les commandes Windows et l’état du PC au même Deck.', 'Faites défiler l’intégralité du Deck.', 'Glissez une Action<br>dans un emplacement libre.', 'La grille et la liste modifient le même Deck. Ordre, couleurs, icônes, opacité et affichage se règlent au même endroit.', 'Déplacer et recolorer plusieurs boutons', 'Déposer directement EXE et raccourcis', 'Afficher plusieurs Decks à la fois'],
       workflows: ['Macros et gestes de souris.<br>Déclenchez-les depuis une touche ou le Deck.', 'Affectez séquences et gestes de souris comme n’importe quelle autre Action.', 'Modifier l’ordre et les délais après enregistrement.', 'Associer directions et appui court à des Actions distinctes.'],
       local: ['Votre environnement de saisie<br>reste sur votre PC.', 'RELYR n’envoie aucun contenu de saisie. Réglages et macros restent en local. Aucun compte requis.', 'Aucun envoi externe du contenu saisi', 'Réglages stockés dans AppData', 'Publié sous licence MIT', 'SHA-256 fourni avec chaque version'],
-      final: ['Disponible pour Windows 10 / 11', 'Commencez par une touche.', 'Le programme d’installation inclut le .NET Desktop Runtime officiel de Microsoft. Les mises à jour suivantes utilisent la version légère intégrée.', 'Télécharger RELYR', 'Vérifier SHA-256', 'La version actuelle n’est pas encore signée ; Windows SmartScreen peut afficher un éditeur inconnu.', 'Gratuit', 'Non requis'], close: 'Fermer', screens: ['Espace principal RELYR', 'Calque Space', 'Overlay Deck', 'Éditeur de Deck', 'Éditeur de macros', 'Éditeur de gestes']
+      final: ['Disponible pour Windows 10 / 11', 'Commencez par une touche.', 'Le programme d’installation inclut le .NET Desktop Runtime officiel de Microsoft. Les mises à jour suivantes utilisent la version légère intégrée.', 'Télécharger RELYR', 'Vérifier SHA-256', 'Cette bêta publique n’est pas encore signée ; Windows SmartScreen peut afficher un éditeur inconnu. Téléchargez-la uniquement depuis la page GitHub Releases officielle et vérifiez le SHA-256.', 'Gratuit', 'Non requis'], close: 'Fermer', screens: ['Espace principal RELYR', 'Calque Space', 'Overlay Deck', 'Éditeur de Deck', 'Éditeur de macros', 'Éditeur de gestes']
     },
     'de-DE': {
-      native: 'Deutsch', title: 'RELYR — Erweitere deine Tastatur.',
+      native: 'Deutsch', beta: 'Öffentliche Beta', feedback: 'Problem melden', title: 'RELYR — Erweitere deine Tastatur.',
       description: 'Halte die Leertaste: Jede Taste wird zum Shortcut. Steuere Windows über Tasten, Maus und Deck.',
       skip: 'Zum Inhalt', nav: ['Ebenen', 'Deck', 'Abläufe', 'Download'], download: 'Download',
       hero: ['RELYR ／ Windows-Eingabesystem', 'Erweitere deine', 'Tastatur.', 'Halte die Leertaste: Jede Taste wird zum Shortcut. Starte Apps, steuere Fenster und führe Makros über Tasten, Maus oder Deck aus.', 'Für Windows herunterladen', 'System erkunden', 'KOSTENLOS　／　OPEN SOURCE　／　WINDOWS 10—11　／　KEIN KONTO'],
@@ -89,10 +89,10 @@
       deck: ['Mach den Bildschirmrand<br>zu deiner Befehlsleiste.', 'App oder Datei ablegen und einen Starter erstellen. Windows-Steuerung und PC-Status passen in dasselbe Deck.', 'Beim Scrollen das ganze Deck durchlaufen.', 'Eine Action in einen<br>freien Platz ziehen.', 'Raster und Liste bearbeiten dasselbe Deck. Reihenfolge, Farben, Symbole, Deckkraft und Anzeige an einem Ort einstellen.', 'Mehrere Tasten gemeinsam verschieben und färben', 'EXE-Dateien und Verknüpfungen direkt ablegen', 'Mehrere Decks gleichzeitig anzeigen'],
       workflows: ['Makros und Mausgesten.<br>Direkt per Taste oder Deck auslösen.', 'Aufgezeichnete Abläufe und Mausgesten wie jede andere Action belegen.', 'Reihenfolge und Wartezeiten nachträglich ändern.', 'Richtungen und kurzes Tippen getrennt belegen.'],
       local: ['Deine Eingabeumgebung<br>bleibt auf deinem PC.', 'RELYR sendet keine Eingabeinhalte nach außen. Einstellungen und Makros bleiben lokal. Kein Konto erforderlich.', 'Keine externe Übertragung von Eingaben', 'Einstellungen in AppData gespeichert', 'Unter MIT-Lizenz veröffentlicht', 'SHA-256 zu jeder Version'],
-      final: ['Jetzt für Windows 10 / 11', 'Beginne mit einer Taste.', 'Das Setup enthält Microsofts offizielle .NET Desktop Runtime. Spätere Updates nutzen den schlanken Installer in der App.', 'RELYR herunterladen', 'SHA-256 prüfen', 'Die aktuelle Version ist noch nicht codesigniert; Windows SmartScreen kann einen unbekannten Herausgeber anzeigen.', 'Kostenlos', 'Nicht erforderlich'], close: 'Schließen', screens: ['RELYR-Hauptansicht', 'Space-Ebene', 'Deck-Overlay', 'Deck-Editor', 'Makro-Editor', 'Gesten-Editor']
+      final: ['Jetzt für Windows 10 / 11', 'Beginne mit einer Taste.', 'Das Setup enthält Microsofts offizielle .NET Desktop Runtime. Spätere Updates nutzen den schlanken Installer in der App.', 'RELYR herunterladen', 'SHA-256 prüfen', 'Diese öffentliche Beta ist noch nicht codesigniert; Windows SmartScreen kann einen unbekannten Herausgeber anzeigen. Lade sie nur von der offiziellen GitHub-Releases-Seite herunter und prüfe SHA-256.', 'Kostenlos', 'Nicht erforderlich'], close: 'Schließen', screens: ['RELYR-Hauptansicht', 'Space-Ebene', 'Deck-Overlay', 'Deck-Editor', 'Makro-Editor', 'Gesten-Editor']
     },
     'es-ES': {
-      native: 'Español', title: 'RELYR — Amplía tu teclado.',
+      native: 'Español', beta: 'Beta pública', feedback: 'Informar de un problema', title: 'RELYR — Amplía tu teclado.',
       description: 'Mantén Espacio y cada tecla se convierte en un atajo. Controla Windows desde el teclado, el ratón y el Deck.',
       skip: 'Ir al contenido', nav: ['Capas', 'Deck', 'Flujos', 'Descargar'], download: 'Descargar',
       hero: ['RELYR ／ Sistema de entrada para Windows', 'Amplía tu', 'teclado.', 'Mantén Espacio y cada tecla se convierte en un atajo. Abre apps, controla ventanas y ejecuta macros desde teclas, ratón o Deck.', 'Descargar para Windows', 'Explorar el sistema', 'GRATIS　／　CÓDIGO ABIERTO　／　WINDOWS 10—11　／　SIN CUENTA'],
@@ -102,7 +102,7 @@
       deck: ['Convierte el borde de la pantalla<br>en tu línea de comandos.', 'Suelta una app o archivo para crear un lanzador. Añade controles de Windows y el estado del PC al mismo Deck.', 'Desplázate por todo el Deck.', 'Arrastra una Action<br>a cualquier espacio libre.', 'La cuadrícula y la lista editan el mismo Deck. Orden, color, iconos, opacidad y visualización se ajustan en un solo lugar.', 'Mover y recolorear varios botones', 'Soltar EXE y accesos directos directamente', 'Mostrar varios Decks a la vez'],
       workflows: ['Macros y gestos del ratón.<br>Actívalos desde una tecla o el Deck.', 'Asigna secuencias y gestos del ratón igual que cualquier otra Action.', 'Edita el orden y los tiempos después de grabar.', 'Asigna direcciones y toque corto a Actions distintas.'],
       local: ['Tu entorno de entrada<br>se queda en tu PC.', 'RELYR no envía contenido de entrada fuera del equipo. Los ajustes y macros son locales. No se necesita cuenta.', 'Sin transmisión externa de entradas', 'Ajustes guardados en AppData', 'Publicado con licencia MIT', 'SHA-256 incluido con cada versión'],
-      final: ['Disponible para Windows 10 / 11', 'Empieza con una tecla.', 'El instalador incluye .NET Desktop Runtime oficial de Microsoft. Las siguientes actualizaciones usan la versión ligera desde la app.', 'Descargar RELYR', 'Verificar SHA-256', 'La versión actual aún no está firmada; Windows SmartScreen puede mostrar un editor desconocido.', 'Gratis', 'No necesaria'], close: 'Cerrar', screens: ['Área principal de RELYR', 'Capa Space', 'Superposición Deck', 'Editor de Deck', 'Editor de macros', 'Editor de gestos']
+      final: ['Disponible para Windows 10 / 11', 'Empieza con una tecla.', 'El instalador incluye .NET Desktop Runtime oficial de Microsoft. Las siguientes actualizaciones usan la versión ligera desde la app.', 'Descargar RELYR', 'Verificar SHA-256', 'Esta beta pública aún no está firmada; Windows SmartScreen puede mostrar un editor desconocido. Descárgala solo desde la página oficial de GitHub Releases y verifica el SHA-256.', 'Gratis', 'No necesaria'], close: 'Cerrar', screens: ['Área principal de RELYR', 'Capa Space', 'Superposición Deck', 'Editor de Deck', 'Editor de macros', 'Editor de gestos']
     }
   };
 
@@ -194,6 +194,7 @@
     }
 
     html('.hero .overline', language.hero[0]);
+    text('.beta-status', language.beta);
     text('.hero h1 > .hero-line span', language.hero[1]);
     text('.hero h1 > em span', language.hero[2]);
     text('.hero-lead', language.hero[3]);
@@ -240,6 +241,7 @@
     text('.download-actions .download-button > span', language.final[3]);
     text('.checksum-link', language.final[4]);
     text('.signing-note', language.final[5]);
+    text('[data-feedback-label]', language.feedback);
     const specValues = all('.download-spec b');
     if (specValues[2]) specValues[2].textContent = language.final[6];
     if (specValues[4]) specValues[4].textContent = language.final[7];

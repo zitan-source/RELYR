@@ -6,6 +6,9 @@ RELYR is a free, open-source input system for Windows 10 and 11. Assign keyboard
 
 [English](README.md) | [日本語](README.ja.md) | [Website](https://zitan-source.github.io/RELYR/) | [Latest release](https://github.com/zitan-source/RELYR/releases/latest)
 
+> [!NOTE]
+> RELYR is currently a **public beta**. Download it only from the official GitHub Releases page, and [report reproducible problems](https://github.com/zitan-source/RELYR/issues/new/choose) so they can be investigated.
+
 ![RELYR keyboard layers and Deck](https://zitan-source.github.io/RELYR/assets/og-image.png)
 
 ## What RELYR does
@@ -23,7 +26,7 @@ The full Setup package includes Microsoft's official .NET Desktop Runtime, so no
 Each installer has a matching `.sha256` file in the same release. Use it to verify that the downloaded file is intact.
 
 > [!IMPORTANT]
-> The current installers are not code-signed. Windows SmartScreen may show an **Unknown publisher** warning on first launch. The complete source code and build process are available in this repository.
+> The current installers are not code-signed. Windows SmartScreen may show an **Unknown publisher** warning on first launch. Verify that the download came from the official Releases page and use its matching SHA-256 file. The complete source code and build process are available in this repository.
 
 ## Features
 
