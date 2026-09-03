@@ -8,7 +8,7 @@ public partial class UpdateNotesWindow : Window
     {
         InitializeComponent();
         VersionText.Text = $"RELYR v{version} の変更内容";
-        NotesText.Text = notes;
+        NotesText.Text = ReleaseNotesLocalization.SelectForCurrentLanguage(notes);
         MainWindow.FollowWindowsTitleBarTheme(this);
     }
 

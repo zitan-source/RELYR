@@ -645,6 +645,28 @@ public static class SelfTest
             var availableUpdate = UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 68));
             var latestVersion = UpdateService.ParseLatestVersion(releaseJson);
             Check(availableUpdate is { VersionText: "0.1.69" } && availableUpdate.InstallerFileName == "RELYR-Update-0.1.69.exe" && availableUpdate.ReleaseNotes == "- Deckを改善\n- 操作性を向上" && UpdateService.ParseLatestRelease(releaseJson, new Version(0, 1, 69)) == null && latestVersion.Version == new Version(0, 1, 69) && latestVersion.VersionText == "0.1.69", "GitHub release parser accepts only a newer trusted update installer, preserves its release notes, and ignores the full setup asset");
+            const string localizedReleaseNotes = """
+                ## English
+                <!-- RELYR-RELEASE-NOTES:en-US -->
+                - Improved Deck usability
+                - Added safer update checks
+                <!-- /RELYR-RELEASE-NOTES -->
+
+                ## 日本語
+                <!-- RELYR-RELEASE-NOTES:ja-JP -->
+                - Deckの操作性を改善
+                - 更新確認の安全性を向上
+                <!-- /RELYR-RELEASE-NOTES -->
+                """;
+            Check(ReleaseNotesLocalization.Select(localizedReleaseNotes, "ja-JP") == "- Deckの操作性を改善\n- 更新確認の安全性を向上"
+                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "en-US") == "- Improved Deck usability\n- Added safer update checks"
+                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "de-DE") == "- Improved Deck usability\n- Added safer update checks"
+                && ReleaseNotesLocalization.ParseSections(localizedReleaseNotes).Count == 2,
+                "localized release notes select Japanese only for Japanese and English for every overseas language");
+            Check(ReleaseNotesLocalization.Select("- 日本語だけの古い更新内容", "ja-JP") == "- 日本語だけの古い更新内容"
+                && ReleaseNotesLocalization.Select("- 日本語だけの古い更新内容", "fr-FR") == ReleaseNotesLocalization.EnglishUnavailable
+                && ReleaseNotesLocalization.Select("- English-only legacy notes", "es-ES") == "- English-only legacy notes",
+                "legacy release notes never expose Japanese-only content to overseas users and retain usable English content");
             Check(MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.69", LastShownUpdateNotesVersion = "0.1.68" }, "0.1.69")
                 && !MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.69", LastShownUpdateNotesVersion = "0.1.69" }, "0.1.69")
                 && !MainWindow.ShouldShowPendingUpdateNotes(new AppConfig { PendingUpdateNotesVersion = "0.1.68" }, "0.1.69"),

@@ -9,6 +9,9 @@ $englishSource = Get-Content -LiteralPath (Join-Path $root 'RELYR\LocalizationEn
 $englishEntryCount = [regex]::Matches($englishSource, '(?m)^\s*\["(?:\\.|[^"\\])*"\]\s*=\s*"').Count
 if($englishEntryCount -lt 780){ throw "English localization catalog is incomplete: $englishEntryCount" }
 
+$releaseUiExpectationsJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('eyJ6aC1DTiI6eyLjgqLjg4Pjg5fjg4fjg7zjg4jjgZfjgb7jgZfjgZ8iOiLmm7TmlrAiLCLnorroqo3jgZfjgb7jgZfjgZ8iOiLmiJHnn6XpgZPkuoYiLCJSRUxZUuOBruOCouODg+ODl+ODh+ODvOODiCI6IlJFTFlSIOabtOaWsCJ9LCJ6aC1UVyI6eyLjgqLjg4Pjg5fjg4fjg7zjg4jjgZfjgb7jgZfjgZ8iOiLmm7TmlrAiLCLnorroqo3jgZfjgb7jgZfjgZ8iOiLmiJHnn6XpgZPkuoYiLCJSRUxZUuOBruOCouODg+ODl+ODh+ODvOODiCI6IlJFTFlSIOabtOaWsCJ9LCJrby1LUiI6eyLjgqLjg4Pjg5fjg4fjg7zjg4jjgZfjgb7jgZfjgZ8iOiLsl4XrjbDsnbTtirgiLCLnorroqo3jgZfjgb7jgZfjgZ8iOiLtmZXsnbgiLCJSRUxZUuOBruOCouODg+ODl+ODh+ODvOODiCI6IlJFTFlSIOyXheuNsOydtO2KuCJ9LCJmci1GUiI6eyLjgqLjg4Pjg5fjg4fjg7zjg4jjgZfjgb7jgZfjgZ8iOiJNaXNlIMOgIGpvdXIgdGVybWluw6llIiwi56K66KqN44GX44G+44GX44GfIjoiSmUgY29tcHJlbmRzIiwiUkVMWVLjga7jgqLjg4Pjg5fjg4fjg7zjg4giOiJNaXNlIMOgIGpvdXIgZGUgUkVMWVIifSwiZGUtREUiOnsi44Ki44OD44OX44OH44O844OI44GX44G+44GX44GfIjoiQWt0dWFsaXNpZXJ0Iiwi56K66KqN44GX44G+44GX44GfIjoiSWNoIHZlcnN0ZWhlIiwiUkVMWVLjga7jgqLjg4Pjg5fjg4fjg7zjg4giOiJSRUxZUi1VcGRhdGUifSwiZXMtRVMiOnsi44Ki44OD44OX44OH44O844OI44GX44G+44GX44GfIjoiQWN0dWFsaXphZG8iLCLnorroqo3jgZfjgb7jgZfjgZ8iOiJFbnRpZW5kbyIsIlJFTFlS44Gu44Ki44OD44OX44OH44O844OIIjoiQWN0dWFsaXphY2nDs24gZGUgUkVMWVIifX0='))
+$releaseUiExpectations = $releaseUiExpectationsJson | ConvertFrom-Json
+
 $expectedKeys = $null
 foreach($culture in $cultures){
     $path = Join-Path $catalogDirectory "$culture.json"
@@ -65,6 +68,11 @@ foreach($culture in $cultures){
     }
     if($translatedCoreCount -lt 6){
         throw "$culture core UI translation coverage is too low: $translatedCoreCount/$($requiredKeys.Count)"
+    }
+    foreach($entry in $releaseUiExpectations.$culture.PSObject.Properties){
+        if([string]$catalog.($entry.Name) -cne [string]$entry.Value){
+            throw "$culture release-note UI translation is invalid: $($entry.Name)"
+        }
     }
 }
 

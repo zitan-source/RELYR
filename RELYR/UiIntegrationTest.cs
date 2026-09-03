@@ -4416,6 +4416,31 @@ internal static class UiIntegrationTest
             PumpFor(TimeSpan.FromMilliseconds(40));
             CaptureForReview(updateNotes, "update-notes.png");
             updateNotes.Close();
+            const string bilingualUpdateNotes = """
+                ## English
+                <!-- RELYR-RELEASE-NOTES:en-US -->
+                - Improved update safety
+                <!-- /RELYR-RELEASE-NOTES -->
+
+                ## 日本語
+                <!-- RELYR-RELEASE-NOTES:ja-JP -->
+                - 更新の安全性を改善
+                <!-- /RELYR-RELEASE-NOTES -->
+                """;
+            foreach (var language in LocalizationService.SupportedLanguages.Where(item => item.Code != LocalizationService.Japanese))
+            {
+                LocalizationService.Apply(language.Code);
+                var localizedUpdateNotes = new UpdateNotesWindow("9.9.10", bilingualUpdateNotes);
+                localizedUpdateNotes.Show();
+                PumpFor(TimeSpan.FromMilliseconds(40));
+                Check(localizedUpdateNotes.NotesText.Text == "- Improved update safety"
+                      && localizedUpdateNotes.HeadingText.Text != "アップデートしました"
+                      && localizedUpdateNotes.ConfirmButton.Content?.ToString() != "確認しました"
+                      && localizedUpdateNotes.VersionText.Text.Contains("v9.9.10", StringComparison.Ordinal),
+                    $"{language.Code} post-update UI is localized while its release body uses English");
+                localizedUpdateNotes.Close();
+            }
+            LocalizationService.Apply(LocalizationService.Japanese);
             settings.SelectCategory("Support");
             settings.UpdateLayout();
             Check(settings.SupportPanel.Visibility == Visibility.Visible && settings.UpdatePanel.Visibility == Visibility.Collapsed && settings.OpenSupportPageButton.Content?.ToString() == "支援ページを開く" && Uri.TryCreate(SettingsWindow.SupportPageUrl, UriKind.Absolute, out var supportUri) && supportUri.Scheme == Uri.UriSchemeHttps && supportUri.Host == "ko-fi.com", "support settings use the trusted HTTPS Ko-fi page");
