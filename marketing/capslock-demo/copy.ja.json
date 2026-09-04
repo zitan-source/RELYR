@@ -1,0 +1,35 @@
+{
+  "button": "無料ダウンロード  →",
+  "cards": [
+    {
+      "kicker": "CAPSLOCK LAYER",
+      "title": "CapsLockを押している間だけ、キーボード全体をショートカットに。",
+      "body": "専用キーボード不要。コード不要。Windows 10 / 11。"
+    },
+    {
+      "kicker": "STEP 01",
+      "title": "CapsLockレイヤーを選ぶ。",
+      "body": "普段のキー入力は、そのまま残ります。"
+    },
+    {
+      "kicker": "STEP 02",
+      "title": "使いたいActionを、キーへ置く。",
+      "body": "アプリ起動、ウィンドウ操作、マクロ、マウス操作に対応。"
+    },
+    {
+      "kicker": "STEP 03",
+      "title": "離せば、いつものキーボード。",
+      "body": "必要な間だけ別レイヤーへ切り替わります。"
+    },
+    {
+      "kicker": "NO EXTRA HARDWARE",
+      "title": "普通のキーボードを、操作デッキとして使う。",
+      "body": "無料・オープンソース。支援の有無による機能差はありません。"
+    },
+    {
+      "kicker": "RELYR v0.1.389",
+      "title": "まず、ひとつのキーから。",
+      "body": "github.com/zitan-source/RELYR/releases/latest"
+    }
+  ]
+}
