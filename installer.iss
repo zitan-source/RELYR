@@ -433,18 +433,26 @@ var
   ResultCode: Integer;
   SettingsChoice: Integer;
 begin
-  SettingsChoice := MsgBox(
-    'ユーザー設定ファイルも削除しますか？' + #13#10 + #13#10 +
-    '［はい］  すべての設定・プロファイル・マクロ・バックアップを削除します。' + #13#10 +
-    '［いいえ］設定を残し、再インストール時に引き継ぎます。' + #13#10 +
-    '［キャンセル］アンインストールを中止します。',
-    mbConfirmation, MB_YESNOCANCEL);
-  if SettingsChoice = IDCANCEL then
+  { Package managers such as WinGet run the uninstaller silently. Never block
+    that flow with a settings prompt, and preserve user data by default. }
+  if WizardSilent then
+    DeleteUserSettings :=
+      CompareText(ExpandConstant('{param:PURGEUSERDATA|0}'), '1') = 0
+  else
   begin
-    Result := False;
-    Exit;
+    SettingsChoice := MsgBox(
+      'ユーザー設定ファイルも削除しますか？' + #13#10 + #13#10 +
+      '［はい］  すべての設定・プロファイル・マクロ・バックアップを削除します。' + #13#10 +
+      '［いいえ］設定を残し、再インストール時に引き継ぎます。' + #13#10 +
+      '［キャンセル］アンインストールを中止します。',
+      mbConfirmation, MB_YESNOCANCEL);
+    if SettingsChoice = IDCANCEL then
+    begin
+      Result := False;
+      Exit;
+    end;
+    DeleteUserSettings := SettingsChoice = IDYES;
   end;
-  DeleteUserSettings := SettingsChoice = IDYES;
   CapsLockRestartRequired := False;
   { The executable uses a path-specific signal, so uninstalling this copy never
     stops a development or production copy in another folder. }
