@@ -27,3 +27,7 @@ For input emergencies, press `Ctrl + Alt + Shift + F12` to stop RELYR's input pr
 - Security vulnerability: follow the [security policy](SECURITY.md) and report it privately.
 
 General Windows support, custom macro creation, and problems caused exclusively by another remapping product may be outside the project's support scope.
+
+## Support development
+
+RELYR remains free and open source, with no feature differences based on support. If it is useful to you, you can optionally [support RELYR on Ko-fi](https://ko-fi.com/relyr). Contributions help fund continued development, testing, documentation, and safer distribution.
