@@ -1,0 +1,60 @@
+name: Submit WinGet update
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 0.1.390
+        required: true
+        type: string
+      submit:
+        description: Submit a pull request to microsoft/winget-pkgs
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  update-winget:
+    if: github.event_name != 'release' || github.event.release.prerelease == false
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RELYR_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+      RELYR_SUBMIT: ${{ github.event_name == 'release' || inputs.submit }}
+      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Generate and optionally submit WinGet manifests
+        shell: pwsh
+        run: |
+          $submit = $env:RELYR_SUBMIT -eq 'true'
+          $parameters = @{
+            Version = $env:RELYR_VERSION
+            OutputDirectory = Join-Path $env:RUNNER_TEMP 'winget-manifests'
+            WingetCreatePath = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
+          }
+          if ($submit) {
+            $parameters.Submit = $true
+          }
+          ./tools/Publish-WinGetUpdate.ps1 @parameters
+
+      - name: Preserve generated manifests
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: winget-manifests-${{ env.RELYR_VERSION }}
+          path: ${{ runner.temp }}/winget-manifests/**/*.yaml
+          if-no-files-found: ignore
+          retention-days: 14

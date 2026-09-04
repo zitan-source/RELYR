@@ -80,7 +80,7 @@ Public releases contain:
 
 The full installer supports 64-bit Windows, registers RELYR's elevated startup task, and installs the runtime only when required. The updater verifies its SHA-256 checksum before replacing the installed version.
 
-Uninstallation disables automatic startup and can restore the standard CapsLock mapping. Users can choose whether to preserve or remove settings stored in `%AppData%\RELYR`.
+Uninstallation disables automatic startup and can restore the standard CapsLock mapping. Interactive uninstallation asks whether to remove user data. Silent uninstallation, including `winget uninstall`, preserves `%AppData%\RELYR` settings and `%LocalAppData%\RELYR` diagnostics by default to prevent unintended data loss. To remove them during a silent uninstall, run the installed uninstaller with `/VERYSILENT /PURGEUSERDATA=1`.
 
 ## Terms of use
 

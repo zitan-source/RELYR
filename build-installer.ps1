@@ -179,6 +179,9 @@ if($installerText -notmatch '(?im)^ChangesAssociations=yes\s*$' -or $installerTe
 if($installerText -notmatch '(?is)function\s+ShouldDeleteUserSettings.*DeleteUserSettings' -or $installerText -notmatch '(?im)Parameters:\s*"--delete-user-settings".*ShouldDeleteUserSettings'){
   throw "Uninstaller must offer a complete RELYR user-settings removal option"
 }
+if($installerText -notmatch '(?is)function\s+InitializeUninstall.*?WizardSilent.*?DeleteUserSettings\s*:=.*?\{param:PURGEUSERDATA\|0\}.*?''1'''){
+  throw "Silent uninstall must preserve user settings by default and support an explicit PURGEUSERDATA option"
+}
 $visibleSources=Get-ChildItem (Join-Path $root 'RELYR') -File -Include *.xaml -Recurse |Get-Content -Raw -Encoding UTF8
 if(($visibleSources -join [Environment]::NewLine) -match 'Input\s*Customizer'){
   throw "A legacy product name remains in visible XAML"
