@@ -19,17 +19,6 @@ Hold a layer key such as Space, CapsLock, or a mouse button and the rest of your
 
 The same Action can be assigned to a key, mouse input, gesture, profile, or Deck button. This keeps app launchers, window management, macros, and system controls in one place.
 
-## When to choose RELYR
-
-If AutoHotkey, PowerToys, or a macro keyboard already solves your problem and you are comfortable maintaining it, there is no reason to switch. Choose RELYR when you want to change assignments visually, keep normal typing intact, and manage keyboard, mouse, gestures, app profiles, and Deck buttons from one Action catalog.
-
-Two small examples:
-
-- Hold Space and press E to open File Explorer: select the Space layer, select E, assign “Open File Explorer,” then save.
-- Build a work Deck: open the Deck editor, drop EXEs or shortcuts into empty slots, add Windows or PC-monitor Actions, then save.
-
-These examples are intended as a low-risk trial; no full migration is required.
-
 ## Download
 
 Download `RELYR-Setup-<version>.exe` from [GitHub Releases](https://github.com/zitan-source/RELYR/releases/latest).
