@@ -85,9 +85,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     const byte MinimumBackdropTintAlpha = 20;
     const byte MaximumBackdropTintAlpha = 150;
     static readonly TimeSpan HoverAudioDelay = TimeSpan.FromMilliseconds(220);
-    static readonly TimeSpan ButtonHoverIntentDelay = TimeSpan.FromMilliseconds(180);
-    static readonly TimeSpan ButtonHoverScaleInDuration = TimeSpan.FromMilliseconds(520);
-    static readonly TimeSpan ButtonHoverScaleOutDuration = TimeSpan.FromMilliseconds(150);
+    static readonly TimeSpan ButtonHoverScaleInDuration = TimeSpan.FromMilliseconds(160);
+    static readonly TimeSpan ButtonHoverScaleOutDuration = TimeSpan.FromMilliseconds(120);
     static readonly object DeckHoverIntentTimerKey = new();
     static readonly object DeckHoverSettleTimerKey = new();
     static readonly object DeckHoverTargetKey = new();
@@ -1032,21 +1031,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         UiMotionService.StopAndSetDouble(button, UIElement.OpacityProperty, 1);
         if (hovered)
         {
-            var intentTimer = new DispatcherTimer(DispatcherPriority.Render, Dispatcher)
-            {
-                Interval = ButtonHoverIntentDelay
-            };
-            intentTimer.Tick += (_, _) =>
-            {
-                intentTimer.Stop();
-                if (!ReferenceEquals(button.Resources[DeckHoverIntentTimerKey], intentTimer)
-                    || button.Resources[DeckHoverTargetKey] is not true)
-                    return;
-                button.Resources.Remove(DeckHoverIntentTimerKey);
-                StartDeckButtonHoverScaleAnimation(button, scale, true);
-            };
-            button.Resources[DeckHoverIntentTimerKey] = intentTimer;
-            intentTimer.Start();
+            StartDeckButtonHoverScaleAnimation(button, scale, true);
             return;
         }
         StartDeckButtonHoverScaleAnimation(button, scale, false);
@@ -1066,23 +1051,21 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             Panel.SetZIndex(cell, 10);
         double targetScale = hovered ? 1.07 : 1;
         TimeSpan duration = hovered ? ButtonHoverScaleInDuration : ButtonHoverScaleOutDuration;
-        IEasingFunction easing = hovered
-            ? new CubicEase { EasingMode = EasingMode.EaseInOut }
-            : new CubicEase { EasingMode = EasingMode.EaseOut };
-        UiMotionService.AnimateDouble(
-            hovered ? "deck-button-hover-scale-x-in" : "deck-button-hover-scale-x-out",
-            scale,
-            ScaleTransform.ScaleXProperty,
-            targetScale,
-            duration,
-            easing);
-        UiMotionService.AnimateDouble(
-            hovered ? "deck-button-hover-scale-y-in" : "deck-button-hover-scale-y-out",
-            scale,
-            ScaleTransform.ScaleYProperty,
-            targetScale,
-            duration,
-            easing);
+        IEasingFunction easing = UiMotionService.ResponsiveEaseOut();
+        // Only the generation-checked settle timer below may commit the target.
+        // A replaced animation's queued Completed callback must never restore
+        // an obsolete hover target after rapid enter/leave events.
+        UiMotionService.RunSafely("deck-button-hover-scale", () =>
+        {
+            double currentX = scale.ScaleX;
+            double currentY = scale.ScaleY;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(currentX, targetScale, duration) { EasingFunction = easing },
+                HandoffBehavior.SnapshotAndReplace);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(currentY, targetScale, duration) { EasingFunction = easing },
+                HandoffBehavior.SnapshotAndReplace);
+        });
         var settleTimer = new DispatcherTimer(DispatcherPriority.Render, Dispatcher)
         {
             Interval = duration + TimeSpan.FromMilliseconds(40)

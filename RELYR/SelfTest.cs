@@ -660,9 +660,9 @@ public static class SelfTest
                 - 更新確認の安全性を向上
                 <!-- /RELYR-RELEASE-NOTES -->
                 """;
-            Check(ReleaseNotesLocalization.Select(localizedReleaseNotes, "ja-JP") == "- Deckの操作性を改善\n- 更新確認の安全性を向上"
-                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "en-US") == "- Improved Deck usability\n- Added safer update checks"
-                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "de-DE") == "- Improved Deck usability\n- Added safer update checks"
+            Check(ReleaseNotesLocalization.Select(localizedReleaseNotes, "ja-JP").ReplaceLineEndings("\n") == "- Deckの操作性を改善\n- 更新確認の安全性を向上"
+                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "en-US").ReplaceLineEndings("\n") == "- Improved Deck usability\n- Added safer update checks"
+                && ReleaseNotesLocalization.Select(localizedReleaseNotes, "de-DE").ReplaceLineEndings("\n") == "- Improved Deck usability\n- Added safer update checks"
                 && ReleaseNotesLocalization.ParseSections(localizedReleaseNotes).Count == 2,
                 "localized release notes select Japanese only for Japanese and English for every overseas language");
             Check(ReleaseNotesLocalization.Select("- 日本語だけの古い更新内容", "ja-JP") == "- 日本語だけの古い更新内容"

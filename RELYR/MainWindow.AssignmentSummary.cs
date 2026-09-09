@@ -35,8 +35,8 @@ public partial class MainWindow
         {
             assignmentTapSummaryAction = null;
             assignmentHoldSummaryAction = null;
-            UpdateAssignmentSummaryInteraction(AssignmentTapCard, AssignmentTapFavoriteButton, null);
-            UpdateAssignmentSummaryInteraction(AssignmentHoldCard, AssignmentHoldFavoriteButton, null);
+            UpdateAssignmentSummaryInteraction(AssignmentTapCard, AssignmentTapFavoriteButton, AssignmentTapDeleteButton, null);
+            UpdateAssignmentSummaryInteraction(AssignmentHoldCard, AssignmentHoldFavoriteButton, AssignmentHoldDeleteButton, null);
             UpdateDeckAssignmentSummary(selected);
             AssignmentHoldTimingPanel.Visibility = Visibility.Collapsed;
             return;
@@ -54,7 +54,7 @@ public partial class MainWindow
         assignmentTapSummaryAction = !nativeShortPress && HasConfiguredShortAction(selected)
             ? CatalogActionForAssignment(selected.Kind, selected.Value)
             : null;
-        UpdateAssignmentSummaryInteraction(AssignmentTapCard, AssignmentTapFavoriteButton, assignmentTapSummaryAction);
+        UpdateAssignmentSummaryInteraction(AssignmentTapCard, AssignmentTapFavoriteButton, AssignmentTapDeleteButton, assignmentTapSummaryAction);
 
         IReadOnlyList<Mapping> mappings = MappingCollectionForInput(selected.Input);
         bool longPressSupported = IsLongPressSupportedFor(selected, mappings);
@@ -75,7 +75,7 @@ public partial class MainWindow
         assignmentHoldSummaryAction = holdRow != null && longPressSupported
             ? CatalogActionForAssignment(selected.LongPressKind, selected.LongPressValue)
             : null;
-        UpdateAssignmentSummaryInteraction(AssignmentHoldCard, AssignmentHoldFavoriteButton, assignmentHoldSummaryAction);
+        UpdateAssignmentSummaryInteraction(AssignmentHoldCard, AssignmentHoldFavoriteButton, AssignmentHoldDeleteButton, assignmentHoldSummaryAction);
 
         AssignmentHoldTimingPanel.Visibility = holdRow != null && longPressSupported
             ? Visibility.Visible
@@ -106,10 +106,11 @@ public partial class MainWindow
             value);
     }
 
-    void UpdateAssignmentSummaryInteraction(Border card, Button favoriteButton, CatalogAction? action)
+    void UpdateAssignmentSummaryInteraction(Border card, Button favoriteButton, Button deleteButton, CatalogAction? action)
     {
         card.Cursor = action == null ? WpfCursors.Arrow : WpfCursors.Hand;
         favoriteButton.Visibility = action == null ? Visibility.Collapsed : Visibility.Visible;
+        deleteButton.Visibility = action == null ? Visibility.Collapsed : Visibility.Visible;
         if (action == null)
             return;
         if (card.ToolTip is string existingToolTip && !existingToolTip.Contains("Ctrl+ドラッグ", StringComparison.Ordinal))
@@ -130,6 +131,58 @@ public partial class MainWindow
         ToggleActionPaletteFavorite(action);
         UpdateAssignmentSummary();
         e.Handled = true;
+    }
+
+    void AssignmentActionDelete_Click(object sender, RoutedEventArgs e)
+    {
+        AssignmentDropSlot slot = ReferenceEquals(sender, AssignmentHoldDeleteButton)
+            ? AssignmentDropSlot.LongPress
+            : AssignmentDropSlot.ShortPress;
+        DeleteAssignmentAction(slot);
+        e.Handled = true;
+    }
+
+    internal bool DeleteAssignmentAction(AssignmentDropSlot slot)
+    {
+        if (selected == null || DeckPanelLayout.IsInputName(selected.Input))
+            return false;
+        string input = selected.Input;
+        List<Mapping> mappings = MappingCollectionForInput(input);
+        Mapping? mapping = mappings.Contains(selected)
+            ? selected
+            : mappings.LastOrDefault(candidate => candidate.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
+        bool configured = slot == AssignmentDropSlot.LongPress
+            ? HasConfiguredLongPress(mapping)
+            : HasConfiguredShortAction(mapping) && !InputAssignmentPolicy.PreservesNativeShortPress(input);
+        if (mapping == null || !configured)
+            return false;
+
+        var snapshot = CapturePaletteAssignment(input);
+        if (slot == AssignmentDropSlot.LongPress)
+        {
+            mapping.LongPressKind = ActionKind.None;
+            mapping.LongPressValue = string.Empty;
+        }
+        else
+        {
+            mapping.Kind = ActionKind.None;
+            mapping.Value = string.Empty;
+        }
+        if (!MappingHasConfiguredAction(mapping))
+            mappings.Remove(mapping);
+        else
+            NormalizeLongOnlyMapping(mapping);
+        InputAssignmentPolicy.SanitizeMappings(CurrentProfile.Mappings);
+
+        string slotLabel = slot == AssignmentDropSlot.LongPress ? "HOLD" : "TAP";
+        string message = $"{DisplayInputName(input)} の {slotLabel} Actionを削除しました";
+        actionPaletteUndoState = new ActionPaletteUndoState([snapshot], message);
+        ShowActionPaletteUndo(message);
+        CommitPaletteAssignment(message, [input]);
+        SelectInput(input, false);
+        RefreshActionPalette();
+        ColorButtons();
+        return true;
     }
 
     void UpdateDeckAssignmentSummary(Mapping mapping)

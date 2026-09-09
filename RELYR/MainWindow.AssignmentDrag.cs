@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Button = System.Windows.Controls.Button;
+using ContextMenu = System.Windows.Controls.ContextMenu;
 using DataObject = System.Windows.DataObject;
 using DragDrop = System.Windows.DragDrop;
 using DragDropEffects = System.Windows.DragDropEffects;
@@ -46,7 +47,7 @@ public partial class MainWindow
     void AssignmentActionCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (selected == null || DeckPanelLayout.IsInputName(selected.Input) || MultiSelectToggle.IsChecked == true
-            || sender is not Border card || IsAssignmentFavoriteSource(e.OriginalSource as DependencyObject))
+            || sender is not Border card || IsAssignmentCardCommandSource(e.OriginalSource as DependencyObject))
             return;
         AssignmentDropSlot slot = ReferenceEquals(card, AssignmentHoldCard)
             ? AssignmentDropSlot.LongPress
@@ -58,12 +59,40 @@ public partial class MainWindow
         assignmentActionDragStart = e.GetPosition(card);
     }
 
-    static bool IsAssignmentFavoriteSource(DependencyObject? source)
+    static bool IsAssignmentCardCommandSource(DependencyObject? source)
     {
         for (DependencyObject? current = source; current != null; current = VisualTreeHelper.GetParent(current))
-            if (current is Button button && (button.Name == "AssignmentTapFavoriteButton" || button.Name == "AssignmentHoldFavoriteButton"))
+            if (current is Button button && (button.Name is "AssignmentTapFavoriteButton" or "AssignmentHoldFavoriteButton" or "AssignmentTapDeleteButton" or "AssignmentHoldDeleteButton"))
                 return true;
         return false;
+    }
+
+    void AssignmentActionCard_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (selected == null || DeckPanelLayout.IsInputName(selected.Input) || sender is not Border card)
+            return;
+        AssignmentDropSlot slot = ReferenceEquals(card, AssignmentHoldCard)
+            ? AssignmentDropSlot.LongPress
+            : AssignmentDropSlot.ShortPress;
+        CatalogAction? action = slot == AssignmentDropSlot.LongPress ? assignmentHoldSummaryAction : assignmentTapSummaryAction;
+        if (action == null)
+            return;
+        var menu = CreateAssignmentActionContextMenu();
+        card.ContextMenu = menu;
+        menu.PlacementTarget = card;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    internal ContextMenu CreateAssignmentActionContextMenu()
+    {
+        if (selected == null)
+            return new ContextMenu();
+        string prefix = currentLayer == "通常" ? string.Empty : currentLayer + "+";
+        string key = prefix.Length > 0 && selected.Input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? selected.Input[prefix.Length..]
+            : selected.Input;
+        return CreateInputContextMenu(key);
     }
 
     void AssignmentActionCard_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)

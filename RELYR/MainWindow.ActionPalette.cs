@@ -156,10 +156,8 @@ public partial class MainWindow
     static void AnimateScale(ScaleTransform scale, double target, int durationMs, IEasingFunction ease)
     {
         var duration = TimeSpan.FromMilliseconds(durationMs);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(target, duration) { EasingFunction = ease }, HandoffBehavior.SnapshotAndReplace);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(target, duration) { EasingFunction = ease }, HandoffBehavior.SnapshotAndReplace);
+        UiMotionService.AnimateDouble("palette-scale-x", scale, ScaleTransform.ScaleXProperty, target, duration, ease);
+        UiMotionService.AnimateDouble("palette-scale-y", scale, ScaleTransform.ScaleYProperty, target, duration, ease);
     }
 
     void OpenActionPalette_Click(object sender, RoutedEventArgs e)
@@ -1366,20 +1364,16 @@ public partial class MainWindow
         }
 
         var accent = ThemeService.Color("AccentBrush");
-        var highlight = MediaColor.FromRgb(
-            (byte)((accent.R + byte.MaxValue) / 2),
-            (byte)((accent.G + byte.MaxValue) / 2),
-            (byte)((accent.B + byte.MaxValue) / 2));
         var waveBrush = new RadialGradientBrush
         {
             Center = new Point(.5, .5),
             GradientOrigin = new Point(.5, .5),
-            RadiusX = .68,
-            RadiusY = .68,
+            RadiusX = .04,
+            RadiusY = .04,
             GradientStops =
             {
-                new GradientStop(MediaColor.FromArgb(242, highlight.R, highlight.G, highlight.B), 0),
-                new GradientStop(MediaColor.FromArgb(220, accent.R, accent.G, accent.B), .58),
+                new GradientStop(accent, 0),
+                new GradientStop(accent, .88),
                 new GradientStop(MediaColor.FromArgb(0, accent.R, accent.G, accent.B), 1)
             }
         };
@@ -1389,23 +1383,24 @@ public partial class MainWindow
             shape.Fill = waveBrush;
 
         wave.RenderTransformOrigin = new Point(.5, .5);
-        var waveScale = UiMotionService.MutableScale(wave, .06, .06);
-        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
-        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
+        // Keep the complete rounded/L-shaped silhouette fixed. Only the paint
+        // expands, so even Enter's concave corner is filled without overspill.
+        var waveScale = UiMotionService.MutableScale(wave);
+        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, 1);
+        UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, 1);
         UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 1);
         var waveDuration = TimeSpan.FromMilliseconds(ActionDropWaveDurationMs);
-        var expansion = new DoubleAnimation(1.34, waveDuration)
+        var expansion = new DoubleAnimation(.04, .86, TimeSpan.FromMilliseconds(220))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.Stop
+            FillBehavior = FillBehavior.HoldEnd
         };
         var fade = new DoubleAnimationUsingKeyFrames
         {
             KeyFrames =
             {
-                new DiscreteDoubleKeyFrame(.96, KeyTime.FromTimeSpan(TimeSpan.Zero)),
-                new EasingDoubleKeyFrame(.92, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(160))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
-                new EasingDoubleKeyFrame(.60, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))) { EasingFunction = UiMotionService.ResponsiveEaseOut() },
+                new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(340))),
                 new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(waveDuration)) { EasingFunction = UiMotionService.ResponsiveEaseOut() }
             },
             FillBehavior = FillBehavior.Stop
@@ -1413,17 +1408,23 @@ public partial class MainWindow
         fade.Completed += (_, _) => UiMotionService.RunSafely("action-drop-wave-settle", () =>
         {
             UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 0);
-            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);
-            UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleYProperty, .06);
+            waveBrush.BeginAnimation(RadialGradientBrush.RadiusXProperty, null);
+            waveBrush.BeginAnimation(RadialGradientBrush.RadiusYProperty, null);
         });
-        waveScale.BeginAnimation(ScaleTransform.ScaleXProperty, expansion, HandoffBehavior.SnapshotAndReplace);
-        waveScale.BeginAnimation(ScaleTransform.ScaleYProperty, expansion.Clone(), HandoffBehavior.SnapshotAndReplace);
+        waveBrush.BeginAnimation(RadialGradientBrush.RadiusXProperty, expansion, HandoffBehavior.SnapshotAndReplace);
+        waveBrush.BeginAnimation(RadialGradientBrush.RadiusYProperty, expansion.Clone(), HandoffBehavior.SnapshotAndReplace);
         wave.BeginAnimation(UIElement.OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
     }
 
     static void ResetActionDropSuccessVisual(Button button, FrameworkElement wave)
     {
         UiMotionService.StopAndSetDouble(wave, UIElement.OpacityProperty, 0);
+        var paint = wave is Border border ? border.Background : (wave as System.Windows.Shapes.Shape)?.Fill;
+        if (paint is RadialGradientBrush radial && !radial.IsFrozen)
+        {
+            radial.BeginAnimation(RadialGradientBrush.RadiusXProperty, null);
+            radial.BeginAnimation(RadialGradientBrush.RadiusYProperty, null);
+        }
         if (wave.RenderTransform is ScaleTransform waveScale)
         {
             UiMotionService.StopAndSetDouble(waveScale, ScaleTransform.ScaleXProperty, .06);

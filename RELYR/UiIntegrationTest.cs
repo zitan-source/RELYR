@@ -967,6 +967,18 @@ internal static class UiIntegrationTest
             bool paletteDropWaveCentered = window.HasCenteredPaletteDropWaveForTest(f24Button);
             PumpFor(TimeSpan.FromMilliseconds(35));
             CaptureForReview(window, "action-drop-center-wave.png");
+            // Screenshot encoding and palette rebuilding consume wall time.
+            // Start a fresh visual clock to sample the actual full-paint phase.
+            window.ReplayPaletteDropMotionForTest(f24Button);
+            PumpFor(TimeSpan.FromMilliseconds(260));
+            f24Button.ApplyTemplate();
+            var filledWave = (Border)f24Button.Template.FindName("DropTargetTint", f24Button)!;
+            var filledPaint = (RadialGradientBrush)filledWave.Background;
+            Check(filledPaint.RadiusX * .88 > Math.Sqrt(.5)
+                && filledPaint.RadiusY * .88 > Math.Sqrt(.5)
+                && filledWave.Opacity > .9,
+                $"drop paint covers the farthest key corners at full saturation before fading (radius={filledPaint.RadiusX:F3}/{filledPaint.RadiusY:F3}, opacity={filledWave.Opacity:F3})");
+            CaptureForReview(window, "action-drop-full-coverage.png");
             Check(paletteApplied
                 && window.IsActionPaletteOpenForTest
                 && window.CurrentProfileForTest.Mappings.LastOrDefault(mapping => mapping.Input == "F24") is { Kind: ActionKind.Shortcut, Value: "Ctrl+C" }
@@ -1173,11 +1185,14 @@ internal static class UiIntegrationTest
                 $"dropping on the lower half preserves the short action and shows only a colored HOLD badge plus a rounded two-row Action card (applied={longPaletteApplied}, dual={MainWindow.GetHasDualPressAssignment(f24Button)}, long={MainWindow.GetHasLongPressAssignment(f24Button)}, badge={longBadge.Visibility}/{longBadge.Background}, face={f24Button.Background})");
             window.ClickVisualInputForTest("F24");
             Pump(window);
+            CaptureForReview(window, "assignment-summary-controls.png");
             Check(window.AssignmentTapFavoriteButton.Visibility == Visibility.Visible
                 && window.AssignmentHoldFavoriteButton.Visibility == Visibility.Visible
+                && window.AssignmentTapDeleteButton.Visibility == Visibility.Visible
+                && window.AssignmentHoldDeleteButton.Visibility == Visibility.Visible
                 && window.AssignmentTapCard.Cursor == System.Windows.Input.Cursors.Hand
                 && window.AssignmentHoldCard.Cursor == System.Windows.Input.Cursors.Hand,
-                "configured TAP and HOLD summaries expose independent draggable cards and favorite stars");
+                "configured TAP and HOLD summaries expose independent draggable cards, favorite stars, and delete buttons");
             var starPress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
             {
                 RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
@@ -1186,6 +1201,65 @@ internal static class UiIntegrationTest
             window.AssignmentTapFavoriteButton.RaiseEvent(starPress);
             Check(!window.IsAssignmentActionDragArmedForTest,
                 "pressing a summary favorite star never arms the Action drag gesture");
+            var deletePress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = window.AssignmentTapDeleteButton
+            };
+            window.AssignmentTapDeleteButton.RaiseEvent(deletePress);
+            var tapRightPress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Right)
+            {
+                RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent,
+                Source = window.AssignmentTapCard
+            };
+            window.AssignmentTapCard.RaiseEvent(tapRightPress);
+            Pump(window);
+            var tapSummaryMenu = window.AssignmentTapCard.ContextMenu;
+            var summaryContextMenuHeaders = tapSummaryMenu?.Items
+                .OfType<System.Windows.Controls.MenuItem>()
+                .Select(item => item.Header?.ToString())
+                .ToArray() ?? [];
+            bool tapSummaryMenuOpened = tapRightPress.Handled && tapSummaryMenu?.IsOpen == true;
+            if (tapSummaryMenu != null)
+                tapSummaryMenu.IsOpen = false;
+            var holdRightPress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Right)
+            {
+                RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent,
+                Source = window.AssignmentHoldCard
+            };
+            window.AssignmentHoldCard.RaiseEvent(holdRightPress);
+            Pump(window);
+            var holdSummaryMenu = window.AssignmentHoldCard.ContextMenu;
+            bool holdSummaryMenuOpened = holdRightPress.Handled && holdSummaryMenu?.IsOpen == true;
+            if (holdSummaryMenu != null)
+                holdSummaryMenu.IsOpen = false;
+            Check(!window.IsAssignmentActionDragArmedForTest
+                && tapSummaryMenuOpened && holdSummaryMenuOpened
+                && summaryContextMenuHeaders.Contains("この割り当てをコピー")
+                && summaryContextMenuHeaders.Contains("コピーした割り当てを貼り付け")
+                && summaryContextMenuHeaders.Contains("全レイヤーに割り当てる")
+                && summaryContextMenuHeaders.Contains("全プロファイルに割り当て")
+                && summaryContextMenuHeaders.Contains("この割り当てを削除"),
+                "summary command buttons do not arm dragging, and right-click exposes the established assignment menu");
+            window.AssignmentTapDeleteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var tapDeletedF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            Check(!MainWindow.HasConfiguredShortAction(tapDeletedF24)
+                && tapDeletedF24 is { LongPressKind: ActionKind.Key, LongPressValue: "Enter" }
+                && window.AssignmentTapDeleteButton.Visibility == Visibility.Collapsed
+                && window.AssignmentHoldDeleteButton.Visibility == Visibility.Visible,
+                "the TAP delete button removes only TAP while preserving HOLD");
+            window.UndoPaletteActionForTest();
+            Pump(window);
+            window.AssignmentHoldDeleteButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Pump(window);
+            var holdDeletedF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
+            Check(holdDeletedF24 is { Kind: ActionKind.Shortcut, Value: "Ctrl+C", LongPressKind: ActionKind.None, LongPressValue: "" }
+                && window.AssignmentTapDeleteButton.Visibility == Visibility.Visible
+                && window.AssignmentHoldDeleteButton.Visibility == Visibility.Collapsed,
+                "the HOLD delete button removes only HOLD while preserving TAP");
+            window.UndoPaletteActionForTest();
+            Pump(window);
             var previousF23BeforeMove = window.CurrentProfileForTest.Mappings.Where(mapping => mapping.Input == "F23").Select(mapping => mapping.Copy()).ToArray();
             bool summaryActionMoved = window.MoveAssignedActionForTest("F24", sourceLongPress: false, targetInput: "F23", targetKey: "F23", targetLongPress: true);
             var movedSourceF24 = window.CurrentProfileForTest.Mappings.Last(mapping => mapping.Input == "F24");
@@ -2552,15 +2626,15 @@ internal static class UiIntegrationTest
                 && Math.Abs(overlayHoverButton.ActualHeight - overlayHoverHeight) < .001
                 && overlayHoverButton.Template.FindName("GlassHighlight", overlayHoverButton) == null
                 && overlayHoverButton.Template.FindName("HoverUnderline", overlayHoverButton) == null,
-                "rapid pointer travel across the Deck overlay leaves the interruptible scale settled without resizing or moving its hit surface");
+                $"rapid pointer travel across the Deck overlay leaves the interruptible scale settled without resizing or moving its hit surface (rootAnimated={overlayHoverRoot.HasAnimatedProperties}, scaleAnimated={overlayHoverScale.HasAnimatedProperties}, scale={overlayHoverScale.ScaleX:F4}/{overlayHoverScale.ScaleY:F4}, size={overlayHoverButton.ActualWidth:F3}/{overlayHoverWidth:F3} x {overlayHoverButton.ActualHeight:F3}/{overlayHoverHeight:F3}, mouseOver={overlayHoverButton.IsMouseOver})");
             PumpFor(TimeSpan.FromMilliseconds(260));
             bool hoverScaleBaselineAnimated = overlayHoverScale.HasAnimatedProperties;
             double hoverScaleBaselineValue = overlayHoverScale.ScaleX;
             bool hoverScaleBaseline = !hoverScaleBaselineAnimated && Math.Abs(hoverScaleBaselineValue - 1) < .001;
             overlayHoverButton.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            bool hoverScaleDeferred = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
+            bool hoverScaleDeferred = overlayHoverScale.HasAnimatedProperties;
             PumpFor(TimeSpan.FromMilliseconds(120));
-            bool hoverScaleStillWaiting = !overlayHoverScale.HasAnimatedProperties && Math.Abs(overlayHoverScale.ScaleX - 1) < .001;
+            bool hoverScaleStillWaiting = overlayHoverScale.ScaleX >= 1.05;
             PumpFor(TimeSpan.FromMilliseconds(320));
             bool hoverScaleStarted = overlayHoverScale.HasAnimatedProperties || overlayHoverScale.ScaleX > 1.0001;
             double hoverScaleLiveValue = overlayHoverScale.ScaleX;
@@ -2568,7 +2642,7 @@ internal static class UiIntegrationTest
             PumpFor(TimeSpan.FromMilliseconds(520));
             double hoverScaleSettledInValue = overlayHoverScale.ScaleX;
             CaptureForReview(deckOverlay, "deck-hover-scale.png");
-            bool hoverScaleRuns = hoverScaleBaseline && hoverScaleDeferred && hoverScaleStarted && hoverScaleIsDeliberate
+            bool hoverScaleRuns = hoverScaleBaseline && hoverScaleDeferred && hoverScaleStillWaiting && hoverScaleStarted && hoverScaleIsDeliberate
                 && !overlayHoverScale.HasAnimatedProperties
                 && Math.Abs(hoverScaleSettledInValue - 1.07) < .001
                 && Math.Abs(overlayHoverScale.ScaleY - hoverScaleSettledInValue) < .001
@@ -2591,7 +2665,7 @@ internal static class UiIntegrationTest
             UiMotionService.Apply(true);
             deckOverlay.RefreshLayoutPreview(67, true);
             Check(hoverScaleRuns && hoverScaleSettled && layoutHoverOffIsImmediate && globalHoverOffIsImmediate,
-                $"Deck hover ignores brief pointer crossings, eases in slowly without overshoot, returns promptly, and enlarges only when both animation settings are enabled without resizing its hit surface (baseline={hoverScaleBaseline}/{hoverScaleBaselineAnimated}/{hoverScaleBaselineValue:F3}, deferred={hoverScaleDeferred}/{hoverScaleStillWaiting}, started={hoverScaleStarted}/{hoverScaleLiveValue:F3}, deliberate={hoverScaleIsDeliberate}, target={hoverScaleSettledInValue:F3}, running={hoverScaleRuns}, out={hoverScaleOutStarted}, settled={hoverScaleSettled}, layoutOff={layoutHoverOffIsImmediate}, globalOff={globalHoverOffIsImmediate})");
+                $"Deck hover starts immediately, is legible within 120ms, reverses without overshoot, and respects both animation settings without resizing its hit surface (running={hoverScaleRuns}, baseline={hoverScaleBaseline}/{hoverScaleBaselineValue:F4}, immediate={hoverScaleDeferred}, legible={hoverScaleStillWaiting}, live={hoverScaleLiveValue:F4}, end={hoverScaleSettledInValue:F4}, settled={hoverScaleSettled}, layoutOff={layoutHoverOffIsImmediate}, globalOff={globalHoverOffIsImmediate})");
             var overlayDropTarget = deckOverlay.DeckButtons[1];
             var overlayTargetBackground = overlayDropTarget.Background;
             var overlayTargetBorder = overlayDropTarget.BorderBrush;

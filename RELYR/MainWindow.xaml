@@ -1263,26 +1263,28 @@
             <StackPanel x:Name="AssignmentEditor" Visibility="Collapsed">
             <StackPanel x:Name="AssignmentSummaryPanel" Margin="0,0,0,4">
               <TextBlock x:Name="AssignmentActionSectionLabel" Text="現在のAction" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
-              <Border x:Name="AssignmentTapCard" Style="{StaticResource AssignmentSummaryCardStyle}" PreviewMouseLeftButtonDown="AssignmentActionCard_PreviewMouseLeftButtonDown" PreviewMouseMove="AssignmentActionCard_PreviewMouseMove" PreviewMouseLeftButtonUp="AssignmentActionCard_PreviewMouseLeftButtonUp">
+              <Border x:Name="AssignmentTapCard" Style="{StaticResource AssignmentSummaryCardStyle}" PreviewMouseLeftButtonDown="AssignmentActionCard_PreviewMouseLeftButtonDown" PreviewMouseMove="AssignmentActionCard_PreviewMouseMove" PreviewMouseLeftButtonUp="AssignmentActionCard_PreviewMouseLeftButtonUp" PreviewMouseRightButtonDown="AssignmentActionCard_PreviewMouseRightButtonDown">
                 <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>
                   <TextBlock x:Name="AssignmentTapSlotText" Text="TAP" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Top" Margin="0,2,8,0"/>
                   <StackPanel Grid.Column="1" MinWidth="0">
                     <TextBlock x:Name="AssignmentTapNameText" Text="未設定" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
                     <TextBlock x:Name="AssignmentTapDetailText" Text="元の入力を使います" FontSize="10.5" Foreground="{DynamicResource MutedText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                   </StackPanel>
                   <Button x:Name="AssignmentTapFavoriteButton" Grid.Column="2" Width="26" Height="26" MinWidth="26" MinHeight="26" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Foreground="{DynamicResource MutedText}" Visibility="Collapsed" Click="AssignmentActionFavorite_Click" ToolTip="お気に入りに追加" AutomationProperties.Name="TAP Actionをお気に入りに追加"><TextBlock Text="☆" FontSize="15"/></Button>
+                  <Button x:Name="AssignmentTapDeleteButton" Grid.Column="3" Width="26" Height="26" MinWidth="26" MinHeight="26" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed" Click="AssignmentActionDelete_Click" ToolTip="この割り当てを削除" AutomationProperties.Name="TAP Actionを削除"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="11"/></Button>
                 </Grid>
               </Border>
-              <Border x:Name="AssignmentHoldCard" Style="{StaticResource AssignmentSummaryCardStyle}" Margin="0,8,0,0" PreviewMouseLeftButtonDown="AssignmentActionCard_PreviewMouseLeftButtonDown" PreviewMouseMove="AssignmentActionCard_PreviewMouseMove" PreviewMouseLeftButtonUp="AssignmentActionCard_PreviewMouseLeftButtonUp">
+              <Border x:Name="AssignmentHoldCard" Style="{StaticResource AssignmentSummaryCardStyle}" Margin="0,8,0,0" PreviewMouseLeftButtonDown="AssignmentActionCard_PreviewMouseLeftButtonDown" PreviewMouseMove="AssignmentActionCard_PreviewMouseMove" PreviewMouseLeftButtonUp="AssignmentActionCard_PreviewMouseLeftButtonUp" PreviewMouseRightButtonDown="AssignmentActionCard_PreviewMouseRightButtonDown">
                 <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>
                   <TextBlock Text="HOLD" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Top" Margin="0,2,8,0"/>
                   <StackPanel Grid.Column="1" MinWidth="0">
                     <TextBlock x:Name="AssignmentHoldNameText" Text="未設定" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
                     <TextBlock x:Name="AssignmentHoldDetailText" Text="ActionをHOLDへドラッグ" FontSize="10.5" Foreground="{DynamicResource MutedText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                   </StackPanel>
                   <Button x:Name="AssignmentHoldFavoriteButton" Grid.Column="2" Width="26" Height="26" MinWidth="26" MinHeight="26" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Foreground="{DynamicResource MutedText}" Visibility="Collapsed" Click="AssignmentActionFavorite_Click" ToolTip="お気に入りに追加" AutomationProperties.Name="HOLD Actionをお気に入りに追加"><TextBlock Text="☆" FontSize="15"/></Button>
+                  <Button x:Name="AssignmentHoldDeleteButton" Grid.Column="3" Width="26" Height="26" MinWidth="26" MinHeight="26" Padding="0" Margin="4,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Foreground="{DynamicResource DangerBrush}" Visibility="Collapsed" Click="AssignmentActionDelete_Click" ToolTip="この割り当てを削除" AutomationProperties.Name="HOLD Actionを削除"><TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="11"/></Button>
                 </Grid>
               </Border>
               <StackPanel x:Name="AssignmentHoldTimingPanel" Visibility="Collapsed" Margin="2,12,2,0">

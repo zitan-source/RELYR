@@ -190,6 +190,8 @@ public partial class MainWindow
         button.ApplyTemplate();
         return button.Template.FindName("DropTargetTint", button) is UIElement { HasAnimatedProperties: true };
     }
+    internal void ReplayPaletteDropMotionForTest(System.Windows.Controls.Button button)
+        => PlayActionDropSuccess(button);
     internal bool HasCenteredPaletteDropWaveForTest(System.Windows.Controls.Button button)
     {
         button.ApplyTemplate();
@@ -207,8 +209,9 @@ public partial class MainWindow
         return brush is { Center.X: .5, Center.Y: .5, GradientOrigin.X: .5, GradientOrigin.Y: .5 }
             && brush.GradientStops.Any(stop => stop.Color.R == accent.R && stop.Color.G == accent.G && stop.Color.B == accent.B)
             && parent?.ClipToBounds == true
-            && waveScale.ScaleX < .5
-            && waveScale.ScaleY < .5;
+            && waveScale.ScaleX == 1
+            && waveScale.ScaleY == 1
+            && brush.GradientStops[1].Color.A == 255;
     }
     internal bool PaletteDropWaveSettledForTest(System.Windows.Controls.Button button)
     {
