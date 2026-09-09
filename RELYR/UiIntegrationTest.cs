@@ -1193,6 +1193,24 @@ internal static class UiIntegrationTest
                 && window.AssignmentTapCard.Cursor == System.Windows.Input.Cursors.Hand
                 && window.AssignmentHoldCard.Cursor == System.Windows.Input.Cursors.Hand,
                 "configured TAP and HOLD summaries expose independent draggable cards, favorite stars, and delete buttons");
+            foreach (var summaryText in new[] { window.AssignmentTapNameText, window.AssignmentHoldNameText })
+            {
+                // Exercise the ancestor's generic PreviewMouseDown too: raising
+                // only PreviewMouseLeftButtonDown misses blank-click dismissal.
+                summaryText.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
+                {
+                    RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent,
+                    Source = summaryText
+                });
+                Check(window.IsAssignmentActionDragArmedForTest && window.AssignmentEditor.IsEnabled
+                    && window.AssignmentEditor.Visibility == Visibility.Visible,
+                    "summary Action text survives ancestor mouse-down routing and arms its TAP/HOLD drag without dismissing selection");
+                summaryText.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
+                {
+                    RoutedEvent = System.Windows.Input.Mouse.PreviewMouseUpEvent,
+                    Source = summaryText
+                });
+            }
             var starPress = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
             {
                 RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,

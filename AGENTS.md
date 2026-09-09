@@ -25,6 +25,11 @@
 
 # Installer Gate
 
+- For RELYR update publication, installer upload, and release-note corrections, use `C:/Users/freecar/.codex/skills/relyr-release/SKILL.md` and read `docs/release-notes-format.md`. If the skill is unavailable, these repository requirements still apply.
+- Release notes MUST contain substantive English first and Japanese second with exact `en-US` and `ja-JP` markers. Japanese-only publication is forbidden. Japanese UI selects Japanese notes; all other supported UI languages select English.
+- Run `tools/Verify-ReleaseNotes.ps1` before publication and on the fetched published body afterward; manually verify translation parity. Installer localization alone does not satisfy this requirement.
+- Reuse verified installers for uploads and notes-only corrections. Do not rebuild because authentication, upload, or release-note editing failed.
+
 - Before creating an installer, confirm the current source version from `RELYR/RELYR.csproj`.
 - Use only the existing compiler at `C:\Users\freecar\AppData\Local\Programs\Inno Setup 6\ISCC.exe`; do not download, install, update, or uninstall Inno Setup.
 - Confirm that the output directory is `artifacts/production` and that it contains only the current full setup, lightweight update installer, and their matching `.sha256` files after generation.

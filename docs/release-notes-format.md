@@ -28,6 +28,13 @@ Both sections are required. Do not place download instructions or generated
 asset lists inside either marked section unless they should also appear in the
 in-app release-notes window.
 
+## Mandatory publication gate
+
+- Never publish Japanese-only notes. Both sections must describe the same changes; a generic English fallback message does not qualify.
+- Run `tools/Verify-ReleaseNotes.ps1 -Path docs/releases/v<version>.md` before publishing and on the fetched GitHub body afterward. Review semantic translation parity manually.
+- Applies to new releases, updates, and corrections. Installer UI localization is separate.
+- Notes-only corrections do not require rebuilding, version bumps, or asset replacement. Already-cached updater notes may retain the old body.
+
 For compatibility with older releases, an unmarked English body is displayed in
 every language. An unmarked Japanese body is displayed only in Japanese; other
 languages receive a short English notice instead of Japanese text.

@@ -1744,6 +1744,11 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left || e.OriginalSource is not DependencyObject source)
             return;
+        // Summary cards are drag sources even though they are Borders rather
+        // than ButtonBase controls. Preserve selection throughout mouse-down
+        // routing so their drag handler can still see the selected mapping.
+        if (IsDescendantOf(source, AssignmentTapCard) || IsDescendantOf(source, AssignmentHoldCard))
+            return;
         bool deckCustomizeBlankClick = deckManagementMode
             && deckCustomizeOpen
             && DeckEditorWorkspace.Visibility == Visibility.Visible
