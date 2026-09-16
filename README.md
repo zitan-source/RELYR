@@ -30,6 +30,10 @@ Each installer has a matching `.sha256` file in the same release. Use it to veri
 > [!IMPORTANT]
 > The current installers are not code-signed. Windows SmartScreen may show an **Unknown publisher** warning on first launch. Verify that the download came from the official Releases page and use its matching SHA-256 file. The complete source code and build process are available in this repository.
 
+## Support development
+
+RELYR stays free and open source, with no feature differences based on support. If it is useful, you can optionally [support RELYR on Ko-fi](https://ko-fi.com/relyr). Contributions help fund continued development, testing, documentation, and safer distribution.
+
 ## Features
 
 - Key layers activated while holding Space, CapsLock, or mouse buttons
