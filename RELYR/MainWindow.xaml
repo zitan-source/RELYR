@@ -1196,13 +1196,15 @@
                         </Grid>
                         <CheckBox x:Name="DeckHoverAnimationBox" Content="ホバー時アニメーション" Margin="0,18,0,0" Checked="DeckHoverAnimationChanged" Unchecked="DeckHoverAnimationChanged" ToolTip="ポインターを重ねたときの変化をなめらかにします"/>
                         <CheckBox x:Name="DeckHoverPreviewBox" Content="ファイルをホバー再生" Margin="0,12,0,0" Checked="DeckHoverPreviewChanged" Unchecked="DeckHoverPreviewChanged" ToolTip="OFFでもクリックすると音声・動画をプレビューできます"/>
+                        <CheckBox x:Name="DeckHideLabelsBox" Content="ラベルを隠す" Margin="0,12,0,0" Checked="DeckLabelDisplayChanged" Unchecked="DeckLabelDisplayChanged" ToolTip="すべてのボタン下のラベルとラベル領域を隠します"/>
+                        <CheckBox x:Name="DeckShowFileExtensionsBox" Content="ファイルの拡張子を表示" Margin="0,12,0,0" Checked="DeckLabelDisplayChanged" Unchecked="DeckLabelDisplayChanged" ToolTip="ファイル名から作るラベルに拡張子を表示します。手動のラベルは変わりません"/>
                       </StackPanel>
                     </Border>
                     <Border x:Name="DeckAutoHideSettingsCard" Grid.Row="3" Style="{StaticResource DeckEditorSettingsCard}" Visibility="Collapsed" Margin="0">
                       <StackPanel x:Name="DeckAutoHideSettingsGroup">
                         <Grid x:Name="DeckBehaviorFieldsGrid">
                           <Grid.ColumnDefinitions><ColumnDefinition x:Name="DeckBehaviorFirstColumn" Width="*"/><ColumnDefinition x:Name="DeckBehaviorGapColumn" Width="10"/><ColumnDefinition x:Name="DeckBehaviorSecondColumn" Width="*"/></Grid.ColumnDefinitions>
-                          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                           <StackPanel x:Name="DeckAfterActionBehaviorGroup">
                             <TextBlock Text="実行後" Style="{StaticResource DeckEditorFieldLabel}"/>
                             <ComboBox x:Name="DeckAfterActionBehaviorBox" Style="{StaticResource ToolbarComboBoxStyle}" Height="36" Margin="0" HorizontalAlignment="Stretch" SelectionChanged="DeckAutoDismissBehaviorChanged" ToolTip="Deckを固定している間は自動動作しません">
@@ -1215,7 +1217,8 @@
                               <ComboBoxItem Content="そのまま表示" Tag="StayVisible"/><ComboBoxItem Content="画面端に折りたたむ" Tag="CollapseToEdge"/><ComboBoxItem Content="Deckを非表示" Tag="Hide"/>
                             </ComboBox>
                           </StackPanel>
-                          <TextBlock x:Name="DeckPinnedBehaviorHint" Grid.Row="1" Grid.ColumnSpan="3" Text="固定中は自動動作しません。" Style="{StaticResource DeckEditorHelperText}" Margin="0,6,0,0"/>
+                          <CheckBox x:Name="DeckShowAtCursorBox" Grid.Row="2" Grid.ColumnSpan="3" Content="表示時にマウス位置へ移動" Margin="0,14,0,0" Checked="DeckShowAtCursorChanged" Unchecked="DeckShowAtCursorChanged" ToolTip="Deckの中央をマウス位置に合わせ、画面内に収めます"/>
+                          <TextBlock x:Name="DeckPinnedBehaviorHint" Grid.Row="3" Grid.ColumnSpan="3" Text="固定中は自動動作しません。" Style="{StaticResource DeckEditorHelperText}" Margin="0,8,0,0"/>
                         </Grid>
                       </StackPanel>
                     </Border>

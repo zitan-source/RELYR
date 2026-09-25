@@ -28,9 +28,13 @@ sealed class DeckVideoPreviewPopup : IDisposable
 {
     const double MaxPreviewWidth = 360;
     const double MaxPreviewHeight = 300;
+    const double PreviewGap = 10;
+    static readonly TimeSpan CloseGrace = TimeSpan.FromMilliseconds(900);
+    static WeakReference<DeckVideoPreviewPopup>? activePreview;
     readonly Button source;
     readonly FrameworkElement placementBoundary;
     readonly bool sourceHoverEnabled;
+    readonly Func<bool>? tryYieldToCoveredRowButton;
     readonly Popup popup;
     readonly Grid frame;
     readonly MediaElement media;
@@ -52,13 +56,15 @@ sealed class DeckVideoPreviewPopup : IDisposable
     bool surfacePointerCaptured;
     bool surfaceDragging;
     double surfacePointerDownX;
+    bool escapeWasDown;
     bool disposed;
 
-    internal DeckVideoPreviewPopup(Button source, string path, FrameworkElement placementBoundary, bool sourceHoverEnabled = true)
+    internal DeckVideoPreviewPopup(Button source, string path, FrameworkElement placementBoundary, bool sourceHoverEnabled = true, Func<bool>? tryYieldToCoveredRowButton = null)
     {
         this.source = source;
         this.placementBoundary = placementBoundary;
         this.sourceHoverEnabled = sourceHoverEnabled;
+        this.tryYieldToCoveredRowButton = tryYieldToCoveredRowButton;
         ImageSource? thumbnail = DeckPanelLayout.LoadVideoThumbnail(path, 640, 360);
         System.Windows.Size initialSize = PreviewSize(thumbnail?.Width ?? 0, thumbnail?.Height ?? 0);
         frame = new Grid { Width = initialSize.Width, Height = initialSize.Height, Background = new SolidColorBrush(WpfColor.FromRgb(12, 17, 21)), ClipToBounds = true, SnapsToDevicePixels = true, Cursor = WpfCursors.SizeWE };
@@ -108,11 +114,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
         popup = new Popup { Child = card, PlacementTarget = source, Placement = PlacementMode.Custom, StaysOpen = true, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade };
         popup.CustomPopupPlacementCallback = OutsideDeckPlacements;
 
-        closeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        closeTimer = new DispatcherTimer { Interval = CloseGrace };
         closeTimer.Tick += CloseTimerTick;
         playbackTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
         playbackTimer.Tick += PlaybackTimerTick;
-        pointerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+        pointerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(32) };
         pointerTimer.Tick += PointerTimerTick;
         if (sourceHoverEnabled)
         {
@@ -120,6 +126,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
             source.MouseLeave += SourceMouseLeave;
         }
         source.PreviewMouseLeftButtonDown += SourceMouseLeftButtonDown;
+        placementBoundary.PreviewMouseLeftButtonDown += BoundaryMouseLeftButtonDown;
         card.MouseEnter += CardMouseEnter;
         card.MouseLeave += CardMouseLeave;
         card.PreviewMouseLeftButtonDown += CardMouseLeftButtonDown;
@@ -131,18 +138,41 @@ sealed class DeckVideoPreviewPopup : IDisposable
     {
         try
         {
-            double gap = targetSize.Width;
-            double y = (targetSize.Height - popupSize.Height) / 2;
-            var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
-            var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
             Point sourceInDeck = source.TranslatePoint(new Point(0, 0), placementBoundary);
             double deckWidth = placementBoundary.ActualWidth > 0 ? placementBoundary.ActualWidth : placementBoundary.Width;
-            return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+            double deckHeight = placementBoundary.ActualHeight > 0 ? placementBoundary.ActualHeight : placementBoundary.Height;
+            return NearbyVideoPlacementsForTest(popupSize, targetSize, sourceInDeck, new System.Windows.Size(deckWidth, deckHeight));
         }
         catch { return [new CustomPopupPlacement(new Point(targetSize.Width + 8, 0), PopupPrimaryAxis.None)]; }
     }
+    internal static CustomPopupPlacement[] NearbyVideoPlacementsForTest(System.Windows.Size popupSize, System.Windows.Size targetSize, Point sourceInDeck, System.Windows.Size deckSize)
+    {
+        double centeredX = (targetSize.Width - popupSize.Width) / 2;
+        double centeredY = (targetSize.Height - popupSize.Height) / 2;
+        var below = new CustomPopupPlacement(new Point(centeredX, targetSize.Height + PreviewGap), PopupPrimaryAxis.Horizontal);
+        var above = new CustomPopupPlacement(new Point(centeredX, -popupSize.Height - PreviewGap), PopupPrimaryAxis.Horizontal);
+        var right = new CustomPopupPlacement(new Point(targetSize.Width + PreviewGap, centeredY), PopupPrimaryAxis.Vertical);
+        var left = new CustomPopupPlacement(new Point(-popupSize.Width - PreviewGap, centeredY), PopupPrimaryAxis.Vertical);
+        bool lowerHalf = sourceInDeck.Y + targetSize.Height / 2 > deckSize.Height / 2;
+        bool rightHalf = sourceInDeck.X + targetSize.Width / 2 > deckSize.Width / 2;
+        var verticalFirst = lowerHalf ? above : below;
+        var verticalSecond = lowerHalf ? below : above;
+        var outward = rightHalf ? right : left;
+        var inward = rightHalf ? left : right;
+        return [verticalFirst, verticalSecond, outward, inward];
+    }
+    internal static CustomPopupPlacement[] OutsideDeckPlacementsForTest(System.Windows.Size popupSize, System.Windows.Size targetSize, Point sourceInDeck, double deckWidth)
+    {
+        double y = (targetSize.Height - popupSize.Height) / 2;
+        var right = new CustomPopupPlacement(new Point(deckWidth - sourceInDeck.X + PreviewGap, y), PopupPrimaryAxis.Vertical);
+        var left = new CustomPopupPlacement(new Point(-sourceInDeck.X - popupSize.Width - PreviewGap, y), PopupPrimaryAxis.Vertical);
+        return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+    }
     internal bool IsFor(Button button) => ReferenceEquals(source, button);
     internal bool SourceHoverEnabled => sourceHoverEnabled;
+    internal static TimeSpan CloseGraceForTest => CloseGrace;
+    internal bool TryYieldToCoveredRowButtonForTest()
+        => sourceHoverEnabled && tryYieldToCoveredRowButton?.Invoke() == true;
     internal void Hide() => ClosePreview();
     internal void Show() => OpenPreview();
 
@@ -175,7 +205,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
             return;
         try
         {
+            if (activePreview?.TryGetTarget(out var active) == true && !ReferenceEquals(active, this))
+                active.ClosePreview();
+            activePreview = new WeakReference<DeckVideoPreviewPopup>(this);
             closeTimer.Stop();
+            escapeWasDown = IsKeyDown(0x1b);
             if (!popup.IsOpen)
                 popup.IsOpen = true;
             // Force the media pipeline to open while muted. ScrubbingEnabled
@@ -189,6 +223,11 @@ sealed class DeckVideoPreviewPopup : IDisposable
     }
     void SourceMouseLeave(object sender, MouseEventArgs e) => ScheduleClose();
     void SourceMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => ClosePreview();
+    void BoundaryMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, source) && !IsDescendantOf(e.OriginalSource as DependencyObject, source))
+            ClosePreview();
+    }
     void CardMouseEnter(object sender, MouseEventArgs e) => closeTimer.Stop();
     void CardMouseLeave(object sender, MouseEventArgs e) => ScheduleClose();
     void CardMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -237,7 +276,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
     }
     void ScheduleClose()
     {
-        if (!disposed)
+        if (!disposed && !playRequested)
             closeTimer.Start();
     }
     void CloseTimerTick(object? sender, EventArgs e)
@@ -268,6 +307,8 @@ sealed class DeckVideoPreviewPopup : IDisposable
         playRequested = false;
         SetPlayGlyph(false);
         try { popup.IsOpen = false; } catch { }
+        if (activePreview?.TryGetTarget(out var active) == true && ReferenceEquals(active, this))
+            activePreview = null;
     }
     void PointerTimerTick(object? sender, EventArgs e)
     {
@@ -276,12 +317,30 @@ sealed class DeckVideoPreviewPopup : IDisposable
             pointerTimer.Stop();
             return;
         }
+        bool escapeDown = IsKeyDown(0x1b);
+        if (escapeDown && !escapeWasDown)
+        {
+            escapeWasDown = true;
+            ClosePreview();
+            return;
+        }
+        escapeWasDown = escapeDown;
+        if (TryYieldToCoveredRowButtonForTest())
+            return;
         if (IsPointerOverPreview())
             closeTimer.Stop();
+        else if (playRequested)
+        {
+            closeTimer.Stop();
+            if (Mouse.LeftButton == MouseButtonState.Pressed
+                || Mouse.RightButton == MouseButtonState.Pressed
+                || Mouse.MiddleButton == MouseButtonState.Pressed)
+                ClosePreview();
+        }
         else
             ScheduleClose();
     }
-    bool IsPointerOverPreview() => ContainsCursor(source) || ContainsCursor(card);
+    bool IsPointerOverPreview() => ContainsCursor(source) || ContainsCursor(card) || IsCursorInTransitCorridor(source, card);
     static bool ContainsCursor(FrameworkElement element)
     {
         if (!element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
@@ -297,6 +356,40 @@ sealed class DeckVideoPreviewPopup : IDisposable
         }
         catch { return false; }
     }
+    static bool IsCursorInTransitCorridor(FrameworkElement first, FrameworkElement second)
+    {
+        if (!TryScreenBounds(first, out var firstBounds) || !TryScreenBounds(second, out var secondBounds))
+            return false;
+        const double margin = 6;
+        var bridge = Rect.Union(firstBounds, secondBounds);
+        bridge.Inflate(margin, margin);
+        var cursor = System.Windows.Forms.Cursor.Position;
+        return bridge.Contains(new Point(cursor.X, cursor.Y));
+    }
+    static bool TryScreenBounds(FrameworkElement element, out Rect bounds)
+    {
+        bounds = Rect.Empty;
+        if (!element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return false;
+        try
+        {
+            Point topLeft = element.PointToScreen(new Point(0, 0));
+            DpiScale dpi = VisualTreeHelper.GetDpi(element);
+            bounds = new Rect(topLeft.X, topLeft.Y, element.ActualWidth * dpi.DpiScaleX, element.ActualHeight * dpi.DpiScaleY);
+            return true;
+        }
+        catch { return false; }
+    }
+    static bool IsDescendantOf(DependencyObject? candidate, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = candidate; current != null; current = current is Visual visual ? VisualTreeHelper.GetParent(visual) : LogicalTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+        }
+        return false;
+    }
+    static bool IsKeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
     void MediaOpened(object? sender, RoutedEventArgs e)
     {
         try
@@ -499,6 +592,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
             source.MouseLeave -= SourceMouseLeave;
         }
         source.PreviewMouseLeftButtonDown -= SourceMouseLeftButtonDown;
+        placementBoundary.PreviewMouseLeftButtonDown -= BoundaryMouseLeftButtonDown;
         card.PreviewMouseLeftButtonDown -= CardMouseLeftButtonDown;
         card.PreviewMouseMove -= CardMouseMove;
         card.PreviewMouseLeftButtonUp -= CardMouseLeftButtonUp;
@@ -513,4 +607,7 @@ sealed class DeckVideoPreviewPopup : IDisposable
         catch { }
         try { popup.IsOpen = false; } catch { }
     }
+
+    [DllImport("user32.dll")]
+    static extern short GetAsyncKeyState(int virtualKey);
 }

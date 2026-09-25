@@ -409,6 +409,20 @@ internal static class ConfigurationMatrixTest
     {
         bool passed = Math.Abs((DeckPanelLayout.CellWidth - DeckPanelLayout.KeyWidth)
             - (DeckPanelLayout.CellHeight - DeckPanelLayout.KeyHeight)) < .001;
+        var fileLabel = new Mapping { DeckFilePath = @"C:\Media\clip.final.mp4" };
+        passed &= DeckPanelLayout.NameLabelText(fileLabel, showFileExtension: false) == "clip.final"
+            && DeckPanelLayout.NameLabelText(fileLabel, showFileExtension: true) == "clip.final.mp4";
+        fileLabel.Description = "編集用素材";
+        passed &= DeckPanelLayout.NameLabelText(fileLabel, showFileExtension: false) == "編集用素材"
+            && DeckPanelLayout.NameLabelText(fileLabel, showFileExtension: true) == "編集用素材"
+            && fileLabel.DeckFilePath == @"C:\Media\clip.final.mp4";
+        var labelsVisible = new DeckLayoutDefinition();
+        var labelsHidden = new DeckLayoutDefinition { LabelsHidden = true };
+        passed &= Math.Abs(DeckPanelLayout.CellWidthFor(labelsVisible) - DeckPanelLayout.CellWidth) < .001
+            && Math.Abs(DeckPanelLayout.CellHeightFor(labelsVisible) - DeckPanelLayout.CellHeight) < .001
+            && Math.Abs(DeckPanelLayout.CellWidthFor(labelsHidden) - (DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap)) < .001
+            && Math.Abs(DeckPanelLayout.CellHeightFor(labelsHidden) - (DeckPanelLayout.KeyHeight + DeckPanelLayout.Gap)) < .001;
+        cases++;
         foreach (int rows in Enumerable.Range(1, DeckPanelLayout.MaximumRows))
         foreach (int columns in Enumerable.Range(1, DeckPanelLayout.MaximumColumns))
         {
@@ -426,7 +440,7 @@ internal static class ConfigurationMatrixTest
                 && layout.Mappings.Any(mapping => mapping.Input == DeckPanelLayout.InputName(visible) && mapping.Value == "variant" && mapping.Application == "editor.exe");
             cases++;
         }
-        report.Check(passed, "all 324 Deck row/column combinations retain square spacing, slot identity, actions, and long names");
+        report.Check(passed, "all Deck sizes retain square spacing and slot identity while file labels default to extensionless names, preserve custom labels, and remove their reserved area only when hidden");
     }
 
     static void TestProfileRouting(VerificationReport report, ref int cases)

@@ -158,6 +158,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     internal IReadOnlyList<Button> DeckButtons => deckButtons;
     internal int VideoPreviewCountForTest => videoPreview == null ? 0 : 1;
     internal bool? VideoPreviewUsesSourceHoverForTest => videoPreview?.SourceHoverEnabled;
+    internal bool VideoPreviewIsForTest(Button button) => videoPreview?.IsFor(button) == true;
     internal bool AudioPreviewActiveForTest => hoverAudioPlayer != null;
     internal bool MonitorControlVisibleForTest => monitorControlPanel != null;
     internal FrameworkElement? MonitorControlPanelForTest => monitorControlPanel;
@@ -231,6 +232,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     int renderedColumns;
     int renderedRows;
     double renderedPanelInset;
+    bool renderedLabelsHidden;
     bool collapsedToEdge;
     bool edgeExpansionArmed;
     bool collapsedPointerTransitionPending;
@@ -276,6 +278,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         renderedColumns = layout.Columns;
         renderedRows = layout.Rows;
         renderedPanelInset = PanelInset;
+        renderedLabelsHidden = layout.LabelsHidden;
         Title = LocalizationService.Text("RELYR Deck - " + layout.Name);
         deckGrid = new UniformGrid();
         UpdateDeckDimensions(layout.PanelWidth, layout.PanelHeight);
@@ -361,8 +364,8 @@ internal sealed partial class DeckPanelOverlayWindow : Window
 
     void UpdateDeckDimensions(double? preferredWidth = null, double? preferredHeight = null)
     {
-        naturalGridWidth = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns) * DeckPanelLayout.CellWidth;
-        naturalGridHeight = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows) * DeckPanelLayout.CellHeight;
+        naturalGridWidth = Math.Clamp(layout.Columns, 1, DeckPanelLayout.MaximumColumns) * DeckPanelLayout.CellWidthFor(layout);
+        naturalGridHeight = Math.Clamp(layout.Rows, 1, DeckPanelLayout.MaximumRows) * DeckPanelLayout.CellHeightFor(layout);
         double availableWidth = Math.Max(1, SystemParameters.WorkArea.Width - 48 - OverlayChromeWidth);
         double availableHeight = Math.Max(1, SystemParameters.WorkArea.Height - 48 - OverlayChromeHeight);
         double fittedScale = Math.Min(1, Math.Min(availableWidth / naturalGridWidth, availableHeight / naturalGridHeight));
@@ -936,6 +939,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
     }
     (Button Button, StackPanel Cell) CreateDeckButtonCell(int slot)
     {
+        double cellGap = DeckPanelLayout.CellGap(layout);
         var mapping = DeckPanelLayout.FindMapping(layout, slot);
         var button = new Button
         {
@@ -945,7 +949,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             Height = DeckPanelLayout.KeyHeight,
             MinWidth = 0,
             MinHeight = 0,
-            Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0),
+            Margin = new Thickness(cellGap / 2, 0, cellGap / 2, 0),
             Padding = new Thickness(3),
             Focusable = false,
             IsEnabled = true,
@@ -984,10 +988,11 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         button.MouseEnter += DeckButtonFileAvailability_MouseEnter;
         if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredFilePreview(mapping)))
             ConfigureHoverPreview(button, mapping);
-        var nameLabel = DeckPanelLayout.CreateNameLabel(mapping);
+        var nameLabel = DeckPanelLayout.CreateNameLabel(mapping, layout.ShowFileExtensionsInLabels);
+        nameLabel.Visibility = layout.LabelsHidden ? Visibility.Collapsed : Visibility.Visible;
         if (DeckPanelLayout.TryGetButtonColor(mapping, out _) || MainWindow.MappingInterceptsInput(mapping))
             nameLabel.Foreground = button.Foreground;
-        var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
+        var cell = new StackPanel { Width = DeckPanelLayout.CellWidthFor(layout), Height = DeckPanelLayout.CellHeightFor(layout) };
         cell.Children.Add(button);
         cell.Children.Add(nameLabel);
         return (button, cell);
@@ -1274,13 +1279,15 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         dragArea.ToolTip = displayName;
         bool dimensionsChanged = renderedColumns != layout.Columns || renderedRows != layout.Rows;
         bool panelInsetChanged = Math.Abs(renderedPanelInset - PanelInset) > .01;
+        bool labelGeometryChanged = renderedLabelsHidden != layout.LabelsHidden;
         renderedColumns = layout.Columns;
         renderedRows = layout.Rows;
         renderedPanelInset = PanelInset;
+        renderedLabelsHidden = layout.LabelsHidden;
         if (collapsedToEdge)
-            resetSizeWhenExpanded |= dimensionsChanged || panelInsetChanged;
+            resetSizeWhenExpanded |= dimensionsChanged || panelInsetChanged || labelGeometryChanged;
         else
-            UpdateDeckDimensions(dimensionsChanged || panelInsetChanged ? layout.PanelWidth : Width, dimensionsChanged || panelInsetChanged ? layout.PanelHeight : Height);
+            UpdateDeckDimensions(dimensionsChanged || panelInsetChanged || labelGeometryChanged ? layout.PanelWidth : Width, dimensionsChanged || panelInsetChanged || labelGeometryChanged ? layout.PanelHeight : Height);
         UpdateHeaderLayout();
         ApplyRoundedPanelClip();
         ApplyRoundedWindowRegion();
@@ -2530,6 +2537,45 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         Top = top;
         positionDirty = false;
         try { savePosition?.Invoke(left, top); } catch { }
+    }
+    internal void PositionAtCursorForShow()
+    {
+        if (!layout.ShowAtCursor)
+            return;
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var native))
+            return;
+        var cursor = CurrentCursorPosition();
+        var work = System.Windows.Forms.Screen.FromPoint(cursor).WorkingArea;
+        var target = CursorAnchoredPosition(
+            new Point(cursor.X, cursor.Y),
+            new System.Windows.Size(native.Right - native.Left, native.Bottom - native.Top),
+            new Rect(work.Left, work.Top, work.Width, work.Height));
+        const uint noSizeNoActivateNoZOrder = 0x0001 | 0x0004 | 0x0010;
+        if (!SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(target.X), (int)Math.Round(target.Y), 0, 0, noSizeNoActivateNoZOrder))
+            return;
+
+        // Per-monitor DPI can change the native size while moving between
+        // displays. Clamp once more using the post-move size so the Deck is
+        // fully inside the cursor monitor's working area at every scale.
+        if (GetWindowRect(handle, out var moved))
+        {
+            var corrected = CursorAnchoredPosition(
+                new Point(cursor.X, cursor.Y),
+                new System.Windows.Size(moved.Right - moved.Left, moved.Bottom - moved.Top),
+                new Rect(work.Left, work.Top, work.Width, work.Height));
+            if ((int)Math.Round(corrected.X) != moved.Left || (int)Math.Round(corrected.Y) != moved.Top)
+                SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(corrected.X), (int)Math.Round(corrected.Y), 0, 0, noSizeNoActivateNoZOrder);
+        }
+        positionDirty = false;
+    }
+    internal static Point CursorAnchoredPosition(Point cursor, System.Windows.Size panelSize, Rect workArea)
+    {
+        double maxLeft = Math.Max(workArea.Left, workArea.Right - Math.Max(0, panelSize.Width));
+        double maxTop = Math.Max(workArea.Top, workArea.Bottom - Math.Max(0, panelSize.Height));
+        return new Point(
+            Math.Clamp(cursor.X - panelSize.Width / 2, workArea.Left, maxLeft),
+            Math.Clamp(cursor.Y - panelSize.Height / 2, workArea.Top, maxTop));
     }
     internal void MoveAndPersistForTest(double left, double top) => MoveAndPersist(left, top);
     internal void ResizeAndPersistForTest(double width, double height)

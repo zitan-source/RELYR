@@ -3369,7 +3369,9 @@ public partial class MainWindow : Window
             textContent.Text = DeckPanelLayout.ActionLabel(input, mapping);
         if (deckManagementNameLabels.TryGetValue(button, out var nameLabel))
         {
-            nameLabel.Text = mapping?.Description ?? "";
+            var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
+            nameLabel.Text = DeckPanelLayout.NameLabelText(mapping, layout.ShowFileExtensionsInLabels);
+            nameLabel.Visibility = layout.LabelsHidden ? Visibility.Collapsed : Visibility.Visible;
             if (hasCustomColor || assigned != null)
                 nameLabel.Foreground = button.Foreground;
             else

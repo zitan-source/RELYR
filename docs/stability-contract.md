@@ -19,7 +19,7 @@ Read this before changing input, Deck layout, startup, shutdown, or installer co
 - Space, CapsLock, mouse layers, Deck close, single-instance ownership, and graceful installer shutdown are regression-protected.
 - Cursor locking is stored on each gesture definition. The selected gesture exposes that switch in its editor header; the general settings screen exposes only gesture sensitivity. A gesture snapshots its cursor behavior when it starts so switching or editing definitions cannot change an active gesture midway.
 - While one gesture source remains physically held, every move-stop segment may execute its direction Action, including repeated segments in the same direction. Releasing the source commits any final pending segment before clearing its suppression marker, so the next fresh short press executes the Center Action on its first press rather than being consumed as stale gesture cleanup.
-- Deck buttons remain 54x52. The visible horizontal button gap equals the vertical button-to-button distance, including the name-label area. Names must remain visible.
+- Deck buttons remain 54x52. With labels visible, the horizontal button gap equals the vertical button-to-button distance, including the name-label area. Labels are visible by default; an explicit per-Deck option may hide every label and remove the reserved label area.
 
 ## Regression prevention contract
 

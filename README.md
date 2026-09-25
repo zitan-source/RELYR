@@ -4,6 +4,8 @@
 
 RELYR is a free, open-source input system for Windows 10 and 11. Assign keyboard and mouse input to key layers, shortcuts, app launches, window controls, macros, mouse gestures, and an on-screen Deck.
 
+If held-key layers are useful to you but editing and retesting AutoHotkey scripts for every change is not, RELYR provides a visual, local alternative. Release the layer key and normal typing returns.
+
 [English](README.md) | [日本語](README.ja.md) | [Website](https://zitan-source.github.io/RELYR/) | [Latest release](https://github.com/zitan-source/RELYR/releases/latest)
 
 [Three-minute guide](docs/getting-started.md) | [Support](SUPPORT.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md)
@@ -12,6 +14,18 @@ RELYR is a free, open-source input system for Windows 10 and 11. Assign keyboard
 > RELYR is currently a **public beta**. Download it only from the official GitHub Releases page, and [report reproducible problems](https://github.com/zitan-source/RELYR/issues/new/choose) so they can be investigated.
 
 ![RELYR keyboard layers and Deck](https://zitan-source.github.io/RELYR/assets/og-image.png)
+
+## Try one action first
+
+The fastest way to judge RELYR is a single harmless Space-layer assignment, not a complete keyboard setup:
+
+1. Temporarily disable AutoHotkey, PowerToys Keyboard Manager, and other remapping tools.
+2. In RELYR, select the Space layer, choose an unused key, assign **Launch Notepad**, and save.
+3. Confirm that tapping Space still types a space, then hold Space and press the assigned key.
+
+If an action runs twice or input appears stuck, press `Ctrl + Alt + Shift + F12` to stop RELYR. See the [three-minute guide](docs/getting-started.md) for download verification and screenshots.
+
+Already use layers, macros, or mouse gestures? [Share one workflow, trial result, or setup question](https://github.com/zitan-source/RELYR/issues/new?template=usage_feedback.yml). A single concrete example is enough.
 
 ## What RELYR does
 
@@ -48,9 +62,9 @@ RELYR stays free and open source, with no feature differences based on support. 
 - Direct drag-and-drop registration of executables and shortcuts
 - Automatic extraction of archives placed in selected folders
 
-## Getting started
+## Configure more actions
 
-New users can follow the complete [three-minute getting-started guide](docs/getting-started.md), including download verification, the emergency stop shortcut, and the first safe Space-layer assignment.
+After the one-action test, use the complete [three-minute getting-started guide](docs/getting-started.md) to configure more actions.
 
 1. Select a layer such as Default, Space, CapsLock, or a mouse button from the left side.
 2. Select a key or mouse control in the center workspace.

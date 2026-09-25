@@ -57,7 +57,8 @@ public partial class MainWindow
     {
         var mappings = MappingCollectionForInput(input);
         var mapping = mappings.LastOrDefault(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
-        string? name = PromptText("Deckボタン名", "ボタンの下に表示する名前", mapping?.Description ?? "");
+        bool showFileExtension = selectedDeckLayout?.ShowFileExtensionsInLabels == true;
+        string? name = PromptText("Deckボタン名", "ボタンの下に表示する名前", DeckPanelLayout.NameLabelText(mapping, showFileExtension));
         if (name == null)
             return;
         SetDeckButtonName(input, name);
@@ -525,8 +526,8 @@ public partial class MainWindow
             return;
         DeckManagementGrid.Rows = layout.Rows;
         DeckManagementGrid.Columns = layout.Columns;
-        DeckManagementGrid.Width = layout.Columns * DeckPanelLayout.CellWidth;
-        DeckManagementGrid.Height = layout.Rows * DeckPanelLayout.CellHeight;
+        DeckManagementGrid.Width = layout.Columns * DeckPanelLayout.CellWidthFor(layout);
+        DeckManagementGrid.Height = layout.Rows * DeckPanelLayout.CellHeightFor(layout);
         for (int slot = 1; slot <= DeckPanelLayout.VisibleSlotCount(layout); slot++)
             AddDeckManagementGridCell(slot);
         ColorDeckManagementButtons();
@@ -537,6 +538,8 @@ public partial class MainWindow
 
     void AddDeckManagementGridCell(int slot)
     {
+        var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
+        double cellGap = DeckPanelLayout.CellGap(layout);
         int capturedSlot = slot;
         var button = new System.Windows.Controls.Button
         {
@@ -550,7 +553,7 @@ public partial class MainWindow
             Style = (Style)FindResource("DeckButtonStyle"),
             Width = DeckPanelLayout.KeyWidth,
             Height = DeckPanelLayout.KeyHeight,
-            Margin = new Thickness(DeckPanelLayout.ButtonGap / 2, 0, DeckPanelLayout.ButtonGap / 2, 0),
+            Margin = new Thickness(cellGap / 2, 0, cellGap / 2, 0),
             Padding = new Thickness(3)
         };
         button.Click += (_, _) => DeckManagementButtonClicked(button, DeckPanelLayout.InputName(capturedSlot));
@@ -564,8 +567,9 @@ public partial class MainWindow
         button.PreviewDragOver += DeckButtonDragOver;
         button.PreviewDragLeave += DeckButtonDragLeave;
         button.PreviewDrop += DeckButtonDropped;
-        var nameLabel = DeckPanelLayout.CreateNameLabel(null);
-        var cell = new StackPanel { Width = DeckPanelLayout.CellWidth, Height = DeckPanelLayout.CellHeight };
+        var nameLabel = DeckPanelLayout.CreateNameLabel(null, layout.ShowFileExtensionsInLabels);
+        nameLabel.Visibility = layout.LabelsHidden ? Visibility.Collapsed : Visibility.Visible;
+        var cell = new StackPanel { Width = DeckPanelLayout.CellWidthFor(layout), Height = DeckPanelLayout.CellHeightFor(layout) };
         cell.Children.Add(button);
         cell.Children.Add(nameLabel);
         DeckManagementGrid.Children.Add(cell);
@@ -576,10 +580,11 @@ public partial class MainWindow
 
     void ResizeDeckManagementPanel(int columns, int rows, bool deferListRefresh)
     {
+        var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
         DeckManagementGrid.Rows = rows;
         DeckManagementGrid.Columns = columns;
-        DeckManagementGrid.Width = columns * DeckPanelLayout.CellWidth;
-        DeckManagementGrid.Height = rows * DeckPanelLayout.CellHeight;
+        DeckManagementGrid.Width = columns * DeckPanelLayout.CellWidthFor(layout);
+        DeckManagementGrid.Height = rows * DeckPanelLayout.CellHeightFor(layout);
         int desiredCount = columns * rows;
         while (deckGridButtons.Count > desiredCount)
         {
@@ -1018,7 +1023,10 @@ public partial class MainWindow
         Grid.SetRow(DeckPointerLeaveBehaviorGroup, 1);
         Grid.SetColumn(DeckPointerLeaveBehaviorGroup, 0);
         DeckPointerLeaveBehaviorGroup.Margin = new Thickness(0, 10, 0, 0);
-        Grid.SetRow(DeckPinnedBehaviorHint, 2);
+        Grid.SetRow(DeckShowAtCursorBox, 2);
+        Grid.SetColumn(DeckShowAtCursorBox, 0);
+        Grid.SetColumnSpan(DeckShowAtCursorBox, 1);
+        Grid.SetRow(DeckPinnedBehaviorHint, 3);
         Grid.SetColumn(DeckPinnedBehaviorHint, 0);
         Grid.SetColumnSpan(DeckPinnedBehaviorHint, 1);
         DeckPinnedBehaviorHint.Visibility = Visibility.Visible;
@@ -1923,6 +1931,9 @@ public partial class MainWindow
         DeckOpacitySlider.Value = config.DeckChromeOpacityPercent;
         DeckOpacityValueText.Text = config.DeckChromeOpacityPercent + "%";
         DeckHoverAnimationBox.IsChecked = layout.HoverAnimationEnabled;
+        DeckShowAtCursorBox.IsChecked = layout.ShowAtCursor;
+        DeckHideLabelsBox.IsChecked = layout.LabelsHidden;
+        DeckShowFileExtensionsBox.IsChecked = layout.ShowFileExtensionsInLabels;
         DeckHoverPreviewBox.IsChecked = config.DeckHoverPreviewsEnabled;
         SelectDeckAutoDismissBehavior(DeckAfterActionBehaviorBox, config.DeckAfterActionBehavior);
         SelectDeckAutoDismissBehavior(DeckPointerLeaveBehaviorBox, config.DeckPointerLeaveBehavior);
@@ -2082,6 +2093,9 @@ public partial class MainWindow
         PanelPadding = source.PanelPadding,
         PanelCornerRadius = source.PanelCornerRadius,
         HoverAnimationEnabled = source.HoverAnimationEnabled,
+        ShowAtCursor = source.ShowAtCursor,
+        LabelsHidden = source.LabelsHidden,
+        ShowFileExtensionsInLabels = source.ShowFileExtensionsInLabels,
         PanelPinned = source.PanelPinned,
         PanelWidth = source.PanelWidth,
         PanelHeight = source.PanelHeight,
@@ -2344,6 +2358,27 @@ public partial class MainWindow
         OverlayService.RefreshDeckPanelLayoutPreview();
         deckOverlayVisualSynchronized = true;
     }
+    void DeckShowAtCursorChanged(object sender, RoutedEventArgs e)
+    {
+        if (updatingDeckEditor || selectedDeckLayout == null)
+            return;
+        selectedDeckLayout.ShowAtCursor = DeckShowAtCursorBox.IsChecked == true;
+        MarkDirty(refreshDeckPanel: false);
+    }
+    void DeckLabelDisplayChanged(object sender, RoutedEventArgs e)
+    {
+        if (updatingDeckEditor || selectedDeckLayout == null)
+            return;
+        bool labelsHidden = DeckHideLabelsBox.IsChecked == true;
+        bool showFileExtensions = DeckShowFileExtensionsBox.IsChecked == true;
+        if (selectedDeckLayout.LabelsHidden == labelsHidden
+            && selectedDeckLayout.ShowFileExtensionsInLabels == showFileExtensions)
+            return;
+        selectedDeckLayout.LabelsHidden = labelsHidden;
+        selectedDeckLayout.ShowFileExtensionsInLabels = showFileExtensions;
+        BuildDeckManagementPanel();
+        MarkDirty();
+    }
     void DeckCustomizationReset_Click(object sender, RoutedEventArgs e)
     {
         if (selectedDeckLayout == null)
@@ -2353,6 +2388,9 @@ public partial class MainWindow
         selectedDeckLayout.PanelPadding = 12;
         selectedDeckLayout.PanelCornerRadius = 14;
         selectedDeckLayout.HoverAnimationEnabled = true;
+        selectedDeckLayout.ShowAtCursor = false;
+        selectedDeckLayout.LabelsHidden = false;
+        selectedDeckLayout.ShowFileExtensionsInLabels = false;
         selectedDeckLayout.PanelWidth = null;
         selectedDeckLayout.PanelHeight = null;
         config.DeckChromeOpacityPercent = 100;
@@ -2363,9 +2401,13 @@ public partial class MainWindow
         DeckOpacitySlider.Value = 100;
         DeckOpacityValueText.Text = "100%";
         DeckHoverAnimationBox.IsChecked = true;
+        DeckShowAtCursorBox.IsChecked = false;
+        DeckHideLabelsBox.IsChecked = false;
+        DeckShowFileExtensionsBox.IsChecked = false;
         updatingDeckEditor = false;
         UpdateDeckPanelColorEditor();
         ApplyDeckSize(9, 5);
+        BuildDeckManagementPanel();
     }
     void DeckOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -2432,7 +2474,7 @@ public partial class MainWindow
         int suffix = 2;
         while (config.DeckLayouts.Any(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
             name = source.Name + $" のコピー {suffix++}";
-        var copy = new DeckLayoutDefinition { Name = name, Columns = source.Columns, Rows = source.Rows, PanelColor = source.PanelColor, PanelPadding = source.PanelPadding, PanelCornerRadius = source.PanelCornerRadius, HoverAnimationEnabled = source.HoverAnimationEnabled, PanelWidth = source.PanelWidth, PanelHeight = source.PanelHeight, Mappings = [.. source.Mappings.Select(CloneMapping)] };
+        var copy = new DeckLayoutDefinition { Name = name, Columns = source.Columns, Rows = source.Rows, PanelColor = source.PanelColor, PanelPadding = source.PanelPadding, PanelCornerRadius = source.PanelCornerRadius, HoverAnimationEnabled = source.HoverAnimationEnabled, ShowAtCursor = source.ShowAtCursor, LabelsHidden = source.LabelsHidden, ShowFileExtensionsInLabels = source.ShowFileExtensionsInLabels, PanelWidth = source.PanelWidth, PanelHeight = source.PanelHeight, Mappings = [.. source.Mappings.Select(CloneMapping)] };
         config.DeckLayouts.Add(copy);
         MarkDirty();
         RefreshDeckLayoutCards();

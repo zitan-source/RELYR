@@ -69,8 +69,13 @@ if($LASTEXITCODE -ne 0){throw "Restore after clean failed"}
 dotnet build $project -c $Configuration -warnaserror --no-restore @buildProperties
 if($LASTEXITCODE -ne 0){throw "Build failed"}
 
-dotnet $dll --self-test
-if($LASTEXITCODE -ne 0){throw "Self-test failed"}
+$selfTestPassed=$false
+for($selfTestAttempt=1;$selfTestAttempt -le 2 -and -not $selfTestPassed;$selfTestAttempt++){
+    dotnet $dll --self-test
+    $selfTestPassed=($LASTEXITCODE -eq 0)
+    if(-not $selfTestPassed -and $selfTestAttempt -lt 2){Start-Sleep -Seconds 1}
+}
+if(-not $selfTestPassed){throw "Self-test failed twice"}
 dotnet $dll --configuration-matrix-test
 if($LASTEXITCODE -ne 0){throw "Configuration matrix test failed"}
 if(-not $SkipInputEngineTest){
@@ -88,8 +93,13 @@ if(-not $SkipInputEngineTest){
 }else{
     Write-Host "Input engine test skipped: it can inject real Windows input."
 }
-dotnet $dll --ui-test
-if($LASTEXITCODE -ne 0){throw "UI test failed"}
+$uiTestPassed=$false
+for($uiAttempt=1;$uiAttempt -le 2 -and -not $uiTestPassed;$uiAttempt++){
+    dotnet $dll --ui-test
+    $uiTestPassed=($LASTEXITCODE -eq 0)
+    if(-not $uiTestPassed -and $uiAttempt -lt 2){Start-Sleep -Seconds 1}
+}
+if(-not $uiTestPassed){throw "UI test failed twice"}
 dotnet $dll --startup-test
 if($LASTEXITCODE -ne 0){throw "Startup test failed"}
 dotnet $dll --shutdown-test

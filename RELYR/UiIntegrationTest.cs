@@ -2226,6 +2226,9 @@ internal static class UiIntegrationTest
                 && !Descendants<TextBlock>(window.DeckSettingsPanel).Any(text => text.Text.Contains("各プロファイルに個別", StringComparison.Ordinal) || text.Text.Contains("クリック領域を完全", StringComparison.Ordinal))
                 && window.DeckProfileSwitchBox.Content?.ToString() == "プロファイル別に切り替える"
                 && window.DeckHoverPreviewBox.Content?.ToString() == "ファイルをホバー再生"
+                && window.DeckHideLabelsBox.Content?.ToString() == "ラベルを隠す"
+                && window.DeckShowFileExtensionsBox.Content?.ToString() == "ファイルの拡張子を表示"
+                && window.DeckShowAtCursorBox.Content?.ToString() == "表示時にマウス位置へ移動"
                 && System.Windows.Automation.AutomationProperties.GetName(window.DeckOverlayToggleButton) == "Deckを表示",
                 "Deck display settings name the trigger and result, distinguish collapse from hide, and reserve preview wording for the actual Deck");
             OverlayService.ResetDeckRefreshRequestCountForTest();
@@ -2239,6 +2242,35 @@ internal static class UiIntegrationTest
             Pump(window);
             Check(deckHoverSettingChanged && standardDeck.HoverAnimationEnabled == initialDeckHoverAnimation,
                 "Deck hover animation updates the live layout through the lightweight appearance path instead of being a save-only setting");
+            window.DeckShowAtCursorBox.IsChecked = true;
+            Pump(window);
+            bool cursorPlacementEnabled = standardDeck.ShowAtCursor;
+            window.DeckShowAtCursorBox.IsChecked = false;
+            Pump(window);
+            Check(cursorPlacementEnabled && !standardDeck.ShowAtCursor,
+                "each Deck independently saves whether explicit shows move it to the pointer");
+            TextBlock EditorLabel(int index) => ((StackPanel)window.DeckManagementButtonsForTest[index].Parent).Children.OfType<TextBlock>().Single();
+            string originalFilePath = standardDeck.Mappings.Single(mapping => mapping.Input == "Deck+02").DeckFilePath;
+            bool defaultFileLabelIsExtensionless = EditorLabel(1).Text == "deck-preview";
+            window.DeckShowFileExtensionsBox.IsChecked = true;
+            Pump(window);
+            bool extensionLabelShown = standardDeck.ShowFileExtensionsInLabels
+                && EditorLabel(1).Text == "deck-preview.png"
+                && standardDeck.Mappings.Single(mapping => mapping.Input == "Deck+02").DeckFilePath == originalFilePath;
+            window.DeckHideLabelsBox.IsChecked = true;
+            Pump(window);
+            bool labelsAndReservedAreaHidden = standardDeck.LabelsHidden
+                && EditorLabel(1).Visibility == Visibility.Collapsed
+                && Math.Abs(window.DeckManagementGrid.Width - standardDeck.Columns * (DeckPanelLayout.KeyWidth + DeckPanelLayout.Gap)) < .1
+                && Math.Abs(window.DeckManagementGrid.Height - standardDeck.Rows * (DeckPanelLayout.KeyHeight + DeckPanelLayout.Gap)) < .1;
+            window.DeckHideLabelsBox.IsChecked = false;
+            window.DeckShowFileExtensionsBox.IsChecked = false;
+            Pump(window);
+            Check(defaultFileLabelIsExtensionless && extensionLabelShown && labelsAndReservedAreaHidden
+                && !standardDeck.LabelsHidden && !standardDeck.ShowFileExtensionsInLabels
+                && EditorLabel(1).Text == "deck-preview"
+                && standardDeck.Mappings.Single(mapping => mapping.Input == "Deck+02").DeckFilePath == originalFilePath,
+                "Deck file labels default to the extensionless file name, expose independent extension and global visibility options, remove hidden label space, and never change the source path");
             OverlayService.ResetDeckRefreshRequestCountForTest();
             window.DeckAfterActionBehaviorBox.SelectedItem = window.DeckAfterActionBehaviorBox.Items.Cast<ComboBoxItem>().Single(item => Equals(item.Tag, "Hide"));
             window.DeckPointerLeaveBehaviorBox.SelectedItem = window.DeckPointerLeaveBehaviorBox.Items.Cast<ComboBoxItem>().Single(item => Equals(item.Tag, "StayVisible"));
@@ -2405,6 +2437,7 @@ internal static class UiIntegrationTest
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+03", Layer = "Deck", DeckFilePath = deckPreviewVideo });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+04", Layer = "Deck", DeckFilePath = deckPreviewImage, DeckIcon = "search" });
             overlayLayout.Mappings.Add(new Mapping { Input = "Deck+05", Layer = "Deck", DeckFilePath = missingDeckFile });
+            overlayLayout.Mappings.Add(new Mapping { Input = "Deck+07", Layer = "Deck", DeckFilePath = deckPreviewVideo });
             var backdropProbe = CreateBackdropProbeWindow();
             backdropProbe.Show();
             backdropProbe.UpdateLayout();
@@ -2421,8 +2454,27 @@ internal static class UiIntegrationTest
             var overlayCells = deckOverlay.DeckButtons.Select(button => (StackPanel)button.Parent).ToArray();
             Check(deckOverlay.DeckButtons.All(button => Math.Abs(button.Width - DeckPanelLayout.KeyWidth) < .1 && Math.Abs(button.Height - DeckPanelLayout.KeyHeight) < .1)
                 && overlayCells.All(cell => Math.Abs(cell.Width - DeckPanelLayout.KeyWidth - DeckPanelLayout.ButtonGap) < .1 && Math.Abs(cell.Height - DeckPanelLayout.KeyHeight - DeckPanelLayout.ButtonGap) < .1)
-                && overlayCells.All(cell => Descendants<TextBlock>(cell).Any(label => Math.Abs(label.Height - DeckPanelLayout.NameLabelHeight) < .1)),
+                && overlayCells.All(cell => Descendants<TextBlock>(cell).Any(label => Math.Abs(label.Height - DeckPanelLayout.NameLabelHeight) < .1))
+                && overlayCells[1].Children.OfType<TextBlock>().Single().Text == "deck-preview",
                 "floating Deck keeps each name below its 54x52 button and matches the visible row and column gaps");
+            overlayLayout.ShowFileExtensionsInLabels = true;
+            deckOverlay.Refresh(67, true);
+            Pump(window);
+            bool liveExtensionShown = ((StackPanel)deckOverlay.DeckButtons[1].Parent).Children.OfType<TextBlock>().Single().Text == "deck-preview.png";
+            overlayLayout.LabelsHidden = true;
+            deckOverlay.Refresh(67, true);
+            Pump(window);
+            var hiddenOverlayCell = (StackPanel)deckOverlay.DeckButtons[1].Parent;
+            bool liveLabelsHidden = hiddenOverlayCell.Children.OfType<TextBlock>().Single().Visibility == Visibility.Collapsed
+                && Math.Abs(hiddenOverlayCell.Width - DeckPanelLayout.KeyWidth - DeckPanelLayout.Gap) < .1
+                && Math.Abs(hiddenOverlayCell.Height - DeckPanelLayout.KeyHeight - DeckPanelLayout.Gap) < .1;
+            overlayLayout.LabelsHidden = false;
+            overlayLayout.ShowFileExtensionsInLabels = false;
+            deckOverlay.Refresh(67, true);
+            Pump(window);
+            Check(liveExtensionShown && liveLabelsHidden
+                && ((StackPanel)deckOverlay.DeckButtons[1].Parent).Children.OfType<TextBlock>().Single() is { Text: "deck-preview", Visibility: Visibility.Visible },
+                "the live Deck applies extension and hide-label options immediately, including removing the hidden label area");
             deckOverlay.DeckButtons[2].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
             int videoPreviewsBeforeHide = deckOverlay.VideoPreviewCountForTest;
@@ -2535,7 +2587,30 @@ internal static class UiIntegrationTest
                 "with file hover disabled, hover stays silent while one Deck click opens the existing thumbnail video preview or starts audio playback");
             clickPreviewOverlay.Close();
             Pump(window);
-            Check(deckOverlay.DeckButtons[1].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }, "Deck thumbnail preview is placed outside the Deck instead of covering adjacent keys");
+            var leftSidePreviewPlacements = DeckVideoPreviewPopup.OutsideDeckPlacementsForTest(new System.Windows.Size(240, 180), new System.Windows.Size(54, 52), new System.Windows.Point(80, 120), 620);
+            var rightSidePreviewPlacements = DeckVideoPreviewPopup.OutsideDeckPlacementsForTest(new System.Windows.Size(240, 180), new System.Windows.Size(54, 52), new System.Windows.Point(500, 120), 620);
+            var rightVideoPlacements = DeckVideoPreviewPopup.NearbyVideoPlacementsForTest(new System.Windows.Size(240, 135), new System.Windows.Size(54, 52), new System.Windows.Point(550, 92), new System.Windows.Size(620, 300));
+            var shortcutPlacements = DeckPanelOverlayWindow.NearSourceToolTipPlacementsForTest(new System.Windows.Size(200, 48), new System.Windows.Size(54, 52));
+            Check(deckOverlay.DeckButtons[0].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }
+                && shortcutPlacements[0].Point == new System.Windows.Point(-73, 60),
+                "Deck shortcut explanations stay eight pixels from their source key instead of being sent beyond the complete Deck");
+            Check(deckOverlay.DeckButtons[1].ToolTip is System.Windows.Controls.ToolTip { Placement: System.Windows.Controls.Primitives.PlacementMode.Custom, CustomPopupPlacementCallback: not null }
+                && leftSidePreviewPlacements[0].Point.X >= 620 - 80
+                && rightSidePreviewPlacements[0].Point.X + 240 <= -500,
+                "Deck image previews are anchored beyond the complete Deck boundary instead of covering adjacent material buttons");
+            Check(rightVideoPlacements[0].Point.Y == 62
+                && Math.Abs(rightVideoPlacements[0].Point.X + 93) < .1
+                && DeckVideoPreviewPopup.CloseGraceForTest >= TimeSpan.FromMilliseconds(900),
+                "a right-side video preview stays ten pixels below its source row with enough transit grace instead of jumping to the far side of the Deck");
+            var coveredVideoTarget = deckOverlay.DeckButtons[6];
+            var coveredVideoTopLeft = coveredVideoTarget.PointToScreen(new System.Windows.Point());
+            var coveredVideoDpi = VisualTreeHelper.GetDpi(coveredVideoTarget);
+            var coveredVideoCenter = new System.Drawing.Point(
+                (int)Math.Round(coveredVideoTopLeft.X + coveredVideoTarget.ActualWidth * coveredVideoDpi.DpiScaleX / 2),
+                (int)Math.Round(coveredVideoTopLeft.Y + coveredVideoTarget.ActualHeight * coveredVideoDpi.DpiScaleY / 2));
+            bool coveredVideoSwitched = deckOverlay.TryYieldVideoPreviewToCoveredRowButtonForTest(deckOverlay.DeckButtons[2], coveredVideoCenter);
+            Check(coveredVideoSwitched && deckOverlay.VideoPreviewIsForTest(coveredVideoTarget),
+                "an open video preview yields immediately to a covered video key on the same row so left-right material zapping stays available");
             var deckOverlayBackground = (deckOverlay.Content as Border)?.Background as SolidColorBrush;
             Check(deckOverlayBackground != null && deckOverlayBackground.Color.R == ThemeService.Color("AppBackground").R && deckOverlayBackground.Color.G == ThemeService.Color("AppBackground").G && deckOverlayBackground.Color.B == ThemeService.Color("AppBackground").B, "Deck overlay default surface uses the same background tone as the main app");
             var overlayDeckView = Descendants<Viewbox>(deckOverlay).Single(view => view.Child is System.Windows.Controls.Primitives.UniformGrid);
@@ -3117,7 +3192,9 @@ internal static class UiIntegrationTest
             Check(!maximumDeckOverlay.IsSafelyMaximizedForTest && Math.Abs(maximumDeckOverlay.ActualWidth - maximumDeckRestoreWidth) < 1 && Math.Abs(maximumDeckOverlay.ActualHeight - maximumDeckRestoreHeight) < 1 && maximumDeckOverlay.FullScreenButton.ToolTip?.ToString() == "最大化" && maximumDeckOverlay.ResetSizeButton.ToolTip?.ToString() == "初期サイズに戻す" && maximumDeckOverlay.CloseButton.ToolTip?.ToString() == "Deckを非表示", "Deck maximize restores the previous overlay geometry while reset and hide keep distinct labels");
             maximumDeckOverlay.DeckButtons[0].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
+            bool firstVideoPreviewOpened = maximumDeckOverlay.VideoPreviewIsForTest(maximumDeckOverlay.DeckButtons[0]);
             maximumDeckOverlay.DeckButtons[1].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
+            bool nextVideoReplacedImmediately = maximumDeckOverlay.VideoPreviewIsForTest(maximumDeckOverlay.DeckButtons[1]);
             Pump(window);
             for (int hoverIndex = 2; hoverIndex < 26; hoverIndex++)
                 maximumDeckOverlay.DeckButtons[hoverIndex].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
@@ -3137,7 +3214,7 @@ internal static class UiIntegrationTest
             maximumDeckOverlay.Show();
             maximumDeckOverlay.DeckButtons[25].RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = System.Windows.Input.Mouse.MouseEnterEvent });
             Pump(window);
-            Check(maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
+            Check(firstVideoPreviewOpened && nextVideoReplacedImmediately && maximumDeckOverlay.VideoPreviewCountForTest == 1 && DeckPanelLayout.CachedLargeThumbnailCountForTest == 0, "an all-video 18-by-18 Deck replaces the preview immediately while zapping, reuses one hover player, keeps large previews transient, and survives rapid hover/open/maximize cycles");
             maximumDeckOverlay.Close();
             var touchDeckLayout = new DeckLayoutDefinition
             {

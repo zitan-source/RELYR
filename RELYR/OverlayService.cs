@@ -194,8 +194,9 @@ internal static class OverlayService
         };
         panel.PrepareForShow();
         panel.Show();
+        panel.PositionAtCursorForShow();
         NotifyDeckPresentationStateChanged();
-        if (!hasOwnPosition && previous != null)
+        if (!layout.ShowAtCursor && !hasOwnPosition && previous != null)
         {
             const double cascadeOffset = 32;
             double width = panel.ActualWidth > 0 ? panel.ActualWidth : panel.Width;
@@ -479,12 +480,14 @@ internal static class OverlayService
                         if (existing.IsPresentationHiding)
                         {
                             existing.PrepareForShow();
+                            existing.PositionAtCursorForShow();
                             NotifyDeckPresentationStateChanged();
                             return;
                         }
                         if (existing.IsCollapsedToEdge)
                         {
                             existing.ExpandFromEdge();
+                            existing.PositionAtCursorForShow();
                             return;
                         }
                         existing.RequestHideForReuse();
@@ -498,6 +501,7 @@ internal static class OverlayService
                         existing.ExpandFromEdge();
                     existing.PrepareForShow();
                     existing.Show();
+                    existing.PositionAtCursorForShow();
                     NotifyDeckPresentationStateChanged();
                     return;
                 }

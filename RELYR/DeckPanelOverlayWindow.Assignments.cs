@@ -231,7 +231,7 @@ internal sealed partial class DeckPanelOverlayWindow
     void RenameDeckButton(int slot)
     {
         var existing = DeckPanelLayout.FindMapping(layout, slot);
-        string? name = PromptDeckButtonName(existing?.Description ?? "");
+        string? name = PromptDeckButtonName(DeckPanelLayout.NameLabelText(existing, layout.ShowFileExtensionsInLabels));
         if (name == null || (existing == null && name.Length == 0))
             return;
         var mapping = existing ?? GetOrCreateDeckMapping(slot);
@@ -425,7 +425,7 @@ internal sealed partial class DeckPanelOverlayWindow
                 };
                 tooltip.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "CardBackground");
                 tooltip.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "AccentBrush");
-                ConfigureOutsideDeckPreview(tooltip, button);
+                ConfigureNearSourceToolTip(tooltip, button);
                 button.ToolTip = tooltip;
             }
             else
@@ -459,15 +459,27 @@ internal sealed partial class DeckPanelOverlayWindow
         tooltip.Placement = PlacementMode.Custom;
         tooltip.CustomPopupPlacementCallback = (popupSize, targetSize, offset) => OutsideDeckPlacements(source, popupSize, targetSize);
     }
+    static void ConfigureNearSourceToolTip(System.Windows.Controls.ToolTip tooltip, Button source)
+    {
+        tooltip.PlacementTarget = source;
+        tooltip.Placement = PlacementMode.Custom;
+        tooltip.CustomPopupPlacementCallback = (popupSize, targetSize, offset) => NearSourceToolTipPlacementsForTest(popupSize, targetSize);
+    }
+    internal static CustomPopupPlacement[] NearSourceToolTipPlacementsForTest(System.Windows.Size popupSize, System.Windows.Size targetSize)
+    {
+        const double gap = 8;
+        double centeredX = (targetSize.Width - popupSize.Width) / 2;
+        return
+        [
+            new CustomPopupPlacement(new Point(centeredX, targetSize.Height + gap), PopupPrimaryAxis.Horizontal),
+            new CustomPopupPlacement(new Point(centeredX, -popupSize.Height - gap), PopupPrimaryAxis.Horizontal)
+        ];
+    }
     CustomPopupPlacement[] OutsideDeckPlacements(FrameworkElement source, System.Windows.Size popupSize, System.Windows.Size targetSize)
     {
-        double gap = targetSize.Width;
-        double y = (targetSize.Height - popupSize.Height) / 2;
-        var right = new CustomPopupPlacement(new Point(targetSize.Width + gap, y), PopupPrimaryAxis.Vertical);
-        var left = new CustomPopupPlacement(new Point(-popupSize.Width - gap, y), PopupPrimaryAxis.Vertical);
         Point sourceInDeck = source.TranslatePoint(new Point(0, 0), this);
         double deckWidth = ActualWidth > 0 ? ActualWidth : Width;
-        return sourceInDeck.X + targetSize.Width / 2 > deckWidth / 2 ? [left, right] : [right, left];
+        return DeckVideoPreviewPopup.OutsideDeckPlacementsForTest(popupSize, targetSize, sourceInDeck, deckWidth);
     }
     object? CreateHoverContent(Mapping mapping, FrameworkElement source)
     {
@@ -496,7 +508,12 @@ internal sealed partial class DeckPanelOverlayWindow
             if (videoPreview?.IsFor(source) != true || videoPreview.SourceHoverEnabled != sourceHoverEnabled)
             {
                 videoPreview?.Dispose();
-                videoPreview = new DeckVideoPreviewPopup(source, path, this, sourceHoverEnabled);
+                videoPreview = new DeckVideoPreviewPopup(
+                    source,
+                    path,
+                    this,
+                    sourceHoverEnabled,
+                    sourceHoverEnabled ? () => TryYieldVideoPreviewToCoveredRowButton(source) : null);
             }
             videoPreview.Show();
         }
@@ -505,6 +522,49 @@ internal sealed partial class DeckPanelOverlayWindow
             try { videoPreview?.Dispose(); } catch { }
             videoPreview = null;
         }
+    }
+    bool TryYieldVideoPreviewToCoveredRowButton(Button source)
+        => TryYieldVideoPreviewToCoveredRowButton(source, System.Windows.Forms.Cursor.Position);
+#if !PRODUCTION_PUBLISH
+    internal bool TryYieldVideoPreviewToCoveredRowButtonForTest(Button source, System.Drawing.Point cursor)
+        => TryYieldVideoPreviewToCoveredRowButton(source, cursor);
+#endif
+    bool TryYieldVideoPreviewToCoveredRowButton(Button source, System.Drawing.Point cursor)
+    {
+        if (source.Tag is not int sourceSlot || layout.Columns <= 0)
+            return false;
+        int sourceRow = (sourceSlot - 1) / layout.Columns;
+        foreach (var target in deckButtons)
+        {
+            if (ReferenceEquals(target, source)
+                || target.Tag is not int targetSlot
+                || (targetSlot - 1) / layout.Columns != sourceRow
+                || !ContainsPhysicalScreenPoint(target, cursor))
+                continue;
+            var mapping = DeckPanelLayout.FindMapping(layout, targetSlot);
+            string path = mapping?.DeckFilePath ?? "";
+            if (DeckPanelLayout.IsVideoFile(path) && File.Exists(path))
+                ShowVideoPreview(target, path, sourceHoverEnabled: true);
+            else
+                ClearVideoPreviews();
+            return true;
+        }
+        return false;
+    }
+    static bool ContainsPhysicalScreenPoint(FrameworkElement element, System.Drawing.Point point)
+    {
+        if (!element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+            return false;
+        try
+        {
+            Point topLeft = element.PointToScreen(new Point());
+            DpiScale dpi = VisualTreeHelper.GetDpi(element);
+            return point.X >= topLeft.X
+                && point.X <= topLeft.X + element.ActualWidth * dpi.DpiScaleX
+                && point.Y >= topLeft.Y
+                && point.Y <= topLeft.Y + element.ActualHeight * dpi.DpiScaleY;
+        }
+        catch { return false; }
     }
     FrameworkElement CreateHoverCard(FrameworkElement content)
     {

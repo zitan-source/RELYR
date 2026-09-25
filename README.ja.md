@@ -4,6 +4,8 @@
 
 キーボードとマウスの入力を、画面上からレイヤー・ショートカット・アプリ起動・マクロなどへ割り当てるWindows 10/11向けアプリです。
 
+キーを押している間だけ別レイヤーを使う操作は便利でも、変更のたびにAutoHotkeyスクリプトを編集・再テストするのが負担な人へ、画面上で設定できるローカル動作の選択肢を提供します。レイヤーキーを離せば通常入力へ戻ります。
+
 [English](README.md) | [日本語](README.ja.md) | [紹介サイト](https://zitan-source.github.io/RELYR/) | [最新版](https://github.com/zitan-source/RELYR/releases/latest)
 
 [3分で始める](docs/getting-started.ja.md) | [サポート](SUPPORT.ja.md) | [貢献方法](CONTRIBUTING.ja.md) | [セキュリティー](SECURITY.ja.md)
@@ -12,6 +14,18 @@
 > RELYRは現在**公開ベータ版**です。必ず公式GitHub Releasesからダウンロードし、再現できる問題は[不具合報告フォーム](https://github.com/zitan-source/RELYR/issues/new/choose)からお知らせください。
 
 ![RELYRのキーボードレイヤーとDeck](https://zitan-source.github.io/RELYR/assets/og-image.png)
+
+## 最初は操作を1つだけ試す
+
+最初からキーボード全体を設定せず、安全なSpaceレイヤーの操作1つで自分に合うか判断できます。
+
+1. AutoHotkey、PowerToys Keyboard Managerなど、他のキーマッピングソフトを一時的に無効にします。
+2. RELYRでSpaceレイヤーと未使用キーを選び、**メモ帳を起動**するActionを割り当てて保存します。
+3. Spaceを短く押すと空白が入力され、Spaceを押しながら割り当てたキーを押すとメモ帳が起動することを確認します。
+
+操作が二重実行されたり、入力が押されたままに見えたりした場合は、`Ctrl + Alt + Shift + F12`でRELYRを停止してください。ダウンロード検証と画面付き手順は[3分で始めるガイド](docs/getting-started.ja.md)にあります。
+
+レイヤー、マクロ、マウスジェスチャーを使っている方は、[試したい操作・試用結果・設定で迷った点を1つだけ教えてください](https://github.com/zitan-source/RELYR/issues/new?template=usage_feedback.yml)。具体例1件だけで構いません。
 
 ## 他のキーマッピングソフトとの併用
 
@@ -44,9 +58,9 @@ RELYRは今後も無料・オープンソースで提供し、支援の有無に
 - EXEとショートカットのドラッグ＆ドロップ登録
 - 指定フォルダーに置かれた圧縮ファイルの自動解凍
 
-## 最初の使い方
+## 操作を増やす
 
-初めて利用する場合は、ダウンロード確認、緊急停止キー、最初の安全なSpaceレイヤー設定をまとめた[3分で始めるガイド](docs/getting-started.ja.md)を確認してください。
+操作1つの試験後は、[3分で始めるガイド](docs/getting-started.ja.md)に沿って割り当てを増やせます。
 
 1. 左側で通常、Space、CapsLock、マウスなどのレイヤーを選びます。
 2. 中央のキーボードまたはマウスから設定するボタンを選びます。

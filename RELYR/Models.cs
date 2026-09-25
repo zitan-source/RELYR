@@ -112,6 +112,9 @@ public sealed class DeckLayoutDefinition
     public double PanelPadding { get; set; } = 12;
     public double PanelCornerRadius { get; set; } = 14;
     public bool HoverAnimationEnabled { get; set; } = true;
+    public bool ShowAtCursor { get; set; }
+    public bool LabelsHidden { get; set; }
+    public bool ShowFileExtensionsInLabels { get; set; }
     public bool PanelPinned { get; set; }
     public double? PanelWidth { get; set; }
     public double? PanelHeight { get; set; }

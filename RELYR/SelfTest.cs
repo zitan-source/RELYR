@@ -86,6 +86,13 @@ public static class SelfTest
             bool restoredSeparatePositions = Math.Abs(savedNumpad.Left - expectedNumpadPosition.X) < .1 && Math.Abs(savedNumpad.Top - expectedNumpadPosition.Y) < .1 && Math.Abs(savedExtended.Left - expectedExtendedPosition.X) < .1 && Math.Abs(savedExtended.Top - expectedExtendedPosition.Y) < .1;
             savedNumpad.MoveAndPersistForTest(180, 210);
             Check(restoredSeparatePositions && persistedInputPosition is { Extended: false, Left: 180, Top: 210 }, "numpad and extended keypad retain separate last overlay positions");
+            var cursorCentered = DeckPanelOverlayWindow.CursorAnchoredPosition(new System.Windows.Point(420, 260), new System.Windows.Size(300, 180), new System.Windows.Rect(0, 0, 1920, 1040));
+            var cursorAtBottomRight = DeckPanelOverlayWindow.CursorAnchoredPosition(new System.Windows.Point(1919, 1039), new System.Windows.Size(300, 180), new System.Windows.Rect(0, 0, 1920, 1040));
+            var cursorOnNegativeMonitor = DeckPanelOverlayWindow.CursorAnchoredPosition(new System.Windows.Point(-1919, 40), new System.Windows.Size(420, 260), new System.Windows.Rect(-1920, 0, 1920, 1040));
+            Check(cursorCentered == new System.Windows.Point(270, 170)
+                && cursorAtBottomRight == new System.Windows.Point(1620, 860)
+                && cursorOnNegativeMonitor == new System.Windows.Point(-1920, 0),
+                "cursor-anchored Deck placement centers on the pointer and clamps every edge to the selected monitor work area");
             string oldData = Path.Combine(dir, "old-appdata"), newData = Path.Combine(dir, "new-appdata");
             var oldService = new ConfigService(oldData);
             oldService.Save(new AppConfig { AutoSave = true, Profiles = [new Profile { Name = "移行テスト" }] });
@@ -475,6 +482,9 @@ public static class SelfTest
             config.DeckLayouts[0].PanelPadding = 18;
             config.DeckLayouts[0].PanelCornerRadius = 9;
             config.DeckLayouts[0].HoverAnimationEnabled = false;
+            config.DeckLayouts[0].ShowAtCursor = true;
+            config.DeckLayouts[0].LabelsHidden = true;
+            config.DeckLayouts[0].ShowFileExtensionsInLabels = true;
             config.DeckLayouts[0].Mappings.Add(new Mapping { Input = "Deck+02", Layer = DeckPanelLayout.Layer, DeckMonitor = "battery" });
             config.DeckLayouts[0].Mappings.Add(new Mapping { Input = "Deck+03", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Desktop3", DeckIconHidden = true });
             config.NumpadPanelLeft = 345.5;
@@ -618,7 +628,7 @@ public static class SelfTest
                 && migratedDeckOpacity.InputPanelOpacityPercent == 40
                 && migratedDeckOpacity.DeckChromeOpacityPercent == 17,
                 "the former shared opacity migrates its exact pre-clamp value to Deck chrome while the keypad keeps its independent 40-percent minimum");
-            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && loaded.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && loaded.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.StayVisible && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5, PanelPadding: 18, PanelCornerRadius: 9, HoverAnimationEnabled: false }, "global fallback and per-Deck expanded/collapsed positions, size, pin, appearance, display behavior, and keypad positions roundtrip independently");
+            Check(loaded.Version == ConfigService.CurrentVersion && !loaded.UseSharedDeckPanel && loaded.DeckLayouts.Count == 1 && DeckPanelLayout.DefaultLayout(loaded)?.Id == loaded.DefaultDeckLayoutId && loaded.DeckPanelLeft == 123.5 && loaded.DeckPanelTop == 234.5 && loaded.DeckPanelCollapsedLeft == 246.5 && loaded.DeckPanelCollapsedTop == 357.5 && loaded.DeckPanelWidth == 987.5 && loaded.DeckPanelHeight == 543.5 && loaded.NumpadPanelLeft == 345.5 && loaded.NumpadPanelTop == 456.5 && loaded.ExtendedKeypadPanelLeft == 567.5 && loaded.ExtendedKeypadPanelTop == 678.5 && loaded.DeckAfterActionBehavior == DeckAutoDismissBehavior.Hide && loaded.DeckPointerLeaveBehavior == DeckAutoDismissBehavior.StayVisible && loaded.DeckLayouts[0] is { PanelPinned: true, PanelLeft: 111.5, PanelTop: 222.5, PanelCollapsedLeft: 333.5, PanelCollapsedTop: 444.5, PanelPadding: 18, PanelCornerRadius: 9, HoverAnimationEnabled: false, ShowAtCursor: true, LabelsHidden: true, ShowFileExtensionsInLabels: true }, "global fallback and per-Deck expanded/collapsed positions, size, pin, appearance, cursor placement, label display, display behavior, and keypad positions roundtrip independently");
             Check(ScreenOverlayWindow.ParseClockColor("#123456") == System.Windows.Media.Color.FromRgb(0x12, 0x34, 0x56) && ScreenOverlayWindow.ParseClockColor("invalid") == System.Windows.Media.Color.FromRgb(16, 31, 46), "clock solid colors accept hex values and safely fall back from invalid input");
             var gestureMigrationService = new ConfigService(Path.Combine(dir, "gesture-threshold-migration"));
             gestureMigrationService.Save(new AppConfig { Version = 21, GestureThresholdPixels = 24 });

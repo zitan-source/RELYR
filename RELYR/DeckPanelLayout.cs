@@ -369,6 +369,10 @@ internal static class DeckPanelLayout
 
     internal static int VisibleSlotCount(DeckLayoutDefinition layout) => Math.Clamp(layout.Rows, 1, MaximumRows) * Math.Clamp(layout.Columns, 1, MaximumColumns);
 
+    internal static double CellGap(DeckLayoutDefinition layout) => layout.LabelsHidden ? Gap : ButtonGap;
+    internal static double CellWidthFor(DeckLayoutDefinition layout) => KeyWidth + CellGap(layout);
+    internal static double CellHeightFor(DeckLayoutDefinition layout) => KeyHeight + CellGap(layout);
+
     internal static IReadOnlyList<Profile> ProfilesWithDeckMappings(IEnumerable<Profile> profiles) => profiles
         .Where(profile => profile.Mappings.Any(map => IsInputName(map.Input)))
         .ToList();
@@ -394,11 +398,24 @@ internal static class DeckPanelLayout
         return action;
     }
 
-    internal static TextBlock CreateNameLabel(Mapping? mapping)
+    internal static string NameLabelText(Mapping? mapping, bool showFileExtension)
+    {
+        if (!string.IsNullOrWhiteSpace(mapping?.Description))
+            return mapping.Description;
+        if (!HasRegisteredFile(mapping))
+            return "";
+        string fileName = Path.GetFileName(mapping!.DeckFilePath);
+        if (showFileExtension)
+            return fileName;
+        string withoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        return string.IsNullOrEmpty(withoutExtension) ? fileName : withoutExtension;
+    }
+
+    internal static TextBlock CreateNameLabel(Mapping? mapping, bool showFileExtension = false)
     {
         var label = new TextBlock
         {
-            Text = mapping?.Description ?? "",
+            Text = NameLabelText(mapping, showFileExtension),
             Height = NameLabelHeight,
             Width = KeyWidth,
             FontSize = 8,

@@ -1,0 +1,49 @@
+name: Usage feedback
+description: Share one workflow, trial result, or setup question
+title: "[Feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve RELYR. One concrete workflow is enough. Do not include passwords, private macro contents, personal information, or confidential application names.
+
+  - type: dropdown
+    id: experience
+    attributes:
+      label: Your RELYR experience
+      description: Choose the closest current state.
+      options:
+        - I have not installed RELYR yet
+        - I tried RELYR once
+        - I currently use RELYR
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Which one action or workflow would you use RELYR for?
+      description: A keyboard layer, keyboard-and-mouse combination, gesture, Deck button, app profile, or macro are all useful examples.
+      placeholder: "Example: Hold Space and press F/G for copy and paste."
+    validations:
+      required: true
+
+  - type: textarea
+    id: friction
+    attributes:
+      label: What would stop you, or where did setup become unclear?
+      description: Installation trust, SmartScreen, first setup, conflicting tools, terminology, or missing behavior are useful details.
+
+  - type: input
+    id: version
+    attributes:
+      label: RELYR version, if installed
+      placeholder: "0.1.389"
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I have not included passwords, private macro contents, personal information, or confidential data.
+          required: true
