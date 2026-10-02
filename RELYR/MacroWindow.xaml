@@ -242,14 +242,31 @@
                 </ContextMenu>
               </ListBox.ContextMenu>
               <ListBox.ItemTemplate><DataTemplate><Border Padding="2,3"><Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="44"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="44"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Style="{StaticResource MacroStepKindBar}"/>
                 <Border Grid.Column="1" Tag="MacroStepNumber" Width="34" Height="34" HorizontalAlignment="Left" VerticalAlignment="Center" Background="Transparent" BorderBrush="Transparent" BorderThickness="0">
                   <TextBlock Text="{Binding Number}" Foreground="{DynamicResource PrimaryText}" FontFamily="Cascadia Mono, Consolas" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="2"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel>
-                <TextBlock Grid.Column="3" Text="{Binding DelayLabel}" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                <Border Grid.Column="4" Tag="MacroStepDragHandle" Width="28" Height="34" Margin="6,0,0,0" Background="Transparent" CornerRadius="7" Cursor="SizeAll" ToolTip="ドラッグして並べ替え">
+                <Border Grid.Column="3" Tag="MacroStepPhaseBadge" MinWidth="58" Padding="8,4" Margin="10,0,0,0" VerticalAlignment="Center" CornerRadius="10" BorderThickness="1">
+                  <Border.Style><Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Phase}" Value="{x:Static local:MacroStepPhase.None}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                      <DataTrigger Binding="{Binding Phase}" Value="{x:Static local:MacroStepPhase.Release}"><Setter Property="Background" Value="{DynamicResource ControlBackground}"/><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}"/></DataTrigger>
+                    </Style.Triggers>
+                  </Style></Border.Style>
+                  <TextBlock Text="{Binding PhaseLabel}" FontSize="11" FontWeight="SemiBold" TextAlignment="Center">
+                    <TextBlock.Style><Style TargetType="TextBlock">
+                      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/>
+                      <Style.Triggers><DataTrigger Binding="{Binding Phase}" Value="{x:Static local:MacroStepPhase.Release}"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}"/></DataTrigger></Style.Triggers>
+                    </Style></TextBlock.Style>
+                  </TextBlock>
+                </Border>
+                <TextBlock Grid.Column="4" Text="{Binding DelayLabel}" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                <Border Grid.Column="5" Tag="MacroStepDragHandle" Width="28" Height="34" Margin="6,0,0,0" Background="Transparent" CornerRadius="7" Cursor="SizeAll" ToolTip="ドラッグして並べ替え">
                   <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons" FontSize="15" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
               </Grid></Border></DataTemplate></ListBox.ItemTemplate>
@@ -356,6 +373,7 @@
                 <TextBlock Text="ms" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0" IsHitTestVisible="False"/>
               </Grid>
               <Button x:Name="ApplyStepEditButton" Style="{StaticResource FormStackButton}" Content="変更を反映" Click="ApplyStepEdit_Click" IsEnabled="False" Background="{DynamicResource AccentSoftBrush}" Margin="0,16,0,0" HorizontalContentAlignment="Center"/>
+              <Button x:Name="ApplyAllStepDelayButton" Style="{StaticResource FormStackButton}" Content="全手順に一括反映" Click="ApplyAllStepDelay_Click" IsEnabled="False" Margin="0,2,0,0" HorizontalContentAlignment="Center"/>
               <Button x:Name="ReplaceStepActionButton" Style="{StaticResource FormStackButton}" Content="定番アクションに変更…" Click="ReplaceStepAction_Click" IsEnabled="False" Margin="0,2,0,0" HorizontalContentAlignment="Center"/>
               <TextBlock Text="手順をダブルクリックすると、ここで編集できます。" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="2,20,2,0"/>
             </StackPanel></ScrollViewer>

@@ -306,9 +306,9 @@ internal static class DeckPanelLayout
         }
     }
 
-    internal static FrameworkElement CreateFileIcon(string? path, double size = 20)
+    internal static FrameworkElement CreateFileIcon(string? path, double size = 20, bool extractShellIcon = true)
     {
-        if (IsShellLaunchFile(path) && ApplicationIconService.TryGetExtractedIcon(path) is { } launchIcon)
+        if (extractShellIcon && IsShellLaunchFile(path) && ApplicationIconService.TryGetExtractedIcon(path) is { } launchIcon)
         {
             return new System.Windows.Controls.Image
             {
@@ -346,6 +346,27 @@ internal static class DeckPanelLayout
         else
             icon.Data = Geometry.Parse("M 4,1 L 14,1 L 20,7 L 20,23 L 4,23 Z M 14,1 L 14,7 L 20,7");
         return new Viewbox { Width = size, Height = size, Stretch = System.Windows.Media.Stretch.Uniform, Child = icon, IsHitTestVisible = false };
+    }
+
+    internal static void WarmButtonContent(Mapping mapping)
+    {
+        if (HasRegisteredFile(mapping))
+        {
+            if (IsVideoFile(mapping.DeckFilePath))
+                _ = LoadVideoThumbnail(mapping.DeckFilePath, 96, 54);
+            else if (IsImageFile(mapping.DeckFilePath))
+                _ = LoadImageThumbnail(mapping.DeckFilePath, 96);
+            else if (IsShellLaunchFile(mapping.DeckFilePath))
+                _ = ApplicationIconService.TryGetExtractedIcon(mapping.DeckFilePath);
+        }
+
+        string? launchValue = mapping.Kind == ActionKind.Launch && !string.IsNullOrWhiteSpace(mapping.Value)
+            ? mapping.Value
+            : mapping.LongPressKind == ActionKind.Launch && !string.IsNullOrWhiteSpace(mapping.LongPressValue)
+                ? mapping.LongPressValue
+                : null;
+        if (launchValue != null && (mapping.DeckIconAutoAssigned || !DeckIconCatalog.HasIcon(mapping)))
+            _ = ApplicationIconService.TryGetExtractedIcon(launchValue);
     }
 
     internal static WpfColor TextColorFor(WpfColor background)
@@ -446,7 +467,7 @@ internal static class DeckPanelLayout
         ThumbnailCache[key] = image;
     }
 
-    internal static FrameworkElement CreateButtonContent(string input, Mapping? mapping, bool loadThumbnail = true)
+    internal static FrameworkElement CreateButtonContent(string input, Mapping? mapping, bool loadExpensiveFileVisual = true)
     {
         if (DeckMonitorCatalog.TryGet(mapping?.DeckMonitor, out var monitor))
             return new DeckMonitorView(monitor);
@@ -470,8 +491,17 @@ internal static class DeckPanelLayout
         bool automaticApplicationFace = visualMapping is { DeckIconAutoAssigned: true }
             && (visualMapping.Kind == ActionKind.Launch || visualMapping.LongPressKind == ActionKind.Launch)
             && string.IsNullOrWhiteSpace(visualMapping.DeckIconPath);
+        bool implicitApplicationFace = visualMapping != null
+            && !DeckIconCatalog.HasIcon(visualMapping)
+            && (visualMapping.Kind == ActionKind.Launch || visualMapping.LongPressKind == ActionKind.Launch);
         double configuredIconSize = registeredLaunchFace || automaticApplicationFace ? RegisteredLaunchIconSize : 22;
-        var configuredIcon = mapping?.DeckIconHidden == true ? null : DeckIconCatalog.CreateVisual(visualMapping, configuredIconSize);
+        // Resolving a shortcut or executable icon can enter the shell and scan
+        // process/registry state. The live Deck warms these faces off the UI
+        // thread and asks for the real visual again when the cache is ready.
+        var configuredIcon = mapping?.DeckIconHidden == true
+            || !loadExpensiveFileVisual && (automaticApplicationFace || implicitApplicationFace)
+            ? null
+            : DeckIconCatalog.CreateVisual(visualMapping, configuredIconSize);
         // App actions from both Installed Apps and Windows Apps use an
         // automatically extracted Image face. Match direct EXE/shortcut drops
         // without enlarging manual glyphs, custom artwork, or monitor tiles.
@@ -486,7 +516,7 @@ internal static class DeckPanelLayout
         if (HasRegisteredFile(mapping))
         {
             bool video = IsVideoFile(mapping!.DeckFilePath);
-            var thumbnail = loadThumbnail ? (video ? LoadVideoThumbnail(mapping.DeckFilePath, 96, 54) : LoadFileThumbnail(mapping.DeckFilePath, 96)) : null;
+            var thumbnail = loadExpensiveFileVisual ? (video ? LoadVideoThumbnail(mapping.DeckFilePath, 96, 54) : LoadFileThumbnail(mapping.DeckFilePath, 96)) : null;
             if (thumbnail != null)
             {
                 var image = new System.Windows.Controls.Image { Source = thumbnail, Stretch = System.Windows.Media.Stretch.Uniform, Margin = new Thickness(4), IsHitTestVisible = false };
@@ -510,7 +540,7 @@ internal static class DeckPanelLayout
                 root.Children.Add(badge);
                 return root;
             }
-            return CreateFileIcon(mapping.DeckFilePath, IsShellLaunchFile(mapping.DeckFilePath) ? RegisteredLaunchIconSize : IsAudioFile(mapping.DeckFilePath) ? 20 : 18);
+            return CreateFileIcon(mapping.DeckFilePath, IsShellLaunchFile(mapping.DeckFilePath) ? RegisteredLaunchIconSize : IsAudioFile(mapping.DeckFilePath) ? 20 : 18, loadExpensiveFileVisual);
         }
         return new TextBlock
         {

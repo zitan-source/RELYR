@@ -1166,7 +1166,10 @@ public partial class MainWindow
         // Parameterized palette rows and the undo bar can complete template
         // work after the commit. Re-apply the durable key state last so the
         // long-press band cannot be replaced by a freshly realized template.
-        ColorButtons();
+        // Deck selection already refreshed its changed cell and SelectInput
+        // updated selection state. A third 324-cell pass only adds latency.
+        if (!deckManagementMode)
+            ColorButtons();
         return true;
     }
 
@@ -1497,7 +1500,13 @@ public partial class MainWindow
             deckOverlayVisualSynchronized = true;
         }
         UpdateLayerButtons();
-        ColorButtons();
+        if (deckSynchronized)
+        {
+            foreach (string input in (changedInputs ?? []).Where(DeckPanelLayout.IsInputName).Distinct(StringComparer.OrdinalIgnoreCase))
+                RefreshSelectedInputVisual(input);
+        }
+        else
+            ColorButtons();
         if (config.AutoSave)
             SaveAndApply(message);
         else

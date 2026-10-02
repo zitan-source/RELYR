@@ -240,6 +240,7 @@ public partial class MainWindow
     internal IReadOnlyList<System.Windows.Controls.Button> DeckGridButtonsForTest => deckGridButtons;
     internal int DeckVisualUpdateCountForTest { get; private set; }
     internal void ResetDeckVisualUpdateCountForTest() => DeckVisualUpdateCountForTest = 0;
+    internal bool SwapDeckEditorSlotsForTest(string source, string target) => SwapDeckEditorSlots(source, target);
     internal DeckLayoutDefinition? SelectedDeckLayoutForTest => selectedDeckLayout;
     internal bool IsDeckEditorAudioPlayingForTest => deckEditorAudioPlayer != null;
     internal bool IsDeckEditorThumbnailOpenForTest => deckEditorThumbnailPopup?.IsOpen == true;

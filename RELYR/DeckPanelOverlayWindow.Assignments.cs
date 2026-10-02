@@ -234,18 +234,26 @@ internal sealed partial class DeckPanelOverlayWindow
         string? name = PromptDeckButtonName(DeckPanelLayout.NameLabelText(existing, layout.ShowFileExtensionsInLabels));
         if (name == null || (existing == null && name.Length == 0))
             return;
+        SetDeckButtonName(slot, name);
+    }
+    void SetDeckButtonName(int slot, string name)
+    {
+        var existing = DeckPanelLayout.FindMapping(layout, slot);
         var mapping = existing ?? GetOrCreateDeckMapping(slot);
         mapping.Description = name;
         if (!HasDeckButtonContent(mapping))
             layout.Mappings.Remove(mapping);
         CommitDeckSlotChange(slot);
     }
+#if !PRODUCTION_PUBLISH
+    internal void SetDeckButtonNameForTest(int slot, string name) => SetDeckButtonName(slot, name);
+#endif
     string? PromptDeckButtonName(string initial)
     {
         var dialog = new Window { Title = "Deckボタン名", Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner, Width = 420, Height = 196, ResizeMode = ResizeMode.NoResize, Background = ThemeService.Brush("SurfaceBackground"), Foreground = ThemeService.Brush("PrimaryText"), ShowInTaskbar = false };
         var panel = new StackPanel { Margin = new Thickness(22) };
         panel.Children.Add(new TextBlock { Text = "ボタンの下に表示する名前", FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
-        var box = new System.Windows.Controls.TextBox { Text = initial, FontSize = 15, Height = 40, Padding = new Thickness(10, 7, 10, 7), Background = ThemeService.Brush("InputBackground"), Foreground = ThemeService.Brush("PrimaryText"), BorderBrush = ThemeService.Brush("BorderBrush") };
+        var box = CreateDeckButtonNameInput(initial);
         panel.Children.Add(box);
         var buttons = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         var cancel = new Button { Content = "キャンセル", Width = 98, Height = 40, Margin = new Thickness(6, 0, 0, 0), Style = (Style)WpfApplication.Current.FindResource("AppButtonStyle") };
@@ -259,6 +267,26 @@ internal sealed partial class DeckPanelOverlayWindow
         dialog.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
         return dialog.ShowDialog() == true ? box.Text.Trim() : null;
     }
+    static System.Windows.Controls.TextBox CreateDeckButtonNameInput(string initial)
+    {
+        var box = new System.Windows.Controls.TextBox
+        {
+            Text = initial,
+            FontSize = 15,
+            Height = 48,
+            Padding = new Thickness(12, 0, 12, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Style = (Style)WpfApplication.Current.FindResource("AppTextBoxStyle")
+        };
+        box.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "InputBackground");
+        box.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "PrimaryText");
+        box.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "BorderBrush");
+        box.SetResourceReference(System.Windows.Controls.TextBox.CaretBrushProperty, "AccentBrush");
+        return box;
+    }
+#if !PRODUCTION_PUBLISH
+    internal static System.Windows.Controls.TextBox CreateDeckButtonNameInputForTest(string initial) => CreateDeckButtonNameInput(initial);
+#endif
     static string? ClipboardFile()
     {
         try

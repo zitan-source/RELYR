@@ -85,8 +85,7 @@ public partial class MainWindow
         }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
-        MarkDirty();
-        RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges([input]);
     }
     void DeckNameBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -143,8 +142,7 @@ public partial class MainWindow
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
         UpdateDeckFileDropTarget();
-        MarkDirty();
-        RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges([input]);
     }
     void DeckFileSelect_Click(object sender, RoutedEventArgs e)
     {
@@ -261,7 +259,7 @@ public partial class MainWindow
         var resetColor = CreateDeckContextMenuItem("\uE777", "色を標準に戻す", "");
         resetColor.Click += (_, _) => SetDeckButtonColor(input, "");
         var delete = CreateDeckContextMenuItem("\uE74D", "削除", "Del", true);
-        delete.Click += (_, _) => { if (mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)) > 0) { ClearSelectedInput(); MarkDirty(); RefreshSelectedInputVisual(input); } };
+        delete.Click += (_, _) => { if (mappings.RemoveAll(x => x.Input.Equals(input, StringComparison.OrdinalIgnoreCase)) > 0) { ClearSelectedInput(); CommitDeckEditorSlotChanges([input]); } };
         menu.Items.Add(copyAssignment);
         menu.Items.Add(pasteAssignment);
         menu.Items.Add(new Separator());
@@ -308,8 +306,7 @@ public partial class MainWindow
         mappings.RemoveAll(mapping => mapping.Input.Equals(input, StringComparison.OrdinalIgnoreCase));
         mappings.Add(copy);
         ClearSelectedInput();
-        MarkDirty();
-        RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges([input]);
         ShowInlineNotice(DisplayInputName(input) + " へ割り当てを貼り付けました");
     }
     static MenuItem CreateDeckContextMenuItem(string icon, string label, string shortcut, bool danger = false)
@@ -431,9 +428,7 @@ public partial class MainWindow
         // Mutate every selected slot first, then record and synchronize once.
         // This makes one Undo restore the complete batch and avoids rebuilding
         // the live Deck once per selected button.
-        MarkDirty();
-        foreach (string input in inputs)
-            RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges(inputs);
         UpdateDeckColorPicker();
         ShowInlineNotice($"{inputs.Length}個のDeckボタンの色を変更しました");
     }
@@ -460,8 +455,7 @@ public partial class MainWindow
         }
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
-        MarkDirty();
-        RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges([input]);
     }
     void SetDeckButtonColor(string input, string color)
     {
@@ -477,8 +471,7 @@ public partial class MainWindow
             selected.DeckColor = color;
         if (!HasDeckButtonContent(mapping))
             mappings.Remove(mapping);
-        MarkDirty();
-        RefreshSelectedInputVisual(input);
+        CommitDeckEditorSlotChanges([input]);
         UpdateDeckColorPicker();
     }
     void DeckColorSwatch_Click(object sender, RoutedEventArgs e)
@@ -491,6 +484,33 @@ public partial class MainWindow
     {
         if (selected?.Input is string input && DeckPanelLayout.IsInputName(input))
             SetDeckButtonColor(input, "");
+    }
+
+    void CommitDeckEditorSlotChanges(IEnumerable<string> inputs)
+    {
+        string[] changedInputs = [.. inputs
+            .Where(DeckPanelLayout.IsInputName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        MarkDirty(refreshDeckPanel: false);
+        SynchronizeDeckEditorSlots(changedInputs);
+    }
+
+    void SynchronizeDeckEditorSlots(IEnumerable<string> inputs)
+    {
+        if (selectedDeckLayout == null)
+            return;
+        string[] changedInputs = [.. inputs
+            .Where(DeckPanelLayout.IsInputName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        int[] slots = [.. changedInputs
+            .Select(DeckPanelLayout.SlotNumber)
+            .Where(slot => slot > 0)];
+        if (slots.Length == 0)
+            return;
+        foreach (string input in changedInputs)
+            RefreshSelectedInputVisual(input);
+        OverlayService.RefreshDeckPanelSlots(selectedDeckLayout.Id, slots);
+        deckOverlayVisualSynchronized = true;
     }
     void DeckColorCustom_Click(object sender, RoutedEventArgs e)
     {
@@ -1385,22 +1405,27 @@ public partial class MainWindow
         try
         {
             deckClickModifierSource = null;
-            RunDeckEditorDrag(button, mapping, data);
+            RunDeckEditorDrag(button, data);
         }
         finally { ClearDeckReorderTarget(); }
         e.Handled = true;
     }
-    static void RunDeckEditorDrag(System.Windows.Controls.Button button, Mapping? mapping, System.Windows.DataObject data)
+    static void RunDeckEditorDrag(System.Windows.Controls.Button button, System.Windows.DataObject data)
     {
         DeckDragPreviewWindow? preview = null;
         System.Windows.GiveFeedbackEventHandler? feedback = null;
         try
         {
-            if (button.Tag is string input)
+            if (button.Tag is string)
             {
-                FrameworkElement content = DeckPanelLayout.CreateButtonContent(input, mapping);
-                if (content is TextBlock text)
-                    text.Foreground = button.Foreground;
+                // The source cell is already fully rendered. Reuse that visual
+                // for feedback instead of decoding its thumbnail or extracting
+                // its application icon again on the first drag movement.
+                var content = new Border
+                {
+                    Background = new VisualBrush(button) { Stretch = Stretch.Uniform },
+                    IsHitTestVisible = false
+                };
                 var face = new Border
                 {
                     CornerRadius = new CornerRadius(4),
@@ -1525,14 +1550,14 @@ public partial class MainWindow
             bool moved = layout != null && MoveDeckSlotsAsBlock(layout, group, target, DeckPanelLayout.VisibleSlotCount(layout), out movedInputs);
             if (moved)
             {
+                string[] changedInputs = [.. group.Concat(movedInputs).Distinct(StringComparer.OrdinalIgnoreCase)];
                 multiSelectedInputs.Clear();
                 foreach (string movedInput in movedInputs)
                     multiSelectedInputs.Add(movedInput);
                 multiSelectionAnchorInput = movedInputs.FirstOrDefault();
                 modifierActivatedMultiSelect = false;
-                BuildDeckManagementPanel();
+                CommitDeckEditorSlotChanges(changedInputs);
                 UpdateMultiSelectControls();
-                MarkDirty();
             }
             e.Effects = moved ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
             e.Handled = true;
@@ -1540,14 +1565,7 @@ public partial class MainWindow
         }
         if (e.Data.GetDataPresent(DeckPanelLayout.SlotDragFormat) && e.Data.GetData(DeckPanelLayout.SlotDragFormat) is string source && DeckPanelLayout.IsInputName(source))
         {
-            var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
-            if (layout != null && !source.Equals(target, StringComparison.OrdinalIgnoreCase))
-            {
-                DeckPanelLayout.SwapSlots(layout, DeckPanelLayout.SlotNumber(source), DeckPanelLayout.SlotNumber(target));
-                BuildDeckManagementPanel();
-                SelectInput(target, false);
-                MarkDirty();
-            }
+            SwapDeckEditorSlots(source, target);
             e.Handled = true;
             return;
         }
@@ -1562,6 +1580,22 @@ public partial class MainWindow
             SelectInput(target, false);
         }
         e.Handled = true;
+    }
+
+    bool SwapDeckEditorSlots(string source, string target)
+    {
+        var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config);
+        if (layout == null || !DeckPanelLayout.IsInputName(source) || !DeckPanelLayout.IsInputName(target) || source.Equals(target, StringComparison.OrdinalIgnoreCase))
+            return false;
+        DeckPanelLayout.SwapSlots(layout, DeckPanelLayout.SlotNumber(source), DeckPanelLayout.SlotNumber(target));
+        // Keep the existing cell tree and repaint only the two affected slots.
+        // Rebuilding an 18x18 grid here made a neighboring drop pause visibly.
+        // Editor changes are already written to the model as they are typed;
+        // the same dirty transaction below persists them with the move. Avoid
+        // forcing a synchronous SaveAndApply merely to retarget the inspector.
+        SelectInput(target, focusExecution: false, refreshAllButtons: false, completeCurrentEdit: false);
+        CommitDeckEditorSlotChanges([source, target]);
+        return true;
     }
 
     static bool TryGetDeckSlotGroup(System.Windows.IDataObject data, out string[] inputs)

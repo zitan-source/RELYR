@@ -1584,7 +1584,7 @@ internal static class UiIntegrationTest
                 ("Macros", englishMacroWindow),
                 ("Tutorial", englishTutorial),
                 ("DeckOverlay", englishDeckOverlay),
-                ("DeckButtonMenu", englishDeckOverlay.DeckButtons[0].ContextMenu!),
+                ("DeckButtonMenu", englishDeckOverlay.EnsureDeckButtonContextMenuForTest(0)),
                 ("DeckPanelMenu", englishDeckOverlay.PanelContextMenuForTest!),
                 ("CapsLockImportDialog", englishCapsLockImportDialog),
                 ("UnknownErrorDialog", englishUnknownErrorDialog),
@@ -2452,11 +2452,49 @@ internal static class UiIntegrationTest
             Pump(window);
             PumpFor(TimeSpan.FromMilliseconds(150));
             var overlayCells = deckOverlay.DeckButtons.Select(button => (StackPanel)button.Parent).ToArray();
+            var assignedNameLabel = overlayCells[0].Children.OfType<TextBlock>().Single();
             Check(deckOverlay.DeckButtons.All(button => Math.Abs(button.Width - DeckPanelLayout.KeyWidth) < .1 && Math.Abs(button.Height - DeckPanelLayout.KeyHeight) < .1)
                 && overlayCells.All(cell => Math.Abs(cell.Width - DeckPanelLayout.KeyWidth - DeckPanelLayout.ButtonGap) < .1 && Math.Abs(cell.Height - DeckPanelLayout.KeyHeight - DeckPanelLayout.ButtonGap) < .1)
                 && overlayCells.All(cell => Descendants<TextBlock>(cell).Any(label => Math.Abs(label.Height - DeckPanelLayout.NameLabelHeight) < .1))
-                && overlayCells[1].Children.OfType<TextBlock>().Single().Text == "deck-preview",
-                "floating Deck keeps each name below its 54x52 button and matches the visible row and column gaps");
+                && overlayCells[1].Children.OfType<TextBlock>().Single().Text == "deck-preview"
+                && assignedNameLabel is { Text: "コピー", Visibility: Visibility.Visible, Foreground: SolidColorBrush assignedNameBrush }
+                && assignedNameBrush.Color == System.Windows.Media.Color.FromRgb(0x9A, 0x9E, 0xA5),
+                "floating Deck keeps each readable name below its 54x52 button and matches the visible row and column gaps");
+            var renameInput = DeckPanelOverlayWindow.CreateDeckButtonNameInputForTest("表示確認ABC");
+            var renameInputProbe = new Window
+            {
+                Owner = window,
+                Width = 360,
+                Height = 100,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                WindowStyle = WindowStyle.None,
+                Background = ThemeService.Brush("SurfaceBackground"),
+                Content = new Border { Margin = new Thickness(12), Child = renameInput }
+            };
+            renameInputProbe.Show();
+            renameInputProbe.UpdateLayout();
+            var renameInputBitmap = new RenderTargetBitmap(
+                Math.Max(1, (int)Math.Ceiling(renameInput.ActualWidth)),
+                Math.Max(1, (int)Math.Ceiling(renameInput.ActualHeight)),
+                96, 96, PixelFormats.Pbgra32);
+            renameInputBitmap.Render(renameInput);
+            Check(Math.Abs(renameInput.Height - 48) < .1
+                && renameInput.VerticalContentAlignment == VerticalAlignment.Center
+                && renameInput.Padding.Top == 0 && renameInput.Padding.Bottom == 0
+                && HasRenderedColor(renameInputBitmap, ThemeService.Color("PrimaryText"), 24),
+                "Deck rename dialog uses a taller vertically centered field and actually renders the entered name in the theme text color");
+            renameInputProbe.Close();
+            bool menusDeferredUntilUse = deckOverlay.DeckButtons.All(button => button.ContextMenu == null);
+            var buttonsBeforeRename = deckOverlay.DeckButtons.ToArray();
+            deckOverlay.SetDeckButtonNameForTest(6, "表示確認");
+            Pump(window);
+            var renamedLabel = ((StackPanel)deckOverlay.DeckButtons[5].Parent).Children.OfType<TextBlock>().Single();
+            Check(menusDeferredUntilUse
+                && renamedLabel is { Text: "表示確認", Visibility: Visibility.Visible }
+                && !ReferenceEquals(buttonsBeforeRename[5], deckOverlay.DeckButtons[5])
+                && buttonsBeforeRename.Where((_, index) => index != 5).SequenceEqual(deckOverlay.DeckButtons.Where((_, index) => index != 5)),
+                "Deck menus stay lazy until right-click and renaming immediately replaces only the named cell with a visible label");
             overlayLayout.ShowFileExtensionsInLabels = true;
             deckOverlay.Refresh(67, true);
             Pump(window);
@@ -2483,7 +2521,7 @@ internal static class UiIntegrationTest
                 Check(true, "the Deck drag surface can own capture while it is being moved");
             else
                 output.WriteLine("SKIP Deck drag capture acquisition: the current test session denied global mouse capture");
-            var openDeckMenu = deckOverlay.DeckButtons[0].ContextMenu!;
+            var openDeckMenu = deckOverlay.EnsureDeckButtonContextMenuForTest(0);
             openDeckMenu.PlacementTarget = deckOverlay.DeckButtons[0];
             openDeckMenu.IsOpen = true;
             Pump(window);
@@ -2660,7 +2698,7 @@ internal static class UiIntegrationTest
 
             Func<MenuItem, string, bool> hasDeckMenuLabel = (item, expected) => item.Header is Grid header
                 && header.Children.OfType<TextBlock>().Any(text => text.Text == expected);
-            var timerMenu = interactiveMonitorOverlay.DeckButtons[2].ContextMenu!;
+            var timerMenu = interactiveMonitorOverlay.EnsureDeckButtonContextMenuForTest(2);
             timerMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
             string[] expectedTimerPresets = ["1分", "3分", "10分", "30分", "任意..."];
             bool timerPresetsVisible = expectedTimerPresets.All(expected => timerMenu.Items.OfType<MenuItem>()
@@ -2775,7 +2813,7 @@ internal static class UiIntegrationTest
             Check(Math.Abs(compactOverlayPreview.PreviewWidthForTest - 20) < .1 && Math.Abs(compactOverlayPreview.PreviewHeightForTest - 20) < .1,
                 "Deck overlay reorder and file drags use the same compact 20 by 20 preview as the editor");
             compactOverlayPreview.Close();
-            var overlayIconMenu = deckOverlay.DeckButtons[3].ContextMenu;
+            var overlayIconMenu = deckOverlay.EnsureDeckButtonContextMenuForTest(3);
             bool overlayHasIconCommand = overlayIconMenu != null && overlayIconMenu.Items.OfType<MenuItem>().Select(item => item.Header).OfType<Grid>().SelectMany(grid => grid.Children.OfType<TextBlock>()).Any(text => text.Text == "アイコン変更...");
             Check(deckOverlay.DeckButtons[3].Content is TextBlock { Text: "\uE721" } && overlayHasIconCommand && DeckIconCatalog.CreateVisual(overlayLayout.Mappings.Single(x => x.Input == "Deck+04"), 34, false) != null, "Deck overlay uses the configured icon, offers the same right-click picker, and can build that icon for external drag feedback");
             Check(deckOverlay.DeckButtons[4].Content is Grid missingOverlayIcon && Descendants<System.Windows.Shapes.Path>(missingOverlayIcon).Any(path => Equals(path.Stroke, ThemeService.Brush("DangerBrush"))) && deckOverlay.DeckButtons[4].ToolTip is System.Windows.Controls.ToolTip { Content: TextBlock { Text: "参照先のファイルが削除されたか、移動された可能性があります。" } }, "a missing Deck file uses the same broken-link icon and compact warning in the overlay");
@@ -2884,7 +2922,7 @@ internal static class UiIntegrationTest
                 && OverlayService.DeckRefreshRequestCountForTest == 0,
                 $"Deck overlay delete and file drop replace only the changed cell, and the following save does not rebuild the whole Deck (delete={deleteTouchedOnlyTarget}, drop={fileDropTouchedOnlyTarget}, refreshes={OverlayService.DeckRefreshRequestCountForTest})");
             differentialDeckOverlay.AssignDeckFileForTest(2, deckDropExecutable);
-            Pump(window);
+            PumpFor(TimeSpan.FromMilliseconds(350));
             differentialDeckOverlay.DeckButtons[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Mapping executableOverlayMapping = differentialDeckLayout.Mappings.Last(mapping => mapping.Input == "Deck+02");
             Check(executableOverlayMapping is { Kind: ActionKind.Launch }
@@ -2895,7 +2933,7 @@ internal static class UiIntegrationTest
                 && differentialDeckExecuted.Value == deckDropExecutable,
                 "an executable dropped directly on the live Deck shows its file icon and clicking that button dispatches the executable Launch Action");
             differentialDeckOverlay.AssignDeckFileForTest(3, deckDropShortcut);
-            Pump(window);
+            PumpFor(TimeSpan.FromMilliseconds(350));
             differentialDeckOverlay.DeckButtons[2].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Mapping shortcutOverlayMapping = differentialDeckLayout.Mappings.Last(mapping => mapping.Input == "Deck+03");
             Check(shortcutOverlayMapping is { Kind: ActionKind.Launch }
@@ -3551,6 +3589,22 @@ internal static class UiIntegrationTest
             window.SaveAndApplyForTest();
             Pump(window);
             Check(OverlayService.DeckRefreshRequestCountForTest == 1, "confirming a Deck shortcut refreshes the visible overlay exactly once without restarting RELYR");
+            var largeDeckButtonsBeforeSwap = window.DeckGridButtonsForTest.ToArray();
+            var activeLargeDeck = window.SelectedDeckLayoutForTest!;
+            activeLargeDeck.Mappings.RemoveAll(mapping => mapping.Input is "Deck+320" or "Deck+321");
+            activeLargeDeck.Mappings.Add(new Mapping { Input = "Deck+320", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Text, Value = "drag-source" });
+            activeLargeDeck.Mappings.Add(new Mapping { Input = "Deck+321", Layer = DeckPanelLayout.Layer, Kind = ActionKind.Shortcut, Value = "Ctrl+Alt+V" });
+            window.ResetDeckVisualUpdateCountForTest();
+            OverlayService.ResetDeckRefreshRequestCountForTest();
+            bool largeDeckSwapApplied = window.SwapDeckEditorSlotsForTest("Deck+320", "Deck+321");
+            Check(largeDeckSwapApplied
+                && largeDeckButtonsBeforeSwap.SequenceEqual(window.DeckGridButtonsForTest)
+                && activeLargeDeck.Mappings.Single(mapping => mapping.Input == "Deck+320").Value == "Ctrl+Alt+V"
+                && activeLargeDeck.Mappings.Single(mapping => mapping.Input == "Deck+321").Value == "drag-source"
+                && window.DeckVisualUpdateCountForTest <= 4
+                && OverlayService.DeckSlotRefreshRequestCountForTest == 1
+                && OverlayService.DeckRefreshRequestCountForTest == 0,
+                $"neighboring drag on an 18x18 Deck reuses all 324 cells and repaints only the affected slots (buttonUpdates={window.DeckVisualUpdateCountForTest}, slotRefreshes={OverlayService.DeckSlotRefreshRequestCountForTest}, fullRefreshes={OverlayService.DeckRefreshRequestCountForTest})");
             window.ValueBox.Text = originalLargeDeckValue;
             window.ApplyDeckSizeForTest(9, 5);
             window.DeckCustomizeToggleButton.IsChecked = false;
@@ -4987,13 +5041,19 @@ internal static class UiIntegrationTest
             macro.ConfirmNameButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             macro.AddManualKeyForTest(System.Windows.Input.Key.A);
             Check(macroConfig.Macros[0].Steps.Select(x => x.Event).SequenceEqual(["A Down", "A Up"]), "manual macro mode appends each pressed key as a safe down/up pair");
-            Check(macro.StepList.Items.Cast<MacroWindow.StepView>().Any(x => x.Title.Contains("A") && x.Detail.Contains("Down")), "macro steps are displayed as human-readable operations");
+            var manualPairViews = macro.StepList.Items.Cast<MacroWindow.StepView>().ToArray();
+            Check(manualPairViews.Any(x => x.Title.Contains("A") && x.Detail.Contains("Down"))
+                && manualPairViews.Select(x => x.Phase).SequenceEqual([MacroStepPhase.Press, MacroStepPhase.Release])
+                && manualPairViews[0].PhaseLabel.Contains("↓") && manualPairViews[1].PhaseLabel.Contains("↑"),
+                "macro steps show human-readable operations plus distinct press and release phases");
             Pump(window);
             var macroStepHandles = Descendants<Border>(macro.StepList).Where(border => Equals(border.Tag, "MacroStepDragHandle")).ToArray();
             var macroStepNumbers = Descendants<Border>(macro.StepList).Where(border => Equals(border.Tag, "MacroStepNumber")).ToArray();
+            var macroStepPhaseBadges = Descendants<Border>(macro.StepList).Where(border => Equals(border.Tag, "MacroStepPhaseBadge") && border.Visibility == Visibility.Visible).ToArray();
             Check(macroStepHandles.Length == macroConfig.Macros[0].Steps.Count && macroStepHandles.All(handle => handle.Cursor == System.Windows.Input.Cursors.SizeAll && !string.IsNullOrWhiteSpace(handle.ToolTip?.ToString()))
-                && macroStepNumbers.Length == macroConfig.Macros[0].Steps.Count && macroStepNumbers.All(number => Math.Abs(number.ActualWidth - 34) < .1 && number.BorderThickness == new Thickness(0)),
-                "every macro step has a readable flat fixed number and an explicit three-dot drag handle");
+                && macroStepNumbers.Length == macroConfig.Macros[0].Steps.Count && macroStepNumbers.All(number => Math.Abs(number.ActualWidth - 34) < .1 && number.BorderThickness == new Thickness(0))
+                && macroStepPhaseBadges.Length == 2 && !Equals(macroStepPhaseBadges[0].BorderBrush, macroStepPhaseBadges[1].BorderBrush),
+                "every macro step has a readable number and drag handle, while Down and Up use visually distinct phase badges");
             Check(macro.OpenSafeStepDragPreviewForTest(), "the visual-only macro drag preview is also click-through at the native popup-window level");
             CaptureForReview(macro, "macro-manager.png");
             Check(Descendants<TextBlock>(macro).Any(x => x.Text.Contains("Ctrl + Shift + F12")), "macro stop shortcut is explained");
@@ -5043,7 +5103,7 @@ internal static class UiIntegrationTest
             Check(assignMacro.UseButton.Visibility == Visibility.Visible && assignMacro.UseButton.IsEnabled && assignMacro.AssignmentTargetText.Text.Contains("Space+K"), "assign button appears only with a clear assignment target");
             assignMacro.Close();
             output.WriteLine("SKIP physical window-under-cursor checks in the default UI suite: they require an isolated desktop and must never move the user's pointer.");
-            var multiStepConfig = new AppConfig { Macros = [new MacroDefinition { Name = "複数選択", Steps = [new() { Event = "A Down" }, new() { Event = "B Down" }, new() { Event = "C Down" }] }] };
+            var multiStepConfig = new AppConfig { Macros = [new MacroDefinition { Name = "複数選択", Steps = [new() { Event = "A Down", DelayMs = 10 }, new() { Event = "B Down", DelayMs = 20 }, new() { Event = "C Down", DelayMs = 30 }] }] };
             var multiStepMacro = new MacroWindow(multiStepConfig, (_, _, _) => { }) { Owner = window, ShowInTaskbar = false };
             multiStepMacro.Show();
             multiStepMacro.UpdateLayout();
@@ -5051,6 +5111,16 @@ internal static class UiIntegrationTest
             Check(multiStepMacro.StepList.SelectionMode == System.Windows.Controls.SelectionMode.Extended, "macro steps use standard Shift-range and Ctrl-discontinuous selection");
             multiStepMacro.StepList.SelectedItems.Add(multiStepMacro.StepList.Items[0]);
             multiStepMacro.StepList.SelectedItems.Add(multiStepMacro.StepList.Items[2]);
+            multiStepMacro.SelectedStepDelayBox.Text = "125";
+            multiStepMacro.ApplyStepEditButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(multiStepConfig.Macros[0].Steps.Select(step => step.DelayMs).SequenceEqual([125, 20, 125])
+                && multiStepMacro.FooterStatus.Text.Contains("2件"),
+                "one delay edit applies to every selected macro step in one undoable change");
+            multiStepMacro.SelectedStepDelayBox.Text = "45";
+            multiStepMacro.ApplyAllStepDelayButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(multiStepConfig.Macros[0].Steps.All(step => step.DelayMs == 45)
+                && multiStepMacro.StepSummary.Text.Contains("135 ms"),
+                "the all-steps command changes every macro delay at once and refreshes the total");
             Descendants<System.Windows.Controls.Button>(multiStepMacro).First(x => x.Content?.ToString() == "選択した手順を削除").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Check(multiStepConfig.Macros[0].Steps.Select(x => x.Event).SequenceEqual(["B Down"]), "non-adjacent selected macro steps are deleted together");
             multiStepMacro.SuppressUnsavedPromptForTest = true;
@@ -5739,6 +5809,25 @@ internal static class UiIntegrationTest
         leftConverted.CopyPixels(leftPixels, stride, 0);
         rightConverted.CopyPixels(rightPixels, stride, 0);
         return leftPixels.AsSpan().SequenceEqual(rightPixels);
+    }
+    static bool HasRenderedColor(BitmapSource bitmap, System.Windows.Media.Color expected, int minimumPixels)
+    {
+        var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        int stride = converted.PixelWidth * 4;
+        byte[] pixels = new byte[stride * converted.PixelHeight];
+        converted.CopyPixels(pixels, stride, 0);
+        int matches = 0;
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset + 3] < 200
+                || Math.Abs(pixels[offset] - expected.B) > 40
+                || Math.Abs(pixels[offset + 1] - expected.G) > 40
+                || Math.Abs(pixels[offset + 2] - expected.R) > 40)
+                continue;
+            if (++matches >= minimumPixels)
+                return true;
+        }
+        return false;
     }
     static IEnumerable<double> AdjacentGaps(IReadOnlyList<System.Windows.Controls.Button> keys)
     {

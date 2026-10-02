@@ -17,9 +17,16 @@ public enum MacroStepVisualKind
     Text
 }
 
+public enum MacroStepPhase
+{
+    None,
+    Press,
+    Release
+}
+
 public partial class MacroWindow : Window
 {
-    public sealed record StepView(MacroStep Step, int Number, string Title, string Detail, string DelayLabel, MacroStepVisualKind VisualKind);
+    public sealed record StepView(MacroStep Step, int Number, string Title, string Detail, string DelayLabel, MacroStepVisualKind VisualKind, string PhaseLabel, MacroStepPhase Phase);
 
     readonly AppConfig config;
     readonly Action<bool, bool, bool> setRecording;
@@ -1184,13 +1191,17 @@ public partial class MacroWindow : Window
             return;
         var selected = SelectedSteps();
         bool one = selected.Count == 1;
-        SelectedStepDelayBox.IsEnabled = one;
-        ApplyStepEditButton.IsEnabled = one;
+        bool hasSteps = current?.Steps.Count > 0;
+        SelectedStepDelayBox.IsEnabled = hasSteps;
+        ApplyStepEditButton.IsEnabled = selected.Count > 0;
+        ApplyAllStepDelayButton.IsEnabled = hasSteps;
         ReplaceStepActionButton.IsEnabled = one && selected[0].RecordedActionKind != null;
         if (!one)
         {
             SelectedStepTitle.Text = selected.Count > 1 ? $"{selected.Count}件の手順を選択中" : "中央から手順を選択してください。";
-            SelectedStepDelayBox.Text = "0";
+            SelectedStepDelayBox.Text = selected.Count > 1 && selected.All(step => step.DelayMs == selected[0].DelayMs)
+                ? selected[0].DelayMs.ToString()
+                : selected.Count > 1 ? "" : "0";
             return;
         }
         var step = selected[0];
@@ -1200,17 +1211,27 @@ public partial class MacroWindow : Window
     void ApplyStepEdit_Click(object sender, RoutedEventArgs e)
     {
         var selected = SelectedSteps();
-        if (selected.Count != 1)
+        if (selected.Count == 0)
             return;
+        ApplyDelayToSteps(selected, $"選択した{selected.Count}件の待機時間を変更しました。");
+    }
+    void ApplyAllStepDelay_Click(object sender, RoutedEventArgs e)
+    {
+        if (current?.Steps.Count > 0)
+            ApplyDelayToSteps(current.Steps.ToList(), $"全{current.Steps.Count}手順の待機時間を変更しました。");
+    }
+    void ApplyDelayToSteps(IReadOnlyCollection<MacroStep> steps, string status)
+    {
         if (!int.TryParse(SelectedStepDelayBox.Text, out int ms) || ms < 0 || ms > 600000)
         {
             AppDialog.Show(this, "待機時間は0～600000ミリ秒で入力してください。", "手順編集", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         PushUndo();
-        selected[0].DelayMs = ms;
-        MarkChanged("手順を変更しました。");
-        RefreshSteps(selected);
+        foreach (var step in steps)
+            step.DelayMs = ms;
+        MarkChanged(status);
+        RefreshSteps(SelectedSteps());
         SetEditorState();
     }
     void ReplaceStepAction_Click(object sender, RoutedEventArgs e)
@@ -1233,11 +1254,29 @@ public partial class MacroWindow : Window
     void RefreshSteps(IEnumerable<MacroStep>? selected = null)
     {
         var selectedSteps = selected?.ToList() ?? [];
-        var views = current?.Steps.Select((step, index) => new StepView(step, index + 1, HumanTitle(step), HumanDetail(step), step.DelayMs > 0 ? $"{step.DelayMs} ms" : "", VisualKindFor(step))).ToList() ?? [];
+        var views = current?.Steps.Select((step, index) =>
+        {
+            MacroStepPhase phase = PhaseFor(step);
+            string phaseLabel = phase switch
+            {
+                MacroStepPhase.Press => "↓ " + LocalizationService.Text("押す"),
+                MacroStepPhase.Release => "↑ " + LocalizationService.Text("離す"),
+                _ => ""
+            };
+            return new StepView(step, index + 1, HumanTitle(step), HumanDetail(step), step.DelayMs > 0 ? $"{step.DelayMs} ms" : "", VisualKindFor(step), phaseLabel, phase);
+        }).ToList() ?? [];
         StepList.ItemsSource = views;
         StepSummary.Text = current == null ? "" : LocalizationService.Text($"{current.Steps.Count} 手順・待機合計 {current.Steps.Sum(x => x.DelayMs)} ms");
         if (selectedSteps.Count > 0)
             SelectSteps(selectedSteps);
+    }
+    internal static MacroStepPhase PhaseFor(MacroStep step)
+    {
+        if (step.Event.EndsWith(" Down", StringComparison.OrdinalIgnoreCase))
+            return MacroStepPhase.Press;
+        if (step.Event.EndsWith(" Up", StringComparison.OrdinalIgnoreCase))
+            return MacroStepPhase.Release;
+        return MacroStepPhase.None;
     }
     void SelectSteps(IEnumerable<MacroStep> steps)
     {

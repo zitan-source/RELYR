@@ -1788,6 +1788,8 @@ public partial class MainWindow : Window
         if (selected != null)
         {
             NormalizeLongOnlyMapping(selected);
+            if (DeckPanelLayout.IsInputName(selected.Input))
+                SynchronizeDeckEditorSlots([selected.Input]);
             if (config.AutoSave)
                 SaveAndApply("確定 — 設定を保存して反映しました");
             else
@@ -2424,9 +2426,10 @@ public partial class MainWindow : Window
         RefreshSelectedInputVisual(selected.Input);
     }
 
-    void SelectInput(string input, bool focusExecution = true)
+    void SelectInput(string input, bool focusExecution = true, bool refreshAllButtons = true, bool completeCurrentEdit = true)
     {
-        if (selected != null && (destinationInputTarget != null || editingSelectedInput))
+        string? previousSelectedInput = selected?.Input;
+        if (completeCurrentEdit && selected != null && (destinationInputTarget != null || editingSelectedInput))
             CompleteDestinationInput();
         string layer = "通常";
         selectedBaseInput = input;
@@ -2472,7 +2475,14 @@ public partial class MainWindow : Window
         UpdateBrowseButtons();
         UpdateLayerButtons();
         UpdateMultiSelectControls();
-        ColorButtons();
+        if (refreshAllButtons)
+            ColorButtons();
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(previousSelectedInput))
+                RefreshSelectedInputVisual(previousSelectedInput);
+            RefreshSelectedInputVisual(input);
+        }
         ShowAssignmentPane();
         UpdateAssignmentPaneContentView();
         if (focusExecution && ShouldFocusExecutionForSelectedInput(visibleAssignment))
@@ -2598,8 +2608,13 @@ public partial class MainWindow : Window
         {
             UpdateLayerButtons();
             UpdateMultiSelectControls();
-            MarkDirty();
-            RefreshSelectedInputVisual(selected.Input);
+            if (DeckPanelLayout.IsInputName(selected.Input))
+                CommitDeckEditorSlotChanges([selected.Input]);
+            else
+            {
+                MarkDirty();
+                RefreshSelectedInputVisual(selected.Input);
+            }
             AnimateAssignmentCommit(selected.Input);
         }
         if (ReferenceEquals(sender, KindBox))
@@ -3372,10 +3387,10 @@ public partial class MainWindow : Window
             var layout = selectedDeckLayout ?? DeckPanelLayout.DefaultLayout(config) ?? new DeckLayoutDefinition();
             nameLabel.Text = DeckPanelLayout.NameLabelText(mapping, layout.ShowFileExtensionsInLabels);
             nameLabel.Visibility = layout.LabelsHidden ? Visibility.Collapsed : Visibility.Visible;
-            if (hasCustomColor || assigned != null)
-                nameLabel.Foreground = button.Foreground;
-            else
-                nameLabel.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
+            // The label is outside the colored button on the dark panel.
+            // Reusing the button's contrast color can turn the label black and
+            // make a correctly saved name look as though it disappeared.
+            nameLabel.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
         }
         if (deckListActionLabels.TryGetValue(button, out var labels))
         {

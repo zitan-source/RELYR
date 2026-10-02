@@ -479,7 +479,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             var entry = CreateDeckButtonCell(slot);
             deckButtons.Add(entry.Button);
             deckGrid.Children.Add(entry.Cell);
-            if (NeedsDeferredFilePreview(DeckPanelLayout.FindMapping(layout, slot)))
+            if (NeedsDeferredDeckFace(DeckPanelLayout.FindMapping(layout, slot)))
                 deferredPreviews.Add(entry.Button);
         }
         BeginDeferredFilePreviews(deferredPreviews);
@@ -944,7 +944,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         var button = new Button
         {
             Tag = slot,
-            Content = DeckPanelLayout.CreateButtonContent(DeckPanelLayout.InputName(slot), mapping, !NeedsDeferredFilePreview(mapping)),
+            Content = DeckPanelLayout.CreateButtonContent(DeckPanelLayout.InputName(slot), mapping, !NeedsDeferredDeckFace(mapping)),
             Width = DeckPanelLayout.KeyWidth,
             Height = DeckPanelLayout.KeyHeight,
             MinWidth = 0,
@@ -978,7 +978,10 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         button.PreviewMouseMove += DeckButtonDragMoved;
         button.PreviewMouseLeftButtonUp += DeckButtonDragEnded;
         button.GiveFeedback += DeckDragGiveFeedback;
-        button.ContextMenu = CreateDeckButtonContextMenu(slot);
+        // A large Deck can contain 324 buttons. Constructing the full custom
+        // menu tree for every cell made first-open time scale with hundreds of
+        // invisible controls. Build a button's menu only on its first use.
+        button.PreviewMouseRightButtonDown += EnsureDeckButtonContextMenu;
         button.AllowDrop = true;
         button.PreviewDragOver += DeckButtonDragOver;
         button.PreviewDrop += DeckButtonDropped;
@@ -986,17 +989,28 @@ internal sealed partial class DeckPanelOverlayWindow : Window
         button.MouseEnter += DeckButtonHoverEntered;
         button.MouseLeave += DeckButtonHoverLeft;
         button.MouseEnter += DeckButtonFileAvailability_MouseEnter;
-        if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredFilePreview(mapping)))
+        if (hoverPreviewsEnabled && (DeckPanelLayout.IsVideoFile(mapping?.DeckFilePath) || !NeedsDeferredDeckFace(mapping)))
             ConfigureHoverPreview(button, mapping);
         var nameLabel = DeckPanelLayout.CreateNameLabel(mapping, layout.ShowFileExtensionsInLabels);
         nameLabel.Visibility = layout.LabelsHidden ? Visibility.Collapsed : Visibility.Visible;
-        if (DeckPanelLayout.TryGetButtonColor(mapping, out _) || MainWindow.MappingInterceptsInput(mapping))
-            nameLabel.Foreground = button.Foreground;
         var cell = new StackPanel { Width = DeckPanelLayout.CellWidthFor(layout), Height = DeckPanelLayout.CellHeightFor(layout) };
         cell.Children.Add(button);
         cell.Children.Add(nameLabel);
         return (button, cell);
     }
+    void EnsureDeckButtonContextMenu(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is Button { ContextMenu: null, Tag: int slot } button)
+            button.ContextMenu = CreateDeckButtonContextMenu(slot);
+    }
+#if !PRODUCTION_PUBLISH
+    internal System.Windows.Controls.ContextMenu EnsureDeckButtonContextMenuForTest(int index)
+    {
+        var button = deckButtons[index];
+        button.ContextMenu ??= CreateDeckButtonContextMenu((int)button.Tag);
+        return button.ContextMenu;
+    }
+#endif
     void DeckButtonHoverEntered(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (sender is Button button)
@@ -1126,14 +1140,18 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             deckButtons[index] = entry.Button;
             deckGrid.Children.RemoveAt(index);
             deckGrid.Children.Insert(index, entry.Cell);
-            if (NeedsDeferredFilePreview(DeckPanelLayout.FindMapping(layout, slot)))
+            if (NeedsDeferredDeckFace(DeckPanelLayout.FindMapping(layout, slot)))
                 deferredPreviews.Add(entry.Button);
         }
         BeginDeferredFilePreviews(deferredPreviews);
     }
-    static bool NeedsDeferredFilePreview(Mapping? mapping) =>
-        mapping != null && File.Exists(mapping.DeckFilePath) &&
-        (DeckPanelLayout.IsImageFile(mapping.DeckFilePath) || DeckPanelLayout.IsVideoFile(mapping.DeckFilePath));
+    static bool NeedsDeferredDeckFace(Mapping? mapping) => mapping != null
+        && (File.Exists(mapping.DeckFilePath)
+            && (DeckPanelLayout.IsImageFile(mapping.DeckFilePath)
+                || DeckPanelLayout.IsVideoFile(mapping.DeckFilePath)
+                || DeckPanelLayout.IsShellLaunchFile(mapping.DeckFilePath))
+            || (mapping.Kind == ActionKind.Launch || mapping.LongPressKind == ActionKind.Launch)
+                && (mapping.DeckIconAutoAssigned || !DeckIconCatalog.HasIcon(mapping)));
 
     void BeginDeferredFilePreviews(IReadOnlyCollection<Button> buttons)
     {
@@ -1144,7 +1162,7 @@ internal sealed partial class DeckPanelOverlayWindow : Window
             int slot = button.Tag is int value ? value : 0;
             var mapping = DeckPanelLayout.FindMapping(layout, slot);
             return (Button: button, Slot: slot, Path: mapping?.DeckFilePath ?? "");
-        }).Where(x => x.Slot > 0 && x.Path.Length > 0).ToArray();
+        }).Where(x => x.Slot > 0).ToArray();
         if (pending.Length == 0)
             return;
         CancellationToken cancellation = previewLoadCancellation?.Token ?? CancellationToken.None;
@@ -1157,14 +1175,9 @@ internal sealed partial class DeckPanelOverlayWindow : Window
                     return;
                 try
                 {
-                    if (DeckPanelLayout.IsVideoFile(item.Path))
-                    {
-                        _ = DeckPanelLayout.LoadVideoThumbnail(item.Path, 96, 54);
-                    }
-                    else
-                    {
-                        _ = DeckPanelLayout.LoadImageThumbnail(item.Path, 96);
-                    }
+                    var mapping = DeckPanelLayout.FindMapping(layout, item.Slot);
+                    if (mapping != null)
+                        DeckPanelLayout.WarmButtonContent(mapping);
                 }
                 catch { }
             }
