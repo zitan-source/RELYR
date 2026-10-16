@@ -71,7 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                     preview.lockFocus()
                     NSColor.windowBackgroundColor.setFill()
                     view.bounds.fill()
-                    bitmap.draw(in: view.bounds)
+                    let foreground = NSImage(size: view.bounds.size)
+                    foreground.addRepresentation(bitmap)
+                    foreground.draw(in: view.bounds, from: .zero, operation: .sourceOver, fraction: 1)
                     preview.unlockFocus()
                     if let tiff = preview.tiffRepresentation,
                        let rendered = NSBitmapImageRep(data: tiff),
