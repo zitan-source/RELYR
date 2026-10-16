@@ -23,9 +23,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private var loadFailed = false
     private var statusItem: NSStatusItem!
     private let engine = InputEngine()
+    private let deck = DeckController()
+    private let profilePicker = NSPopUpButton()
+    private let manualPicker = NSPopUpButton()
+    private let automatic = NSButton(checkboxWithTitle: "アプリに合わせて自動切替", target: nil, action: nil)
+    private let runtimeLabel = NSTextField(labelWithString: "実行中：標準")
+    private let profileApps = NSTextField(labelWithString: "対象アプリ：なし")
+    private var editedProfileID = "default"
+    private var editableControls: [NSControl] = []
+    private var editedMappings: [Mapping] { configuration.mappings(for: editedProfileID) }
+    private var profileIDs: [String] { ["default"] + configuration.profiles.map { $0.id } }
     private let smoke = CommandLine.arguments.contains("--ui-smoke-test")
-    private lazy var store = ConfigurationStore(url: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("RELYR-Mac-Trial/configuration.json"))
+    private lazy var store: ConfigurationStore = {
+        if smoke, CommandLine.arguments.count > 2 {
+            return ConfigurationStore(url: URL(fileURLWithPath: CommandLine.arguments[2]).deletingLastPathComponent()
+                .appendingPathComponent("ui-test-state/configuration.json"))
+        }
+        return ConfigurationStore(url: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("RELYR-Mac-Trial/configuration.json"))
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if !smoke, let id = Bundle.main.bundleIdentifier,
@@ -43,16 +59,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 Mapping(layer: .space, input: 8, action: .shortcut, output: 8, modifiers: .command),
                 Mapping(layer: .space, input: 17, action: .launch, application: "/System/Applications/TextEdit.app")
             ]
+            configuration.profiles = [Profile(name: "テキスト編集", bundleIdentifiers: ["com.apple.TextEdit"], mappings: configuration.mappings)]
+            configuration.deck = configuration.mappings.map { DeckItem(title: $0.targetDescription, profileID: "default", layer: $0.layer, input: $0.input) }
         }
-        engine.machine.configuration = configuration
+        engine.apply(configuration)
+        engine.onProfile = { [weak self] name in self?.runtimeLabel.stringValue = "実行中：\(name)" }
         engine.onStatus = { [weak self] message in
             guard let self = self else { return }
             self.status.stringValue = message
             self.toggle.title = self.engine.enabled ? "停止する" : "有効にする"
             self.statusItem?.button?.title = self.engine.enabled ? "RELYR ●" : "RELYR ○"
+            self.deck.setEnabled(self.engine.enabled)
         }
+        deck.execute = { [weak self] id in
+            guard let self = self, let item = self.configuration.deck.first(where: { $0.id == id }),
+                  let mapping = self.configuration.mapping(for: item) else { return }
+            self.engine.performFromDeck(mapping)
+        }
+        deck.edit = { [weak self] id, edit in self?.editDeck(id, edit: edit) }
+        deck.requestRename = { [weak self] id in self?.renameDeck(id) }
         buildMenus()
         buildWindow()
+        refreshConfigurationViews()
+        engine.apply(configuration)
         showWindow()
         if smoke {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -62,6 +91,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
                 precondition(self.action.indexOfSelectedItem == 1 && self.modifierButtons[0].state == .on)
                 precondition(!self.chooseApp.isEnabled && self.output.isEnabled)
+                let original = self.configuration
+                self.saveMapping()
+                precondition(self.configuration == original, "UI edit must preserve profile and Deck references")
+                self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+                self.deleteMapping()
+                precondition(self.configuration.mappings.count == 2 && self.configuration.deck.count == 2)
+                precondition(self.configuration.profiles[0].mappings.count == 3)
+                precondition(self.persist(original))
+                self.manualPicker.selectItem(at: 1)
+                self.manualProfileChanged()
+                precondition(self.engine.machine.runtimeProfileID == original.profiles[0].id)
+                precondition(self.profilePicker.indexOfSelectedItem == 0, "Runtime profile must not move the editor")
+                precondition(self.persist(original))
+                self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+                self.deck.toggle()
+                self.deck.verifyPresentation(expectedButtons: 3)
                 self.window.contentView?.layoutSubtreeIfNeeded()
                 if CommandLine.arguments.count > 2, let view = self.window.contentView,
                    let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -82,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                         catch { fatalError("Could not save UI verification image: \(error)") }
                     }
                 }
-                print("PASS: native window, key selectors, table, disabled startup")
+                print("PASS: native window, UI save/delete/persistence, profile/editor isolation, Deck geometry and disabled startup")
                 NSApp.terminate(nil)
             }
         }
@@ -108,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         statusItem.button?.title = "RELYR ○"
         let menu = NSMenu()
         menu.addItem(item("設定を開く", #selector(showWindow)))
+        menu.addItem(item("Deckを表示／非表示", #selector(toggleDeck)))
         menu.addItem(item("入力変換を停止", #selector(stopInput)))
         menu.addItem(.separator())
         menu.addItem(withTitle: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
@@ -121,10 +167,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     }
 
     private func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 650),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "RELYR for Mac — 試用版 0.1.0"
-        window.minSize = NSSize(width: 760, height: 620)
+        window.title = "RELYR for Mac — 試用版 0.2.0"
+        window.minSize = NSSize(width: 880, height: 760)
         window.isReleasedWhenClosed = false
         window.center()
         let title = NSTextField(labelWithString: "キーボードを、拡張する。")
@@ -134,6 +180,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         toggle.target = self; toggle.action = #selector(toggleInput)
         let permission = NSButton(title: "アクセシビリティを許可…", target: self, action: #selector(requestPermission))
         let controls = row([toggle, permission])
+        let tools = row([
+            NSButton(title: "サンプル追加", target: self, action: #selector(addStarter)),
+            NSButton(title: "設定を読み込む…", target: self, action: #selector(importSettings)),
+            NSButton(title: "設定を書き出す…", target: self, action: #selector(exportSettings)),
+            NSButton(title: "Deckを表示", target: self, action: #selector(toggleDeck)),
+            NSButton(title: "使い方", target: self, action: #selector(showHelp))
+        ])
+        let create = NSButton(title: "新規", target: self, action: #selector(createProfile))
+        let duplicate = NSButton(title: "複製", target: self, action: #selector(duplicateProfile))
+        let rename = NSButton(title: "名前変更", target: self, action: #selector(renameProfile))
+        let remove = NSButton(title: "削除", target: self, action: #selector(deleteProfile))
+        profilePicker.target = self; profilePicker.action = #selector(profileChanged)
+        manualPicker.target = self; manualPicker.action = #selector(manualProfileChanged)
+        automatic.target = self; automatic.action = #selector(automaticChanged)
+        profilePicker.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        manualPicker.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        let profiles = row([label("編集"), profilePicker, create, duplicate, rename, remove])
+        let runtime = row([automatic, label("手動使用"), manualPicker, runtimeLabel])
+        let associate = NSButton(title: "対象アプリを追加…", target: self, action: #selector(associateApplication))
+        let clear = NSButton(title: "関連付けを解除", target: self, action: #selector(clearApplications))
+        profileApps.lineBreakMode = .byTruncatingTail
+        profileApps.widthAnchor.constraint(lessThanOrEqualToConstant: 490).isActive = true
+        let association = row([associate, clear, profileApps])
         status.setAccessibilityIdentifier("engine-status")
         status.font = .systemFont(ofSize: 12)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("mapping"))
@@ -163,17 +232,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let save = NSButton(title: "この割り当てを保存", target: self, action: #selector(saveMapping))
         let delete = NSButton(title: "選択した割り当てを削除", target: self, action: #selector(deleteMapping))
         let fresh = NSButton(title: "新規", target: self, action: #selector(newMapping))
-        toggle.isEnabled = !loadFailed; save.isEnabled = !loadFailed; delete.isEnabled = !loadFailed; space.isEnabled = !loadFailed
+        let addDeck = NSButton(title: "Deckへ追加", target: self, action: #selector(addToDeck))
+        editableControls = [toggle, save, delete, space, create, duplicate, rename, remove, associate, clear, addDeck, automatic]
+        for control in editableControls { control.isEnabled = !loadFailed }
         let note = NSTextField(wrappingLabelWithString: "Space単押しは空白入力。未割り当てのキーと組み合わせた場合は通常入力に戻ります。キー名はUS配列の物理位置です。緊急停止：Control + Option + Command + Escape。ウィンドウを閉じてもメニューバーに常駐します。")
         note.font = .systemFont(ofSize: 12)
         note.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [title, intro, controls, status, scroll, space,
+        let stack = NSStackView(views: [title, intro, controls, status, tools, profiles, runtime, association, scroll, space,
             row([label("レイヤー"), layer, label("入力"), input, label("動作"), action]),
             row([label("出力"), output] + modifierButtons), row([chooseApp, application]),
-            row([fresh, save, delete]), note])
+            row([fresh, save, delete, addDeck]), note])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
+        stack.spacing = 9
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = window.contentView!
         content.addSubview(stack)
@@ -196,13 +267,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         return stack
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { configuration.mappings.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { editedMappings.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        NSTextField(labelWithString: configuration.mappings[row].description)
+        NSTextField(labelWithString: editedMappings[row].description)
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard configuration.mappings.indices.contains(table.selectedRow) else { return }
-        let mapping = configuration.mappings[table.selectedRow]
+        guard editedMappings.indices.contains(table.selectedRow) else { return }
+        let mapping = editedMappings[table.selectedRow]
         layer.selectItem(at: mapping.layer == .normal ? 0 : 1)
         input.selectItem(at: Keys.inputs.firstIndex { $0.code == mapping.input } ?? 0)
         action.selectItem(at: ActionType.allCases.firstIndex(of: mapping.action) ?? 0)
@@ -237,15 +308,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         if kind == .launch, !FileManager.default.fileExists(atPath: applicationPath) {
             showError(ConfigurationError.invalid("アプリを選択してください。移動・削除されたアプリは再選択が必要です。")); return
         }
-        if candidate.mappings.indices.contains(table.selectedRow) { candidate.mappings.remove(at: table.selectedRow) }
-        // A changed source must not silently overwrite another row.
-        candidate.mappings.append(mapping)
+        candidate.replaceMapping(mapping, at: table.selectedRow >= 0 ? table.selectedRow : nil, profileID: editedProfileID)
         persist(candidate)
     }
     @objc private func deleteMapping() {
-        guard !loadFailed, configuration.mappings.indices.contains(table.selectedRow) else { return }
+        guard !loadFailed, editedMappings.indices.contains(table.selectedRow) else { return }
         var candidate = configuration
-        candidate.mappings.remove(at: table.selectedRow)
+        candidate.removeMapping(at: table.selectedRow, profileID: editedProfileID)
         persist(candidate)
     }
     @objc private func spaceChanged() {
@@ -254,14 +323,197 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         persist(candidate)
         space.state = configuration.spaceEnabled ? .on : .off
     }
-    private func persist(_ candidate: Configuration) {
+    @discardableResult private func persist(_ candidate: Configuration) -> Bool {
+        guard !loadFailed else { return false }
         do {
             try store.save(candidate)
             configuration = candidate
-            engine.machine.configuration = candidate
+            engine.apply(candidate)
             table.deselectAll(nil)
-            table.reloadData()
-        } catch { showError(error) }
+            refreshConfigurationViews()
+            return true
+        } catch { showError(error); return false }
+    }
+
+    private func refreshConfigurationViews() {
+        if !profileIDs.contains(editedProfileID) { editedProfileID = "default" }
+        for picker in [profilePicker, manualPicker] {
+            picker.removeAllItems()
+            picker.addItems(withTitles: ["標準"] + configuration.profiles.map { $0.name })
+        }
+        profilePicker.selectItem(at: profileIDs.firstIndex(of: editedProfileID) ?? 0)
+        manualPicker.selectItem(at: profileIDs.firstIndex(of: configuration.manualProfileID) ?? 0)
+        manualPicker.isEnabled = !configuration.automaticProfiles && !loadFailed
+        automatic.state = configuration.automaticProfiles ? .on : .off
+        space.state = configuration.spaceEnabled ? .on : .off
+        let ids = configuration.profiles.first { $0.id == editedProfileID }?.bundleIdentifiers ?? []
+        profileApps.stringValue = "対象アプリ：" + (ids.isEmpty ? "なし（標準はその他のアプリ）" : ids.map { id in
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)?.deletingPathExtension().lastPathComponent ?? id
+        }.joined(separator: "、"))
+        profileApps.toolTip = profileApps.stringValue
+        for control in editableControls { control.isEnabled = !loadFailed }
+        table.reloadData()
+        deck.update(configuration, enabled: engine.enabled)
+    }
+
+    @objc private func profileChanged() {
+        editedProfileID = profileIDs[profilePicker.indexOfSelectedItem]
+        table.deselectAll(nil)
+        refreshConfigurationViews()
+    }
+    @objc private func manualProfileChanged() {
+        var candidate = configuration
+        candidate.manualProfileID = profileIDs[manualPicker.indexOfSelectedItem]
+        if !persist(candidate) { refreshConfigurationViews() }
+    }
+    @objc private func automaticChanged() {
+        var candidate = configuration; candidate.automaticProfiles = automatic.state == .on
+        if !persist(candidate) { refreshConfigurationViews() }
+    }
+    private func askName(_ title: String, initial: String, complete: @escaping (String) -> Void) {
+        showWindow()
+        let alert = NSAlert(); alert.messageText = title
+        let field = NSTextField(string: initial)
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "保存"); alert.addButton(withTitle: "キャンセル")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { complete(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        }
+        alert.window.initialFirstResponder = field
+    }
+    @objc private func createProfile() { makeProfile(copy: false) }
+    @objc private func duplicateProfile() { makeProfile(copy: true) }
+    private func makeProfile(copy: Bool) {
+        guard !loadFailed else { return }
+        let mappings = copy ? editedMappings : []
+        askName(copy ? "プロファイルを複製" : "プロファイルを作成", initial: "新しいプロファイル") { name in
+            var candidate = self.configuration
+            let profile = Profile(name: name, mappings: mappings)
+            candidate.profiles.append(profile)
+            if self.persist(candidate) { self.editedProfileID = profile.id; self.refreshConfigurationViews() }
+        }
+    }
+    @objc private func renameProfile() {
+        let id = editedProfileID
+        guard id != "default", !loadFailed else { return }
+        askName("プロファイル名", initial: configuration.profileName(id)) { name in
+            var candidate = self.configuration
+            if let index = candidate.profiles.firstIndex(where: { $0.id == id }) {
+                candidate.profiles[index].name = name; self.persist(candidate)
+            }
+        }
+    }
+    @objc private func deleteProfile() {
+        let id = editedProfileID
+        guard id != "default", !loadFailed else { return }
+        let alert = NSAlert()
+        alert.messageText = "「\(configuration.profileName(id))」を削除しますか？"
+        alert.informativeText = "このプロファイルの割り当てと、関連するDeckボタンを削除します。"
+        alert.addButton(withTitle: "削除"); alert.addButton(withTitle: "キャンセル")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn {
+                var candidate = self.configuration; candidate.removeProfile(id); self.persist(candidate)
+            }
+        }
+    }
+    @objc private func associateApplication() {
+        let id = editedProfileID
+        guard !loadFailed else { return }
+        guard id != "default" else { showError(ConfigurationError.invalid("対象アプリを指定するにはプロファイルを新規作成してください。")); return }
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications"); panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url, let bundle = Bundle(url: url)?.bundleIdentifier else { return }
+            var candidate = self.configuration
+            guard let index = candidate.profiles.firstIndex(where: { $0.id == id }) else { return }
+            if !candidate.profiles[index].bundleIdentifiers.contains(bundle) { candidate.profiles[index].bundleIdentifiers.append(bundle) }
+            self.persist(candidate)
+        }
+    }
+    @objc private func clearApplications() {
+        guard !loadFailed else { return }
+        var candidate = configuration
+        if let index = candidate.profiles.firstIndex(where: { $0.id == editedProfileID }) {
+            candidate.profiles[index].bundleIdentifiers = []; persist(candidate)
+        }
+    }
+    @objc private func addStarter() {
+        guard !loadFailed else { return }
+        var candidate = configuration
+        var values = editedMappings
+        let starter: [(UInt16, UInt16)] = [(0, 123), (2, 124), (13, 126), (1, 125)]
+        for (input, output) in starter {
+            if !values.contains(where: { $0.layer == .space && $0.input == input }) {
+                values.append(Mapping(layer: .space, input: input, action: .key, output: output))
+            }
+        }
+        candidate.setMappings(values, for: editedProfileID)
+        persist(candidate)
+    }
+    @objc private func addToDeck() {
+        guard !loadFailed, editedMappings.indices.contains(table.selectedRow) else { return }
+        let mapping = editedMappings[table.selectedRow], profileID = editedProfileID
+        askName("Deckボタンの名前", initial: mapping.targetDescription) { name in
+            var candidate = self.configuration
+            candidate.deck.append(DeckItem(title: name, profileID: profileID, layer: mapping.layer, input: mapping.input))
+            self.persist(candidate)
+        }
+    }
+    @objc private func toggleDeck() { deck.toggle() }
+    private func renameDeck(_ id: String) {
+        guard let item = configuration.deck.first(where: { $0.id == id }) else { return }
+        askName("Deckボタンの名前", initial: item.title) { self.editDeck(id, edit: .rename($0)) }
+    }
+    private func editDeck(_ id: String, edit: DeckEdit) {
+        guard !loadFailed else { return }
+        var candidate = configuration
+        guard let index = candidate.deck.firstIndex(where: { $0.id == id }) else { return }
+        switch edit {
+        case .rename(let title): candidate.deck[index].title = title
+        case .remove: candidate.deck.remove(at: index)
+        case .move(let offset):
+            let destination = index + offset
+            guard candidate.deck.indices.contains(destination) else { return }
+            candidate.deck.swapAt(index, destination)
+        }
+        persist(candidate)
+    }
+    @objc private func exportSettings() {
+        guard !loadFailed else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "RELYR-Mac-settings.json"
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try ConfigurationStore.encoded(self.configuration).write(to: url, options: .atomic) }
+            catch { self.showError(error) }
+        }
+    }
+    @objc private func importSettings() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let imported = try ConfigurationStore.read(url)
+                let alert = NSAlert(); alert.messageText = "設定を読み込みますか？"
+                alert.informativeText = "\(imported.profiles.count + 1)プロファイル・\(imported.deck.count)個のDeckボタンで現在の設定を置き換えます。元の設定はバックアップし、入力変換は停止します。Windows版の設定は読み込めません。"
+                alert.addButton(withTitle: "読み込む"); alert.addButton(withTitle: "キャンセル")
+                alert.beginSheetModal(for: self.window) { response in
+                    guard response == .alertFirstButtonReturn else { return }
+                    do {
+                        self.engine.stop()
+                        self.configuration = try self.store.importConfiguration(imported)
+                        self.loadFailed = false; self.editedProfileID = "default"
+                        self.engine.apply(self.configuration); self.table.deselectAll(nil); self.refreshConfigurationViews()
+                    } catch { self.showError(error) }
+                }
+            } catch { self.showError(error) }
+        }
+    }
+    @objc private func showHelp() {
+        let alert = NSAlert(); alert.messageText = "最初のテスト"
+        alert.informativeText = "1.「サンプル追加」を押します。\n2. アクセシビリティを許可して「有効にする」を押します。\n3. テキストエディットでSpace単押しとSpace+A/D/W/Sを試します。\n\nプロファイルの「編集」は設定対象、「手動使用」は実行対象です。自動切替時は前面アプリに一致するプロファイル、なければ標準を使います。Deckへ追加するには保存済みの行を選択してください。\n\n緊急停止：Control + Option + Command + Escape。"
+        alert.beginSheetModal(for: window)
     }
     private func showError(_ error: Error) {
         let alert = NSAlert()

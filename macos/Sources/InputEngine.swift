@@ -12,15 +12,66 @@ final class InputEngine {
     private let marker: Int64 = 0x52454C59524D
     private(set) var enabled = false
     var onStatus: ((String) -> Void)?
+    var onProfile: ((String) -> Void)?
 
     init() {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(sessionEnded), name: NSWorkspace.willSleepNotification, object: nil)
         center.addObserver(self, selector: #selector(sessionEnded), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(frontmostChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self, self.enabled else { return }
             if !AXIsProcessTrusted() || IsSecureEventInputEnabled() {
                 self.stop(message: "停止中：権限またはセキュア入力の状態が変わりました。再度有効にしてください。")
+            }
+        }
+    }
+
+    func apply(_ configuration: Configuration) {
+        machine.configuration = configuration
+        frontmostChanged()
+    }
+
+    @objc private func frontmostChanged() {
+        let id = machine.configuration.activeProfileID(bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        machine.runtimeProfileID = id
+        onProfile?(machine.configuration.profileName(id))
+    }
+
+    /// Deck is non-activating. Capture the current target and never redirect a delayed action.
+    func performFromDeck(_ mapping: Mapping) {
+        guard enabled, AXIsProcessTrusted(), !IsSecureEventInputEnabled() else {
+            onStatus?("Deckを使うには入力変換を有効にしてください。セキュア入力中は使用できません。")
+            return
+        }
+        guard let target = NSWorkspace.shared.frontmostApplication else { return }
+        let ticket = generation
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.enabled, self.generation == ticket,
+                  !IsSecureEventInputEnabled(), AXIsProcessTrusted(),
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier else { return }
+            if mapping.action == .launch { self.launchApplication(mapping.application); return }
+            guard !self.machine.outputIsHeld(mapping.output),
+                  !CGEventSource.keyState(.combinedSessionState, key: mapping.output) else {
+                self.onStatus?("同じ出力キーが押されています。キーを離してからDeckを押してください。")
+                return
+            }
+            // Allocate both halves first, so allocation failure cannot leave a generated key held.
+            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: mapping.output, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: nil, virtualKey: mapping.output, keyDown: false) else { return }
+            let physicalFlags = CGEventSource.flagsState(.combinedSessionState)
+            for event in [down, up] {
+                event.flags = physicalFlags.union(mapping.modifiers.flags)
+                event.setIntegerValueField(.eventSourceUserData, value: self.marker)
+                event.post(tap: .cgSessionEventTap)
+            }
+        }
+    }
+
+    private func launchApplication(_ path: String) {
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) { [weak self] _, error in
+            if let error = error {
+                DispatchQueue.main.async { self?.onStatus?("アプリを起動できません：\(error.localizedDescription)") }
             }
         }
     }
@@ -138,11 +189,7 @@ final class InputEngine {
             let ticket = generation
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.enabled, self.generation == ticket else { return }
-                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) { _, error in
-                    if let error = error {
-                        DispatchQueue.main.async { self.onStatus?("アプリを起動できません：\(error.localizedDescription)") }
-                    }
-                }
+                self.launchApplication(path)
             }
             return nil
         }

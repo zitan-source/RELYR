@@ -13,6 +13,8 @@ final class LayerMachine {
     private var space: SpaceState = .idle
     private var held: [UInt16: Held] = [:]
     var configuration = Configuration()
+    var runtimeProfileID = "default"
+    private var mappings: [Mapping] { configuration.mappings(for: runtimeProfileID) }
 
     func key(_ code: UInt16, down: Bool, repeating: Bool = false, modifiers: Modifiers = []) -> InputDecision {
         if code == 49 { return spaceKey(down: down, repeating: repeating, modifiers: modifiers) }
@@ -31,7 +33,7 @@ final class LayerMachine {
         // Never capture a key already down when interception starts.
         guard down, !repeating else { return .pass }
         let layer: Layer = (space == .pending || space == .layer) ? .space : .normal
-        if let mapping = configuration.mappings.first(where: { $0.layer == layer && $0.input == code }) {
+        if let mapping = mappings.first(where: { $0.layer == layer && $0.input == code }) {
             if layer == .space { space = .layer }
             held[code] = .mapped(mapping)
             return mapping.action == .launch ? .launch(mapping.application) : .remap(mapping.output, mapping.modifiers)
@@ -40,7 +42,7 @@ final class LayerMachine {
         return flushPendingSpace()
     }
 
-    private func outputIsHeld(_ output: UInt16) -> Bool {
+    func outputIsHeld(_ output: UInt16) -> Bool {
         if output == 49 && space == .passthrough { return true }
         return held.contains { code, active in
             switch active {
@@ -66,7 +68,7 @@ final class LayerMachine {
         case .idle:
             // Preserve Cmd-Space, Shift-Space, etc. A held Space without mappings repeats normally.
             guard !repeating, modifiers.isEmpty, configuration.spaceEnabled,
-                  configuration.mappings.contains(where: { $0.layer == .space }) else {
+                  mappings.contains(where: { $0.layer == .space }) else {
                 space = .passthrough
                 return .pass
             }

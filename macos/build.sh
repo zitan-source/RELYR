@@ -8,6 +8,7 @@ fi
 xcrun --find swiftc >/dev/null
 out="$root/.verification/macos"
 app="$out/RELYR Mac Trial.app"
+version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$root/macos/Info.plist")
 mkdir -p "$out" "$app/Contents/MacOS" "$app/Contents/Resources"
 sdk="$(xcrun --sdk macosx --show-sdk-path)"
 common=(-swift-version 5 -warnings-as-errors -sdk "$sdk")
@@ -28,6 +29,6 @@ lipo "$app/Contents/MacOS/RELYR" -verify_arch arm64
 if [[ "$(uname -m)" == arm64 ]]; then
     "$app/Contents/MacOS/RELYR" --ui-smoke-test "$out/RELYR-Mac-Trial-preview.png"
 fi
-ditto -c -k --sequesterRsrc --keepParent "$app" "$out/RELYR-Mac-Trial-0.1.0-arm64.zip"
-(cd "$out" && shasum -a 256 RELYR-Mac-Trial-0.1.0-arm64.zip > RELYR-Mac-Trial-0.1.0-arm64.zip.sha256)
+ditto -c -k --sequesterRsrc --keepParent "$app" "$out/RELYR-Mac-Trial-$version-arm64.zip"
+(cd "$out" && shasum -a 256 "RELYR-Mac-Trial-$version-arm64.zip" > "RELYR-Mac-Trial-$version-arm64.zip.sha256")
 echo "Built: $app"
