@@ -10,6 +10,27 @@ func verifySmoke(_ condition: @autoclosure () -> Bool, _ message: String = "UI v
     }
 }
 
+func saveSmokePreview(_ view: NSView, to path: String) {
+    view.layoutSubtreeIfNeeded()
+    guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+        verifySmoke(false, "Cannot capture native view"); return
+    }
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    let preview = NSImage(size: view.bounds.size)
+    preview.lockFocus()
+    NSColor.windowBackgroundColor.setFill(); view.bounds.fill()
+    let foreground = NSImage(size: view.bounds.size)
+    foreground.addRepresentation(bitmap)
+    foreground.draw(in: view.bounds, from: .zero, operation: .sourceOver, fraction: 1)
+    preview.unlockFocus()
+    guard let tiff = preview.tiffRepresentation, let rendered = NSBitmapImageRep(data: tiff),
+          let data = rendered.representation(using: .png, properties: [:]) else {
+        verifySmoke(false, "Cannot encode native view"); return
+    }
+    do { try data.write(to: URL(fileURLWithPath: path)) }
+    catch { verifySmoke(false, "Cannot write native view: \(error)") }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private var window: NSWindow!
     private let table = NSTableView()
@@ -42,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let profileApps = NSTextField(labelWithString: "対象アプリ：なし")
     private var editedProfileID = "default"
     private var editableControls: [NSControl] = []
+    private var profileSpecificControls: [NSControl] = []
     private var editedMappings: [Mapping] { configuration.mappings(for: editedProfileID) }
     private var profileIDs: [String] { ["default"] + configuration.profiles.map { $0.id } }
     private let smoke = CommandLine.arguments.contains("--ui-smoke-test")
@@ -118,27 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 verifySmoke(self.persist(original))
                 self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
                 self.deck.toggle()
-                self.deck.verifyPresentation(expectedButtons: 3)
-                self.window.contentView?.layoutSubtreeIfNeeded()
-                if CommandLine.arguments.count > 2, let view = self.window.contentView,
-                   let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                    view.cacheDisplay(in: view.bounds, to: bitmap)
-                    // The content view is transparent; include the native window background in the preview.
-                    let preview = NSImage(size: view.bounds.size)
-                    preview.lockFocus()
-                    NSColor.windowBackgroundColor.setFill()
-                    view.bounds.fill()
-                    let foreground = NSImage(size: view.bounds.size)
-                    foreground.addRepresentation(bitmap)
-                    foreground.draw(in: view.bounds, from: .zero, operation: .sourceOver, fraction: 1)
-                    preview.unlockFocus()
-                    if let tiff = preview.tiffRepresentation,
-                       let rendered = NSBitmapImageRep(data: tiff),
-                       let data = rendered.representation(using: .png, properties: [:]) {
-                        do { try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2])) }
-                        catch { fatalError("Could not save UI verification image: \(error)") }
-                    }
+                if CommandLine.arguments.count > 2 {
+                    saveSmokePreview(self.window.contentView!, to: CommandLine.arguments[2])
+                    let deckPath = URL(fileURLWithPath: CommandLine.arguments[2]).deletingPathExtension().path + "-deck.png"
+                    saveSmokePreview(self.deck.panel.contentView!, to: deckPath)
                 }
+                self.deck.verifyPresentation(expectedButtons: 3)
                 print("PASS: native window, UI save/delete/persistence, profile/editor isolation, Deck geometry and disabled startup")
                 NSApp.terminate(nil)
             }
@@ -192,10 +199,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         toggle.target = self; toggle.action = #selector(toggleInput)
         let permission = NSButton(title: "アクセシビリティを許可…", target: self, action: #selector(requestPermission))
         let controls = row([toggle, permission])
+        let starterButton = NSButton(title: "サンプル追加", target: self, action: #selector(addStarter))
+        let exportButton = NSButton(title: "設定を書き出す…", target: self, action: #selector(exportSettings))
         let tools = row([
-            NSButton(title: "サンプル追加", target: self, action: #selector(addStarter)),
+            starterButton,
             NSButton(title: "設定を読み込む…", target: self, action: #selector(importSettings)),
-            NSButton(title: "設定を書き出す…", target: self, action: #selector(exportSettings)),
+            exportButton,
             NSButton(title: "Deckを表示", target: self, action: #selector(toggleDeck)),
             NSButton(title: "使い方", target: self, action: #selector(showHelp))
         ])
@@ -250,7 +259,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let delete = NSButton(title: "選択した割り当てを削除", target: self, action: #selector(deleteMapping))
         let fresh = NSButton(title: "新規", target: self, action: #selector(newMapping))
         let addDeck = NSButton(title: "Deckへ追加", target: self, action: #selector(addToDeck))
-        editableControls = [toggle, save, delete, space, create, duplicate, rename, remove, associate, clear, addDeck, automatic]
+        editableControls = [toggle, save, delete, space, create, duplicate, rename, remove, associate, clear, addDeck, automatic, starterButton, exportButton]
+        profileSpecificControls = [rename, remove, clear]
         for control in editableControls { control.isEnabled = !loadFailed }
         let note = NSTextField(wrappingLabelWithString: "Space単押しは空白入力。未割り当てのキーと組み合わせた場合は通常入力に戻ります。キー名はUS配列の物理位置です。緊急停止：Control + Option + Command + Escape。ウィンドウを閉じてもメニューバーに常駐します。")
         note.font = .systemFont(ofSize: 12)
@@ -374,6 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         profileApps.toolTip = profileApps.stringValue
         for control in editableControls { control.isEnabled = !loadFailed }
         table.reloadData()
+        for control in profileSpecificControls { control.isEnabled = !loadFailed && editedProfileID != "default" }
         deck.update(configuration, enabled: engine.enabled)
     }
 

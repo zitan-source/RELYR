@@ -119,11 +119,14 @@ final class DeckController: NSObject {
 
     func verifyPresentation(expectedButtons: Int) {
         panel.contentView?.layoutSubtreeIfNeeded()
+        scroll.documentView?.layoutSubtreeIfNeeded()
         verifySmoke(cells.count == expectedButtons && panel.isVisible)
         verifySmoke(!panel.canBecomeKey && !panel.canBecomeMain)
         verifySmoke(panel.styleMask.contains(.nonactivatingPanel))
         for (button, _) in cells.values {
-            verifySmoke(button.frame.width == 54 && button.frame.height == 52)
+            // AppKit frames include bezel/shadow insets; width/height constraints size the alignment rect.
+            let rect = button.alignmentRect(forFrame: button.frame)
+            verifySmoke(rect.width == 54 && rect.height == 52, "Deck button alignment \(rect), frame \(button.frame)")
             verifySmoke(!button.isEnabled, "Smoke test must never enable input")
         }
     }
