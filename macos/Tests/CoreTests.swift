@@ -223,7 +223,7 @@ struct CoreTests {
         // Encode actual v1-shaped bytes rather than using the new encoder to simulate migration.
         let legacyObject: [String: Any] = ["version": 1, "spaceEnabled": true,
             "mappings": [["layer": "space", "input": 0, "action": "key", "output": 123,
-                          "modifiers": ["rawValue": 0], "application": ""]]]
+                          "modifiers": 0, "application": ""]]]
         let legacyData = try JSONSerialization.data(withJSONObject: legacyObject, options: [.sortedKeys])
         try legacyData.write(to: store.url)
         let migrated = try store.load()
