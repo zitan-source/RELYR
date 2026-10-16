@@ -16,6 +16,9 @@ xcrun swiftc "${common[@]}" \
     "$root/macos/Sources/Configuration.swift" "$root/macos/Sources/LayerMachine.swift" \
     "$root/macos/Tests/CoreTests.swift" -o "$out/CoreTests"
 "$out/CoreTests" "$out"
+xcrun swiftc "${common[@]}" "$root/macos/Sources/NativeEvents.swift" \
+    "$root/macos/Tests/NativeEventTests.swift" -o "$out/NativeEventTests" -framework CoreGraphics
+"$out/NativeEventTests"
 xcrun swiftc "${common[@]}" -O -target arm64-apple-macos13.0 \
     "$root"/macos/Sources/*.swift -o "$app/Contents/MacOS/RELYR" \
     -framework AppKit -framework ApplicationServices -framework Carbon

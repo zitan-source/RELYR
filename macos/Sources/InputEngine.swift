@@ -67,13 +67,10 @@ final class InputEngine {
                 return
             }
             // Allocate both halves first, so allocation failure cannot leave a generated key held.
-            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: mapping.output, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: nil, virtualKey: mapping.output, keyDown: false) else { return }
             let physicalFlags = CGEventSource.flagsState(.combinedSessionState)
-            for event in [down, up] {
-                event.flags = physicalFlags.union(mapping.modifiers.flags)
-                event.setIntegerValueField(.eventSourceUserData, value: self.marker)
-                event.post(tap: .cgSessionEventTap)
+            guard let pair = NativeEvents.key(mapping.output, flags: physicalFlags.union(mapping.modifiers.flags), marker: self.marker) else { return }
+            for event in [pair.down, pair.up] {
+                event.postToPid(target.processIdentifier)
             }
         }
     }
@@ -103,17 +100,11 @@ final class InputEngine {
                 self.cancelText(); return
             }
             guard index < chunks.count else { self.textIsRunning = false; return }
-            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
+            guard let pair = NativeEvents.unicode(chunks[index], marker: self.marker) else {
                 self.cancelText(); return
             }
-            for event in [down, up] {
-                event.flags = []
-                event.setIntegerValueField(.eventSourceUserData, value: self.marker)
-                chunks[index].withUnsafeBufferPointer {
-                    event.keyboardSetUnicodeString(stringLength: $0.count, unicodeString: $0.baseAddress!)
-                }
-                event.post(tap: .cgSessionEventTap)
+            for event in [pair.down, pair.up] {
+                event.postToPid(target)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { step(index + 1) }
         }
