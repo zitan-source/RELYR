@@ -1,7 +1,20 @@
 import Foundation
 
 enum Layer: String, Codable, CaseIterable { case normal, space }
-enum ActionType: String, Codable, CaseIterable { case key, shortcut, launch }
+enum ActionType: String, Codable, CaseIterable {
+    case key, shortcut, launch, text, url, deck
+    var isKey: Bool { self == .key || self == .shortcut }
+    var title: String {
+        switch self {
+        case .key: return "キー"
+        case .shortcut: return "ショートカット"
+        case .launch: return "アプリ起動"
+        case .text: return "文字列入力"
+        case .url: return "URLを開く"
+        case .deck: return "Deck表示／非表示"
+        }
+    }
+}
 
 struct Modifiers: OptionSet, Codable, Equatable {
     let rawValue: UInt
@@ -23,9 +36,31 @@ struct Mapping: Codable, Equatable {
     var output: UInt16 = 0
     var modifiers: Modifiers = []
     var application: String = ""
+    var payload: String = ""
+    init(layer: Layer, input: UInt16, action: ActionType, output: UInt16 = 0,
+         modifiers: Modifiers = [], application: String = "", payload: String = "") {
+        self.layer = layer; self.input = input; self.action = action; self.output = output
+        self.modifiers = modifiers; self.application = application; self.payload = payload
+    }
+    private enum CodingKeys: String, CodingKey { case layer, input, action, output, modifiers, application, payload }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        layer = try values.decode(Layer.self, forKey: .layer)
+        input = try values.decode(UInt16.self, forKey: .input)
+        action = try values.decode(ActionType.self, forKey: .action)
+        output = try values.decode(UInt16.self, forKey: .output)
+        modifiers = try values.decode(Modifiers.self, forKey: .modifiers)
+        application = try values.decode(String.self, forKey: .application)
+        payload = try values.decodeIfPresent(String.self, forKey: .payload) ?? ""
+    }
     var targetDescription: String {
-        action == .launch ? URL(fileURLWithPath: application).deletingPathExtension().lastPathComponent
-            : modifiers.label + Keys.name(output)
+        switch action {
+        case .key, .shortcut: return modifiers.label + Keys.name(output)
+        case .launch: return URL(fileURLWithPath: application).deletingPathExtension().lastPathComponent
+        case .text: return "文字列：" + payload.prefix(24).replacingOccurrences(of: "\n", with: " ↵ ")
+        case .url: return URL(string: payload)?.host ?? "URL"
+        case .deck: return "Deck表示／非表示"
+        }
     }
     var description: String {
         let source = (layer == .space ? "Space + " : "") + Keys.name(input)
@@ -166,11 +201,23 @@ struct Configuration: Codable, Equatable {
             guard mapping.modifiers.subtracting(.all).isEmpty else {
                 throw ConfigurationError.invalid("未対応の修飾キーです。")
             }
-            if mapping.action == .launch {
+            switch mapping.action {
+            case .launch:
                 guard mapping.application.hasPrefix("/"), mapping.application.hasSuffix(".app") else {
                     throw ConfigurationError.invalid("起動する.appを選択してください。")
                 }
-            } else {
+            case .text:
+                guard !mapping.payload.isEmpty, mapping.payload.utf16.count <= 4096 else {
+                    throw ConfigurationError.invalid("文字列は1〜4096文字（UTF-16）にしてください。")
+                }
+            case .url:
+                guard mapping.payload.count <= 2048, let url = URLComponents(string: mapping.payload),
+                      ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                      let host = url.host, !host.isEmpty, url.url != nil else {
+                    throw ConfigurationError.invalid("http:// または https:// で始まるURLを指定してください。")
+                }
+            case .deck: break
+            case .key, .shortcut:
                 guard Keys.outputs.contains(where: { $0.code == mapping.output }) else {
                     throw ConfigurationError.invalid("出力キーは一覧から選んでください。")
                 }
@@ -182,6 +229,20 @@ struct Configuration: Codable, Equatable {
                 }
             }
         }
+    }
+}
+
+enum TextOutput {
+    /// Keep Quartz text events short without splitting UTF-16 surrogate pairs.
+    static func chunks(_ text: String) -> [[UInt16]] {
+        var result: [[UInt16]] = [], current: [UInt16] = []
+        for scalar in text.unicodeScalars {
+            let units = Array(String(scalar).utf16)
+            if current.count + units.count > 20 { result.append(current); current = [] }
+            current.append(contentsOf: units)
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
     }
 }
 

@@ -9,10 +9,14 @@ final class InputEngine {
     private var pendingSpace: CGEvent?
     private var timer: Timer?
     private var generation = 0
+    private var textGeneration = 0
+    private var textIsRunning = false
+    private var foregroundProcessID: pid_t?
     private let marker: Int64 = 0x52454C59524D
     private(set) var enabled = false
     var onStatus: ((String) -> Void)?
     var onProfile: ((String) -> Void)?
+    var onToggleDeck: (() -> Void)?
 
     init() {
         let center = NSWorkspace.shared.notificationCenter
@@ -33,7 +37,10 @@ final class InputEngine {
     }
 
     @objc private func frontmostChanged() {
-        let id = machine.configuration.activeProfileID(bundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        let app = NSWorkspace.shared.frontmostApplication
+        if app?.processIdentifier != foregroundProcessID { cancelText() }
+        foregroundProcessID = app?.processIdentifier
+        let id = machine.configuration.activeProfileID(bundleIdentifier: app?.bundleIdentifier)
         machine.runtimeProfileID = id
         onProfile?(machine.configuration.profileName(id))
     }
@@ -51,6 +58,9 @@ final class InputEngine {
                   !IsSecureEventInputEnabled(), AXIsProcessTrusted(),
                   NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier else { return }
             if mapping.action == .launch { self.launchApplication(mapping.application); return }
+            if mapping.action == .url { self.openURL(mapping.payload); return }
+            if mapping.action == .deck { self.onToggleDeck?(); return }
+            if mapping.action == .text { self.typeText(mapping.payload, target: target.processIdentifier); return }
             guard !self.machine.outputIsHeld(mapping.output),
                   !CGEventSource.keyState(.combinedSessionState, key: mapping.output) else {
                 self.onStatus?("同じ出力キーが押されています。キーを離してからDeckを押してください。")
@@ -76,8 +86,49 @@ final class InputEngine {
         }
     }
 
+    private func openURL(_ value: String) {
+        guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+        if !NSWorkspace.shared.open(url) { onStatus?("URLを開けませんでした。") }
+    }
+
+    private func typeText(_ value: String, target: pid_t) {
+        textGeneration += 1
+        let textTicket = textGeneration, ticket = generation
+        let chunks = TextOutput.chunks(value)
+        textIsRunning = true
+        func step(_ index: Int) {
+            guard self.enabled, self.generation == ticket, self.textGeneration == textTicket else { return }
+            guard !IsSecureEventInputEnabled(), AXIsProcessTrusted(),
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == target else {
+                self.cancelText(); return
+            }
+            guard index < chunks.count else { self.textIsRunning = false; return }
+            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
+                self.cancelText(); return
+            }
+            for event in [down, up] {
+                event.flags = []
+                event.setIntegerValueField(.eventSourceUserData, value: self.marker)
+                chunks[index].withUnsafeBufferPointer {
+                    event.keyboardSetUnicodeString(stringLength: $0.count, unicodeString: $0.baseAddress!)
+                }
+                event.post(tap: .cgSessionEventTap)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { step(index + 1) }
+        }
+        step(0)
+    }
+
+    private func cancelText() {
+        guard textIsRunning else { return }
+        textIsRunning = false; textGeneration += 1
+        onStatus?("文字列入力を中断しました。入力先の変更や別の操作を検出しました。")
+    }
+
     func start() {
         guard !enabled else { return }
+        frontmostChanged()
         guard AXIsProcessTrusted() else {
             onStatus?("アクセシビリティの許可後、再度「有効にする」を押してください。")
             return
@@ -114,6 +165,7 @@ final class InputEngine {
     func stop(message: String = "停止中：通常のキー入力が使えます。") {
         enabled = false
         generation += 1
+        textGeneration += 1; textIsRunning = false
         if let tap = tap { CGEvent.tapEnable(tap: tap, enable: false) }
         // Release output keys before removing the tap. Our marker bypasses interception.
         for code in machine.reset() {
@@ -141,6 +193,14 @@ final class InputEngine {
             return Unmanaged.passUnretained(event)
         }
         guard enabled, event.getIntegerValueField(.eventSourceUserData) != marker else { return Unmanaged.passUnretained(event) }
+        if type == .flagsChanged || type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown ||
+            (type == .keyDown && event.getIntegerValueField(.keyboardEventAutorepeat) == 0) {
+            // Defer UI notification until the event callback returns.
+            if textIsRunning {
+                textIsRunning = false; textGeneration += 1
+                DispatchQueue.main.async { [weak self] in self?.onStatus?("別の操作を検出したため文字列入力を中断しました。") }
+            }
+        }
         let code = UInt16(clamping: event.getIntegerValueField(.keyboardEventKeycode))
         let modifiers = Modifiers(event.flags)
         if type == .keyDown, code == 53, modifiers.isSuperset(of: [.control, .option, .command]) {
@@ -190,6 +250,31 @@ final class InputEngine {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.enabled, self.generation == ticket else { return }
                 self.launchApplication(path)
+            }
+            return nil
+        case .text(let value):
+            let ticket = generation
+            // Session taps precede event target annotation. Use the workspace observer's cached PID,
+            // then verify it outside the callback before sending any text.
+            let target = foregroundProcessID
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.enabled, self.generation == ticket,
+                      let target = target, NSWorkspace.shared.frontmostApplication?.processIdentifier == target else { return }
+                self.typeText(value, target: target)
+            }
+            return nil
+        case .url(let value):
+            let ticket = generation
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.enabled, self.generation == ticket else { return }
+                self.openURL(value)
+            }
+            return nil
+        case .deck:
+            let ticket = generation
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.enabled, self.generation == ticket else { return }
+                self.onToggleDeck?()
             }
             return nil
         }

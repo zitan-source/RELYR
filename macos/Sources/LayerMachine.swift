@@ -4,6 +4,7 @@ enum InputDecision: Equatable {
     case pass, consume, spaceTap, spaceDownThenPass
     case remap(UInt16, Modifiers)
     case launch(String)
+    case text(String), url(String), deck
 }
 
 /// Pure state machine: no hooks, generated input, file I/O, or application launches.
@@ -25,7 +26,7 @@ final class LayerMachine {
                 // A physical destination key can overlap a remapped source.
                 return !down && outputIsHeld(code) ? .consume : .pass
             case .mapped(let mapping):
-                if mapping.action == .launch { return .consume }
+                if !mapping.action.isKey { return .consume }
                 if !down && outputIsHeld(mapping.output) { return .consume }
                 return .remap(mapping.output, mapping.modifiers)
             }
@@ -36,7 +37,13 @@ final class LayerMachine {
         if let mapping = mappings.first(where: { $0.layer == layer && $0.input == code }) {
             if layer == .space { space = .layer }
             held[code] = .mapped(mapping)
-            return mapping.action == .launch ? .launch(mapping.application) : .remap(mapping.output, mapping.modifiers)
+            switch mapping.action {
+            case .key, .shortcut: return .remap(mapping.output, mapping.modifiers)
+            case .launch: return .launch(mapping.application)
+            case .text: return .text(mapping.payload)
+            case .url: return .url(mapping.payload)
+            case .deck: return .deck
+            }
         }
         held[code] = .passthrough
         return flushPendingSpace()
@@ -47,7 +54,7 @@ final class LayerMachine {
         return held.contains { code, active in
             switch active {
             case .passthrough: return code == output
-            case .mapped(let mapping): return mapping.action != .launch && mapping.output == output
+            case .mapped(let mapping): return mapping.action.isKey && mapping.output == output
             }
         }
     }
@@ -88,7 +95,7 @@ final class LayerMachine {
     func reset() -> [UInt16] {
         var outputs = Set<UInt16>()
         for active in held.values {
-            if case .mapped(let mapping) = active, mapping.action != .launch {
+            if case .mapped(let mapping) = active, mapping.action.isKey {
                 if case .passthrough? = held[mapping.output] { continue }
                 outputs.insert(mapping.output)
             }

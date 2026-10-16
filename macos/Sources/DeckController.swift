@@ -97,7 +97,13 @@ final class DeckController: NSObject {
             label.stringValue = item.title; label.toolTip = item.title
             button.toolTip = "\(item.title) — \(configuration.profileName(item.profileID)): \(mapping.description)"
             button.setAccessibilityLabel(item.title)
-            button.title = mapping.action == .launch ? "" : mapping.targetDescription
+            switch mapping.action {
+            case .key, .shortcut: button.title = mapping.targetDescription
+            case .launch: button.title = ""
+            case .text: button.title = "文字"
+            case .url: button.title = "↗"
+            case .deck: button.title = "Deck"
+            }
             button.image = nil
             if mapping.action == .launch, let icon = NSWorkspace.shared.icon(forFile: mapping.application).copy() as? NSImage {
                 icon.size = NSSize(width: 32, height: 32); button.image = icon
@@ -113,12 +119,12 @@ final class DeckController: NSObject {
 
     func verifyPresentation(expectedButtons: Int) {
         panel.contentView?.layoutSubtreeIfNeeded()
-        precondition(cells.count == expectedButtons && panel.isVisible)
-        precondition(!panel.canBecomeKey && !panel.canBecomeMain)
-        precondition(panel.styleMask.contains(.nonactivatingPanel))
+        verifySmoke(cells.count == expectedButtons && panel.isVisible)
+        verifySmoke(!panel.canBecomeKey && !panel.canBecomeMain)
+        verifySmoke(panel.styleMask.contains(.nonactivatingPanel))
         for (button, _) in cells.values {
-            precondition(button.frame.width == 54 && button.frame.height == 52)
-            precondition(!button.isEnabled, "Smoke test must never enable input")
+            verifySmoke(button.frame.width == 54 && button.frame.height == 52)
+            verifySmoke(!button.isEnabled, "Smoke test must never enable input")
         }
     }
 

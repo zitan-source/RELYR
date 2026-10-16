@@ -1,6 +1,14 @@
 import AppKit
 import ApplicationServices
 import UniformTypeIdentifiers
+import Darwin
+
+func verifySmoke(_ condition: @autoclosure () -> Bool, _ message: String = "UI verification failed", file: String = #fileID, line: Int = #line) {
+    guard condition() else {
+        FileHandle.standardError.write(Data("FAIL: \(file):\(line): \(message)\n".utf8))
+        exit(1)
+    }
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private var window: NSWindow!
@@ -14,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let space = NSButton(checkboxWithTitle: "Spaceレイヤーを使う", target: nil, action: nil)
     private let application = NSTextField(labelWithString: "アプリ未選択")
     private let chooseApp = NSButton(title: "アプリを選ぶ…", target: nil, action: nil)
+    private let payloadControls = NSStackView()
+    private let payloadSummary = NSTextField(labelWithString: "未設定")
+    private var payload = ""
     private let modifierButtons = ["⌘ Command", "⌃ Control", "⌥ Option", "⇧ Shift"].map {
         NSButton(checkboxWithTitle: $0, target: nil, action: nil)
     }
@@ -64,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         engine.apply(configuration)
         engine.onProfile = { [weak self] name in self?.runtimeLabel.stringValue = "実行中：\(name)" }
+        engine.onToggleDeck = { [weak self] in self?.deck.toggle() }
         engine.onStatus = { [weak self] message in
             guard let self = self else { return }
             self.status.stringValue = message
@@ -85,25 +97,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         showWindow()
         if smoke {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                precondition(self.window.isVisible && !self.engine.enabled)
-                precondition(self.input.numberOfItems == Keys.inputs.count)
-                precondition(self.table.numberOfColumns == 1 && self.output.numberOfItems == Keys.outputs.count)
+                verifySmoke(self.window.isVisible && !self.engine.enabled)
+                verifySmoke(self.input.numberOfItems == Keys.inputs.count)
+                verifySmoke(self.table.numberOfColumns == 1 && self.output.numberOfItems == Keys.outputs.count)
                 self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
-                precondition(self.action.indexOfSelectedItem == 1 && self.modifierButtons[0].state == .on)
-                precondition(!self.chooseApp.isEnabled && self.output.isEnabled)
+                verifySmoke(self.action.indexOfSelectedItem == 1 && self.modifierButtons[0].state == .on)
+                verifySmoke(!self.chooseApp.isEnabled && self.output.isEnabled)
                 let original = self.configuration
                 self.saveMapping()
-                precondition(self.configuration == original, "UI edit must preserve profile and Deck references")
+                verifySmoke(self.configuration == original, "UI edit must preserve profile and Deck references")
                 self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
                 self.deleteMapping()
-                precondition(self.configuration.mappings.count == 2 && self.configuration.deck.count == 2)
-                precondition(self.configuration.profiles[0].mappings.count == 3)
-                precondition(self.persist(original))
+                verifySmoke(self.configuration.mappings.count == 2 && self.configuration.deck.count == 2)
+                verifySmoke(self.configuration.profiles[0].mappings.count == 3)
+                verifySmoke(self.persist(original))
                 self.manualPicker.selectItem(at: 1)
                 self.manualProfileChanged()
-                precondition(self.engine.machine.runtimeProfileID == original.profiles[0].id)
-                precondition(self.profilePicker.indexOfSelectedItem == 0, "Runtime profile must not move the editor")
-                precondition(self.persist(original))
+                verifySmoke(self.engine.machine.runtimeProfileID == original.profiles[0].id)
+                verifySmoke(self.profilePicker.indexOfSelectedItem == 0, "Runtime profile must not move the editor")
+                verifySmoke(self.persist(original))
                 self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
                 self.deck.toggle()
                 self.deck.verifyPresentation(expectedButtons: 3)
@@ -220,12 +232,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
         layer.addItems(withTitles: ["通常", "Space"])
         input.addItems(withTitles: Keys.inputs.map { $0.name })
-        action.addItems(withTitles: ["キー", "ショートカット", "アプリ起動"])
+        action.addItems(withTitles: ActionType.allCases.map { $0.title })
         output.addItems(withTitles: Keys.outputs.map { $0.name })
         layer.setAccessibilityLabel("レイヤー"); input.setAccessibilityLabel("入力キー")
         action.setAccessibilityLabel("動作"); output.setAccessibilityLabel("出力キー")
         action.target = self; action.action = #selector(actionChanged)
         chooseApp.target = self; chooseApp.action = #selector(selectApplication)
+        payloadControls.orientation = .horizontal; payloadControls.spacing = 10; payloadControls.alignment = .centerY
+        payloadControls.addArrangedSubview(NSButton(title: "内容を編集…", target: self, action: #selector(editPayload)))
+        payloadControls.addArrangedSubview(payloadSummary)
+        payloadSummary.lineBreakMode = .byTruncatingTail
+        payloadSummary.widthAnchor.constraint(lessThanOrEqualToConstant: 660).isActive = true
         application.lineBreakMode = .byTruncatingMiddle
         space.state = configuration.spaceEnabled ? .on : .off
         space.target = self; space.action = #selector(spaceChanged)
@@ -240,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         note.textColor = .secondaryLabelColor
         let stack = NSStackView(views: [title, intro, controls, status, tools, profiles, runtime, association, scroll, space,
             row([label("レイヤー"), layer, label("入力"), input, label("動作"), action]),
-            row([label("出力"), output] + modifierButtons), row([chooseApp, application]),
+            row([label("出力"), output] + modifierButtons), row([chooseApp, application]), payloadControls,
             row([fresh, save, delete, addDeck]), note])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -281,17 +298,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         for (button, value) in zip(modifierButtons, modifierValues) { button.state = mapping.modifiers.contains(value) ? .on : .off }
         applicationPath = mapping.application
         application.stringValue = applicationPath.isEmpty ? "アプリ未選択" : applicationPath
+        payload = mapping.payload; payloadSummary.stringValue = payload.isEmpty ? "未設定" : payload.replacingOccurrences(of: "\n", with: " ↵ ")
         actionChanged()
     }
 
     @objc private func actionChanged() {
-        output.isEnabled = action.indexOfSelectedItem != 2
-        for button in modifierButtons { button.isEnabled = action.indexOfSelectedItem == 1 }
-        chooseApp.isEnabled = action.indexOfSelectedItem == 2
+        let kind = ActionType.allCases[action.indexOfSelectedItem]
+        output.isEnabled = kind.isKey
+        for button in modifierButtons { button.isEnabled = kind == .shortcut }
+        chooseApp.isEnabled = kind == .launch
+        payloadControls.isHidden = kind != .text && kind != .url
     }
     @objc private func newMapping() {
         table.deselectAll(nil)
         applicationPath = ""; application.stringValue = "アプリ未選択"
+        payload = ""; payloadSummary.stringValue = "未設定"
         for button in modifierButtons { button.state = .off }
     }
     @objc private func saveMapping() {
@@ -304,7 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         let mapping = Mapping(layer: layer.indexOfSelectedItem == 0 ? .normal : .space,
             input: Keys.inputs[input.indexOfSelectedItem].code, action: kind,
-            output: Keys.outputs[output.indexOfSelectedItem].code, modifiers: modifiers, application: applicationPath)
+            output: Keys.outputs[output.indexOfSelectedItem].code, modifiers: modifiers, application: applicationPath, payload: payload)
         if kind == .launch, !FileManager.default.fileExists(atPath: applicationPath) {
             showError(ConfigurationError.invalid("アプリを選択してください。移動・削除されたアプリは再選択が必要です。")); return
         }
@@ -514,6 +535,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let alert = NSAlert(); alert.messageText = "最初のテスト"
         alert.informativeText = "1.「サンプル追加」を押します。\n2. アクセシビリティを許可して「有効にする」を押します。\n3. テキストエディットでSpace単押しとSpace+A/D/W/Sを試します。\n\nプロファイルの「編集」は設定対象、「手動使用」は実行対象です。自動切替時は前面アプリに一致するプロファイル、なければ標準を使います。Deckへ追加するには保存済みの行を選択してください。\n\n緊急停止：Control + Option + Command + Escape。"
         alert.beginSheetModal(for: window)
+    }
+    @objc private func editPayload() {
+        let kind = ActionType.allCases[action.indexOfSelectedItem]
+        let alert = NSAlert(); alert.messageText = kind == .url ? "開くURL（http / https）" : "入力する文字列"
+        alert.informativeText = kind == .url ? "URLを入力してください。" : "改行・日本語・絵文字を入力できます。最大4096 UTF-16文字。送信中に別の操作をすると中断します。"
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 140))
+        let text = NSTextView(frame: scroll.bounds)
+        text.isRichText = false; text.isAutomaticQuoteSubstitutionEnabled = false
+        text.isAutomaticDashSubstitutionEnabled = false; text.font = .systemFont(ofSize: 13)
+        text.string = payload; text.isVerticallyResizable = true; text.isHorizontallyResizable = false
+        text.autoresizingMask = [.width]; text.textContainer?.widthTracksTextView = true
+        scroll.documentView = text; scroll.hasVerticalScroller = true
+        alert.accessoryView = scroll
+        alert.addButton(withTitle: "設定"); alert.addButton(withTitle: "キャンセル")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn {
+                self.payload = kind == .url ? text.string.trimmingCharacters(in: .whitespacesAndNewlines) : text.string
+                self.payloadSummary.stringValue = self.payload.isEmpty ? "未設定" : self.payload.replacingOccurrences(of: "\n", with: " ↵ ")
+            }
+        }
+        alert.window.initialFirstResponder = text
     }
     private func showError(_ error: Error) {
         let alert = NSAlert()

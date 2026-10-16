@@ -239,6 +239,41 @@ struct CoreTests {
         var missingV2 = legacyObject; missingV2["version"] = 2
         let missingData = try JSONSerialization.data(withJSONObject: missingV2)
         do { _ = try JSONDecoder().decode(Configuration.self, from: missingData); fatalError("silently defaulted damaged v2") } catch { checks += 1 }
+
+        let textAction = Mapping(layer: .space, input: 0, action: .text, payload: "こんにちは🌸\nNext line")
+        let textMachine = machine([textAction])
+        _ = textMachine.key(49, down: true)
+        expect(textMachine.key(0, down: true) == .text(textAction.payload), "text action preserves Unicode payload")
+        expect(textMachine.key(0, down: true, repeating: true) == .consume, "text action never repeats while held")
+        expect(textMachine.key(0, down: false) == .consume, "text action consumes source release")
+        expect(textMachine.reset().isEmpty, "text action is not a held virtual A key")
+        let urlMachine = machine([Mapping(layer: .normal, input: 0, action: .url, payload: "https://example.com/path")])
+        expect(urlMachine.key(0, down: true) == .url("https://example.com/path"), "URL action keeps exact destination")
+        expect(urlMachine.key(0, down: true, repeating: true) == .consume, "URL opens once per press")
+        expect(urlMachine.reset().isEmpty, "URL never creates held output")
+        let deckMachine = machine([Mapping(layer: .normal, input: 0, action: .deck)])
+        expect(deckMachine.key(0, down: true) == .deck, "Deck toggles on press")
+        expect(deckMachine.key(0, down: true, repeating: true) == .consume, "Deck must not oscillate on repeat")
+        expect(deckMachine.key(0, down: false) == .consume, "Deck toggle release consumed")
+        var textConfig = Configuration(); textConfig.mappings = [textAction]
+        try textConfig.validate()
+        let textEncoded = try ConfigurationStore.encoded(textConfig)
+        let textDecoded = try JSONDecoder().decode(Configuration.self, from: textEncoded)
+        expect(textDecoded == textConfig, "Unicode payload survives export/import")
+        invalid = textConfig; invalid.mappings[0].payload = ""
+        expectInvalid(invalid, "reject empty text")
+        invalid = textConfig; invalid.mappings[0].payload = String(repeating: "a", count: 4097)
+        expectInvalid(invalid, "bound text output")
+        for value in ["file:///etc/passwd", "javascript:alert(1)", "https://", "example.com", "ftp://example.com"] {
+            invalid = Configuration(); invalid.mappings = [Mapping(layer: .normal, input: 0, action: .url, payload: value)]
+            expectInvalid(invalid, "reject unsupported or malformed URL: \(value)")
+        }
+        let unicode = String(repeating: "a", count: 19) + "🌸" + "日本語\n" + "👨‍👩‍👧‍👦" + String(repeating: "z", count: 40)
+        let chunks = TextOutput.chunks(unicode)
+        expect(chunks.allSatisfy { !$0.isEmpty && $0.count <= 20 }, "text chunks stay within the event limit")
+        expect(chunks.flatMap { $0 } == Array(unicode.utf16), "chunking preserves every UTF-16 unit")
+        expect(chunks.allSatisfy { !(0xD800...0xDBFF).contains($0.last!) && !(0xDC00...0xDFFF).contains($0.first!) }, "never split surrogate pairs")
+        expect(TextOutput.chunks("").isEmpty, "empty text has no events")
         print("PASS: \(checks) core checks plus invalid configuration cases; no physical input generated")
     }
 }
