@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ "$(uname -s)" != Darwin ]]; then
+    echo "This script requires macOS and Xcode Command Line Tools." >&2
+    exit 1
+fi
+xcrun --find swiftc >/dev/null
+out="$root/.verification/macos"
+app="$out/RELYR Mac Trial.app"
+mkdir -p "$out" "$app/Contents/MacOS" "$app/Contents/Resources"
+sdk="$(xcrun --sdk macosx --show-sdk-path)"
+common=(-swift-version 5 -warnings-as-errors -sdk "$sdk")
+xcrun swiftc "${common[@]}" \
+    "$root/macos/Sources/Configuration.swift" "$root/macos/Sources/LayerMachine.swift" \
+    "$root/macos/Tests/CoreTests.swift" -o "$out/CoreTests"
+"$out/CoreTests"
+xcrun swiftc "${common[@]}" -O -target arm64-apple-macos13.0 \
+    "$root"/macos/Sources/*.swift -o "$app/Contents/MacOS/RELYR" \
+    -framework AppKit -framework ApplicationServices -framework Carbon
+cp "$root/macos/Info.plist" "$app/Contents/Info.plist"
+cp "$root/LICENSE" "$app/Contents/Resources/LICENSE.txt"
+cp "$root/macos/README.ja.md" "$app/Contents/Resources/README.ja.md"
+plutil -lint "$app/Contents/Info.plist"
+codesign --force --sign - "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
+lipo -verify_arch arm64 "$app/Contents/MacOS/RELYR"
+if [[ "$(uname -m)" == arm64 ]]; then
+    "$app/Contents/MacOS/RELYR" --ui-smoke-test
+fi
+ditto -c -k --sequesterRsrc --keepParent "$app" "$out/RELYR-Mac-Trial-0.1.0-arm64.zip"
+(cd "$out" && shasum -a 256 RELYR-Mac-Trial-0.1.0-arm64.zip > RELYR-Mac-Trial-0.1.0-arm64.zip.sha256)
+echo "Built: $app"
