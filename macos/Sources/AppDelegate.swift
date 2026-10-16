@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private var configuration = Configuration()
     private var applicationPath = ""
     private var loadFailed = false
+    private var instanceLock: InstanceLock?
     private var statusItem: NSStatusItem!
     private let engine = InputEngine()
     private let deck = DeckController()
@@ -77,11 +78,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if !smoke, let id = Bundle.main.bundleIdentifier,
-           let other = NSRunningApplication.runningApplications(withBundleIdentifier: id).first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
-            other.activate(options: [.activateIgnoringOtherApps])
-            NSApp.terminate(nil)
-            return
+        if !smoke {
+            do { instanceLock = try InstanceLock(url: store.url.deletingLastPathComponent().appendingPathComponent("instance.lock")) }
+            catch InstanceLockError.busy {
+                if let id = Bundle.main.bundleIdentifier,
+                   let other = NSRunningApplication.runningApplications(withBundleIdentifier: id).first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+                    other.activate(options: [.activateIgnoringOtherApps])
+                }
+                NSApp.terminate(nil); return
+            } catch {
+                let alert = NSAlert(); alert.messageText = "RELYRを起動できません"; alert.informativeText = error.localizedDescription
+                alert.runModal(); NSApp.terminate(nil); return
+            }
         }
         if !smoke {
             do { configuration = try store.load() }
@@ -597,5 +605,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc private func showWindow() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func applicationWillTerminate(_ notification: Notification) { engine.stop() }
+    func applicationWillTerminate(_ notification: Notification) { engine.stop(); instanceLock?.release() }
 }

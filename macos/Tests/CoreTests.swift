@@ -99,6 +99,13 @@ struct CoreTests {
         _ = spaceOutput.key(0, down: true)
         expect(spaceOutput.key(49, down: false) == .consume, "remapped Space survives physical Space release")
         expect(spaceOutput.key(0, down: false) == .remap(49, []), "final remapped Space release")
+        _ = spaceOutput.key(49, down: true)
+        _ = spaceOutput.key(0, down: true)
+        expect(spaceOutput.reset().isEmpty, "disable must not release physically held Space")
+        let restoredSpace = machine([spaceA])
+        _ = restoredSpace.key(49, down: true)
+        _ = restoredSpace.flushPendingSpace()
+        expect(restoredSpace.reset().isEmpty, "restored Space retains physical ownership on disable")
 
         let disabled = machine([spaceA])
         disabled.configuration.spaceEnabled = false

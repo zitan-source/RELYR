@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 @main struct NativeEventTests {
-    static func main() {
+    static func main() throws {
         let marker: Int64 = 0x52454C59524D
         guard let key = NativeEvents.key(8, flags: [.maskCommand, .maskShift], marker: marker) else { fatalError("event allocation") }
         precondition(key.down.type == .keyDown && key.up.type == .keyUp)
@@ -27,6 +27,15 @@ import CoreGraphics
         precondition(NativeEvents.unicode([UInt16](repeating: 65, count: 21), marker: marker) == nil)
         precondition(NativeEvents.unicode([0xD800], marker: marker) == nil)
         precondition(NativeEvents.unicode([0xDC00], marker: marker) == nil)
-        print("PASS: native key/Unicode event pairs, flags, markers and UTF-16 validation; zero events posted")
+        guard CommandLine.arguments.count == 2 else { fatalError("Pass a repository-local verification directory") }
+        let lockURL = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("native-test.lock")
+        let first = try InstanceLock(url: lockURL)
+        do { _ = try InstanceLock(url: lockURL); fatalError("duplicate instance acquired lock") }
+        catch InstanceLockError.busy { /* expected */ }
+        first.release(); first.release()
+        let second = try InstanceLock(url: lockURL)
+        precondition(FileManager.default.fileExists(atPath: lockURL.path))
+        second.release()
+        print("PASS: native key/Unicode pairs, flags, markers, UTF-16 and exclusive instance lock; zero events posted")
     }
 }

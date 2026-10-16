@@ -97,11 +97,11 @@ final class LayerMachine {
         for active in held.values {
             if case .mapped(let mapping) = active, mapping.action.isKey {
                 if case .passthrough? = held[mapping.output] { continue }
+                if mapping.output == 49 && space == .passthrough { continue }
                 outputs.insert(mapping.output)
             }
         }
-        // A forwarded Space is physically held, so its release must also be restored on shutdown.
-        if space == .passthrough { outputs.insert(49) }
+        // Passed-through physical keys retain ownership. Their real Up reaches the OS after disabling.
         held.removeAll()
         space = .idle
         return outputs.sorted()
