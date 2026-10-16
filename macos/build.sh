@@ -24,9 +24,9 @@ cp "$root/macos/README.ja.md" "$app/Contents/Resources/README.ja.md"
 plutil -lint "$app/Contents/Info.plist"
 codesign --force --sign - "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
-lipo -verify_arch arm64 "$app/Contents/MacOS/RELYR"
+lipo "$app/Contents/MacOS/RELYR" -verify_arch arm64
 if [[ "$(uname -m)" == arm64 ]]; then
-    "$app/Contents/MacOS/RELYR" --ui-smoke-test
+    "$app/Contents/MacOS/RELYR" --ui-smoke-test "$out/RELYR-Mac-Trial-preview.png"
 fi
 ditto -c -k --sequesterRsrc --keepParent "$app" "$out/RELYR-Mac-Trial-0.1.0-arm64.zip"
 (cd "$out" && shasum -a 256 RELYR-Mac-Trial-0.1.0-arm64.zip > RELYR-Mac-Trial-0.1.0-arm64.zip.sha256)

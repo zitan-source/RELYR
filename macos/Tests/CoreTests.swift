@@ -69,6 +69,23 @@ struct CoreTests {
         expect(shortcut.reset().isEmpty, "cleanup is idempotent")
         expect(shortcut.key(0, down: false) == .pass, "late physical release after disable passes")
 
+        let overlap = machine([normalB, Mapping(layer: .normal, input: 0, action: .key, output: 8)])
+        _ = overlap.key(11, down: true)
+        _ = overlap.key(0, down: true)
+        expect(overlap.key(11, down: false) == .consume, "shared output stays down until final mapped source releases")
+        expect(overlap.key(0, down: false) == .remap(8, []), "last source releases shared output")
+        _ = overlap.key(11, down: true)
+        _ = overlap.key(8, down: true)
+        expect(overlap.key(11, down: false) == .consume, "physical destination retains ownership")
+        expect(overlap.key(8, down: false) == .pass, "physical destination releases normally")
+        _ = overlap.key(8, down: true)
+        _ = overlap.key(11, down: true)
+        expect(overlap.key(8, down: false) == .consume, "remapped source retains ownership after physical destination releases")
+        expect(overlap.key(11, down: false) == .remap(8, []), "final remapped release after physical destination")
+        _ = overlap.key(8, down: true)
+        _ = overlap.key(11, down: true)
+        expect(overlap.reset().isEmpty, "disable does not release a physically held destination")
+
         let disabled = machine([spaceA])
         disabled.configuration.spaceEnabled = false
         expect(disabled.key(49, down: true) == .pass, "Space toggle off")

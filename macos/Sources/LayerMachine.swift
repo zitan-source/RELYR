@@ -19,9 +19,12 @@ final class LayerMachine {
         if let active = held[code] {
             if !down { held.removeValue(forKey: code) }
             switch active {
-            case .passthrough: return .pass
+            case .passthrough:
+                // A physical destination key can overlap a remapped source.
+                return !down && outputIsHeld(code) ? .consume : .pass
             case .mapped(let mapping):
                 if mapping.action == .launch { return .consume }
+                if !down && outputIsHeld(mapping.output) { return .consume }
                 return .remap(mapping.output, mapping.modifiers)
             }
         }
@@ -35,6 +38,15 @@ final class LayerMachine {
         }
         held[code] = .passthrough
         return flushPendingSpace()
+    }
+
+    private func outputIsHeld(_ output: UInt16) -> Bool {
+        held.contains { code, active in
+            switch active {
+            case .passthrough: return code == output
+            case .mapped(let mapping): return mapping.action != .launch && mapping.output == output
+            }
+        }
     }
 
     private func spaceKey(down: Bool, repeating: Bool, modifiers: Modifiers) -> InputDecision {
@@ -73,7 +85,10 @@ final class LayerMachine {
     func reset() -> [UInt16] {
         var outputs = Set<UInt16>()
         for active in held.values {
-            if case .mapped(let mapping) = active, mapping.action != .launch { outputs.insert(mapping.output) }
+            if case .mapped(let mapping) = active, mapping.action != .launch {
+                if case .passthrough? = held[mapping.output] { continue }
+                outputs.insert(mapping.output)
+            }
         }
         // A forwarded Space is physically held, so its release must also be restored on shutdown.
         if space == .passthrough { outputs.insert(49) }

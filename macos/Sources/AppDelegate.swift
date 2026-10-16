@@ -37,6 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         if !smoke {
             do { configuration = try store.load() }
             catch { loadFailed = true; status.stringValue = "設定を読み込めません。元の設定ファイルは保持しています：\(error.localizedDescription)" }
+        } else {
+            configuration.mappings = [
+                Mapping(layer: .space, input: 0, action: .key, output: 123),
+                Mapping(layer: .space, input: 8, action: .shortcut, output: 8, modifiers: .command),
+                Mapping(layer: .space, input: 17, action: .launch, application: "/System/Applications/TextEdit.app")
+            ]
         }
         engine.machine.configuration = configuration
         engine.onStatus = { [weak self] message in
@@ -53,6 +59,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 precondition(self.window.isVisible && !self.engine.enabled)
                 precondition(self.input.numberOfItems == Keys.inputs.count)
                 precondition(self.table.numberOfColumns == 1 && self.output.numberOfItems == Keys.outputs.count)
+                self.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+                precondition(self.action.indexOfSelectedItem == 1 && self.modifierButtons[0].state == .on)
+                precondition(!self.chooseApp.isEnabled && self.output.isEnabled)
+                self.window.contentView?.layoutSubtreeIfNeeded()
+                if CommandLine.arguments.count > 2, let view = self.window.contentView,
+                   let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    if let data = bitmap.representation(using: .png, properties: [:]) {
+                        do { try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2])) }
+                        catch { fatalError("Could not save UI verification image: \(error)") }
+                    }
+                }
                 print("PASS: native window, key selectors, table, disabled startup")
                 NSApp.terminate(nil)
             }

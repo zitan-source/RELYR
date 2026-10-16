@@ -25,5 +25,6 @@ jobs:
           path: |
             .verification/macos/RELYR-Mac-Trial-0.1.0-arm64.zip
             .verification/macos/RELYR-Mac-Trial-0.1.0-arm64.zip.sha256
+            .verification/macos/RELYR-Mac-Trial-preview.png
           if-no-files-found: error
           retention-days: 30
