@@ -104,7 +104,9 @@ struct CoreTests {
         expect(empty.key(49, down: true) == .pass, "no Space delay without Space mappings")
         expect(empty.key(49, down: true, repeating: true) == .pass, "ordinary Space repeats without mappings")
 
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("relyr-mac-tests-\(UUID().uuidString)")
+        guard CommandLine.arguments.count == 2 else { fatalError("Pass a repository-local verification directory") }
+        let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+            .appendingPathComponent("core-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = ConfigurationStore(url: directory.appendingPathComponent("configuration.json"))
         let initial = try store.load()

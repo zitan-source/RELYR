@@ -14,7 +14,7 @@ common=(-swift-version 5 -warnings-as-errors -sdk "$sdk")
 xcrun swiftc "${common[@]}" \
     "$root/macos/Sources/Configuration.swift" "$root/macos/Sources/LayerMachine.swift" \
     "$root/macos/Tests/CoreTests.swift" -o "$out/CoreTests"
-"$out/CoreTests"
+"$out/CoreTests" "$out"
 xcrun swiftc "${common[@]}" -O -target arm64-apple-macos13.0 \
     "$root"/macos/Sources/*.swift -o "$app/Contents/MacOS/RELYR" \
     -framework AppKit -framework ApplicationServices -framework Carbon
