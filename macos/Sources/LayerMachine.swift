@@ -41,7 +41,8 @@ final class LayerMachine {
     }
 
     private func outputIsHeld(_ output: UInt16) -> Bool {
-        held.contains { code, active in
+        if output == 49 && space == .passthrough { return true }
+        return held.contains { code, active in
             switch active {
             case .passthrough: return code == output
             case .mapped(let mapping): return mapping.action != .launch && mapping.output == output
@@ -54,9 +55,9 @@ final class LayerMachine {
             let previous = space
             space = .idle
             switch previous {
-            case .pending: return .spaceTap
+            case .pending: return outputIsHeld(49) ? .consume : .spaceTap
             case .layer: return .consume
-            case .idle, .passthrough: return .pass
+            case .idle, .passthrough: return outputIsHeld(49) ? .consume : .pass
             }
         }
         switch space {

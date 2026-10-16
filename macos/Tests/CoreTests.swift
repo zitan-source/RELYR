@@ -86,6 +86,16 @@ struct CoreTests {
         _ = overlap.key(11, down: true)
         expect(overlap.reset().isEmpty, "disable does not release a physically held destination")
 
+        let spaceOutput = machine([Mapping(layer: .normal, input: 0, action: .key, output: 49)])
+        _ = spaceOutput.key(0, down: true)
+        _ = spaceOutput.key(49, down: true)
+        expect(spaceOutput.key(0, down: false) == .consume, "physical Space retains remapped Space output")
+        expect(spaceOutput.key(49, down: false) == .pass, "final physical Space release")
+        _ = spaceOutput.key(49, down: true)
+        _ = spaceOutput.key(0, down: true)
+        expect(spaceOutput.key(49, down: false) == .consume, "remapped Space survives physical Space release")
+        expect(spaceOutput.key(0, down: false) == .remap(49, []), "final remapped Space release")
+
         let disabled = machine([spaceA])
         disabled.configuration.spaceEnabled = false
         expect(disabled.key(49, down: true) == .pass, "Space toggle off")
