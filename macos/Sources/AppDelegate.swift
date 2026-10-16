@@ -66,7 +66,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 if CommandLine.arguments.count > 2, let view = self.window.contentView,
                    let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: bitmap)
-                    if let data = bitmap.representation(using: .png, properties: [:]) {
+                    // The content view is transparent; include the native window background in the preview.
+                    let preview = NSImage(size: view.bounds.size)
+                    preview.lockFocus()
+                    NSColor.windowBackgroundColor.setFill()
+                    view.bounds.fill()
+                    bitmap.draw(in: view.bounds)
+                    preview.unlockFocus()
+                    if let tiff = preview.tiffRepresentation,
+                       let rendered = NSBitmapImageRep(data: tiff),
+                       let data = rendered.representation(using: .png, properties: [:]) {
                         do { try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2])) }
                         catch { fatalError("Could not save UI verification image: \(error)") }
                     }

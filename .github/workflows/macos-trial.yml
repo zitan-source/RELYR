@@ -2,9 +2,6 @@ name: macOS trial
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["codex/macos-trial"]
-    paths: ["macos/**", ".github/workflows/macos-trial.yml"]
   pull_request:
     paths: ["macos/**", ".github/workflows/macos-trial.yml"]
 
