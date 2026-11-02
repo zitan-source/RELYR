@@ -354,11 +354,77 @@ begin
     ewWaitUntilTerminated, ResultCode);
 end;
 
+function EscapeTaskXml(Value: String): String;
+begin
+  StringChangeEx(Value, '&', '&amp;', True);
+  StringChangeEx(Value, '<', '&lt;', True);
+  StringChangeEx(Value, '>', '&gt;', True);
+  StringChangeEx(Value, '"', '&quot;', True);
+  StringChangeEx(Value, '''', '&apos;', True);
+  Result := Value;
+end;
+
+function CurrentTaskUserSid(): String;
+var
+  Output: TExecOutput;
+  ResultCode, I, StartAt, EndAt: Integer;
+  Line: String;
+begin
+  Result := '';
+  if not ExecAndCaptureOutput(ExpandConstant('{sys}\whoami.exe'),
+    '/user /fo csv /nh', '', SW_HIDE, ewWaitUntilTerminated, ResultCode, Output) then Exit;
+  if (ResultCode <> 0) or Output.Error then Exit;
+  for I := 0 to GetArrayLength(Output.StdOut) - 1 do
+  begin
+    Line := Output.StdOut[I];
+    StartAt := Pos('"S-1-', Line);
+    if StartAt > 0 then
+    begin
+      StartAt := StartAt + 1;
+      EndAt := StartAt;
+      while EndAt <= Length(Line) do
+      begin
+        if not (((Line[EndAt] >= '0') and (Line[EndAt] <= '9')) or
+          (Line[EndAt] = '-') or ((EndAt = StartAt) and (Line[EndAt] = 'S'))) then Break;
+        EndAt := EndAt + 1;
+      end;
+      if EndAt <= Length(Line) then
+        if Line[EndAt] = '"' then
+        begin
+          Result := Copy(Line, StartAt, EndAt - StartAt);
+          Exit;
+        end;
+    end;
+  end;
+end;
+
+function SaveLauncherTaskXml(const FileName, UserSid, AppDirectory: String): Boolean;
+var
+  Lines: TArrayOfString;
+begin
+  SetArrayLength(Lines, 1);
+  Lines[0] :=
+    '<?xml version="1.0" encoding="UTF-8"?>' + #13#10 +
+    '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' +
+    '<RegistrationInfo><Author>RELYR</Author><Description>RELYR elevated input helper launcher.</Description></RegistrationInfo>' +
+    '<Principals><Principal id="Author"><UserId>' + EscapeTaskXml(UserSid) + '</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>' +
+    '<Settings><MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>' +
+    '<Actions Context="Author"><Exec><Command>' + EscapeTaskXml(AddBackslash(AppDirectory) + 'RELYR.exe') + '</Command><Arguments>--elevated-task "$(Arg0)"</Arguments><WorkingDirectory>' + EscapeTaskXml(AppDirectory) + '</WorkingDirectory></Exec></Actions>' +
+    '</Task>';
+  Result := SaveStringsToUTF8File(FileName, Lines, False);
+end;
+
+function LauncherSetupError(const EnglishText, JapaneseText: String): String;
+begin
+  if ActiveLanguage = 'japanese' then Result := JapaneseText
+  else Result := EnglishText;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
   TaskXmlPath: String;
-  TaskXml: String;
+  UserSid: String;
 begin
   Result := '';
   { Ask the installed copy to release hooks and exit before Restart Manager
@@ -390,26 +456,27 @@ begin
   end;
 #endif
   TaskXmlPath := ExpandConstant('{tmp}\RELYR-Elevated-Launcher.xml');
-  TaskXml :=
-    '<?xml version="1.0"?>' + #13#10 +
-    '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' +
-    '<RegistrationInfo><Author>RELYR</Author><Description>RELYR elevated input helper launcher.</Description></RegistrationInfo>' +
-    '<Principals><Principal id="Author"><UserId>' + ExpandConstant('{username}') + '</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>' +
-    '<Settings><MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>' +
-    '<Actions Context="Author"><Exec><Command>' + ExpandConstant('{app}\{#AppExe}') + '</Command><Arguments>--elevated-task "$(Arg0)"</Arguments><WorkingDirectory>' + ExpandConstant('{app}') + '</WorkingDirectory></Exec></Actions>' +
-    '</Task>';
-  if not SaveStringToFile(TaskXmlPath, TaskXml, False) then
+  UserSid := CurrentTaskUserSid();
+  if UserSid = '' then
   begin
-    Result := '管理者起動タスクの設定ファイルを作成できませんでした。セットアップはRELYRを変更していません。';
+    Result := LauncherSetupError('Unable to identify the Windows account for the elevated launcher. RELYR files have not been changed.',
+      '管理者起動タスクのWindowsアカウントを確認できませんでした。RELYRのファイルは変更していません。');
     Exit;
   end;
-  if not Exec(ExpandConstant('{sys}\schtasks.exe'),
+  if not SaveLauncherTaskXml(TaskXmlPath, UserSid, ExpandConstant('{app}')) then
+  begin
+    Result := LauncherSetupError('Unable to write the elevated launcher configuration. RELYR files have not been changed.',
+      '管理者起動タスクの設定ファイルを作成できませんでした。RELYRのファイルは変更していません。');
+    Exit;
+  end;
+  if not ExecAndLogOutput(ExpandConstant('{sys}\schtasks.exe'),
     '/Create /TN "RELYR Elevated Launcher" /XML "' + TaskXmlPath + '" /F',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode, nil) or (ResultCode <> 0) then
   begin
     Log(Format('RELYR Elevated Launcher registration failed. schtasks exit code: %d', [ResultCode]));
     DeleteFile(TaskXmlPath);
-    Result := '管理者起動タスクを設定できませんでした。セットアップはRELYRを変更していません。';
+    Result := LauncherSetupError('Unable to register the elevated launcher task. See the Setup log for the Windows error. RELYR files have not been changed.',
+      '管理者起動タスクを登録できませんでした。Windowsのエラー内容はセットアップログをご確認ください。RELYRのファイルは変更していません。');
     Exit;
   end;
   DeleteFile(TaskXmlPath);

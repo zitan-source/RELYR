@@ -3,6 +3,7 @@ $ErrorActionPreference="Stop"
 $root=$PSScriptRoot
 
 & (Join-Path $root "verify-source-safety.ps1")
+& (Join-Path $root "tools\Verify-InstallerTaskXml.ps1")
 
 [xml]$project=Get-Content (Join-Path $root "RELYR\RELYR.csproj") -Encoding UTF8
 $version=($project.Project.PropertyGroup.Version|Where-Object{$_}|Select-Object -First 1)
