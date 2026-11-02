@@ -503,6 +503,12 @@ public partial class MainWindow : Window
     void DisplaySettingsChanged(object? sender, EventArgs e)
         => Dispatcher.BeginInvoke((Action)ConstrainToCurrentWorkArea);
 
+#if !PRODUCTION_PUBLISH
+    // Layout integration tests exercise desktop sizes independently of the
+    // monitor running the test. Production always uses the actual work area.
+    internal Rect? WorkAreaForTest { get; init; }
+#endif
+
     void ConstrainToCurrentWorkArea()
     {
         if (WindowState != WindowState.Normal)
@@ -514,6 +520,9 @@ public partial class MainWindow : Window
         var topLeft = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Left, pixels.Top));
         var bottomRight = target.TransformFromDevice.Transform(new System.Windows.Point(pixels.Right, pixels.Bottom));
         var workArea = new Rect(topLeft, bottomRight);
+#if !PRODUCTION_PUBLISH
+        workArea = WorkAreaForTest ?? workArea;
+#endif
         double safeWidth = Math.Max(1, workArea.Width - MainWindowWorkAreaInset * 2);
         double safeHeight = Math.Max(1, workArea.Height - MainWindowWorkAreaInset * 2);
         MinWidth = Math.Min(DefaultMainWindowMinWidth, safeWidth);

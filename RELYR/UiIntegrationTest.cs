@@ -280,7 +280,11 @@ internal static class UiIntegrationTest
             }
             // Exercise the main editor through the UI-host runtime role as well:
             // RELYR's own foreground window must never disable normal mappings.
-            window = new MainWindow(true, suppressTray: true, runtimeRole: RuntimeRole.UiHost, startInputHooks: false) { Width = 800, Height = 620 };
+            window = new MainWindow(true, suppressTray: true, runtimeRole: RuntimeRole.UiHost, startInputHooks: false)
+            {
+                Width = 800, Height = 620,
+                WorkAreaForTest = new Rect(0, 0, 4096, 2160)
+            };
             System.Windows.Application.Current.MainWindow = window;
             window.Show();
             window.UpdateLayout();
@@ -2316,11 +2320,11 @@ internal static class UiIntegrationTest
             Check(!window.IsDeckEditorAudioPlayingForTest, "the first pointer movement stops Deck editor audio immediately");
             CaptureForReview(window, "deck-manager.png");
             double compactDeckEditorWidth = window.Width, compactDeckEditorHeight = window.Height;
-            double wideDeckEditorWidth = Math.Min(1500, SystemParameters.WorkArea.Width - 32);
+            double wideDeckEditorWidth = 1500;
             if (wideDeckEditorWidth >= 1200)
             {
                 window.Width = wideDeckEditorWidth;
-                window.Height = Math.Min(900, SystemParameters.WorkArea.Height - 32);
+                window.Height = 900;
                 Pump(window);
                 window.ApplyDeckSizeForTest(18, 1);
                 Pump(window);
@@ -3783,7 +3787,13 @@ internal static class UiIntegrationTest
             var rightShiftFace = (Border)rightShift.Template.FindName("KeyBorder", rightShift)!;
             double enterToShiftFaceGap = Canvas.GetTop(rightShift) - (Canvas.GetTop(jisEnter) + jisEnterShape!.Data.Bounds.Height);
             double shiftToCtrlFaceGap = Canvas.GetTop(rightCtrl) - (Canvas.GetTop(rightShift) + rightShiftFace.ActualHeight);
-            Check(Math.Abs(enterToShiftFaceGap - shiftToCtrlFaceGap) < .1, $"JIS Enter-to-Shift visible gap exactly matches the Shift-to-Ctrl visible gap (enter={enterToShiftFaceGap:F2}, regular={shiftToCtrlFaceGap:F2}, shiftFace={rightShiftFace.ActualHeight:F2})");
+            // Border layout rounds to device pixels; the Enter path retains its
+            // fractional geometry. Compare their visible difference in physical
+            // pixels rather than assuming this desktop uses 100% scaling.
+            double keyboardDeviceScaleY = RenderedHeight(rightShift, window) / rightShift.ActualHeight
+                * VisualTreeHelper.GetDpi(window).DpiScaleY;
+            double gapDifferencePixels = Math.Abs(enterToShiftFaceGap - shiftToCtrlFaceGap) * keyboardDeviceScaleY;
+            Check(gapDifferencePixels <= 1, $"JIS Enter-to-Shift visible gap matches Shift-to-Ctrl within one device pixel (enter={enterToShiftFaceGap:F2}, regular={shiftToCtrlFaceGap:F2}, differencePx={gapDifferencePixels:F2})");
             Check(Math.Abs(Canvas.GetTop(jisEnter) - (Canvas.GetTop(backspace) + backspace.Height) - 4) < .1 && Math.Abs(Canvas.GetLeft(jisEnter) - (Canvas.GetLeft(upperBracket) + upperBracket.Width) - 4) < .1 && Math.Abs(Canvas.GetLeft(jisEnter) + 24 - (Canvas.GetLeft(rightBracket) + rightBracket.Width) - 6) < .1 && Math.Abs(Canvas.GetTop(rightShift) - (Canvas.GetTop(jisEnter) + jisEnter.Height) - 4) < .1, "JIS Enter preserves standard outer gutters and widens the stroked inner gutter to the same visible width");
             var functionKeys = jisKeys.Where(x => x.Tag?.ToString() is "Esc" or "F1" or "F2" or "F3" or "F4" or "F5" or "F6" or "F7" or "F8" or "F9" or "F10" or "F11" or "F12" or "F14" or "F15" or "F16" or "F17" or "F18" or "F19" or "F20" or "F21" or "F22" or "F23" or "F24").ToList();
             Check(functionKeys.Count == 24 && functionKeys.All(x => Math.Abs(x.ActualHeight - 36) < .1), "top and extended function keys share one compact rendered height");
@@ -3838,10 +3848,27 @@ internal static class UiIntegrationTest
                 $"main keyboard and navigation share one exact left edge ({mainLeft:F1}/{navigationLeft:F1}/{navigationHeadingLeft:F1})");
             double wideKeyboardLeft = window.KeyboardSurfaceCard.TranslatePoint(new System.Windows.Point(), window.WorkspaceGrid).X;
             double wideKeyboardRight = window.KeyboardSurfaceCard.TranslatePoint(new System.Windows.Point(window.KeyboardSurfaceCard.ActualWidth, 0), window.WorkspaceGrid).X;
+            // A wide window can still be height-constrained on a laptop. Uniform
+            // scaling must honor both available dimensions, not a fixed key size.
+            double expectedKeyboardScale = Math.Min(window.KeyboardViewbox.ActualWidth / window.KeyboardPanel.ActualWidth,
+                window.KeyboardViewbox.ActualHeight / window.KeyboardPanel.ActualHeight);
             Check(Math.Abs((wideKeyboardLeft + wideKeyboardRight) / 2 - window.WorkspaceGrid.ActualWidth / 2) < 1
                 && wideKeyboardLeft >= -1 && wideKeyboardRight <= window.WorkspaceGrid.ActualWidth + 1
-                && RenderedWidth(maximizedMainKey, window) > 52,
-                $"wide layouts enlarge and center the complete keyboard without clipping ({wideKeyboardLeft:F1}..{wideKeyboardRight:F1} of {window.WorkspaceGrid.ActualWidth:F1}, key={RenderedWidth(maximizedMainKey, window):F1})");
+                && expectedKeyboardScale > 0
+                && Math.Abs(RenderedWidth(maximizedMainKey, window) - maximizedMainKey.ActualWidth * expectedKeyboardScale) < 1,
+                $"wide layouts uniformly fit and center the complete keyboard without clipping ({wideKeyboardLeft:F1}..{wideKeyboardRight:F1} of {window.WorkspaceGrid.ActualWidth:F1}, key={RenderedWidth(maximizedMainKey, window):F1}, scale={expectedKeyboardScale:F3})");
+            // Exercise enlargement independently of the physical monitor bounds.
+            var scaleProbeKey = new System.Windows.Controls.Button { Width = 54, Height = 52 };
+            var scaleProbeCanvas = new Canvas { Width = window.KeyboardPanel.Width, Height = window.KeyboardPanel.Height };
+            scaleProbeCanvas.Children.Add(scaleProbeKey);
+            var scaleProbe = new Viewbox { Stretch = window.KeyboardViewbox.Stretch, StretchDirection = window.KeyboardViewbox.StretchDirection, Child = scaleProbeCanvas };
+            scaleProbe.Measure(new System.Windows.Size(1220, 600));
+            scaleProbe.Arrange(new Rect(0, 0, 1220, 600));
+            double enlargedProbeWidth = RenderedWidth(scaleProbeKey, scaleProbe);
+            scaleProbe.Measure(new System.Windows.Size(720, 600));
+            scaleProbe.Arrange(new Rect(0, 0, 720, 600));
+            Check(enlargedProbeWidth > 54 && RenderedWidth(scaleProbeKey, scaleProbe) < 54,
+                "keyboard Viewbox enlarges with sufficient room and shrinks to fit a smaller workspace independently of monitor size");
             Check(RenderedWidth(maximizedMainKey, window) <= RenderedWidth(maximizedNumpadKey, window) * 1.35, "main and lower keyboard controls stay visually balanced when maximized");
             var renderedMouseWidth = RenderedWidth(window.MousePanel, window);
             var renderedMainAHeight = RenderedHeight(maximizedMainKey, window);
@@ -5210,6 +5237,7 @@ internal static class UiIntegrationTest
                 Pump(window);
                 window.OpenActionPaletteForTest();
                 Pump(window);
+                window.Activate();
                 window.ActionPaletteSearchBox.Focus();
                 System.Windows.Input.Keyboard.Focus(window.ActionPaletteSearchBox);
                 Pump(window);
@@ -5277,6 +5305,7 @@ internal static class UiIntegrationTest
                     && plainClickBatches[0].SequenceEqual([(8u, 0u), (16u, 0u)])
                     && plainClickBatches[1].SequenceEqual([(0x80u, 1u), (0x100u, 1u)])
                     && plainClickBatches[2].SequenceEqual([(0x80u, 2u), (0x100u, 2u)]);
+                output.WriteLine($"INFO layer runtime {layerButton.Tag}: focus={window.ActionPaletteSearchBox.IsKeyboardFocusWithin}, profile={window.AppliedProfileNameForTest == runtimeProfileBeforeLayerSelection}, stale={staleMouseLeftLayerMappingIgnored}, requested={requested}, keyOutputs={allKeyActionsProduced}, mappedClicks={mappedChordsDidNotReplaySourceClicks}, ordinaryClicks={ordinaryClicksPreserved}, clean={spaceStateClean && capsStateClean && rightStateClean && backStateClean && forwardStateClean && unassignedLeftStateClean && plainRightStateClean && plainBackStateClean && plainForwardStateClean}, keys={focusedEditorKeyActions.Count}, clicks={ordinaryMouseClickBatches.Count}");
                 everyRuntimeActionWorkedOnEveryLayerEditor &= window.ActionPaletteSearchBox.IsKeyboardFocusWithin
                     && window.AppliedProfileNameForTest == runtimeProfileBeforeLayerSelection
                     && staleMouseLeftLayerMappingIgnored
