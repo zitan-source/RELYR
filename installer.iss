@@ -400,18 +400,35 @@ end;
 
 function SaveLauncherTaskXml(const FileName, UserSid, AppDirectory: String): Boolean;
 var
-  Lines: TArrayOfString;
+  TaskXml: String;
+  Stream: Variant;
 begin
-  SetArrayLength(Lines, 1);
-  Lines[0] :=
-    '<?xml version="1.0" encoding="UTF-8"?>' + #13#10 +
+  TaskXml :=
+    '<?xml version="1.0" encoding="UTF-16"?>' + #13#10 +
     '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' +
     '<RegistrationInfo><Author>RELYR</Author><Description>RELYR elevated input helper launcher.</Description></RegistrationInfo>' +
     '<Principals><Principal id="Author"><UserId>' + EscapeTaskXml(UserSid) + '</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>' +
     '<Settings><MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><ExecutionTimeLimit>PT0S</ExecutionTimeLimit></Settings>' +
     '<Actions Context="Author"><Exec><Command>' + EscapeTaskXml(AddBackslash(AppDirectory) + 'RELYR.exe') + '</Command><Arguments>--elevated-task "$(Arg0)"</Arguments><WorkingDirectory>' + EscapeTaskXml(AppDirectory) + '</WorkingDirectory></Exec></Actions>' +
     '</Task>';
-  Result := SaveStringsToUTF8File(FileName, Lines, False);
+  { schtasks consumes UTF-16 text internally. Windows' Unicode text stream
+    writes UTF-16LE with a BOM, matching the declaration without an ANSI
+    conversion. Pass this exact file to schtasks; never rewrite it at import. }
+  Result := False;
+  try
+    Stream := CreateOleObject('ADODB.Stream');
+    Stream.Charset := 'unicode';
+    Stream.Open;
+    try
+      Stream.WriteText(TaskXml);
+      Stream.SaveToFile(FileName, 2);
+      Result := True;
+    finally
+      Stream.Close;
+    end;
+  except
+    Log('Unable to write launcher task XML: ' + GetExceptionMessage);
+  end;
 end;
 
 function LauncherSetupError(const EnglishText, JapaneseText: String): String;

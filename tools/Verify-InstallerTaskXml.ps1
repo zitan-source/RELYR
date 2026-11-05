@@ -52,7 +52,7 @@ $folder = $service.GetFolder('\')
 foreach ($case in @('plain','unicode')) {
     $file = Join-Path $output "$case.xml"
     $bytes = [IO.File]::ReadAllBytes($file)
-    if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) { throw 'Expected UTF-8 BOM' }
+    if ($bytes.Length -lt 4 -or $bytes[0] -ne 0xFF -or $bytes[1] -ne 0xFE) { throw 'Expected UTF-16LE BOM' }
     $document = [xml]::new()
     $document.Load($file)
     if ($document.Task.Principals.Principal.UserId -ne $currentSid) { throw 'Account SID mismatch' }
@@ -61,11 +61,11 @@ foreach ($case in @('plain','unicode')) {
     if ($document.Task.Actions.Exec.Arguments -ne '--elevated-task "$(Arg0)"' -or $document.Task.Principals.Principal.LogonType -ne 'InteractiveToken' -or $document.Task.Principals.Principal.RunLevel -ne 'HighestAvailable') { throw 'Launcher contract changed' }
     # TASK_VALIDATE_ONLY: Windows validates the actual task XML, without creating
     # a task, replacing the user's launcher, or executing any application.
-    # COM transports a UTF-16 BSTR; adapt only the declaration after decoding
-    # the generated UTF-8 file. schtasks reads that UTF-8 file directly.
-    $taskBstr = $document.OuterXml.Replace('encoding="UTF-8"', 'encoding="UTF-16"')
+    # Validate the exact decoded file, with no declaration changes or XML
+    # reserialization. The v0.1.402 check masked the installer encoding bug.
+    $taskBstr = [IO.File]::ReadAllText($file)
     $null = $folder.RegisterTask('RELYR XML validation', $taskBstr, 1, $null, $null, 3, $null)
-    Write-Output "PASS Inno-generated $case task: UTF-8, SID, paths, launch contract, Windows Task Scheduler validation"
+    Write-Output "PASS Inno-generated $case task: UTF-16LE, SID, paths, launch contract, unmodified Windows validation"
 }
 $escaped = [xml]::new()
 $escaped.Load((Join-Path $output 'escaping.xml'))
@@ -74,4 +74,8 @@ $legacyRejected = $false
 try { $legacy = [xml]::new(); $legacy.Load((Join-Path $output 'legacy.xml')) } catch { $legacyRejected = $true }
 if (-not $legacyRejected) { throw 'Legacy regression fixture unexpectedly parsed' }
 Write-Output 'PASS XML escaping round-trip and legacy malformed XML reproduction'
+# Exercise schtasks' real file import, including registration and replacement.
+# This requires elevation, just as the real installer does. The worker only
+# touches uniquely named validation tasks, never the installed RELYR task.
+& (Join-Path $PSScriptRoot 'Verify-InstallerTaskRegistration.ps1')
 $global:LASTEXITCODE = 0
