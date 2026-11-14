@@ -16,6 +16,8 @@ if CommandLine.arguments.contains("--ui-smoke-test") {
         FileHandle.standardError.write(Data("UI verification requires a PNG path beside the built app inside .verification. User settings were not opened.\n".utf8))
         exit(2)
     }
+    // Test processes must not restore production windows or prompt after a failed test.
+    UserDefaults.standard.setVolatileDomain(["ApplePersistenceIgnoreState": true], forName: UserDefaults.argumentDomain)
 }
 
 let application = NSApplication.shared
