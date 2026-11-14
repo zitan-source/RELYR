@@ -19,3 +19,6 @@ TestResults/
 settings*.json
 *.bak.json
 *.relyr
+
+# Persistent private Mac development signing identity; never publish.
+.local-signing/

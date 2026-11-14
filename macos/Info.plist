@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>io.github.zitan-source.relyr.mac.trial</string>
+    <key>CFBundleName</key><string>RELYR Mac Trial</string>
+    <key>CFBundleDisplayName</key><string>RELYR Mac Trial</string>
+    <key>CFBundleExecutable</key><string>RELYR</string>
+    <key>CFBundleIconFile</key><string>RELYR.icns</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
+    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <!-- Per-user InstanceLock prevents duplicates without blocking other login sessions. -->
+    <key>LSMultipleInstancesProhibited</key><false/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>RELYR Macro</string><key>CFBundleURLSchemes</key><array><string>relyr-macro</string></array></dict></array>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 RELYR contributors. MIT License.</string>
+<key>NSAppleEventsUsageDescription</key><string>Finderの既存ウィンドウを表示したり、新しいウィンドウを開くために使用します。</string>
+</dict>
+</plist>
