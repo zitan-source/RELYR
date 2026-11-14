@@ -2,11 +2,16 @@
 
 **Extend your keyboard.**
 
+- **[Download for Windows](https://github.com/zitan-source/RELYR/releases/latest)** · Windows 10/11
+- **[Download for Mac (DMG)](https://github.com/zitan-source/RELYR/releases/download/macos-v0.2.0/RELYR-Mac-0.2.0-arm64.dmg)** · Free trial for Apple Silicon, macOS 13 or later · [Mac release notes](https://github.com/zitan-source/RELYR/releases/tag/macos-v0.2.0)
+
+On Mac, open the DMG and drag **RELYR Mac Trial** into **Applications**, then open it from Applications.
+
 RELYR is a free, open-source input system for Windows 10 and 11. Assign keyboard and mouse input to key layers, shortcuts, app launches, window controls, macros, mouse gestures, and an on-screen Deck.
 
 If held-key layers are useful to you but editing and retesting AutoHotkey scripts for every change is not, RELYR provides a visual, local alternative. Release the layer key and normal typing returns.
 
-[English](README.md) | [日本語](README.ja.md) | [Website](https://zitan-source.github.io/RELYR/) | [Latest release](https://github.com/zitan-source/RELYR/releases/latest)
+[English](README.md) | [日本語](README.ja.md) | [Website](https://zitan-source.github.io/RELYR/)
 
 [Three-minute guide](docs/getting-started.md) | [Support](SUPPORT.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md)
 
@@ -15,7 +20,7 @@ If held-key layers are useful to you but editing and retesting AutoHotkey script
 
 ![RELYR keyboard layers and Deck](https://zitan-source.github.io/RELYR/assets/og-image.png)
 
-## Try one action first
+## Try one action first on Windows
 
 The fastest way to judge RELYR is a single harmless Space-layer assignment, not a complete keyboard setup:
 
@@ -33,7 +38,7 @@ Hold a layer key such as Space, CapsLock, or a mouse button and the rest of your
 
 The same Action can be assigned to a key, mouse input, gesture, profile, or Deck button. This keeps app launchers, window management, macros, and system controls in one place.
 
-## Download
+## Download for Windows
 
 Download `RELYR-Setup-<version>.exe` from [GitHub Releases](https://github.com/zitan-source/RELYR/releases/latest).
 
