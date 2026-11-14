@@ -2,11 +2,16 @@
 
 **キーボードを、拡張する。**
 
+- **[Windows版をダウンロード](https://github.com/zitan-source/RELYR/releases/latest)** · Windows 10/11
+- **[Mac版をダウンロード（DMG）](https://github.com/zitan-source/RELYR/releases/download/macos-v0.2.0/RELYR-Mac-0.2.0-arm64.dmg)** · Apple Silicon・macOS 13以降向けの無料試用版 · [Mac版のリリース情報](https://github.com/zitan-source/RELYR/releases/tag/macos-v0.2.0)
+
+MacではDMGを開き、**RELYR Mac Trial**を**アプリケーション**フォルダへドラッグしてから、そのフォルダに移したアプリを開きます。
+
 キーボードとマウスの入力を、画面上からレイヤー・ショートカット・アプリ起動・マクロなどへ割り当てるWindows 10/11向けアプリです。
 
 キーを押している間だけ別レイヤーを使う操作は便利でも、変更のたびにAutoHotkeyスクリプトを編集・再テストするのが負担な人へ、画面上で設定できるローカル動作の選択肢を提供します。レイヤーキーを離せば通常入力へ戻ります。
 
-[English](README.md) | [日本語](README.ja.md) | [紹介サイト](https://zitan-source.github.io/RELYR/) | [最新版](https://github.com/zitan-source/RELYR/releases/latest)
+[English](README.md) | [日本語](README.ja.md) | [紹介サイト](https://zitan-source.github.io/RELYR/)
 
 [3分で始める](docs/getting-started.ja.md) | [サポート](SUPPORT.ja.md) | [貢献方法](CONTRIBUTING.ja.md) | [セキュリティー](SECURITY.ja.md)
 
@@ -15,7 +20,7 @@
 
 ![RELYRのキーボードレイヤーとDeck](https://zitan-source.github.io/RELYR/assets/og-image.png)
 
-## 最初は操作を1つだけ試す
+## Windowsで最初の操作を1つ試す
 
 最初からキーボード全体を設定せず、安全なSpaceレイヤーの操作1つで自分に合うか判断できます。
 
@@ -33,7 +38,7 @@ RELYRを使用するときは、AutoHotkey、PowerToys Keyboard Manager、メー
 
 併用する場合は、同じキーやマウスボタンへ重複して割り当てないようにしてください。
 
-## ダウンロード
+## Windows版のダウンロード
 
 最新版は[GitHub Releases](https://github.com/zitan-source/RELYR/releases/latest)から`RELYR-Setup-<version>.exe`をダウンロードしてください。同じReleaseにある`.sha256`ファイルで、ダウンロードしたファイルが壊れていないか確認できます。
 
